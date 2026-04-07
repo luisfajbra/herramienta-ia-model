@@ -15,10 +15,10 @@ def export_ml_dataset(db_file: str, output_csv: str):
         SELECT
             nr.run_id,
             nr.node_id,
-            r.delta_inflow_m3ps,
+            r.delta_inflow_lps,
             r.scenario_type,
             r.spatial_pattern,
-            ri.applied_inflow_m3ps,
+            ri.applied_inflow_lps,
             nn.invert_elev_m,
             nn.full_depth_m,
             nn.node_type,
@@ -30,14 +30,14 @@ def export_ml_dataset(db_file: str, output_csv: str):
             nn.upstream_diam_avg_m,
             nn.upstream_slope_avg,
             nn.upstream_slope_max,
-            nn.upstream_capacity_m3ps,
+            nn.upstream_capacity_lps,
             nn.downstream_pipes_count,
             nn.downstream_diam_max_m,
             nn.downstream_diam_min_m,
             nn.downstream_diam_avg_m,
             nn.downstream_slope_avg,
             nn.downstream_slope_max,
-            nn.downstream_capacity_m3ps,
+            nn.downstream_capacity_lps,
             nr.max_depth_m,
             nr.max_depth_ratio,
             nr.time_to_peak_min,
@@ -51,7 +51,7 @@ def export_ml_dataset(db_file: str, output_csv: str):
                          AND ri.node_uid = nr.node_id
         LEFT JOIN network_nodes nn ON nn.node_uid = nr.node_id
         WHERE r.status = 'completed'
-        ORDER BY r.delta_inflow_m3ps, nr.node_id
+        ORDER BY r.delta_inflow_lps, nr.node_id
         """,
         conn,
     )

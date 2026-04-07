@@ -18,14 +18,14 @@ CREATE TABLE IF NOT EXISTS network_nodes (
     upstream_diam_avg_m         REAL,
     upstream_slope_avg          REAL,
     upstream_slope_max          REAL,
-    upstream_capacity_m3ps      REAL,
+    upstream_capacity_lps       REAL,
     downstream_pipes_count      INTEGER,
     downstream_diam_max_m       REAL,
     downstream_diam_min_m       REAL,
     downstream_diam_avg_m       REAL,
     downstream_slope_avg        REAL,
     downstream_slope_max        REAL,
-    downstream_capacity_m3ps    REAL
+    downstream_capacity_lps     REAL
 );
 
 CREATE TABLE IF NOT EXISTS network_links (
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS network_links (
     length_m            REAL,
     roughness           REAL,
     slope_m_per_m       REAL,
-    full_flow_capacity_m3ps REAL
+    full_flow_capacity_lps  REAL
 );
 
 CREATE TABLE IF NOT EXISTS runs (
@@ -47,7 +47,7 @@ CREATE TABLE IF NOT EXISTS runs (
     network_hash        TEXT NOT NULL,
     scenario_type       TEXT NOT NULL,
     spatial_pattern     TEXT NOT NULL,
-    delta_inflow_m3ps   REAL NOT NULL,
+    delta_inflow_lps    REAL NOT NULL,
     executed_at         TEXT NOT NULL,
     status              TEXT NOT NULL DEFAULT 'pending'
 );
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS run_inputs (
     input_id            TEXT PRIMARY KEY,
     run_id              TEXT NOT NULL REFERENCES runs(run_id),
     node_uid            TEXT NOT NULL,
-    applied_inflow_m3ps REAL NOT NULL
+    applied_inflow_lps  REAL NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS node_results (
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS link_results (
     result_id           TEXT PRIMARY KEY,
     run_id              TEXT NOT NULL REFERENCES runs(run_id),
     link_id             TEXT NOT NULL,
-    max_flow_m3ps       REAL,
+    max_flow_lps        REAL,
     max_velocity_mps    REAL,
     max_depth_m         REAL,
     max_capacity_ratio  REAL,

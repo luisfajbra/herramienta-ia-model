@@ -39,8 +39,8 @@ def node_type_str(node) -> str:
     return "unknown"
 
 
-def circular_full_flow_m3ps(diameter_m: float, slope: float, roughness: float):
-    """Compute Manning full-flow capacity for a circular conduit."""
+def circular_full_flow_lps(diameter_m: float, slope: float, roughness: float):
+    """Compute Manning full-flow capacity for a circular conduit in L/s."""
     if not diameter_m or not slope or not roughness:
         return None
     if diameter_m <= 0 or slope <= 0 or roughness <= 0:
@@ -48,5 +48,5 @@ def circular_full_flow_m3ps(diameter_m: float, slope: float, roughness: float):
 
     area = math.pi * diameter_m**2 / 4.0
     radius = diameter_m / 4.0
-    flow = (1.0 / roughness) * area * (radius ** (2.0 / 3.0)) * (slope ** 0.5)
-    return round(flow, 6)
+    flow_lps = (1.0 / roughness) * area * (radius ** (2.0 / 3.0)) * (slope ** 0.5) * 1000.0
+    return round(flow_lps, 6)

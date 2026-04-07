@@ -10,12 +10,15 @@ from pyswmm import Links, Nodes, Simulation
 from .analysis.dataset import export_ml_dataset
 from .config import (
     DEFAULT_DB_FILE,
-    DEFAULT_DELTA_INFLOWS_M3PS,
+    DEFAULT_DELTA_INFLOWS_LPS,
+    DEFAULT_HYDROGRAPH_FILE,
     DEFAULT_INP_FILE,
     DEFAULT_NETWORK_DIR,
     DEFAULT_OUTPUT_CSV,
     DEFAULT_SCENARIO_TYPE,
     DEFAULT_SPATIAL_PATTERN,
+    DEFAULT_TARGET_NODES,
+    HYDROGRAPHS_DIR,
     LEGACY_INP_FILE,
     NETWORKS_DIR,
 )
@@ -27,7 +30,7 @@ from .database.repository import (
     update_run_status,
     verify_run_saved,
 )
-from .simulation.runner import extract_static_topology, run_simulation
+from .simulation.runner import extract_static_topology, load_hydrograph, run_simulation
 from .utils import file_hash, new_id
 
 
@@ -43,14 +46,25 @@ def resolve_inp_file(inp_file=None) -> Path:
 def ensure_directories():
     """Create expected data directories."""
     NETWORKS_DIR.mkdir(parents=True, exist_ok=True)
+    HYDROGRAPHS_DIR.mkdir(parents=True, exist_ok=True)
     DEFAULT_NETWORK_DIR.mkdir(parents=True, exist_ok=True)
+
+
+def _normalize_target_nodes(target_nodes):
+    if target_nodes is None:
+        return None
+    if isinstance(target_nodes, str):
+        return [target_nodes]
+    return [str(node_id) for node_id in target_nodes]
 
 
 def run_experiment(
     inp_file=None,
     db_file=None,
     output_csv=None,
-    delta_inflows_m3ps=None,
+    delta_inflows_lps=None,
+    hydrograph_file=DEFAULT_HYDROGRAPH_FILE,
+    target_nodes=DEFAULT_TARGET_NODES,
     scenario_type: str = DEFAULT_SCENARIO_TYPE,
     spatial_pattern: str = DEFAULT_SPATIAL_PATTERN,
     reset_db: bool = True,
@@ -61,7 +75,15 @@ def run_experiment(
     inp_path = resolve_inp_file(inp_file)
     db_path = Path(db_file) if db_file is not None else DEFAULT_DB_FILE
     csv_path = Path(output_csv) if output_csv is not None else DEFAULT_OUTPUT_CSV
-    deltas = delta_inflows_m3ps if delta_inflows_m3ps is not None else DEFAULT_DELTA_INFLOWS_M3PS
+    target_nodes = _normalize_target_nodes(target_nodes)
+    hydrograph = load_hydrograph(hydrograph_file) if hydrograph_file else None
+    hydrograph_peak_lps = max((point[1] for point in hydrograph), default=None) if hydrograph else None
+    if hydrograph is not None:
+        deltas = [hydrograph_peak_lps]
+        scenario_type = "hydrograph_inflow"
+        spatial_pattern = "all_nodes" if target_nodes is None else "selected_nodes"
+    else:
+        deltas = delta_inflows_lps if delta_inflows_lps is not None else DEFAULT_DELTA_INFLOWS_LPS
 
     if not inp_path.exists():
         raise FileNotFoundError(f"No se encontro el archivo .inp: {inp_path}")
@@ -81,6 +103,10 @@ def run_experiment(
     print(f"  Red        : {inp_path}")
     print(f"  Hash       : {network_hash[:12]}...")
     print(f"  Corridas   : {len(deltas)}")
+    if hydrograph is not None:
+        print(f"  Hidrograma : {Path(hydrograph_file)}")
+        print(f"  Pico       : {hydrograph_peak_lps:.4f} L/s")
+        print(f"  Nodos      : {'todos' if target_nodes is None else ', '.join(target_nodes)}")
     print(f"  DB Salida  : {db_path}")
     print(f"{'=' * 70}\n")
 
@@ -92,13 +118,13 @@ def run_experiment(
     print(f"\n  [2/2] Corriendo {len(deltas)} simulaciones...\n")
     for index, delta in enumerate(deltas, start=1):
         run_id = new_id()
-        print(f"[{index:>2}/{len(deltas)}] run={run_id[:8]}  Dq={delta:.4f} m3/s/nodo")
+        print(f"[{index:>2}/{len(deltas)}] run={run_id[:8]}  Dq={delta:.4f} L/s/nodo")
 
         conn.execute(
             """
             INSERT INTO runs
               (run_id, network_file, network_hash, scenario_type,
-               spatial_pattern, delta_inflow_m3ps, executed_at, status)
+               spatial_pattern, delta_inflow_lps, executed_at, status)
             VALUES (?, ?, ?, ?, ?, ?, datetime('now'), 'running')
             """,
             (run_id, str(inp_path), network_hash, scenario_type, spatial_pattern, delta),
@@ -106,7 +132,16 @@ def run_experiment(
         conn.commit()
 
         try:
-            results = run_simulation(str(inp_path), delta, link_static, Nodes, Links, Simulation)
+            results = run_simulation(
+                str(inp_path),
+                delta,
+                link_static,
+                Nodes,
+                Links,
+                Simulation,
+                hydrograph=hydrograph,
+                target_nodes=target_nodes,
+            )
             save_results(conn, run_id, results)
             update_run_status(conn, run_id, "completed")
             verify_run_saved(conn, run_id)

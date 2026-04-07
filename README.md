@@ -51,6 +51,14 @@ data/networks/<nombre_de_red>/
 python main.py
 ```
 
+4. Si prefieres usar la aplicacion local de escritorio:
+
+```bash
+python app.py
+```
+
+La app abre una ventana local para seleccionar el `.inp`, elegir steady flow o hidrograma, definir nodos, ejecutar corridas, entrenar modelos y abrir el visor SQLite.
+
 ## Cómo evaluar los modelos
 
 Despues de generar el dataset con `python main.py`, puedes ejecutar la comparacion de modelos de ML con:
@@ -68,15 +76,70 @@ Ese comando sirve para:
 
 Este paso es importante porque `python main.py` genera los resultados hidraulicos y el dataset, pero la evaluacion de modelos se corre aparte con `python -m swmm_resilience.ml.train`.
 
+## Arquitectura preparada para CNN temporal
+
+El flujo ML actual sigue siendo tabular y se mantiene en `swmm_resilience/ml/train.py`. Esa ruta sirve como baseline fuerte para modelos como XGBoost.
+
+Tambien queda preparada una carpeta para el trabajo futuro con CNN 1D sobre hidrogramas:
+
+```text
+swmm_resilience/ml/temporal/
+  README.md
+  schemas.py
+  dataset.py
+  train_cnn.py
+  predict.py
+```
+
+Por ahora esa carpeta es solo scaffold: no entrena redes neuronales ni agrega dependencias como PyTorch o TensorFlow. La idea es usarla mas adelante cuando guardemos series temporales por nodo y podamos construir ventanas tipo `[samples, timesteps, features]`.
+
+Puedes ver el resumen del plan con:
+
+```bash
+python -m swmm_resilience.ml.temporal.train_cnn
+```
+
 ## Dónde cambiar los caudales
 
 Edita esta variable en [swmm_resilience/config.py](swmm_resilience/config.py):
 
 ```python
-DEFAULT_DELTA_INFLOWS_M3PS = list(range(2, 52, 2))
+DEFAULT_DELTA_INFLOWS_LPS = list(range(2, 52, 2))
 ```
 
-Los valores están en `m3/s` por nodo.
+Los valores están en `L/s` por nodo.
+
+## Cómo usar un hidrograma externo
+
+Puedes aplicar un hidrograma desde un CSV externo en `L/s`. El archivo debe tener una columna de tiempo en minutos y una columna de caudal:
+
+```csv
+minute,inflow_lps
+0,0
+5,10
+10,25
+15,40
+20,30
+25,15
+30,0
+```
+
+Hay un ejemplo en `data/hydrographs/example_hydrograph.csv`.
+
+Para activarlo, edita [swmm_resilience/config.py](swmm_resilience/config.py):
+
+```python
+DEFAULT_HYDROGRAPH_FILE = HYDROGRAPHS_DIR / "example_hydrograph.csv"
+DEFAULT_TARGET_NODES = None
+```
+
+Con `DEFAULT_TARGET_NODES = None`, el hidrograma se aplica a todos los nodos. Para aplicarlo solo a algunos nodos:
+
+```python
+DEFAULT_TARGET_NODES = ["NODO_1", "NODO_2", "NODO_3"]
+```
+
+El programa interpola linealmente el caudal entre puntos del CSV. Si usas hidrograma, el escenario cambia automaticamente a `hydrograph_inflow`, `spatial_pattern` queda como `all_nodes` o `selected_nodes`, y `delta_inflow_lps` guarda el pico del hidrograma como valor representativo de la corrida.
 
 ## Salidas
 
@@ -104,8 +167,8 @@ Esta seccion resume las variables que aparecen en la base de datos y en el datas
 - `spatial_pattern`
   Patron espacial de aplicacion del caudal adicional. Hoy el valor por defecto es `uniform`.
 
-- `delta_inflow_m3ps`
-  Caudal adicional uniforme aplicado por nodo, en `m3/s`.
+- `delta_inflow_lps`
+  Caudal adicional uniforme aplicado por nodo, en `L/s`.
 
 - `executed_at`
   Fecha y hora de ejecucion de la corrida.
@@ -124,8 +187,8 @@ Esta seccion resume las variables que aparecen en la base de datos y en el datas
 - `node_uid`
   Nodo al que se le aplico la entrada.
 
-- `applied_inflow_m3ps`
-  Caudal efectivamente aplicado a ese nodo en esa corrida, en `m3/s`.
+- `applied_inflow_lps`
+  Caudal aplicado a ese nodo en esa corrida, en `L/s`. En modo uniforme es el caudal constante; en modo hidrograma es el caudal maximo aplicado al nodo.
 
 ### Variables estaticas de nodos (`network_nodes`)
 
@@ -168,8 +231,8 @@ Esta seccion resume las variables que aparecen en la base de datos y en el datas
 - `upstream_slope_max`
   Pendiente maxima absoluta de las tuberias aguas arriba, en `m/m`.
 
-- `upstream_capacity_m3ps`
-  Suma de las capacidades teoricas a flujo lleno de las tuberias aguas arriba, en `m3/s`.
+- `upstream_capacity_lps`
+  Suma de las capacidades teoricas a flujo lleno de las tuberias aguas arriba, en `L/s`.
 
 - `downstream_pipes_count`
   Numero de tuberias aguas abajo conectadas al nodo.
@@ -189,8 +252,8 @@ Esta seccion resume las variables que aparecen en la base de datos y en el datas
 - `downstream_slope_max`
   Pendiente maxima absoluta de las tuberias aguas abajo, en `m/m`.
 
-- `downstream_capacity_m3ps`
-  Suma de las capacidades teoricas a flujo lleno de las tuberias aguas abajo, en `m3/s`.
+- `downstream_capacity_lps`
+  Suma de las capacidades teoricas a flujo lleno de las tuberias aguas abajo, en `L/s`.
 
 ### Variables dinamicas por nodo (`node_results`)
 
@@ -237,8 +300,8 @@ Esta seccion resume las variables que aparecen en la base de datos y en el datas
 - `link_id`
   Enlace al que corresponde el resultado.
 
-- `max_flow_m3ps`
-  Caudal maximo alcanzado en el enlace, en `m3/s`.
+- `max_flow_lps`
+  Caudal maximo alcanzado en el enlace, en `L/s`.
 
 - `max_velocity_mps`
   Velocidad maxima alcanzada en el enlace, en `m/s`.
@@ -287,8 +350,8 @@ Esta seccion resume las variables que aparecen en la base de datos y en el datas
 
 El archivo `dataset_ml.csv` contiene una combinacion de:
 
-- variables de corrida: `run_id`, `delta_inflow_m3ps`, `scenario_type`, `spatial_pattern`
-- variables de entrada por nodo: `applied_inflow_m3ps`
+- variables de corrida: `run_id`, `delta_inflow_lps`, `scenario_type`, `spatial_pattern`
+- variables de entrada por nodo: `applied_inflow_lps`
 - variables estaticas del nodo: columnas de `network_nodes`
 - variables resultado por nodo: `max_depth_m`, `max_depth_ratio`, `time_to_peak_min`, `depth_rate_m_per_min`, `flooded`, `flooding_volume_m3`, `flooding_duration_min`
 

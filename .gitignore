@@ -52,6 +52,7 @@ dataset_ml.csv
 ml_outputs/
 *.pkl
 *.csv
+!data/hydrographs/*.csv
 *.xlsx
 *.png
 

@@ -2,12 +2,13 @@
 Simulation-only logic: PySWMM setup, topology extraction and hydraulic results.
 """
 
+import csv
 from collections import defaultdict
 from datetime import timedelta
 from pathlib import Path
 
 from ..utils import (
-    circular_full_flow_m3ps,
+    circular_full_flow_lps,
     new_id,
     node_type_str,
     safe_round,
@@ -48,6 +49,65 @@ def _parse_inp_sections(inp_file: str):
             }
 
     return conduit_rows, xsection_rows
+
+
+def load_hydrograph(hydrograph_file):
+    """Load a CSV hydrograph with time in minutes and flow in L/s."""
+    if hydrograph_file is None:
+        return None
+
+    path = Path(hydrograph_file)
+    if not path.exists():
+        raise FileNotFoundError(f"No se encontro el hidrograma: {path}")
+
+    time_columns = ("minute", "minutes", "time_min", "elapsed_min")
+    flow_columns = ("inflow_lps", "flow_lps", "caudal_lps", "q_lps")
+    points = []
+
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if not reader.fieldnames:
+            raise ValueError("El hidrograma debe tener encabezados de columna.")
+
+        normalized = {name.strip().lower(): name for name in reader.fieldnames}
+        time_col = next((normalized[col] for col in time_columns if col in normalized), None)
+        flow_col = next((normalized[col] for col in flow_columns if col in normalized), None)
+        if time_col is None or flow_col is None:
+            raise ValueError(
+                "El hidrograma debe tener columnas 'minute' e 'inflow_lps' "
+                "(tambien sirven: time_min/flow_lps/caudal_lps/q_lps)."
+            )
+
+        for row in reader:
+            points.append((float(row[time_col]), float(row[flow_col])))
+
+    points.sort(key=lambda point: point[0])
+    if not points:
+        raise ValueError("El hidrograma no tiene filas de datos.")
+    if points[0][0] < 0:
+        raise ValueError("El tiempo del hidrograma no puede ser negativo.")
+
+    return points
+
+
+def _hydrograph_value_lps(hydrograph, elapsed_min: float) -> float:
+    """Linearly interpolate the hydrograph value for the current simulation minute."""
+    if not hydrograph:
+        return 0.0
+    if elapsed_min <= hydrograph[0][0]:
+        return hydrograph[0][1]
+
+    for left, right in zip(hydrograph, hydrograph[1:]):
+        left_min, left_flow = left
+        right_min, right_flow = right
+        if elapsed_min <= right_min:
+            span = right_min - left_min
+            if span <= 0:
+                return right_flow
+            fraction = (elapsed_min - left_min) / span
+            return left_flow + fraction * (right_flow - left_flow)
+
+    return hydrograph[-1][1]
 
 
 def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulation):
@@ -108,14 +168,14 @@ def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulati
             except Exception:
                 slope = None
 
-            capacity = circular_full_flow_m3ps(diameter, abs(slope) if slope else None, roughness)
+            capacity = circular_full_flow_lps(diameter, abs(slope) if slope else None, roughness)
 
             link_static[link_id] = {
                 "diameter_m": diameter,
                 "length_m": length,
                 "roughness": roughness,
                 "slope_m_per_m": slope,
-                "full_flow_capacity_m3ps": capacity,
+                "full_flow_capacity_lps": capacity,
                 "inlet_node": inlet_node,
                 "outlet_node": outlet_node,
                 "link_type": link_type,
@@ -131,7 +191,7 @@ def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulati
                 "length_m": safe_round(length),
                 "roughness": safe_round(roughness, 6),
                 "slope_m_per_m": safe_round(slope, 6),
-                "full_flow_capacity_m3ps": safe_round(capacity, 6),
+                "full_flow_capacity_lps": safe_round(capacity, 6),
             })
 
             if inlet_node:
@@ -167,11 +227,11 @@ def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulati
 
             upstream_diams = agg(upstream_ids, "diameter_m")
             upstream_slopes = [abs(value) for value in agg(upstream_ids, "slope_m_per_m") if value is not None]
-            upstream_caps = agg(upstream_ids, "full_flow_capacity_m3ps")
+            upstream_caps = agg(upstream_ids, "full_flow_capacity_lps")
 
             downstream_diams = agg(downstream_ids, "diameter_m")
             downstream_slopes = [abs(value) for value in agg(downstream_ids, "slope_m_per_m") if value is not None]
-            downstream_caps = agg(downstream_ids, "full_flow_capacity_m3ps")
+            downstream_caps = agg(downstream_ids, "full_flow_capacity_lps")
 
             node_records.append({
                 "node_uid": node_id,
@@ -187,14 +247,14 @@ def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulati
                 "upstream_diam_avg_m": safe_avg(upstream_diams),
                 "upstream_slope_avg": safe_avg(upstream_slopes),
                 "upstream_slope_max": safe_max(upstream_slopes),
-                "upstream_capacity_m3ps": safe_sum(upstream_caps),
+                "upstream_capacity_lps": safe_sum(upstream_caps),
                 "downstream_pipes_count": len(downstream_ids),
                 "downstream_diam_max_m": safe_max(downstream_diams),
                 "downstream_diam_min_m": safe_min(downstream_diams),
                 "downstream_diam_avg_m": safe_avg(downstream_diams),
                 "downstream_slope_avg": safe_avg(downstream_slopes),
                 "downstream_slope_max": safe_max(downstream_slopes),
-                "downstream_capacity_m3ps": safe_sum(downstream_caps),
+                "downstream_capacity_lps": safe_sum(downstream_caps),
             })
 
     return {
@@ -204,13 +264,29 @@ def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulati
     }
 
 
-def run_simulation(inp_file, delta_inflow_m3ps, link_static, Nodes, Links, Simulation):
-    """Execute one SWMM run with a uniform additional inflow per node in m3/s."""
+def run_simulation(
+    inp_file,
+    delta_inflow_lps,
+    link_static,
+    Nodes,
+    Links,
+    Simulation,
+    hydrograph=None,
+    target_nodes=None,
+):
+    """Execute one SWMM run with uniform or hydrograph inflow in L/s."""
 
     first_flood_step = None
     step_count = 0
     timestep_sec = None
     depth_rate_tracker = {}
+    if target_nodes is None:
+        target_node_set = None
+    elif isinstance(target_nodes, str):
+        target_node_set = {target_nodes}
+    else:
+        target_node_set = {str(node_id) for node_id in target_nodes}
+    max_applied_by_node = defaultdict(float)
 
     with Simulation(inp_file) as sim:
         sim_start = sim.start_time
@@ -228,7 +304,17 @@ def run_simulation(inp_file, delta_inflow_m3ps, link_static, Nodes, Links, Simul
 
             for node in nodes:
                 node_id = node.nodeid
-                node.generated_inflow(delta_inflow_m3ps)
+                elapsed_min = (sim.current_time - sim_start).total_seconds() / 60.0
+                applies_to_node = target_node_set is None or node_id in target_node_set
+                inflow_lps = (
+                    _hydrograph_value_lps(hydrograph, elapsed_min)
+                    if hydrograph is not None
+                    else delta_inflow_lps
+                )
+                applied_lps = inflow_lps if applies_to_node else 0.0
+                node.generated_inflow(applied_lps)
+                if applied_lps > max_applied_by_node[node_id]:
+                    max_applied_by_node[node_id] = applied_lps
 
                 if first_flood_step is None and node.flooding > 0:
                     first_flood_step = step_count
@@ -282,7 +368,7 @@ def run_simulation(inp_file, delta_inflow_m3ps, link_static, Nodes, Links, Simul
             run_inputs.append({
                 "input_id": new_id(),
                 "node_uid": node_id,
-                "applied_inflow_m3ps": delta_inflow_m3ps,
+                "applied_inflow_lps": safe_round(max_applied_by_node[node_id]),
             })
 
         link_records = []
@@ -294,19 +380,19 @@ def run_simulation(inp_file, delta_inflow_m3ps, link_static, Nodes, Links, Simul
             except AttributeError:
                 pass
 
-            peak_flow_cms = conduit_stats.get("peak_flow", 0.0) or 0.0
+            peak_flow_lps = conduit_stats.get("peak_flow", 0.0) or 0.0
             peak_vel_mps = conduit_stats.get("peak_velocity", 0.0) or 0.0
             peak_depth_m = conduit_stats.get("peak_depth", 0.0) or 0.0
             time_full_hours = conduit_stats.get("time_full_flow", 0.0) or 0.0
             surcharged = time_full_hours > 0
 
-            capacity = link_static.get(link_id, {}).get("full_flow_capacity_m3ps")
-            cap_ratio = round(peak_flow_cms / capacity, 4) if (capacity and capacity > 0) else None
+            capacity = link_static.get(link_id, {}).get("full_flow_capacity_lps")
+            cap_ratio = round(peak_flow_lps / capacity, 4) if (capacity and capacity > 0) else None
 
             link_records.append({
                 "result_id": new_id(),
                 "link_id": link_id,
-                "max_flow_m3ps": safe_round(peak_flow_cms, 4),
+                "max_flow_lps": safe_round(peak_flow_lps, 4),
                 "max_velocity_mps": safe_round(peak_vel_mps),
                 "max_depth_m": safe_round(peak_depth_m),
                 "max_capacity_ratio": cap_ratio,

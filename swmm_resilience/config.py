@@ -10,6 +10,7 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 NETWORKS_DIR = DATA_DIR / "networks"
+HYDROGRAPHS_DIR = DATA_DIR / "hydrographs"
 DEFAULT_NETWORK_KEY = "chico_steady"
 DEFAULT_NETWORK_DIR = NETWORKS_DIR / DEFAULT_NETWORK_KEY
 DEFAULT_RESULTS_DIR = DEFAULT_NETWORK_DIR / "results"
@@ -20,7 +21,9 @@ LEGACY_INP_FILE = BASE_DIR / "SWMM - Chico (PVC) Prueba 1 - Steady.inp"
 DEFAULT_DB_FILE = DEFAULT_RESULTS_DIR / "swmm_resilience.db"
 DEFAULT_OUTPUT_CSV = DEFAULT_RESULTS_DIR / "dataset_ml.csv"
 
-DEFAULT_DELTA_INFLOWS_M3PS = list(range(2, 102, 2))
+DEFAULT_DELTA_INFLOWS_LPS = list(range(2, 102, 2))
+DEFAULT_HYDROGRAPH_FILE = None
+DEFAULT_TARGET_NODES = None
 DEFAULT_SCENARIO_TYPE = "uniform_inflow_sweep"
 DEFAULT_SPATIAL_PATTERN = "uniform"
 
@@ -30,6 +33,13 @@ ML_TARGET_CLASSIFICATION = "flooded"
 ML_TEST_SIZE = 0.2
 ML_RANDOM_STATE = 42
 ML_CV_FOLDS = 5
+
+# Temporal/CNN planning configuration. These values are placeholders for the
+# future 1D CNN workflow and do not affect the current tabular models.
+ML_TEMPORAL_WINDOW_MIN = 20
+ML_TEMPORAL_HORIZON_MIN = 5
+ML_TEMPORAL_STEP_MIN = 1
+ML_TEMPORAL_TARGET = "failure_within_horizon"
 
 ML_DROP_COLUMNS = [
     "run_id",

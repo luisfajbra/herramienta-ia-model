@@ -28,10 +28,10 @@ def save_static_topology(conn: sqlite3.Connection, topo: dict):
                 :in_degree, :out_degree,
                 :upstream_pipes_count,
                 :upstream_diam_max_m, :upstream_diam_min_m, :upstream_diam_avg_m,
-                :upstream_slope_avg, :upstream_slope_max, :upstream_capacity_m3ps,
+                :upstream_slope_avg, :upstream_slope_max, :upstream_capacity_lps,
                 :downstream_pipes_count,
                 :downstream_diam_max_m, :downstream_diam_min_m, :downstream_diam_avg_m,
-                :downstream_slope_avg, :downstream_slope_max, :downstream_capacity_m3ps
+                :downstream_slope_avg, :downstream_slope_max, :downstream_capacity_lps
             )
             """,
             dict(row),
@@ -45,7 +45,7 @@ def save_static_topology(conn: sqlite3.Connection, topo: dict):
                 :link_uid, :network_hash,
                 :inlet_node, :outlet_node, :link_type,
                 :diameter_m, :length_m, :roughness,
-                :slope_m_per_m, :full_flow_capacity_m3ps
+                :slope_m_per_m, :full_flow_capacity_lps
             )
             """,
             dict(row),
@@ -104,7 +104,7 @@ def export_run_summary(db_file: str):
     df = pd.read_sql(
         """
         SELECT
-            r.delta_inflow_m3ps,
+            r.delta_inflow_lps,
             r.status,
             s.total_nodes,
             s.total_flooded_nodes,
@@ -114,7 +114,7 @@ def export_run_summary(db_file: str):
             s.time_to_first_flood_min
         FROM runs r
         LEFT JOIN run_summary s ON r.run_id = s.run_id
-        ORDER BY r.delta_inflow_m3ps
+        ORDER BY r.delta_inflow_lps
         """,
         conn,
     )
