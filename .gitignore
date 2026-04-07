@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+*.ipynb
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS y variables locales
+.DS_Store
+Thumbs.db
+.env
+.env.local
+.env.*.local
+
+# Resultados generados
+*.db
+data/**/results/
+entrenar/
+dataset_ml.csv
+ml_outputs/
+*.pkl
+*.csv
+*.xlsx
+*.png
+
+# SWMM outputs generados
+*.rpt
+*.out
