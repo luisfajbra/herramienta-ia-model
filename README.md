@@ -57,7 +57,7 @@ python main.py
 python app.py
 ```
 
-La app abre una ventana local para seleccionar el `.inp`, elegir steady flow o hidrograma, definir nodos, ejecutar corridas, entrenar modelos y abrir el visor SQLite.
+La app abre una ventana local para seleccionar el `.inp`, elegir steady flow o hidrograma, definir nodos, ejecutar corridas, entrenar modelos, predecir nuevos caudales steady con ML sin correr PySWMM y abrir el visor SQLite. En la pestaña `Predicción ML` puedes elegir el clasificador y el regresor tabular que quieres usar.
 
 ## Cómo evaluar los modelos
 
@@ -140,6 +140,15 @@ DEFAULT_TARGET_NODES = ["NODO_1", "NODO_2", "NODO_3"]
 ```
 
 El programa interpola linealmente el caudal entre puntos del CSV. Si usas hidrograma, el escenario cambia automaticamente a `hydrograph_inflow`, `spatial_pattern` queda como `all_nodes` o `selected_nodes`, y `delta_inflow_lps` guarda el pico del hidrograma como valor representativo de la corrida.
+
+Desde la app local tambien puedes correr el hidrograma de forma iterativa con multiplicadores. Por ejemplo:
+
+```text
+Cantidad = 3
+Paso multiplicador = 0.5
+```
+
+Eso genera tres corridas que multiplican todos los valores del hidrograma por `0.5x`, `1.0x` y `1.5x`. Si usas `Cantidad = 4` y `Paso multiplicador = 1`, se evaluan `1x`, `2x`, `3x` y `4x`.
 
 ## Salidas
 

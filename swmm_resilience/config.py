@@ -49,6 +49,10 @@ ML_DROP_COLUMNS = [
     "flooded",
     "flooding_volume_m3",
     "flooding_duration_min",
+    "max_depth_m",
+    "max_depth_ratio",
+    "time_to_peak_min",
+    "depth_rate_m_per_min",
 ]
 
 ML_MODEL_CONFIGS = {

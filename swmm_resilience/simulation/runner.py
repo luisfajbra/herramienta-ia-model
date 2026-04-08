@@ -272,6 +272,7 @@ def run_simulation(
     Links,
     Simulation,
     hydrograph=None,
+    hydrograph_multiplier: float = 1.0,
     target_nodes=None,
 ):
     """Execute one SWMM run with uniform or hydrograph inflow in L/s."""
@@ -307,7 +308,7 @@ def run_simulation(
                 elapsed_min = (sim.current_time - sim_start).total_seconds() / 60.0
                 applies_to_node = target_node_set is None or node_id in target_node_set
                 inflow_lps = (
-                    _hydrograph_value_lps(hydrograph, elapsed_min)
+                    _hydrograph_value_lps(hydrograph, elapsed_min) * hydrograph_multiplier
                     if hydrograph is not None
                     else delta_inflow_lps
                 )
