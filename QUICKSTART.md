@@ -60,5 +60,5 @@ python main.py
 
 ## 5. Revisar resultados
 
-- SQLite: `data/results/swmm_resilience.db`
-- CSV: `data/results/dataset_ml.csv`
+- SQLite central: `data/training/swmm_resilience.db`
+- CSV por red: `data/networks/chico_steady/results/dataset_ml.csv`

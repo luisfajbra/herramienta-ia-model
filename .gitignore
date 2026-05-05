@@ -47,6 +47,7 @@ Thumbs.db
 # Resultados generados
 *.db
 data/**/results/
+data/training/dataset_review/
 entrenar/
 dataset_ml.csv
 ml_outputs/

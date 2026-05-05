@@ -7,20 +7,21 @@ import sqlite3
 import pandas as pd
 
 
-def export_ml_dataset(db_file: str, output_csv: str):
+def export_ml_dataset(db_file: str, output_csv: str, network_hash: str | None = None):
     """Export a flat dataset with static, dynamic and target variables."""
     conn = sqlite3.connect(db_file)
-    df = pd.read_sql(
-        """
+    query = """
         SELECT
             nr.run_id,
             nr.node_id,
-            r.delta_inflow_lps,
+            r.network_hash,
+            r.network_file,
+            r.inflow_multiplier,
             r.scenario_type,
             r.spatial_pattern,
-            ri.applied_inflow_lps,
             nn.invert_elev_m,
             nn.full_depth_m,
+            nn.base_inflow_lps,
             nn.node_type,
             nn.in_degree,
             nn.out_degree,
@@ -47,14 +48,16 @@ def export_ml_dataset(db_file: str, output_csv: str):
             nr.flooding_duration_min
         FROM node_results nr
         JOIN runs r ON nr.run_id = r.run_id
-        JOIN run_inputs ri ON ri.run_id = nr.run_id
-                         AND ri.node_uid = nr.node_id
         LEFT JOIN network_nodes nn ON nn.node_uid = nr.node_id
+                                  AND nn.network_hash = r.network_hash
         WHERE r.status = 'completed'
-        ORDER BY r.delta_inflow_lps, nr.node_id
-        """,
-        conn,
-    )
+    """
+    params: list[str] = []
+    if network_hash is not None:
+        query += " AND r.network_hash = ?"
+        params.append(network_hash)
+    query += " ORDER BY r.network_hash, r.scenario_type, r.inflow_multiplier, nr.node_id"
+    df = pd.read_sql(query, conn, params=params)
     conn.close()
     df.to_csv(output_csv, index=False)
     print(f"\nDataset ML exportado: {output_csv}  ({len(df)} filas, {len(df.columns)} columnas)")

@@ -22,9 +22,19 @@ def save_static_topology(conn: sqlite3.Connection, topo: dict):
     for _, row in df_nodes.iterrows():
         conn.execute(
             """
-            INSERT OR IGNORE INTO network_nodes VALUES (
-                :node_uid, :network_hash,
-                :invert_elev_m, :full_depth_m, :node_type,
+            INSERT OR REPLACE INTO network_nodes (
+                network_hash, node_uid,
+                invert_elev_m, full_depth_m, base_inflow_lps, node_type,
+                in_degree, out_degree,
+                upstream_pipes_count,
+                upstream_diam_max_m, upstream_diam_min_m, upstream_diam_avg_m,
+                upstream_slope_avg, upstream_slope_max, upstream_capacity_lps,
+                downstream_pipes_count,
+                downstream_diam_max_m, downstream_diam_min_m, downstream_diam_avg_m,
+                downstream_slope_avg, downstream_slope_max, downstream_capacity_lps
+            ) VALUES (
+                :network_hash, :node_uid,
+                :invert_elev_m, :full_depth_m, :base_inflow_lps, :node_type,
                 :in_degree, :out_degree,
                 :upstream_pipes_count,
                 :upstream_diam_max_m, :upstream_diam_min_m, :upstream_diam_avg_m,
@@ -41,8 +51,13 @@ def save_static_topology(conn: sqlite3.Connection, topo: dict):
     for _, row in df_links.iterrows():
         conn.execute(
             """
-            INSERT OR IGNORE INTO network_links VALUES (
-                :link_uid, :network_hash,
+            INSERT OR REPLACE INTO network_links (
+                network_hash, link_uid,
+                inlet_node, outlet_node, link_type,
+                diameter_m, length_m, roughness,
+                slope_m_per_m, full_flow_capacity_lps
+            ) VALUES (
+                :network_hash, :link_uid,
                 :inlet_node, :outlet_node, :link_type,
                 :diameter_m, :length_m, :roughness,
                 :slope_m_per_m, :full_flow_capacity_lps
@@ -57,20 +72,43 @@ def save_static_topology(conn: sqlite3.Connection, topo: dict):
 
 def save_results(conn: sqlite3.Connection, run_id: str, results: dict):
     """Save inputs, node results, link results and summary for one run."""
+    run_metadata = conn.execute(
+        "SELECT delta_inflow_lps, inflow_multiplier FROM runs WHERE run_id = ?",
+        (run_id,),
+    ).fetchone()
+    delta_inflow_lps = run_metadata[0] if run_metadata is not None else None
+    inflow_multiplier = run_metadata[1] if run_metadata is not None else None
+
     df_inputs = pd.DataFrame(results["run_inputs"])
     df_inputs["run_id"] = run_id
+    if "delta_inflow_lps" not in df_inputs.columns and delta_inflow_lps is not None:
+        df_inputs["delta_inflow_lps"] = delta_inflow_lps
+    if "inflow_multiplier" not in df_inputs.columns and inflow_multiplier is not None:
+        df_inputs["inflow_multiplier"] = inflow_multiplier
     df_inputs.to_sql("run_inputs", conn, if_exists="append", index=False)
 
     df_nodes = pd.DataFrame(results["node_records"])
     df_nodes["run_id"] = run_id
+    if "delta_inflow_lps" not in df_nodes.columns and delta_inflow_lps is not None:
+        df_nodes["delta_inflow_lps"] = delta_inflow_lps
+    if "inflow_multiplier" not in df_nodes.columns and inflow_multiplier is not None:
+        df_nodes["inflow_multiplier"] = inflow_multiplier
     df_nodes.to_sql("node_results", conn, if_exists="append", index=False)
 
     df_links = pd.DataFrame(results["link_records"])
     df_links["run_id"] = run_id
+    if "delta_inflow_lps" not in df_links.columns and delta_inflow_lps is not None:
+        df_links["delta_inflow_lps"] = delta_inflow_lps
+    if "inflow_multiplier" not in df_links.columns and inflow_multiplier is not None:
+        df_links["inflow_multiplier"] = inflow_multiplier
     df_links.to_sql("link_results", conn, if_exists="append", index=False)
 
     df_summary = pd.DataFrame([results["summary"]])
     df_summary["run_id"] = run_id
+    if "delta_inflow_lps" not in df_summary.columns and delta_inflow_lps is not None:
+        df_summary["delta_inflow_lps"] = delta_inflow_lps
+    if "inflow_multiplier" not in df_summary.columns and inflow_multiplier is not None:
+        df_summary["inflow_multiplier"] = inflow_multiplier
     df_summary.to_sql("run_summary", conn, if_exists="append", index=False)
 
     conn.commit()
@@ -104,7 +142,7 @@ def export_run_summary(db_file: str):
     df = pd.read_sql(
         """
         SELECT
-            r.delta_inflow_lps,
+            r.inflow_multiplier AS factor_incremento,
             r.status,
             s.total_nodes,
             s.total_flooded_nodes,
@@ -114,7 +152,7 @@ def export_run_summary(db_file: str):
             s.time_to_first_flood_min
         FROM runs r
         LEFT JOIN run_summary s ON r.run_id = s.run_id
-        ORDER BY r.delta_inflow_lps
+        ORDER BY r.inflow_multiplier
         """,
         conn,
     )

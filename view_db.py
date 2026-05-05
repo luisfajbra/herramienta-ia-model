@@ -7,11 +7,13 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import messagebox, ttk
 
+from swmm_resilience.config import DEFAULT_DB_FILE
+from swmm_resilience.database.schema import create_schema
+
 
 BASE_DIR = Path(__file__).resolve().parent
 DEFAULT_DB_CANDIDATES = [
-    BASE_DIR / "data" / "networks" / "chico_steady" / "results" / "swmm_resilience.db",
-    BASE_DIR / "data" / "results" / "swmm_resilience.db",
+    DEFAULT_DB_FILE,
     BASE_DIR / "swmm_resilience.db",
 ]
 DEFAULT_LIMIT = 300
@@ -30,6 +32,8 @@ class SQLiteViewerApp:
         self.db_path = db_path
         self.conn = None
         self.current_columns = []
+        self.run_label_to_id = {"(todos)": None}
+        self.run_id_to_flow = {}
 
         self.root.title("Visor SQLite - SWMM Resilience")
         self.root.geometry("1380x820")
@@ -140,6 +144,7 @@ class SQLiteViewerApp:
         if not self.db_path.exists():
             raise FileNotFoundError(f"No se encontro la base de datos: {self.db_path}")
         self.conn = sqlite3.connect(self.db_path)
+        create_schema(self.conn)
 
     def _fetch_one(self, query: str, params=()):
         cur = self.conn.cursor()
@@ -169,16 +174,25 @@ class SQLiteViewerApp:
         self.table_var.set("runs" if "runs" in tables else tables[0])
 
         if "runs" in tables:
-            run_ids = [
-                row[0]
-                for row in self._fetch_all(
-                    "SELECT run_id FROM runs ORDER BY executed_at DESC"
-                )
-            ]
+            run_rows = self._fetch_all(
+                """
+                SELECT run_id, delta_inflow_lps, executed_at, status
+                FROM runs
+                ORDER BY executed_at DESC
+                """
+            )
         else:
-            run_ids = []
+            run_rows = []
 
-        run_options = ["(todos)"] + run_ids
+        self.run_label_to_id = {"(todos)": None}
+        self.run_id_to_flow = {}
+        run_options = ["(todos)"]
+        for run_id, delta_inflow_lps, executed_at, status in run_rows:
+            flow_text = "-" if delta_inflow_lps is None else f"{float(delta_inflow_lps):.4f} L/s"
+            label = f"{run_id} | Q={flow_text} | {status} | {executed_at}"
+            self.run_label_to_id[label] = run_id
+            self.run_id_to_flow[run_id] = delta_inflow_lps
+            run_options.append(label)
         self.run_combo["values"] = run_options
         self.run_var.set("(todos)")
 
@@ -207,6 +221,12 @@ class SQLiteViewerApp:
             self.tree.delete(item)
         self.tree["columns"] = ()
 
+    def _selected_run_id(self) -> str | None:
+        label = self.run_var.get().strip()
+        if not label or label == "(todos)":
+            return None
+        return self.run_label_to_id.get(label, label)
+
     def _load_table(self):
         table_name = self.table_var.get().strip()
         if not table_name:
@@ -224,12 +244,19 @@ class SQLiteViewerApp:
 
         where = ""
         params = []
-        selected_run_id = self.run_var.get().strip()
-        if selected_run_id and selected_run_id != "(todos)" and self._table_has_run_id(table_name):
+        selected_run_id = self._selected_run_id()
+        if selected_run_id and self._table_has_run_id(table_name):
             where = " WHERE run_id = ?"
             params.append(selected_run_id)
 
-        query = f"SELECT * FROM {table_name}{where} LIMIT ?"
+        order_by = ""
+        cols = {col[1] for col in self._fetch_all(f"PRAGMA table_info({table_name})")}
+        if "delta_inflow_lps" in cols:
+            order_by = " ORDER BY delta_inflow_lps, rowid"
+        elif "run_id" in cols:
+            order_by = " ORDER BY run_id, rowid"
+
+        query = f"SELECT * FROM {table_name}{where}{order_by} LIMIT ?"
         params.append(limit)
 
         try:
@@ -243,9 +270,14 @@ class SQLiteViewerApp:
         self._render_rows(columns, rows)
 
         row_count = len(rows)
+        selected_flow = self.run_id_to_flow.get(selected_run_id)
+        flow_text = "(todos)"
+        if selected_run_id:
+            flow_text = "-" if selected_flow is None else f"{float(selected_flow):.4f} L/s"
         self.info_var.set(
             f"Tabla: {table_name} | Filas mostradas: {row_count} | "
-            f"Filtro run_id: {selected_run_id or '(todos)'} | Limite: {limit}"
+            f"Filtro run_id: {selected_run_id or '(todos)'} | "
+            f"Caudal: {flow_text} | Limite: {limit}"
         )
 
     def _render_rows(self, columns, rows):
@@ -254,12 +286,15 @@ class SQLiteViewerApp:
         self.tree["columns"] = columns
 
         for col in columns:
-            self.tree.heading(col, text=col)
+            heading = "caudal_inyectado_lps" if col == "delta_inflow_lps" else col
+            self.tree.heading(col, text=heading)
             width = 130
             if col.endswith("_id"):
                 width = 220
             elif "executed_at" in col:
                 width = 170
+            elif col == "delta_inflow_lps":
+                width = 160
             elif col in {"network_file", "scenario_type", "spatial_pattern"}:
                 width = 220
             self.tree.column(col, width=width, minwidth=90, stretch=True, anchor="w")

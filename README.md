@@ -23,11 +23,12 @@ swmm_resilience/
     __init__.py
     dataset.py
 data/
+  training/
+    swmm_resilience.db
   networks/
     chico_steady/
       SWMM - Chico (PVC) Prueba 1 - Steady.inp
       results/
-        swmm_resilience.db
         dataset_ml.csv
 ```
 
@@ -152,8 +153,8 @@ Eso genera tres corridas que multiplican todos los valores del hidrograma por `0
 
 ## Salidas
 
-- Base de datos: `data/networks/chico_steady/results/swmm_resilience.db`
-- Dataset CSV: `data/networks/chico_steady/results/dataset_ml.csv`
+- Base de datos central de entrenamiento: `data/training/swmm_resilience.db`
+- Dataset CSV por red: `data/networks/chico_steady/results/dataset_ml.csv`
 
 ## Diccionario de variables
 
@@ -196,8 +197,8 @@ Esta seccion resume las variables que aparecen en la base de datos y en el datas
 - `node_uid`
   Nodo al que se le aplico la entrada.
 
-- `applied_inflow_lps`
-  Caudal aplicado a ese nodo en esa corrida, en `L/s`. En modo uniforme es el caudal constante; en modo hidrograma es el caudal maximo aplicado al nodo.
+- `delta_inflow_lps`
+  Caudal de entrada asociado a ese nodo en esa corrida, en `L/s`. Se conserva una sola variable de entrada para evitar duplicidad con el dataset de entrenamiento.
 
 ### Variables estaticas de nodos (`network_nodes`)
 
@@ -360,7 +361,7 @@ Esta seccion resume las variables que aparecen en la base de datos y en el datas
 El archivo `dataset_ml.csv` contiene una combinacion de:
 
 - variables de corrida: `run_id`, `delta_inflow_lps`, `scenario_type`, `spatial_pattern`
-- variables de entrada por nodo: `applied_inflow_lps`
+- variables de entrada por nodo: `delta_inflow_lps`
 - variables estaticas del nodo: columnas de `network_nodes`
 - variables resultado por nodo: `max_depth_m`, `max_depth_ratio`, `time_to_peak_min`, `depth_rate_m_per_min`, `flooded`, `flooding_volume_m3`, `flooding_duration_min`
 
@@ -586,6 +587,44 @@ Antes de complejizar:
 
 Objetivo:
 establecer una línea base multired seria antes de pasar a modelos más complejos.
+
+## Features actuales del entrenamiento tabular
+
+Segun la configuracion actual de `ML_DROP_COLUMNS`, estas son las columnas que hoy entran al preprocesamiento del pipeline. Como `ML_USE_PCA = True`, el modelo no aprende directamente sobre estas variables, sino sobre los componentes PCA derivados de ellas. Con la configuracion actual, el pipeline reduce este espacio a `5` componentes antes de entrenar. Si quieres volver al entrenamiento con variables originales, basta con cambiar `ML_USE_PCA = False` en `swmm_resilience/config.py`.
+
+- `delta_inflow_lps`
+- `invert_elev_m`
+- `full_depth_m`
+- `in_degree`
+- `out_degree`
+- `upstream_pipes_count`
+- `upstream_diam_max_m`
+- `upstream_diam_min_m`
+- `upstream_slope_avg`
+- `upstream_slope_max`
+- `upstream_capacity_lps`
+- `downstream_pipes_count`
+- `downstream_diam_max_m`
+- `downstream_diam_min_m`
+- `downstream_slope_avg`
+- `downstream_slope_max`
+- `downstream_capacity_lps`
+
+Los `targets` usados hoy son:
+
+- clasificacion: `flooded`
+- regresion: `flooding_volume_m3`
+
+La evaluacion actual del modelo ya no separa filas aleatoriamente. El `train/test split` y la validacion cruzada se hacen agrupando por `run_id`, para que todas las filas de una misma corrida queden juntas en train o en test. Esto evita una validacion demasiado optimista cuando la misma corrida aporta muchos nodos.
+
+Estas columnas no entran como `features`:
+
+- identificadores: `run_id`, `node_id`
+- columnas de escenario: `scenario_type`, `spatial_pattern`
+- columna duplicada o legacy: `applied_inflow_lps`
+- columna categorica no numerica: `node_type`
+- promedios excluidos por configuracion: `upstream_diam_avg_m`, `downstream_diam_avg_m`
+- resultados de simulacion excluidos para evitar fuga de informacion: `flooding_duration_min`, `max_depth_m`, `max_depth_ratio`, `time_to_peak_min`, `depth_rate_m_per_min`
 
 ### Fase 7. Reportar resultados de forma útil
 

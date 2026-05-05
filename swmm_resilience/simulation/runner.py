@@ -19,6 +19,7 @@ def _parse_inp_sections(inp_file: str):
     """Parse the minimum conduit and xsection data needed from a SWMM .inp file."""
     conduit_rows = {}
     xsection_rows = {}
+    inflow_rows = defaultdict(float)
     current_section = None
 
     for raw_line in Path(inp_file).read_text(encoding="utf-8", errors="replace").splitlines():
@@ -47,8 +48,13 @@ def _parse_inp_sections(inp_file: str):
                 "shape": parts[1],
                 "geom1": float(parts[2]),
             }
+        elif current_section == "[INFLOWS]" and len(parts) >= 2:
+            try:
+                inflow_rows[parts[0]] += float(parts[-1])
+            except ValueError:
+                continue
 
-    return conduit_rows, xsection_rows
+    return conduit_rows, xsection_rows, dict(inflow_rows)
 
 
 def load_hydrograph(hydrograph_file):
@@ -115,7 +121,7 @@ def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulati
     node_records = []
     link_records = []
     link_static = {}
-    conduit_rows, xsection_rows = _parse_inp_sections(inp_file)
+    conduit_rows, xsection_rows, base_node_inflows_lps = _parse_inp_sections(inp_file)
 
     upstream_links = defaultdict(list)
     downstream_links = defaultdict(list)
@@ -238,6 +244,7 @@ def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulati
                 "network_hash": net_hash,
                 "invert_elev_m": safe_round(node.invert_elevation),
                 "full_depth_m": safe_round(node.full_depth),
+                "base_inflow_lps": safe_round(base_node_inflows_lps.get(node_id, 0.0), 6),
                 "node_type": node_type,
                 "in_degree": len(upstream_ids),
                 "out_degree": len(downstream_ids),
@@ -261,12 +268,13 @@ def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulati
         "node_records": node_records,
         "link_records": link_records,
         "link_static": link_static,
+        "base_node_inflows_lps": base_node_inflows_lps,
     }
 
 
 def run_simulation(
     inp_file,
-    delta_inflow_lps,
+    inflow_multiplier,
     link_static,
     Nodes,
     Links,
@@ -274,20 +282,32 @@ def run_simulation(
     hydrograph=None,
     hydrograph_multiplier: float = 1.0,
     target_nodes=None,
+    base_node_inflows_lps=None,
 ):
-    """Execute one SWMM run with uniform or hydrograph inflow in L/s."""
+    """Execute one SWMM run with multiplicative steady inflow or hydrograph forcing."""
 
     first_flood_step = None
     step_count = 0
     timestep_sec = None
     depth_rate_tracker = {}
+    base_node_inflows_lps = base_node_inflows_lps or {}
     if target_nodes is None:
         target_node_set = None
     elif isinstance(target_nodes, str):
         target_node_set = {target_nodes}
     else:
         target_node_set = {str(node_id) for node_id in target_nodes}
-    max_applied_by_node = defaultdict(float)
+
+    def steady_added_inflow_lps(node_id: str) -> float:
+        base_inflow_lps = base_node_inflows_lps.get(node_id, 0.0) or 0.0
+        return base_inflow_lps * inflow_multiplier
+
+    def scenario_reference_inflow_lps(node_id: str) -> float:
+        if target_node_set is not None and node_id not in target_node_set:
+            return 0.0
+        if hydrograph is not None:
+            return _hydrograph_value_lps(hydrograph, 0.0) * hydrograph_multiplier
+        return steady_added_inflow_lps(node_id)
 
     with Simulation(inp_file) as sim:
         sim_start = sim.start_time
@@ -307,15 +327,14 @@ def run_simulation(
                 node_id = node.nodeid
                 elapsed_min = (sim.current_time - sim_start).total_seconds() / 60.0
                 applies_to_node = target_node_set is None or node_id in target_node_set
+                base_inflow_lps = base_node_inflows_lps.get(node_id, 0.0) or 0.0
                 inflow_lps = (
                     _hydrograph_value_lps(hydrograph, elapsed_min) * hydrograph_multiplier
                     if hydrograph is not None
-                    else delta_inflow_lps
+                    else base_inflow_lps * inflow_multiplier
                 )
                 applied_lps = inflow_lps if applies_to_node else 0.0
                 node.generated_inflow(applied_lps)
-                if applied_lps > max_applied_by_node[node_id]:
-                    max_applied_by_node[node_id] = applied_lps
 
                 if first_flood_step is None and node.flooding > 0:
                     first_flood_step = step_count
@@ -356,6 +375,8 @@ def run_simulation(
 
             node_records.append({
                 "result_id": new_id(),
+                "delta_inflow_lps": safe_round(scenario_reference_inflow_lps(node_id), 6),
+                "inflow_multiplier": safe_round(hydrograph_multiplier if hydrograph is not None else inflow_multiplier, 6),
                 "node_id": node_id,
                 "flooded": int(flooded),
                 "flooding_volume_m3": safe_round(flood_vol),
@@ -366,11 +387,13 @@ def run_simulation(
                 "depth_rate_m_per_min": safe_round(depth_rate_tracker[node_id]["max_rate"]),
             })
 
-            run_inputs.append({
-                "input_id": new_id(),
-                "node_uid": node_id,
-                "applied_inflow_lps": safe_round(max_applied_by_node[node_id]),
-            })
+            if target_node_set is None or node_id in target_node_set:
+                run_inputs.append({
+                    "input_id": new_id(),
+                    "delta_inflow_lps": safe_round(scenario_reference_inflow_lps(node_id), 6),
+                    "inflow_multiplier": safe_round(hydrograph_multiplier if hydrograph is not None else inflow_multiplier, 6),
+                    "node_uid": node_id,
+                })
 
         link_records = []
         for link in links:
@@ -392,6 +415,8 @@ def run_simulation(
 
             link_records.append({
                 "result_id": new_id(),
+                "delta_inflow_lps": safe_round(hydrograph_multiplier if hydrograph is not None else inflow_multiplier, 6),
+                "inflow_multiplier": safe_round(hydrograph_multiplier if hydrograph is not None else inflow_multiplier, 6),
                 "link_id": link_id,
                 "max_flow_lps": safe_round(peak_flow_lps, 4),
                 "max_velocity_mps": safe_round(peak_vel_mps),
@@ -413,6 +438,8 @@ def run_simulation(
 
     summary = {
         "summary_id": new_id(),
+        "delta_inflow_lps": safe_round(hydrograph_multiplier if hydrograph is not None else inflow_multiplier, 6),
+        "inflow_multiplier": safe_round(hydrograph_multiplier if hydrograph is not None else inflow_multiplier, 6),
         "total_nodes": total_nodes,
         "total_flooded_nodes": total_flooded,
         "total_flooding_volume_m3": round(total_flood_vol, 4),

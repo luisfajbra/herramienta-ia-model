@@ -45,15 +45,22 @@ def _selected_model(models: dict, selected_name: str | None, preferred_name: str
     return model_name, models[model_name]
 
 
+def _scenario_input_column(df: pd.DataFrame) -> str:
+    if "inflow_multiplier" in df.columns:
+        return "inflow_multiplier"
+    if "delta_inflow_lps" in df.columns:
+        return "delta_inflow_lps"
+    raise ValueError("El dataset no tiene columna inflow_multiplier ni delta_inflow_lps.")
+
+
 def _build_prediction_rows(
     df: pd.DataFrame,
-    flow_values_lps: list[float],
+    inflow_multipliers: list[float],
     target_nodes: list[str] | None,
 ) -> pd.DataFrame:
     if "node_id" not in df.columns:
         raise ValueError("El dataset no tiene columna node_id.")
-    if "delta_inflow_lps" not in df.columns:
-        raise ValueError("El dataset no tiene columna delta_inflow_lps.")
+    scenario_column = _scenario_input_column(df)
 
     base_df = df.copy()
     if target_nodes is not None:
@@ -67,11 +74,9 @@ def _build_prediction_rows(
     # result columns are excluded later by ML_DROP_COLUMNS.
     base_rows = base_df.drop_duplicates(subset=["node_id"], keep="last")
     prediction_rows = []
-    for flow_lps in flow_values_lps:
+    for inflow_multiplier in inflow_multipliers:
         scenario_rows = base_rows.copy()
-        scenario_rows["delta_inflow_lps"] = flow_lps
-        if "applied_inflow_lps" in scenario_rows.columns:
-            scenario_rows["applied_inflow_lps"] = flow_lps
+        scenario_rows[scenario_column] = inflow_multiplier
         if "scenario_type" in scenario_rows.columns:
             scenario_rows["scenario_type"] = "ml_steady_prediction"
         if "spatial_pattern" in scenario_rows.columns:
@@ -81,7 +86,7 @@ def _build_prediction_rows(
     return pd.concat(prediction_rows, ignore_index=True)
 
 
-def _aligned_features(rows: pd.DataFrame, feature_columns: list[str]) -> pd.DataFrame:
+def align_feature_columns(rows: pd.DataFrame, feature_columns: list[str]) -> pd.DataFrame:
     aligned = rows.copy()
     for column in feature_columns:
         if column not in aligned.columns:
@@ -90,16 +95,17 @@ def _aligned_features(rows: pd.DataFrame, feature_columns: list[str]) -> pd.Data
 
 
 def predict_steady_flows(
-    flow_values_lps: list[float],
+    inflow_multipliers: list[float],
     dataset_csv: Path | str = DEFAULT_OUTPUT_CSV,
     target_nodes: list[str] | None = None,
-    classifier_name: str | None = "xgboost_classifier",
-    regressor_name: str | None = "xgboost",
+    classifier_name: str | None = None,
+    regressor_name: str | None = None,
 ) -> TabularPredictionResult:
-    """Predict flooded state and flooding volume for new steady-flow values."""
+    """Predict flooded state and flooding volume for new steady-flow multipliers."""
     dataset_csv = Path(dataset_csv)
     df = train.load_dataset(dataset_csv)
-    prediction_rows = _build_prediction_rows(df, flow_values_lps, target_nodes)
+    scenario_column = _scenario_input_column(df)
+    prediction_rows = _build_prediction_rows(df, inflow_multipliers, target_nodes)
 
     X_reg, y_reg = train.select_features(df, ML_TARGET_REGRESSION)
     X_cls, y_cls = train.select_features(df, ML_TARGET_CLASSIFICATION)
@@ -107,20 +113,24 @@ def predict_steady_flows(
     if y_cls.nunique() < 2:
         raise ValueError("El target flooded tiene una sola clase; no se puede entrenar clasificador.")
 
-    regression_models = train.build_models()
-    classification_models = train.build_classification_models()
-    regressor_name, regressor = _selected_model(regression_models, regressor_name, "xgboost")
+    regression_models = train.build_models(feature_count=X_reg.shape[1])
+    classification_models = train.build_classification_models(feature_count=X_cls.shape[1])
+    regressor_name, regressor = _selected_model(
+        regression_models,
+        regressor_name,
+        train.default_regression_model_name(),
+    )
     classifier_name, classifier = _selected_model(
         classification_models,
         classifier_name,
-        "xgboost_classifier",
+        train.default_classification_model_name(),
     )
 
     regressor.fit(X_reg, y_reg)
     classifier.fit(X_cls, y_cls)
 
-    X_pred_reg = _aligned_features(prediction_rows, X_reg.columns.tolist())
-    X_pred_cls = _aligned_features(prediction_rows, X_cls.columns.tolist())
+    X_pred_reg = align_feature_columns(prediction_rows, X_reg.columns.tolist())
+    X_pred_cls = align_feature_columns(prediction_rows, X_cls.columns.tolist())
 
     predicted_volume = regressor.predict(X_pred_reg)
     predicted_volume = pd.Series(predicted_volume).clip(lower=0.0).to_numpy()
@@ -133,7 +143,7 @@ def predict_steady_flows(
     output = pd.DataFrame(
         {
             "node_id": prediction_rows["node_id"].astype(str),
-            "delta_inflow_lps": prediction_rows["delta_inflow_lps"],
+            scenario_column: prediction_rows[scenario_column],
             "predicted_flooded": predicted_flooded.astype(int),
             "flooded_probability": flooded_probability,
             "predicted_flooding_volume_m3": predicted_volume,
@@ -141,7 +151,7 @@ def predict_steady_flows(
     )
     output["model_random_state"] = ML_RANDOM_STATE
     return TabularPredictionResult(
-        predictions=output.sort_values(["delta_inflow_lps", "node_id"]).reset_index(drop=True),
+        predictions=output.sort_values([scenario_column, "node_id"]).reset_index(drop=True),
         classifier_name=classifier_name,
         regressor_name=regressor_name,
     )

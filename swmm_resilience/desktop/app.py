@@ -14,12 +14,14 @@ from tkinter import filedialog, messagebox, ttk
 
 from swmm_resilience.config import (
     DEFAULT_DB_FILE,
-    DEFAULT_DELTA_INFLOWS_LPS,
     DEFAULT_HYDROGRAPH_FILE,
+    DEFAULT_INFLOW_MULTIPLIERS,
     DEFAULT_INP_FILE,
+    DEFAULT_MODEL_ARTIFACTS_DIR,
     DEFAULT_OUTPUT_CSV,
 )
-from swmm_resilience.main import run_experiment
+from swmm_resilience.main import network_results_dir, run_experiment
+from swmm_resilience.ml.predict_from_inp import predict_steady_flows_from_inp
 from swmm_resilience.ml.predict_tabular import (
     available_classification_models,
     available_regression_models,
@@ -28,22 +30,33 @@ from swmm_resilience.ml.predict_tabular import (
 from swmm_resilience.ml import train as ml_train
 
 
-def parse_lps_values(raw_text: str) -> list[float]:
-    """Parse comma-separated values or range(start, stop, step) into L/s values."""
+def _float_range(start: float, stop: float, step: float) -> list[float]:
+    values: list[float] = []
+    current = float(start)
+    if step <= 0:
+        raise ValueError("El paso debe ser mayor que cero.")
+    while current < stop - 1e-12:
+        values.append(round(current, 6))
+        current += step
+    return values
+
+
+def parse_numeric_values(raw_text: str, label: str) -> list[float]:
+    """Parse comma-separated values or range(start, stop, step) with decimal support."""
     text = raw_text.strip()
     if not text:
-        raise ValueError("Ingresa al menos un caudal en L/s.")
+        raise ValueError(f"Ingresa al menos un valor para {label}.")
 
     range_match = re.fullmatch(r"range\(([^,]+),([^,]+),([^)]+)\)", text.replace(" ", ""))
     if range_match:
-        start, stop, step = (int(value) for value in range_match.groups())
-        values = list(range(start, stop, step))
+        start, stop, step = (float(value) for value in range_match.groups())
+        values = _float_range(start, stop, step)
     else:
         parts = [part for part in re.split(r"[,;\s]+", text) if part]
         values = [float(part) for part in parts]
 
     if not values:
-        raise ValueError("No se pudieron leer caudales en L/s.")
+        raise ValueError(f"No se pudieron leer valores para {label}.")
     return values
 
 
@@ -63,9 +76,9 @@ def parse_hydrograph_multipliers(count_text: str, step_text: str) -> list[float]
     count = int(count_text)
     step = float(step_text)
     if count <= 0:
-        raise ValueError("La cantidad de deltas del hidrograma debe ser mayor que cero.")
+        raise ValueError("La cantidad de factores del hidrograma debe ser mayor que cero.")
     if step <= 0:
-        raise ValueError("El paso de deltas del hidrograma debe ser mayor que cero.")
+        raise ValueError("El paso de factores del hidrograma debe ser mayor que cero.")
     return [round(step * index, 6) for index in range(1, count + 1)]
 
 
@@ -89,9 +102,10 @@ class ResilienciaDesktopApp:
         self.inp_var = tk.StringVar(value=str(DEFAULT_INP_FILE))
         self.db_var = tk.StringVar(value=str(DEFAULT_DB_FILE))
         self.csv_var = tk.StringVar(value=str(DEFAULT_OUTPUT_CSV))
+        self.artifacts_dir_var = tk.StringVar(value=str(DEFAULT_MODEL_ARTIFACTS_DIR))
         self.mode_var = tk.StringVar(value="steady")
         self.deltas_var = tk.StringVar(
-            value=",".join(str(value) for value in DEFAULT_DELTA_INFLOWS_LPS)
+            value=",".join(str(value) for value in DEFAULT_INFLOW_MULTIPLIERS)
         )
         self.hydrograph_var = tk.StringVar(
             value="" if DEFAULT_HYDROGRAPH_FILE is None else str(DEFAULT_HYDROGRAPH_FILE)
@@ -100,19 +114,15 @@ class ResilienciaDesktopApp:
         self.hydrograph_delta_step_var = tk.StringVar(value="1")
         self.all_nodes_var = tk.BooleanVar(value=True)
         self.target_nodes_var = tk.StringVar(value="")
-        self.reset_db_var = tk.BooleanVar(value=True)
-        self.predict_flows_var = tk.StringVar(value="10,20,30")
+        self.reset_db_var = tk.BooleanVar(value=False)
+        self.predict_source_var = tk.StringVar(value="csv")
+        self.predict_inp_var = tk.StringVar(value=str(DEFAULT_INP_FILE))
+        self.predict_flows_var = tk.StringVar(value="0.1,0.2,0.3")
         self.predict_all_nodes_var = tk.BooleanVar(value=True)
         self.predict_target_nodes_var = tk.StringVar(value="")
-        regression_models = available_regression_models()
-        classification_models = available_classification_models()
-        self.predict_regressor_var = tk.StringVar(value="xgboost" if "xgboost" in regression_models else regression_models[0])
+        self.predict_regressor_var = tk.StringVar(value=ml_train.default_regression_model_name())
         self.predict_classifier_var = tk.StringVar(
-            value=(
-                "xgboost_classifier"
-                if "xgboost_classifier" in classification_models
-                else classification_models[0]
-            )
+            value=ml_train.default_classification_model_name()
         )
         self.status_var = tk.StringVar(value="Listo")
 
@@ -173,12 +183,12 @@ class ResilienciaDesktopApp:
             command=self._toggle_mode,
         ).grid(row=0, column=1, sticky="w", padx=(20, 0))
 
-        ttk.Label(scenario, text="Caudales steady L/s").grid(row=1, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(scenario, text="Factores de aumento steady").grid(row=1, column=0, sticky="w", pady=(10, 0))
         self.deltas_entry = ttk.Entry(scenario, textvariable=self.deltas_var)
         self.deltas_entry.grid(row=1, column=1, sticky="ew", pady=(10, 0))
         ttk.Label(
             scenario,
-            text="Puedes usar: 2,4,6,8  o  range(2,102,2)",
+            text="Puedes usar: 0.1,0.2,0.3  o  range(0.1,2,0.1). 0.1 = +10% sobre el caudal base.",
             foreground="#555555",
         ).grid(row=2, column=1, sticky="w")
 
@@ -200,7 +210,7 @@ class ResilienciaDesktopApp:
 
         hydro_deltas = ttk.Frame(scenario)
         hydro_deltas.grid(row=5, column=1, sticky="w", pady=(10, 0))
-        ttk.Label(scenario, text="Deltas hidrograma").grid(row=5, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(scenario, text="Factores hidrograma").grid(row=5, column=0, sticky="w", pady=(10, 0))
         ttk.Label(hydro_deltas, text="Cantidad").grid(row=0, column=0, sticky="w")
         self.hydrograph_delta_count_entry = ttk.Entry(
             hydro_deltas,
@@ -241,12 +251,22 @@ class ResilienciaDesktopApp:
 
         ttk.Checkbutton(
             scenario,
-            text="Reiniciar base de datos antes de correr",
+            text="Reemplazar base existente antes de correr",
             variable=self.reset_db_var,
         ).grid(row=9, column=1, sticky="w", pady=(12, 0))
+        ttk.Label(
+            scenario,
+            text=(
+                "Si esta opcion queda desmarcada, la corrida se agrega a la base actual "
+                "(append). Si la marcas, se reinicia la base y el entrenamiento posterior "
+                "usara solo las nuevas corridas."
+            ),
+            foreground="#555555",
+            wraplength=760,
+        ).grid(row=10, column=1, sticky="w", pady=(4, 0))
 
         actions = ttk.Frame(scenario)
-        actions.grid(row=10, column=1, sticky="e", pady=(14, 0))
+        actions.grid(row=11, column=1, sticky="e", pady=(14, 0))
         self.run_button = ttk.Button(actions, text="Ejecutar corrida", command=self._run_simulation)
         self.run_button.grid(row=0, column=0)
         ttk.Button(actions, text="Limpiar log", command=self._clear_log).grid(row=0, column=1, padx=(8, 0))
@@ -283,29 +303,68 @@ class ResilienciaDesktopApp:
 
         form = ttk.LabelFrame(
             self.predict_tab,
-            text="Evaluar caudales con modelo ML, sin correr PySWMM",
+            text="Inferencia ML tabular sin correr PySWMM",
             padding=12,
         )
         form.grid(row=0, column=0, sticky="ew")
         form.columnconfigure(1, weight=1)
 
-        ttk.Label(form, text="Dataset entrenable").grid(row=0, column=0, sticky="w")
-        ttk.Entry(form, textvariable=self.csv_var).grid(row=0, column=1, sticky="ew", padx=(8, 8))
-        ttk.Button(form, text="Buscar...", command=self._browse_csv_open).grid(row=0, column=2)
+        ttk.Label(form, text="Modo de inferencia").grid(row=0, column=0, sticky="w")
+        source_frame = ttk.Frame(form)
+        source_frame.grid(row=0, column=1, sticky="w", padx=(8, 8))
+        ttk.Radiobutton(
+            source_frame,
+            text="Desde dataset CSV",
+            value="csv",
+            variable=self.predict_source_var,
+            command=self._toggle_prediction_source,
+        ).grid(row=0, column=0, sticky="w")
+        ttk.Radiobutton(
+            source_frame,
+            text="Desde archivo .inp",
+            value="inp",
+            variable=self.predict_source_var,
+            command=self._toggle_prediction_source,
+        ).grid(row=0, column=1, sticky="w", padx=(20, 0))
 
-        ttk.Label(form, text="Caudales a evaluar L/s").grid(row=1, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(form, text="Dataset entrenable").grid(row=1, column=0, sticky="w", pady=(10, 0))
+        self.predict_csv_entry = ttk.Entry(form, textvariable=self.csv_var)
+        self.predict_csv_entry.grid(row=1, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
+        self.predict_csv_button = ttk.Button(form, text="Buscar...", command=self._browse_csv_open)
+        self.predict_csv_button.grid(row=1, column=2, pady=(10, 0))
+
+        ttk.Label(form, text="Red .inp a evaluar").grid(row=2, column=0, sticky="w", pady=(10, 0))
+        self.predict_inp_entry = ttk.Entry(form, textvariable=self.predict_inp_var)
+        self.predict_inp_entry.grid(row=2, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
+        self.predict_inp_button = ttk.Button(form, text="Buscar...", command=self._browse_predict_inp)
+        self.predict_inp_button.grid(row=2, column=2, pady=(10, 0))
+
+        ttk.Label(form, text="Artefactos entrenados").grid(row=3, column=0, sticky="w", pady=(10, 0))
+        self.artifacts_dir_entry = ttk.Entry(form, textvariable=self.artifacts_dir_var)
+        self.artifacts_dir_entry.grid(row=3, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
+        self.artifacts_dir_button = ttk.Button(
+            form,
+            text="Buscar...",
+            command=self._browse_artifacts_dir,
+        )
+        self.artifacts_dir_button.grid(row=3, column=2, pady=(10, 0))
+
+        ttk.Label(form, text="Factores a evaluar").grid(row=4, column=0, sticky="w", pady=(10, 0))
         ttk.Entry(form, textvariable=self.predict_flows_var).grid(
-            row=1, column=1, sticky="ew", padx=(8, 8), pady=(10, 0)
+            row=4, column=1, sticky="ew", padx=(8, 8), pady=(10, 0)
         )
         ttk.Label(
             form,
-            text="Ejemplo: 10,20,30  o  range(2,102,2). Por ahora esta prediccion ML es para steady flow.",
+            text=(
+                "Ejemplo: 0.1,0.2,0.3  o  range(0.1,2,0.1). "
+                "Por ahora la inferencia ML directa es solo para steady flow."
+            ),
             foreground="#555555",
-        ).grid(row=2, column=1, sticky="w", padx=(8, 0))
+        ).grid(row=5, column=1, sticky="w", padx=(8, 0))
 
-        ttk.Label(form, text="Nodos").grid(row=3, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(form, text="Nodos").grid(row=6, column=0, sticky="w", pady=(10, 0))
         nodes = ttk.Frame(form)
-        nodes.grid(row=3, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
+        nodes.grid(row=6, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
         nodes.columnconfigure(1, weight=1)
         ttk.Checkbutton(
             nodes,
@@ -316,7 +375,7 @@ class ResilienciaDesktopApp:
         self.predict_target_nodes_entry = ttk.Entry(nodes, textvariable=self.predict_target_nodes_var)
         self.predict_target_nodes_entry.grid(row=0, column=1, sticky="ew", padx=(12, 0))
 
-        ttk.Label(form, text="Modelo clasificación").grid(row=4, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(form, text="Modelo clasificación").grid(row=7, column=0, sticky="w", pady=(10, 0))
         self.predict_classifier_combo = ttk.Combobox(
             form,
             textvariable=self.predict_classifier_var,
@@ -324,9 +383,9 @@ class ResilienciaDesktopApp:
             state="readonly",
             width=28,
         )
-        self.predict_classifier_combo.grid(row=4, column=1, sticky="w", padx=(8, 8), pady=(10, 0))
+        self.predict_classifier_combo.grid(row=7, column=1, sticky="w", padx=(8, 8), pady=(10, 0))
 
-        ttk.Label(form, text="Modelo regresión").grid(row=5, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(form, text="Modelo regresión").grid(row=8, column=0, sticky="w", pady=(10, 0))
         self.predict_regressor_combo = ttk.Combobox(
             form,
             textvariable=self.predict_regressor_var,
@@ -334,10 +393,10 @@ class ResilienciaDesktopApp:
             state="readonly",
             width=28,
         )
-        self.predict_regressor_combo.grid(row=5, column=1, sticky="w", padx=(8, 8), pady=(10, 0))
+        self.predict_regressor_combo.grid(row=8, column=1, sticky="w", padx=(8, 8), pady=(10, 0))
 
         actions = ttk.Frame(form)
-        actions.grid(row=6, column=1, sticky="e", pady=(12, 0))
+        actions.grid(row=9, column=1, sticky="e", pady=(12, 0))
         self.predict_button = ttk.Button(actions, text="Predecir con ML", command=self._predict_with_ml)
         self.predict_button.grid(row=0, column=0)
         ttk.Button(actions, text="Limpiar resultados", command=self._clear_prediction_output).grid(
@@ -348,6 +407,7 @@ class ResilienciaDesktopApp:
         self.prediction_output.grid(row=1, column=0, sticky="nsew", pady=(10, 0))
         self.prediction_output.configure(state="disabled")
         self._toggle_prediction_nodes()
+        self._toggle_prediction_source()
 
     def _build_db_tab(self):
         self.db_tab.columnconfigure(0, weight=1)
@@ -374,6 +434,17 @@ class ResilienciaDesktopApp:
         )
         if path:
             self.inp_var.set(path)
+            self.predict_inp_var.set(path)
+            self.csv_var.set(str(network_results_dir(Path(path).expanduser()) / DEFAULT_OUTPUT_CSV.name))
+            self._sync_artifacts_dir()
+
+    def _browse_predict_inp(self):
+        path = filedialog.askopenfilename(
+            title="Selecciona archivo SWMM .inp para inferencia",
+            filetypes=[("SWMM input", "*.inp"), ("Todos", "*.*")],
+        )
+        if path:
+            self.predict_inp_var.set(path)
 
     def _browse_hydrograph(self):
         path = filedialog.askopenfilename(
@@ -400,6 +471,7 @@ class ResilienciaDesktopApp:
         )
         if path:
             self.csv_var.set(path)
+            self._sync_artifacts_dir()
 
     def _browse_csv_open(self):
         path = filedialog.askopenfilename(
@@ -408,6 +480,12 @@ class ResilienciaDesktopApp:
         )
         if path:
             self.csv_var.set(path)
+            self._sync_artifacts_dir()
+
+    def _browse_artifacts_dir(self):
+        path = filedialog.askdirectory(title="Selecciona carpeta de artefactos ML")
+        if path:
+            self.artifacts_dir_var.set(path)
 
     def _toggle_mode(self):
         hydrograph_enabled = self.mode_var.get() == "hydrograph"
@@ -426,6 +504,21 @@ class ResilienciaDesktopApp:
         self.predict_target_nodes_entry.configure(
             state="disabled" if self.predict_all_nodes_var.get() else "normal"
         )
+
+    def _toggle_prediction_source(self):
+        use_csv = self.predict_source_var.get() == "csv"
+        csv_state = "normal" if use_csv else "disabled"
+        inp_state = "disabled" if use_csv else "normal"
+        self.predict_csv_entry.configure(state=csv_state)
+        self.predict_csv_button.configure(state=csv_state)
+        self.predict_inp_entry.configure(state=inp_state)
+        self.predict_inp_button.configure(state=inp_state)
+        self.artifacts_dir_entry.configure(state=inp_state)
+        self.artifacts_dir_button.configure(state=inp_state)
+
+    def _sync_artifacts_dir(self):
+        csv_path = Path(self.csv_var.get()).expanduser()
+        self.artifacts_dir_var.set(str(ml_train.default_artifact_dir(csv_path)))
 
     def _set_running(self, running: bool):
         state = "disabled" if running else "normal"
@@ -493,6 +586,9 @@ class ResilienciaDesktopApp:
             output_csv = Path(self.csv_var.get()).expanduser()
             if not inp_file.exists():
                 raise ValueError(f"No existe el archivo .inp: {inp_file}")
+            if output_csv == DEFAULT_OUTPUT_CSV and inp_file != DEFAULT_INP_FILE:
+                output_csv = network_results_dir(inp_file) / DEFAULT_OUTPUT_CSV.name
+                self.csv_var.set(str(output_csv))
 
             target_nodes = parse_target_nodes(
                 self.target_nodes_var.get(),
@@ -500,7 +596,7 @@ class ResilienciaDesktopApp:
             )
 
             if self.mode_var.get() == "steady":
-                deltas = parse_lps_values(self.deltas_var.get())
+                deltas = parse_numeric_values(self.deltas_var.get(), "factores steady")
                 hydrograph_file = None
                 hydrograph_multipliers = None
             else:
@@ -524,7 +620,7 @@ class ResilienciaDesktopApp:
                 inp_file=inp_file,
                 db_file=db_file,
                 output_csv=output_csv,
-                delta_inflows_lps=deltas,
+                inflow_multipliers=deltas,
                 hydrograph_file=hydrograph_file,
                 hydrograph_multipliers=hydrograph_multipliers,
                 target_nodes=target_nodes,
@@ -536,15 +632,24 @@ class ResilienciaDesktopApp:
     def _train_models(self):
         def worker():
             csv_path = Path(self.csv_var.get()).expanduser()
+            artifacts_dir = Path(self.artifacts_dir_var.get()).expanduser()
             if not csv_path.exists():
                 raise FileNotFoundError(f"No se encontro el dataset: {csv_path}")
 
             print(f"Dataset: {csv_path}")
+            print(f"Directorio artefactos: {artifacts_dir}")
             print(f"Test size: {ml_train.ML_TEST_SIZE}")
             print(f"Random state: {ml_train.ML_RANDOM_STATE}")
             print(f"CV folds: {ml_train.ML_CV_FOLDS}")
+            print(f"Split strategy: {ml_train.ML_SPLIT_STRATEGY}")
+            print(f"Group column: {ml_train.ML_GROUP_COLUMN}")
+            feature_space, pca_components = ml_train.describe_feature_space()
+            print(f"Espacio de features: {feature_space}")
+            print(f"Componentes PCA: {pca_components}")
             print(f"Modelos de regresion: {', '.join(ml_train.build_models().keys())}")
             print(f"Modelos de clasificacion: {', '.join(ml_train.build_classification_models().keys())}")
+            print(f"Regresor para persistencia: {self.predict_regressor_var.get()}")
+            print(f"Clasificador para persistencia: {self.predict_classifier_var.get()}")
 
             regression_df = ml_train.evaluate_models(
                 csv_path=csv_path,
@@ -554,10 +659,12 @@ class ResilienciaDesktopApp:
                 cv_folds=ml_train.ML_CV_FOLDS,
             )
             ml_train.print_results_table(regression_df)
+            ml_train.print_regression_scenario_breakdown(regression_df)
             ml_train.save_results(
                 regression_df,
                 ml_train.ML_TARGET_REGRESSION,
                 prefix="regression_comparison",
+                output_dir=csv_path.parent,
             )
 
             classification_df = ml_train.evaluate_classification_models(
@@ -568,26 +675,50 @@ class ResilienciaDesktopApp:
                 cv_folds=ml_train.ML_CV_FOLDS,
             )
             ml_train.print_classification_results_table(classification_df)
+            ml_train.print_classification_scenario_breakdown(classification_df)
             ml_train.save_results(
                 classification_df,
                 ml_train.ML_TARGET_CLASSIFICATION,
                 prefix="classification_comparison",
+                output_dir=csv_path.parent,
             )
+            artifacts = ml_train.fit_and_save_inference_models(
+                csv_path=csv_path,
+                regressor_name=self.predict_regressor_var.get(),
+                classifier_name=self.predict_classifier_var.get(),
+                output_dir=artifacts_dir,
+            )
+            print("\nArtefactos de inferencia actualizados:")
+            print(f"  Regresion    : {artifacts['regression'].artifact_path}")
+            print(f"  Clasificacion: {artifacts['classification'].artifact_path}")
 
         self._run_in_thread("Entrenamiento ML", worker, self.append_ml_log)
 
     def _predict_with_ml(self):
         try:
-            csv_path = Path(self.csv_var.get()).expanduser()
-            if not csv_path.exists():
-                raise ValueError(f"No existe el dataset CSV: {csv_path}")
-            flow_values = parse_lps_values(self.predict_flows_var.get())
+            predict_source = self.predict_source_var.get()
+            flow_values = parse_numeric_values(self.predict_flows_var.get(), "factores de prediccion")
             target_nodes = parse_target_nodes(
                 self.predict_target_nodes_var.get(),
                 all_nodes=self.predict_all_nodes_var.get(),
             )
             classifier_name = self.predict_classifier_var.get()
             regressor_name = self.predict_regressor_var.get()
+            csv_path = Path(self.csv_var.get()).expanduser()
+            inp_path = Path(self.predict_inp_var.get()).expanduser()
+            artifacts_dir = Path(self.artifacts_dir_var.get()).expanduser()
+
+            if predict_source == "csv":
+                if not csv_path.exists():
+                    raise ValueError(f"No existe el dataset CSV: {csv_path}")
+            else:
+                if not inp_path.exists():
+                    raise ValueError(f"No existe el archivo .inp: {inp_path}")
+                if not artifacts_dir.exists():
+                    raise ValueError(
+                        f"No existe la carpeta de artefactos: {artifacts_dir}. "
+                        "Entrena y guarda modelos primero."
+                    )
         except Exception as exc:
             messagebox.showerror("Configuracion invalida", str(exc))
             return
@@ -595,22 +726,39 @@ class ResilienciaDesktopApp:
         self._clear_prediction_output()
 
         def worker():
-            print(f"Dataset: {csv_path}")
-            print(f"Caudales L/s: {flow_values}")
+            print(f"Modo: {'dataset CSV' if predict_source == 'csv' else 'archivo .inp'}")
+            print(f"Factores: {flow_values}")
             print(f"Nodos: {'todos' if target_nodes is None else ', '.join(target_nodes)}")
             print(f"Clasificador solicitado: {classifier_name}")
             print(f"Regresor solicitado: {regressor_name}")
-            result = predict_steady_flows(
-                flow_values_lps=flow_values,
-                dataset_csv=csv_path,
-                target_nodes=target_nodes,
-                classifier_name=classifier_name,
-                regressor_name=regressor_name,
-            )
+            if predict_source == "csv":
+                print(f"Dataset: {csv_path}")
+                result = predict_steady_flows(
+                    inflow_multipliers=flow_values,
+                    dataset_csv=csv_path,
+                    target_nodes=target_nodes,
+                    classifier_name=classifier_name,
+                    regressor_name=regressor_name,
+                )
+            else:
+                print(f"Archivo .inp: {inp_path.name}")
+                print(f"Artefactos: {artifacts_dir}")
+                result = predict_steady_flows_from_inp(
+                    inflow_multipliers=flow_values,
+                    inp_file=inp_path,
+                    target_nodes=target_nodes,
+                    artifacts_dir=artifacts_dir,
+                    classifier_name=classifier_name,
+                    regressor_name=regressor_name,
+                )
             print(f"Clasificador: {result.classifier_name}")
             print(f"Regresor: {result.regressor_name}")
             print()
             display = result.predictions.copy()
+            if "inflow_multiplier" in display.columns:
+                display = display.rename(columns={"inflow_multiplier": "factor_incremento"})
+            elif "delta_inflow_lps" in display.columns:
+                display = display.rename(columns={"delta_inflow_lps": "factor_incremento"})
             display["flooded_probability"] = display["flooded_probability"].map(
                 lambda value: f"{value:.3f}"
             )
