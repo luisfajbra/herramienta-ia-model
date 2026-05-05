@@ -43,6 +43,9 @@ def export_ml_dataset(db_file: str, output_csv: str, network_hash: str | None = 
             nr.max_depth_ratio,
             nr.time_to_peak_min,
             nr.depth_rate_m_per_min,
+            nr.max_total_outflow_lps,
+            nr.time_to_peak_outflow_min,
+            nr.downstream_link_peak_flows_lps_json,
             nr.flooded,
             nr.flooding_volume_m3,
             nr.flooding_duration_min

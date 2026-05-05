@@ -3,6 +3,7 @@ Simulation-only logic: PySWMM setup, topology extraction and hydraulic results.
 """
 
 import csv
+import json
 from collections import defaultdict
 from datetime import timedelta
 from pathlib import Path
@@ -313,19 +314,29 @@ def run_simulation(
         sim_start = sim.start_time
         nodes = list(Nodes(sim))
         links = list(Links(sim))
+        link_inlet_nodes = {}
+        outflow_tracker = {}
+        downstream_link_peak_flows = defaultdict(dict)
 
         for node in nodes:
             depth_rate_tracker[node.nodeid] = {"prev": 0.0, "max_rate": 0.0}
+            outflow_tracker[node.nodeid] = {
+                "max_total_outflow_lps": 0.0,
+                "time_to_peak_outflow_min": None,
+            }
+
+        for link in links:
+            link_inlet_nodes[link.linkid] = getattr(link, "inlet_node", None)
 
         for _ in sim:
             step_count += 1
             if timestep_sec is None:
                 dt = (sim.current_time - sim_start).total_seconds()
                 timestep_sec = dt if dt > 0 else 1.0
+            elapsed_min = (sim.current_time - sim_start).total_seconds() / 60.0
 
             for node in nodes:
                 node_id = node.nodeid
-                elapsed_min = (sim.current_time - sim_start).total_seconds() / 60.0
                 applies_to_node = target_node_set is None or node_id in target_node_set
                 base_inflow_lps = base_node_inflows_lps.get(node_id, 0.0) or 0.0
                 inflow_lps = (
@@ -346,6 +357,22 @@ def run_simulation(
                     if rate > tracker["max_rate"]:
                         tracker["max_rate"] = rate
                 tracker["prev"] = depth
+
+                total_outflow = node.total_outflow or 0.0
+                if total_outflow > outflow_tracker[node_id]["max_total_outflow_lps"]:
+                    outflow_tracker[node_id]["max_total_outflow_lps"] = total_outflow
+                    outflow_tracker[node_id]["time_to_peak_outflow_min"] = elapsed_min
+
+            for link in links:
+                inlet_node = link_inlet_nodes.get(link.linkid)
+                if not inlet_node:
+                    continue
+                flow_lps = link.flow or 0.0
+                if flow_lps <= 0:
+                    continue
+                current_peak = downstream_link_peak_flows[inlet_node].get(link.linkid, 0.0)
+                if flow_lps > current_peak:
+                    downstream_link_peak_flows[inlet_node][link.linkid] = flow_lps
 
         node_records = []
         run_inputs = []
@@ -373,6 +400,12 @@ def run_simulation(
             if flooded:
                 total_flooded += 1
 
+            outflow_metrics = outflow_tracker[node_id]
+            downstream_flow_map = {
+                link_id: safe_round(flow_lps, 4)
+                for link_id, flow_lps in sorted(downstream_link_peak_flows.get(node_id, {}).items())
+            }
+
             node_records.append({
                 "result_id": new_id(),
                 "delta_inflow_lps": safe_round(scenario_reference_inflow_lps(node_id), 6),
@@ -385,6 +418,13 @@ def run_simulation(
                 "max_depth_ratio": safe_round(depth_ratio),
                 "time_to_peak_min": safe_round(time_to_peak, 2),
                 "depth_rate_m_per_min": safe_round(depth_rate_tracker[node_id]["max_rate"]),
+                "max_total_outflow_lps": safe_round(outflow_metrics["max_total_outflow_lps"], 4),
+                "time_to_peak_outflow_min": safe_round(outflow_metrics["time_to_peak_outflow_min"], 2),
+                "downstream_link_peak_flows_lps_json": json.dumps(
+                    downstream_flow_map,
+                    ensure_ascii=True,
+                    sort_keys=True,
+                ),
             })
 
             if target_node_set is None or node_id in target_node_set:
@@ -438,10 +478,9 @@ def run_simulation(
 
     summary = {
         "summary_id": new_id(),
-        "delta_inflow_lps": safe_round(hydrograph_multiplier if hydrograph is not None else inflow_multiplier, 6),
         "inflow_multiplier": safe_round(hydrograph_multiplier if hydrograph is not None else inflow_multiplier, 6),
         "total_nodes": total_nodes,
-        "total_flooded_nodes": total_flooded,
+        "failed_nodes_count": total_flooded,
         "total_flooding_volume_m3": round(total_flood_vol, 4),
         "pct_flooded_nodes": round(pct_flooded, 2),
         "time_to_first_flood_min": time_to_first,

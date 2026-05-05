@@ -9,6 +9,18 @@ import pandas as pd
 from .schema import create_schema
 
 
+def _align_df_to_table(conn: sqlite3.Connection, table_name: str, df: pd.DataFrame) -> pd.DataFrame:
+    """Keep only columns that exist in the destination table, preserving table order."""
+    table_columns = [
+        row[1]
+        for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+    ]
+    for column in table_columns:
+        if column not in df.columns:
+            df[column] = None
+    return df[[column for column in table_columns if column in df.columns]]
+
+
 def connect_db(db_file: str) -> sqlite3.Connection:
     """Open a SQLite database and ensure schema exists."""
     conn = sqlite3.connect(db_file)
@@ -85,6 +97,7 @@ def save_results(conn: sqlite3.Connection, run_id: str, results: dict):
         df_inputs["delta_inflow_lps"] = delta_inflow_lps
     if "inflow_multiplier" not in df_inputs.columns and inflow_multiplier is not None:
         df_inputs["inflow_multiplier"] = inflow_multiplier
+    df_inputs = _align_df_to_table(conn, "run_inputs", df_inputs)
     df_inputs.to_sql("run_inputs", conn, if_exists="append", index=False)
 
     df_nodes = pd.DataFrame(results["node_records"])
@@ -93,6 +106,7 @@ def save_results(conn: sqlite3.Connection, run_id: str, results: dict):
         df_nodes["delta_inflow_lps"] = delta_inflow_lps
     if "inflow_multiplier" not in df_nodes.columns and inflow_multiplier is not None:
         df_nodes["inflow_multiplier"] = inflow_multiplier
+    df_nodes = _align_df_to_table(conn, "node_results", df_nodes)
     df_nodes.to_sql("node_results", conn, if_exists="append", index=False)
 
     df_links = pd.DataFrame(results["link_records"])
@@ -101,6 +115,7 @@ def save_results(conn: sqlite3.Connection, run_id: str, results: dict):
         df_links["delta_inflow_lps"] = delta_inflow_lps
     if "inflow_multiplier" not in df_links.columns and inflow_multiplier is not None:
         df_links["inflow_multiplier"] = inflow_multiplier
+    df_links = _align_df_to_table(conn, "link_results", df_links)
     df_links.to_sql("link_results", conn, if_exists="append", index=False)
 
     df_summary = pd.DataFrame([results["summary"]])
@@ -109,6 +124,7 @@ def save_results(conn: sqlite3.Connection, run_id: str, results: dict):
         df_summary["delta_inflow_lps"] = delta_inflow_lps
     if "inflow_multiplier" not in df_summary.columns and inflow_multiplier is not None:
         df_summary["inflow_multiplier"] = inflow_multiplier
+    df_summary = _align_df_to_table(conn, "run_summary", df_summary)
     df_summary.to_sql("run_summary", conn, if_exists="append", index=False)
 
     conn.commit()
@@ -139,20 +155,21 @@ def verify_run_saved(conn: sqlite3.Connection, run_id: str) -> dict:
 def export_run_summary(db_file: str):
     """Print a compact summary of executed runs."""
     conn = sqlite3.connect(db_file)
+    create_schema(conn)
     df = pd.read_sql(
         """
         SELECT
-            r.inflow_multiplier AS factor_incremento,
+            COALESCE(s.inflow_multiplier, r.inflow_multiplier) AS factor_incremento,
             r.status,
             s.total_nodes,
-            s.total_flooded_nodes,
+            s.failed_nodes_count AS nodos_fallidos,
             s.pct_flooded_nodes,
             s.total_flooding_volume_m3,
             s.resilience_index,
             s.time_to_first_flood_min
         FROM runs r
         LEFT JOIN run_summary s ON r.run_id = s.run_id
-        ORDER BY r.inflow_multiplier
+        ORDER BY COALESCE(s.inflow_multiplier, r.inflow_multiplier)
         """,
         conn,
     )

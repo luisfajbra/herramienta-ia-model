@@ -76,7 +76,10 @@ CREATE TABLE IF NOT EXISTS node_results (
     max_depth_m             REAL,
     max_depth_ratio         REAL,
     time_to_peak_min        REAL,
-    depth_rate_m_per_min    REAL
+    depth_rate_m_per_min    REAL,
+    max_total_outflow_lps   REAL,
+    time_to_peak_outflow_min REAL,
+    downstream_link_peak_flows_lps_json TEXT
 );
 
 CREATE TABLE IF NOT EXISTS link_results (
@@ -96,10 +99,9 @@ CREATE TABLE IF NOT EXISTS link_results (
 CREATE TABLE IF NOT EXISTS run_summary (
     summary_id                  TEXT PRIMARY KEY,
     run_id                      TEXT NOT NULL REFERENCES runs(run_id),
-    delta_inflow_lps            REAL NOT NULL,
     inflow_multiplier           REAL NOT NULL DEFAULT 1,
     total_nodes                 INTEGER,
-    total_flooded_nodes         INTEGER,
+    failed_nodes_count          INTEGER,
     total_flooding_volume_m3    REAL,
     pct_flooded_nodes           REAL,
     time_to_first_flood_min     REAL,
@@ -121,15 +123,18 @@ REQUIRED_COLUMNS = {
     },
     "node_results": {
         "delta_inflow_lps": "REAL NOT NULL DEFAULT 0",
-        "inflow_multiplier": "REAL NOT NULL DEFAULT 1"
+        "inflow_multiplier": "REAL NOT NULL DEFAULT 1",
+        "max_total_outflow_lps": "REAL",
+        "time_to_peak_outflow_min": "REAL",
+        "downstream_link_peak_flows_lps_json": "TEXT"
     },
     "link_results": {
         "delta_inflow_lps": "REAL NOT NULL DEFAULT 0",
         "inflow_multiplier": "REAL NOT NULL DEFAULT 1"
     },
     "run_summary": {
-        "delta_inflow_lps": "REAL NOT NULL DEFAULT 0",
-        "inflow_multiplier": "REAL NOT NULL DEFAULT 1"
+        "inflow_multiplier": "REAL NOT NULL DEFAULT 1",
+        "failed_nodes_count": "INTEGER"
     },
 }
 
@@ -164,9 +169,83 @@ def _migrate_legacy_run_inputs(conn):
     )
 
 
+def _migrate_run_summary(conn):
+    """Simplify run_summary to one scenario column and one failed-nodes column."""
+    columns = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(run_summary)").fetchall()
+    }
+    target_columns = {
+        "summary_id",
+        "run_id",
+        "inflow_multiplier",
+        "total_nodes",
+        "failed_nodes_count",
+        "total_flooding_volume_m3",
+        "pct_flooded_nodes",
+        "time_to_first_flood_min",
+        "resilience_index",
+    }
+    if columns == target_columns:
+        return
+
+    inflow_expr = "COALESCE(inflow_multiplier, 1.0)" if "inflow_multiplier" in columns else "1.0"
+    if "failed_nodes_count" in columns:
+        failed_expr = "COALESCE(failed_nodes_count, 0)"
+    elif "total_flooded_nodes" in columns:
+        failed_expr = "COALESCE(total_flooded_nodes, 0)"
+    else:
+        failed_expr = "0"
+
+    conn.executescript(
+        f"""
+        ALTER TABLE run_summary RENAME TO run_summary_legacy;
+
+        CREATE TABLE run_summary (
+            summary_id                  TEXT PRIMARY KEY,
+            run_id                      TEXT NOT NULL REFERENCES runs(run_id),
+            inflow_multiplier           REAL NOT NULL DEFAULT 1,
+            total_nodes                 INTEGER,
+            failed_nodes_count          INTEGER,
+            total_flooding_volume_m3    REAL,
+            pct_flooded_nodes           REAL,
+            time_to_first_flood_min     REAL,
+            resilience_index            REAL
+        );
+
+        INSERT INTO run_summary (
+            summary_id,
+            run_id,
+            inflow_multiplier,
+            total_nodes,
+            failed_nodes_count,
+            total_flooding_volume_m3,
+            pct_flooded_nodes,
+            time_to_first_flood_min,
+            resilience_index
+        )
+        SELECT
+            summary_id,
+            run_id,
+            {inflow_expr},
+            total_nodes,
+            {failed_expr},
+            total_flooding_volume_m3,
+            pct_flooded_nodes,
+            time_to_first_flood_min,
+            resilience_index
+        FROM run_summary_legacy;
+
+        DROP TABLE run_summary_legacy;
+        """
+    )
+
+
 def create_schema(conn):
     """Create all database tables."""
     conn.executescript(SCHEMA_SQL)
+    _migrate_legacy_run_inputs(conn)
+    _migrate_run_summary(conn)
     run_scoped_tables = {"run_inputs", "node_results", "link_results", "run_summary"}
     for table_name, columns in REQUIRED_COLUMNS.items():
         existing = {
@@ -178,30 +257,35 @@ def create_schema(conn):
                 conn.execute(
                     f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_sql}"
                 )
+        existing = {
+            row[1]
+            for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        }
         if table_name in run_scoped_tables:
-            conn.execute(
-                f"""
-                UPDATE {table_name}
-                SET delta_inflow_lps = (
-                    SELECT runs.delta_inflow_lps
-                    FROM runs
-                    WHERE runs.run_id = {table_name}.run_id
+            if "delta_inflow_lps" in existing:
+                conn.execute(
+                    f"""
+                    UPDATE {table_name}
+                    SET delta_inflow_lps = (
+                        SELECT runs.delta_inflow_lps
+                        FROM runs
+                        WHERE runs.run_id = {table_name}.run_id
+                    )
+                    WHERE run_id IN (SELECT run_id FROM runs)
+                      AND (delta_inflow_lps IS NULL OR delta_inflow_lps = 0)
+                    """
                 )
-                WHERE run_id IN (SELECT run_id FROM runs)
-                  AND (delta_inflow_lps IS NULL OR delta_inflow_lps = 0)
-                """
-            )
-            conn.execute(
-                f"""
-                UPDATE {table_name}
-                SET inflow_multiplier = (
-                    SELECT runs.inflow_multiplier
-                    FROM runs
-                    WHERE runs.run_id = {table_name}.run_id
+            if "inflow_multiplier" in existing:
+                conn.execute(
+                    f"""
+                    UPDATE {table_name}
+                    SET inflow_multiplier = (
+                        SELECT runs.inflow_multiplier
+                        FROM runs
+                        WHERE runs.run_id = {table_name}.run_id
+                    )
+                    WHERE run_id IN (SELECT run_id FROM runs)
+                      AND (inflow_multiplier IS NULL OR inflow_multiplier = 0)
+                    """
                 )
-                WHERE run_id IN (SELECT run_id FROM runs)
-                  AND (inflow_multiplier IS NULL OR inflow_multiplier = 0)
-                """
-            )
-    _migrate_legacy_run_inputs(conn)
     conn.commit()

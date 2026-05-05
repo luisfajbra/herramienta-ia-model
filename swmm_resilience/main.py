@@ -232,7 +232,7 @@ def run_experiment(
 
             summary = results["summary"]
             print(
-                f"    ok Inundados : {summary['total_flooded_nodes']}/{summary['total_nodes']} "
+                f"    ok Fallaron  : {summary['failed_nodes_count']}/{summary['total_nodes']} "
                 f"({summary['pct_flooded_nodes']:.1f}%)"
             )
             print(f"    ok Vol total : {summary['total_flooding_volume_m3']:.2f} m3")

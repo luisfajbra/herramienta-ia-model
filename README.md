@@ -299,6 +299,17 @@ Esta seccion resume las variables que aparecen en la base de datos y en el datas
   Maxima tasa de aumento de profundidad observada en el nodo, en metros por minuto.
   Se calcula entre pasos de simulacion como cambio de profundidad dividido por el paso de tiempo.
 
+- `max_total_outflow_lps`
+  Caudal total maximo de salida observado en el nodo durante la corrida, en `L/s`.
+  Corresponde a `node.total_outflow` en PySWMM.
+
+- `time_to_peak_outflow_min`
+  Tiempo desde el inicio de la simulacion hasta el instante en que el nodo alcanzo su mayor `total_outflow`, en minutos.
+
+- `downstream_link_peak_flows_lps_json`
+  Desglose en formato JSON con el caudal maximo positivo observado hacia cada link saliente del nodo.
+  Ejemplo: `{"TUB_01": 152.4, "TUB_02": 87.1}`.
+
 ### Variables dinamicas por enlace (`link_results`)
 
 - `result_id`
@@ -336,11 +347,16 @@ Esta seccion resume las variables que aparecen en la base de datos y en el datas
 - `run_id`
   Corrida a la que pertenece el resumen.
 
+- `inflow_multiplier`
+  Factor de incremento del escenario para esa corrida.
+  En `run_summary` se conserva una sola columna de escenario para evitar duplicidad con otras tablas.
+
 - `total_nodes`
   Numero total de nodos evaluados en la corrida.
 
-- `total_flooded_nodes`
-  Numero total de nodos que presentaron inundacion.
+- `failed_nodes_count`
+  Numero total de nodos que fallaron en la corrida.
+  En la implementacion actual, un nodo se considera fallado si presento inundacion.
 
 - `total_flooding_volume_m3`
   Suma del volumen inundado en todos los nodos, en `m3`.
@@ -353,7 +369,7 @@ Esta seccion resume las variables que aparecen en la base de datos y en el datas
   En este proyecto se calcula manualmente recorriendo los pasos de simulacion; no es una variable nativa ya lista en PySWMM.
 
 - `resilience_index`
-  Indice simple de resiliencia definido como `1 - total_flooded_nodes / total_nodes`.
+  Indice simple de resiliencia definido como `1 - failed_nodes_count / total_nodes`.
   Vale `1.0` si ningun nodo se inunda y disminuye a medida que aumenta la fraccion de nodos inundados.
 
 ### Variables presentes en el CSV exportado
@@ -363,7 +379,7 @@ El archivo `dataset_ml.csv` contiene una combinacion de:
 - variables de corrida: `run_id`, `delta_inflow_lps`, `scenario_type`, `spatial_pattern`
 - variables de entrada por nodo: `delta_inflow_lps`
 - variables estaticas del nodo: columnas de `network_nodes`
-- variables resultado por nodo: `max_depth_m`, `max_depth_ratio`, `time_to_peak_min`, `depth_rate_m_per_min`, `flooded`, `flooding_volume_m3`, `flooding_duration_min`
+- variables resultado por nodo: `max_depth_m`, `max_depth_ratio`, `time_to_peak_min`, `depth_rate_m_per_min`, `max_total_outflow_lps`, `time_to_peak_outflow_min`, `downstream_link_peak_flows_lps_json`, `flooded`, `flooding_volume_m3`, `flooding_duration_min`
 
 ## Organización por red
 
@@ -624,7 +640,7 @@ Estas columnas no entran como `features`:
 - columna duplicada o legacy: `applied_inflow_lps`
 - columna categorica no numerica: `node_type`
 - promedios excluidos por configuracion: `upstream_diam_avg_m`, `downstream_diam_avg_m`
-- resultados de simulacion excluidos para evitar fuga de informacion: `flooding_duration_min`, `max_depth_m`, `max_depth_ratio`, `time_to_peak_min`, `depth_rate_m_per_min`
+- resultados de simulacion excluidos para evitar fuga de informacion: `flooding_duration_min`, `max_depth_m`, `max_depth_ratio`, `time_to_peak_min`, `depth_rate_m_per_min`, `max_total_outflow_lps`, `time_to_peak_outflow_min`
 
 ### Fase 7. Reportar resultados de forma útil
 

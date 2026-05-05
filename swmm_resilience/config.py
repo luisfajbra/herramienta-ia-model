@@ -80,6 +80,8 @@ ML_DROP_COLUMNS = [
     "max_depth_ratio",
     "time_to_peak_min",
     "depth_rate_m_per_min",
+    "max_total_outflow_lps",
+    "time_to_peak_outflow_min",
     "in_degree",
     "out_degree",
     "upstream_capacity_lps",

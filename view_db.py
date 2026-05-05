@@ -33,7 +33,7 @@ class SQLiteViewerApp:
         self.conn = None
         self.current_columns = []
         self.run_label_to_id = {"(todos)": None}
-        self.run_id_to_flow = {}
+        self.run_id_to_scenario = {}
 
         self.root.title("Visor SQLite - SWMM Resilience")
         self.root.geometry("1380x820")
@@ -176,7 +176,7 @@ class SQLiteViewerApp:
         if "runs" in tables:
             run_rows = self._fetch_all(
                 """
-                SELECT run_id, delta_inflow_lps, executed_at, status
+                SELECT run_id, inflow_multiplier, executed_at, status
                 FROM runs
                 ORDER BY executed_at DESC
                 """
@@ -185,13 +185,13 @@ class SQLiteViewerApp:
             run_rows = []
 
         self.run_label_to_id = {"(todos)": None}
-        self.run_id_to_flow = {}
+        self.run_id_to_scenario = {}
         run_options = ["(todos)"]
-        for run_id, delta_inflow_lps, executed_at, status in run_rows:
-            flow_text = "-" if delta_inflow_lps is None else f"{float(delta_inflow_lps):.4f} L/s"
-            label = f"{run_id} | Q={flow_text} | {status} | {executed_at}"
+        for run_id, inflow_multiplier, executed_at, status in run_rows:
+            scenario_text = "-" if inflow_multiplier is None else f"{float(inflow_multiplier):.4f}x"
+            label = f"{run_id} | factor={scenario_text} | {status} | {executed_at}"
             self.run_label_to_id[label] = run_id
-            self.run_id_to_flow[run_id] = delta_inflow_lps
+            self.run_id_to_scenario[run_id] = inflow_multiplier
             run_options.append(label)
         self.run_combo["values"] = run_options
         self.run_var.set("(todos)")
@@ -251,7 +251,9 @@ class SQLiteViewerApp:
 
         order_by = ""
         cols = {col[1] for col in self._fetch_all(f"PRAGMA table_info({table_name})")}
-        if "delta_inflow_lps" in cols:
+        if "inflow_multiplier" in cols:
+            order_by = " ORDER BY inflow_multiplier, rowid"
+        elif "delta_inflow_lps" in cols:
             order_by = " ORDER BY delta_inflow_lps, rowid"
         elif "run_id" in cols:
             order_by = " ORDER BY run_id, rowid"
@@ -270,14 +272,14 @@ class SQLiteViewerApp:
         self._render_rows(columns, rows)
 
         row_count = len(rows)
-        selected_flow = self.run_id_to_flow.get(selected_run_id)
-        flow_text = "(todos)"
+        selected_scenario = self.run_id_to_scenario.get(selected_run_id)
+        scenario_text = "(todos)"
         if selected_run_id:
-            flow_text = "-" if selected_flow is None else f"{float(selected_flow):.4f} L/s"
+            scenario_text = "-" if selected_scenario is None else f"{float(selected_scenario):.4f}x"
         self.info_var.set(
             f"Tabla: {table_name} | Filas mostradas: {row_count} | "
             f"Filtro run_id: {selected_run_id or '(todos)'} | "
-            f"Caudal: {flow_text} | Limite: {limit}"
+            f"Factor: {scenario_text} | Limite: {limit}"
         )
 
     def _render_rows(self, columns, rows):
@@ -286,13 +288,20 @@ class SQLiteViewerApp:
         self.tree["columns"] = columns
 
         for col in columns:
-            heading = "caudal_inyectado_lps" if col == "delta_inflow_lps" else col
+            heading_map = {
+                "delta_inflow_lps": "caudal_inyectado_lps",
+                "inflow_multiplier": "factor_incremento",
+                "failed_nodes_count": "nodos_fallidos",
+            }
+            heading = heading_map.get(col, col)
             self.tree.heading(col, text=heading)
             width = 130
             if col.endswith("_id"):
                 width = 220
             elif "executed_at" in col:
                 width = 170
+            elif col == "inflow_multiplier":
+                width = 150
             elif col == "delta_inflow_lps":
                 width = 160
             elif col in {"network_file", "scenario_type", "spatial_pattern"}:
