@@ -630,6 +630,8 @@ def normalize_scenario_label(raw_value: object) -> str:
     value = str(raw_value).strip().lower()
     if value == "hydrograph_inflow":
         return "hydrograph"
+    if value == "embedded_inflow_multiplier_sweep":
+        return "embedded_hydrograph"
     if value in {"uniform_inflow_multiplier_sweep", "uniform_inflow_sweep", "steady_inflow"}:
         return "steady"
 

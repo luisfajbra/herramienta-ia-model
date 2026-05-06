@@ -58,7 +58,7 @@ python main.py
 python app.py
 ```
 
-La app abre una ventana local para seleccionar el `.inp`, elegir steady flow o hidrograma, definir nodos, ejecutar corridas, entrenar modelos, predecir nuevos caudales steady con ML sin correr PySWMM y abrir el visor SQLite. En la pestaña `Predicción ML` puedes elegir el clasificador y el regresor tabular que quieres usar.
+La app abre una ventana local para seleccionar el `.inp`, definir nodos, ejecutar corridas, entrenar modelos, predecir nuevos caudales steady con ML sin correr PySWMM y abrir el visor SQLite. En la pestaña `Predicción ML` puedes elegir el clasificador y el regresor tabular que quieres usar.
 
 ## Cómo evaluar los modelos
 
@@ -110,46 +110,11 @@ DEFAULT_DELTA_INFLOWS_LPS = list(range(2, 52, 2))
 
 Los valores están en `L/s` por nodo.
 
-## Cómo usar un hidrograma externo
+## Hidrogramas en archivos `.inp`
 
-Puedes aplicar un hidrograma desde un CSV externo en `L/s`. El archivo debe tener una columna de tiempo en minutos y una columna de caudal:
+Los hidrogramas se definen dentro de la red SWMM, usando las secciones `[INFLOWS]` y `[TIMESERIES]` del archivo `.inp`. La herramienta no carga hidrogramas desde CSV externo.
 
-```csv
-minute,inflow_lps
-0,0
-5,10
-10,25
-15,40
-20,30
-25,15
-30,0
-```
-
-Hay un ejemplo en `data/hydrographs/example_hydrograph.csv`.
-
-Para activarlo, edita [swmm_resilience/config.py](swmm_resilience/config.py):
-
-```python
-DEFAULT_HYDROGRAPH_FILE = HYDROGRAPHS_DIR / "example_hydrograph.csv"
-DEFAULT_TARGET_NODES = None
-```
-
-Con `DEFAULT_TARGET_NODES = None`, el hidrograma se aplica a todos los nodos. Para aplicarlo solo a algunos nodos:
-
-```python
-DEFAULT_TARGET_NODES = ["NODO_1", "NODO_2", "NODO_3"]
-```
-
-El programa interpola linealmente el caudal entre puntos del CSV. Si usas hidrograma, el escenario cambia automaticamente a `hydrograph_inflow`, `spatial_pattern` queda como `all_nodes` o `selected_nodes`, y `delta_inflow_lps` guarda el pico del hidrograma como valor representativo de la corrida.
-
-Desde la app local tambien puedes correr el hidrograma de forma iterativa con multiplicadores. Por ejemplo:
-
-```text
-Cantidad = 3
-Paso multiplicador = 0.5
-```
-
-Eso genera tres corridas que multiplican todos los valores del hidrograma por `0.5x`, `1.0x` y `1.5x`. Si usas `Cantidad = 4` y `Paso multiplicador = 1`, se evaluan `1x`, `2x`, `3x` y `4x`.
+Para comparar escenarios con hidrogramas distintos, selecciona el `.inp` correspondiente, por ejemplo redes `Qx1.00`, `Qx2.00` o `Qx3.00`, y ejecuta la corrida sobre ese archivo.
 
 ## Salidas
 
@@ -437,7 +402,7 @@ Esto ayuda a:
   Núcleo hidráulico del proyecto. Aquí están:
   - la lectura de topología estática desde PySWMM y desde el `.inp`
   - la extracción de `network_nodes` y `network_links`
-  - la inyección de caudal en cada nodo con `node.generated_inflow(...)`
+  - el escalado de hidrogramas internos creando un `.inp` temporal por corrida
   - el cálculo de resultados por nodo y por link para cada corrida
 
 ### Base de datos

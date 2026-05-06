@@ -306,8 +306,7 @@ estimacion de severidad.
 Si, es valido que la red ya tenga los inflows e hidrogramas metidos dentro del
 `.inp`.
 
-De hecho, para realismo hidraulico eso puede ser mejor que inyectarlos desde un
-CSV externo.
+De hecho, para realismo hidraulico esa es la ruta esperada del proyecto.
 
 ### Pero hay una implicacion importante
 
@@ -483,7 +482,6 @@ Cambios clave:
 - deprecar el uso de `delta_inflow_lps` como descriptor principal del escenario
 - agregar `input_source` para distinguir:
   - `generated_uniform`
-  - `generated_hydrograph_csv`
   - `inp_embedded`
   - `inp_embedded_plus_generated`
 
@@ -624,7 +622,7 @@ Notas:
 
 - `input_source` debe aceptar solo valores controlados:
   - `generated_uniform`
-  - `generated_hydrograph_csv`
+  - `inp_embedded`
   - `inp_embedded`
   - `inp_embedded_plus_generated`
 - `delta_inflow_lps` queda como columna legacy o representativa
@@ -655,7 +653,7 @@ CREATE TABLE hydrograph_profiles (
 
 Notas:
 
-- `profile_source`: `csv_external`, `inp_embedded`, `generated`
+- `profile_source`: `inp_embedded`, `generated`
 - `profile_scope`: `global`, `node_specific`
 - `series_file` debe apuntar al archivo donde esta la serie original cuando
   aplique
@@ -692,7 +690,7 @@ Notas:
 - `input_mode` sugerido:
   - `none`
   - `generated_uniform`
-  - `generated_hydrograph_csv`
+  - `inp_embedded`
   - `embedded_only`
   - `embedded_plus_generated`
 - si el escenario proviene solo del `.inp`, esta tabla puede tener:
@@ -1010,8 +1008,8 @@ Reglas de migracion:
 
 - si `scenario_type` es steady y no hay hidrograma, `input_source` debe quedar
   como `generated_uniform`
-- si `scenario_type` es `hydrograph_inflow` usando CSV externo, `input_source`
-  debe quedar como `generated_hydrograph_csv`
+- si `scenario_type` es `hydrograph_inflow`, `input_source`
+  debe quedar como `inp_embedded`
 - las corridas antiguas sin esta metadata deben completarse con defaults
   razonables
 
@@ -1149,7 +1147,7 @@ Cambios exactos:
 
 - definir una rutina que clasifique cada corrida en:
   - `generated_uniform`
-  - `generated_hydrograph_csv`
+  - `inp_embedded`
   - `inp_embedded`
   - `inp_embedded_plus_generated`
 
@@ -1482,7 +1480,6 @@ Validacion:
 ### Checklist de aceptación final
 
 - una corrida con inflows embebidos en `.inp` puede guardarse sin ambiguedad
-- una corrida con hidrograma CSV externo tambien puede guardarse
 - existe una capa cruda por `timesteps`
 - las series por timestep se pueden vincular con `run_id`
 - el dataset tabular v2 sigue teniendo una fila por `run_id + node_id`
@@ -1507,7 +1504,6 @@ Regla:
 No conviene entrenar como si fueran iguales:
 
 - corridas steady
-- corridas con hidrograma externo
 - corridas con hidrograma embebido en `.inp`
 
 Recomendacion:

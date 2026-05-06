@@ -85,11 +85,7 @@ Verificar con la versión de PySWMM instalada qué unidad retorna `time_max_dept
 **Código actual:**
 ```python
 base_inflow_lps = base_node_inflows_lps.get(node_id, 0.0) or 0.0
-inflow_lps = (
-    _hydrograph_value_lps(hydrograph, elapsed_min) * hydrograph_multiplier
-    if hydrograph is not None
-    else base_inflow_lps * inflow_multiplier
-)
+inflow_lps = base_inflow_lps * inflow_multiplier
 node.generated_inflow(applied_lps)
 ```
 
@@ -506,7 +502,7 @@ y exportación a Parquet.
 **Archivo:** [swmm_resilience/database/schema.py](swmm_resilience/database/schema.py)
 
 Sin `input_source`, no es posible distinguir corridas steady de corridas con
-hidrograma externo o embebido. El entrenamiento ML mezcla escenarios incomparables.
+hidrograma embebido en `.inp`. El entrenamiento ML mezcla escenarios incomparables.
 
 **Siguiente paso:** Épica 1, Tarea 1.1 del plan.
 

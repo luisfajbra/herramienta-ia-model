@@ -2,9 +2,10 @@
 Simulation-only logic: PySWMM setup, topology extraction and hydraulic results.
 """
 
-import csv
 import json
+import tempfile
 from collections import defaultdict
+from contextlib import suppress
 from datetime import timedelta
 from pathlib import Path
 
@@ -21,6 +22,8 @@ def _parse_inp_sections(inp_file: str):
     conduit_rows = {}
     xsection_rows = {}
     inflow_rows = defaultdict(float)
+    inflow_defs = {}
+    timeseries_rows = defaultdict(list)
     current_section = None
 
     for raw_line in Path(inp_file).read_text(encoding="utf-8", errors="replace").splitlines():
@@ -50,71 +53,143 @@ def _parse_inp_sections(inp_file: str):
                 "geom1": float(parts[2]),
             }
         elif current_section == "[INFLOWS]" and len(parts) >= 2:
+            node_id = parts[0]
             try:
-                inflow_rows[parts[0]] += float(parts[-1])
+                baseline = float(parts[6]) if len(parts) > 6 else 0.0
+                inflow_rows[node_id] += baseline
+            except ValueError:
+                baseline = 0.0
+            if len(parts) >= 3 and parts[1].upper() == "FLOW":
+                try:
+                    mfactor = float(parts[4]) if len(parts) > 4 else 1.0
+                except ValueError:
+                    mfactor = 1.0
+                inflow_defs[node_id] = {
+                    "timeseries": parts[2],
+                    "mfactor": mfactor,
+                    "baseline": baseline,
+                }
+        elif current_section == "[TIMESERIES]" and len(parts) >= 3:
+            series_id = parts[0]
+            if ":" in parts[1]:
+                time_token = parts[1]
+                value_token = parts[2]
+            elif len(parts) >= 4:
+                time_token = parts[2]
+                value_token = parts[3]
+            else:
+                continue
+            try:
+                timeseries_rows[series_id].append((
+                    _time_token_to_minutes(time_token),
+                    float(value_token),
+                ))
             except ValueError:
                 continue
 
-    return conduit_rows, xsection_rows, dict(inflow_rows)
+    node_inflow_profiles = {}
+    for node_id, inflow_def in inflow_defs.items():
+        points = sorted(timeseries_rows.get(inflow_def["timeseries"], []))
+        node_inflow_profiles[node_id] = {
+            "timeseries": inflow_def["timeseries"],
+            "points": points,
+            "mfactor": inflow_def["mfactor"],
+            "baseline": inflow_def["baseline"],
+        }
+
+    return conduit_rows, xsection_rows, dict(inflow_rows), node_inflow_profiles
 
 
-def load_hydrograph(hydrograph_file):
-    """Load a CSV hydrograph with time in minutes and flow in L/s."""
-    if hydrograph_file is None:
-        return None
-
-    path = Path(hydrograph_file)
-    if not path.exists():
-        raise FileNotFoundError(f"No se encontro el hidrograma: {path}")
-
-    time_columns = ("minute", "minutes", "time_min", "elapsed_min")
-    flow_columns = ("inflow_lps", "flow_lps", "caudal_lps", "q_lps")
-    points = []
-
-    with path.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.DictReader(handle)
-        if not reader.fieldnames:
-            raise ValueError("El hidrograma debe tener encabezados de columna.")
-
-        normalized = {name.strip().lower(): name for name in reader.fieldnames}
-        time_col = next((normalized[col] for col in time_columns if col in normalized), None)
-        flow_col = next((normalized[col] for col in flow_columns if col in normalized), None)
-        if time_col is None or flow_col is None:
-            raise ValueError(
-                "El hidrograma debe tener columnas 'minute' e 'inflow_lps' "
-                "(tambien sirven: time_min/flow_lps/caudal_lps/q_lps)."
-            )
-
-        for row in reader:
-            points.append((float(row[time_col]), float(row[flow_col])))
-
-    points.sort(key=lambda point: point[0])
-    if not points:
-        raise ValueError("El hidrograma no tiene filas de datos.")
-    if points[0][0] < 0:
-        raise ValueError("El tiempo del hidrograma no puede ser negativo.")
-
-    return points
+def _time_token_to_minutes(token: str) -> float:
+    parts = token.split(":")
+    if len(parts) == 2:
+        hours, minutes = parts
+        seconds = 0.0
+    elif len(parts) == 3:
+        hours, minutes, seconds = parts
+    else:
+        raise ValueError(f"Formato de hora no reconocido: {token}")
+    return float(hours) * 60.0 + float(minutes) + float(seconds) / 60.0
 
 
-def _hydrograph_value_lps(hydrograph, elapsed_min: float) -> float:
-    """Linearly interpolate the hydrograph value for the current simulation minute."""
-    if not hydrograph:
+def _profile_value_lps(profile, elapsed_min: float) -> float:
+    if not profile:
         return 0.0
-    if elapsed_min <= hydrograph[0][0]:
-        return hydrograph[0][1]
+    points = profile.get("points", [])
+    baseline = profile.get("baseline", 0.0) or 0.0
+    mfactor = profile.get("mfactor", 1.0) or 1.0
+    if not points:
+        return baseline
+    if elapsed_min <= points[0][0]:
+        return baseline + points[0][1] * mfactor
 
-    for left, right in zip(hydrograph, hydrograph[1:]):
+    for left, right in zip(points, points[1:]):
         left_min, left_flow = left
         right_min, right_flow = right
         if elapsed_min <= right_min:
             span = right_min - left_min
             if span <= 0:
-                return right_flow
+                return baseline + right_flow * mfactor
             fraction = (elapsed_min - left_min) / span
-            return left_flow + fraction * (right_flow - left_flow)
+            return baseline + (left_flow + fraction * (right_flow - left_flow)) * mfactor
 
-    return hydrograph[-1][1]
+    return baseline + points[-1][1] * mfactor
+
+
+def _write_scaled_inp(inp_file: str, inflow_multiplier: float, target_node_set, node_inflow_profiles) -> Path:
+    target_series = {
+        profile["timeseries"]
+        for node_id, profile in node_inflow_profiles.items()
+        if target_node_set is None or node_id in target_node_set
+    }
+    temp_dir = Path("C:/tmp")
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        errors="replace",
+        suffix=".inp",
+        prefix="swmm_scaled_",
+        dir=temp_dir,
+        delete=False,
+    )
+    temp_path = Path(handle.name)
+    current_section = None
+
+    with handle:
+        for raw_line in Path(inp_file).read_text(encoding="utf-8", errors="replace").splitlines():
+            line = raw_line.strip()
+            if line.startswith("[") and line.endswith("]"):
+                current_section = line.upper()
+                handle.write(raw_line + "\n")
+                continue
+            if current_section != "[TIMESERIES]" or not line or line.startswith(";;"):
+                handle.write(raw_line + "\n")
+                continue
+
+            parts = line.split()
+            if len(parts) < 3 or parts[0] not in target_series:
+                handle.write(raw_line + "\n")
+                continue
+
+            value_index = 2 if ":" in parts[1] else 3
+            if value_index >= len(parts):
+                handle.write(raw_line + "\n")
+                continue
+            try:
+                parts[value_index] = f"{float(parts[value_index]) * inflow_multiplier:.6f}"
+            except ValueError:
+                handle.write(raw_line + "\n")
+                continue
+            handle.write(" ".join(parts) + "\n")
+
+    return temp_path
+
+
+def _remove_swmm_temp_files(inp_path: Path):
+    for suffix in (".inp", ".rpt", ".out"):
+        with suppress(OSError):
+            inp_path.with_suffix(suffix).unlink()
 
 
 def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulation):
@@ -122,7 +197,7 @@ def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulati
     node_records = []
     link_records = []
     link_static = {}
-    conduit_rows, xsection_rows, base_node_inflows_lps = _parse_inp_sections(inp_file)
+    conduit_rows, xsection_rows, base_node_inflows_lps, node_inflow_profiles = _parse_inp_sections(inp_file)
 
     upstream_links = defaultdict(list)
     downstream_links = defaultdict(list)
@@ -270,6 +345,7 @@ def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulati
         "link_records": link_records,
         "link_static": link_static,
         "base_node_inflows_lps": base_node_inflows_lps,
+        "node_inflow_profiles": node_inflow_profiles,
     }
 
 
@@ -280,18 +356,16 @@ def run_simulation(
     Nodes,
     Links,
     Simulation,
-    hydrograph=None,
-    hydrograph_multiplier: float = 1.0,
     target_nodes=None,
-    base_node_inflows_lps=None,
+    node_inflow_profiles=None,
 ):
-    """Execute one SWMM run with multiplicative steady inflow or hydrograph forcing."""
+    """Execute one SWMM run scaling embedded .inp lateral inflows by a multiplier."""
 
     first_flood_step = None
     step_count = 0
     timestep_sec = None
     depth_rate_tracker = {}
-    base_node_inflows_lps = base_node_inflows_lps or {}
+    node_inflow_profiles = node_inflow_profiles or {}
     if target_nodes is None:
         target_node_set = None
     elif isinstance(target_nodes, str):
@@ -299,23 +373,24 @@ def run_simulation(
     else:
         target_node_set = {str(node_id) for node_id in target_nodes}
 
-    def steady_added_inflow_lps(node_id: str) -> float:
-        base_inflow_lps = base_node_inflows_lps.get(node_id, 0.0) or 0.0
-        return base_inflow_lps * inflow_multiplier
+    scaled_inp_path = None
+    simulation_inp = inp_file
+    if inflow_multiplier != 1.0 or target_node_set is not None:
+        scaled_inp_path = _write_scaled_inp(
+            inp_file,
+            inflow_multiplier,
+            target_node_set,
+            node_inflow_profiles,
+        )
+        simulation_inp = str(scaled_inp_path)
 
-    def scenario_reference_inflow_lps(node_id: str) -> float:
-        if target_node_set is not None and node_id not in target_node_set:
-            return 0.0
-        if hydrograph is not None:
-            return _hydrograph_value_lps(hydrograph, 0.0) * hydrograph_multiplier
-        return steady_added_inflow_lps(node_id)
-
-    with Simulation(inp_file) as sim:
+    with Simulation(simulation_inp) as sim:
         sim_start = sim.start_time
         nodes = list(Nodes(sim))
         links = list(Links(sim))
         link_inlet_nodes = {}
         outflow_tracker = {}
+        input_tracker = {}
         downstream_link_peak_flows = defaultdict(dict)
 
         for node in nodes:
@@ -323,6 +398,11 @@ def run_simulation(
             outflow_tracker[node.nodeid] = {
                 "max_total_outflow_lps": 0.0,
                 "time_to_peak_outflow_min": None,
+            }
+            input_tracker[node.nodeid] = {
+                "peak_embedded_lateral_lps": 0.0,
+                "peak_added_lps": 0.0,
+                "peak_scaled_lateral_lps": 0.0,
             }
 
         for link in links:
@@ -338,14 +418,24 @@ def run_simulation(
             for node in nodes:
                 node_id = node.nodeid
                 applies_to_node = target_node_set is None or node_id in target_node_set
-                base_inflow_lps = base_node_inflows_lps.get(node_id, 0.0) or 0.0
-                inflow_lps = (
-                    _hydrograph_value_lps(hydrograph, elapsed_min) * hydrograph_multiplier
-                    if hydrograph is not None
-                    else base_inflow_lps * inflow_multiplier
+                embedded_lateral_lps = _profile_value_lps(
+                    node_inflow_profiles.get(node_id),
+                    elapsed_min,
                 )
-                applied_lps = inflow_lps if applies_to_node else 0.0
-                node.generated_inflow(applied_lps)
+                applied_lps = (
+                    embedded_lateral_lps * (inflow_multiplier - 1.0)
+                    if applies_to_node
+                    else 0.0
+                )
+                scaled_lateral_lps = embedded_lateral_lps + applied_lps
+
+                input_metrics = input_tracker[node_id]
+                if abs(embedded_lateral_lps) > abs(input_metrics["peak_embedded_lateral_lps"]):
+                    input_metrics["peak_embedded_lateral_lps"] = embedded_lateral_lps
+                if abs(applied_lps) > abs(input_metrics["peak_added_lps"]):
+                    input_metrics["peak_added_lps"] = applied_lps
+                if abs(scaled_lateral_lps) > abs(input_metrics["peak_scaled_lateral_lps"]):
+                    input_metrics["peak_scaled_lateral_lps"] = scaled_lateral_lps
 
                 if first_flood_step is None and node.flooding > 0:
                     first_flood_step = step_count
@@ -401,6 +491,7 @@ def run_simulation(
                 total_flooded += 1
 
             outflow_metrics = outflow_tracker[node_id]
+            input_metrics = input_tracker[node_id]
             downstream_flow_map = {
                 link_id: safe_round(flow_lps, 4)
                 for link_id, flow_lps in sorted(downstream_link_peak_flows.get(node_id, {}).items())
@@ -408,8 +499,8 @@ def run_simulation(
 
             node_records.append({
                 "result_id": new_id(),
-                "delta_inflow_lps": safe_round(scenario_reference_inflow_lps(node_id), 6),
-                "inflow_multiplier": safe_round(hydrograph_multiplier if hydrograph is not None else inflow_multiplier, 6),
+                "delta_inflow_lps": safe_round(input_metrics["peak_added_lps"], 6),
+                "inflow_multiplier": safe_round(inflow_multiplier, 6),
                 "node_id": node_id,
                 "flooded": int(flooded),
                 "flooding_volume_m3": safe_round(flood_vol),
@@ -430,8 +521,8 @@ def run_simulation(
             if target_node_set is None or node_id in target_node_set:
                 run_inputs.append({
                     "input_id": new_id(),
-                    "delta_inflow_lps": safe_round(scenario_reference_inflow_lps(node_id), 6),
-                    "inflow_multiplier": safe_round(hydrograph_multiplier if hydrograph is not None else inflow_multiplier, 6),
+                    "delta_inflow_lps": safe_round(input_metrics["peak_added_lps"], 6),
+                    "inflow_multiplier": safe_round(inflow_multiplier, 6),
                     "node_uid": node_id,
                 })
 
@@ -455,8 +546,8 @@ def run_simulation(
 
             link_records.append({
                 "result_id": new_id(),
-                "delta_inflow_lps": safe_round(hydrograph_multiplier if hydrograph is not None else inflow_multiplier, 6),
-                "inflow_multiplier": safe_round(hydrograph_multiplier if hydrograph is not None else inflow_multiplier, 6),
+                "delta_inflow_lps": safe_round(inflow_multiplier, 6),
+                "inflow_multiplier": safe_round(inflow_multiplier, 6),
                 "link_id": link_id,
                 "max_flow_lps": safe_round(peak_flow_lps, 4),
                 "max_velocity_mps": safe_round(peak_vel_mps),
@@ -465,6 +556,8 @@ def run_simulation(
                 "surcharged": int(surcharged),
                 "time_full_flow_hrs": safe_round(time_full_hours, 4),
             })
+    if scaled_inp_path is not None:
+        _remove_swmm_temp_files(scaled_inp_path)
 
     total_nodes = len(node_records)
     total_flood_vol = sum(record["flooding_volume_m3"] or 0 for record in node_records)
@@ -478,7 +571,7 @@ def run_simulation(
 
     summary = {
         "summary_id": new_id(),
-        "inflow_multiplier": safe_round(hydrograph_multiplier if hydrograph is not None else inflow_multiplier, 6),
+        "inflow_multiplier": safe_round(inflow_multiplier, 6),
         "total_nodes": total_nodes,
         "failed_nodes_count": total_flooded,
         "total_flooding_volume_m3": round(total_flood_vol, 4),

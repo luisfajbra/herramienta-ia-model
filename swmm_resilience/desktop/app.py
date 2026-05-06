@@ -14,7 +14,6 @@ from tkinter import filedialog, messagebox, ttk
 
 from swmm_resilience.config import (
     DEFAULT_DB_FILE,
-    DEFAULT_HYDROGRAPH_FILE,
     DEFAULT_INFLOW_MULTIPLIERS,
     DEFAULT_INP_FILE,
     DEFAULT_MODEL_ARTIFACTS_DIR,
@@ -71,17 +70,6 @@ def parse_target_nodes(raw_text: str, all_nodes: bool) -> list[str] | None:
     return nodes
 
 
-def parse_hydrograph_multipliers(count_text: str, step_text: str) -> list[float]:
-    """Build hydrograph multipliers as [step, 2*step, ..., count*step]."""
-    count = int(count_text)
-    step = float(step_text)
-    if count <= 0:
-        raise ValueError("La cantidad de factores del hidrograma debe ser mayor que cero.")
-    if step <= 0:
-        raise ValueError("El paso de factores del hidrograma debe ser mayor que cero.")
-    return [round(step * index, 6) for index in range(1, count + 1)]
-
-
 class ResilienciaDesktopApp:
     def __init__(self, root: tk.Tk):
         self.root = root
@@ -103,15 +91,9 @@ class ResilienciaDesktopApp:
         self.db_var = tk.StringVar(value=str(DEFAULT_DB_FILE))
         self.csv_var = tk.StringVar(value=str(DEFAULT_OUTPUT_CSV))
         self.artifacts_dir_var = tk.StringVar(value=str(DEFAULT_MODEL_ARTIFACTS_DIR))
-        self.mode_var = tk.StringVar(value="steady")
         self.deltas_var = tk.StringVar(
             value=",".join(str(value) for value in DEFAULT_INFLOW_MULTIPLIERS)
         )
-        self.hydrograph_var = tk.StringVar(
-            value="" if DEFAULT_HYDROGRAPH_FILE is None else str(DEFAULT_HYDROGRAPH_FILE)
-        )
-        self.hydrograph_delta_count_var = tk.StringVar(value="1")
-        self.hydrograph_delta_step_var = tk.StringVar(value="1")
         self.all_nodes_var = tk.BooleanVar(value=True)
         self.target_nodes_var = tk.StringVar(value="")
         self.reset_db_var = tk.BooleanVar(value=False)
@@ -168,72 +150,23 @@ class ResilienciaDesktopApp:
         ttk.Label(scenario, text="Tipo de evaluacion").grid(row=0, column=0, sticky="w")
         mode_frame = ttk.Frame(scenario)
         mode_frame.grid(row=0, column=1, sticky="w")
-        ttk.Radiobutton(
+        ttk.Label(
             mode_frame,
-            text="Steady flow / caudales constantes",
-            value="steady",
-            variable=self.mode_var,
-            command=self._toggle_mode,
+            text="Hidrogramas internos del archivo .inp",
         ).grid(row=0, column=0, sticky="w")
-        ttk.Radiobutton(
-            mode_frame,
-            text="Hidrograma externo",
-            value="hydrograph",
-            variable=self.mode_var,
-            command=self._toggle_mode,
-        ).grid(row=0, column=1, sticky="w", padx=(20, 0))
 
-        ttk.Label(scenario, text="Factores de aumento steady").grid(row=1, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(scenario, text="Factores multiplicadores").grid(row=1, column=0, sticky="w", pady=(10, 0))
         self.deltas_entry = ttk.Entry(scenario, textvariable=self.deltas_var)
         self.deltas_entry.grid(row=1, column=1, sticky="ew", pady=(10, 0))
         ttk.Label(
             scenario,
-            text="Puedes usar: 0.1,0.2,0.3  o  range(0.1,2,0.1). 0.1 = +10% sobre el caudal base.",
+            text="Puedes usar: 1,2,3  o  range(0,4,0.5). 3 = triplicar el hidrograma interno del .inp.",
             foreground="#555555",
         ).grid(row=2, column=1, sticky="w")
 
-        ttk.Label(scenario, text="CSV hidrograma").grid(row=3, column=0, sticky="w", pady=(10, 0))
-        hydro_frame = ttk.Frame(scenario)
-        hydro_frame.grid(row=3, column=1, sticky="ew", pady=(10, 0))
-        hydro_frame.columnconfigure(0, weight=1)
-        self.hydrograph_entry = ttk.Entry(hydro_frame, textvariable=self.hydrograph_var)
-        self.hydrograph_entry.grid(row=0, column=0, sticky="ew")
-        self.hydrograph_button = ttk.Button(
-            hydro_frame, text="Buscar...", command=self._browse_hydrograph
-        )
-        self.hydrograph_button.grid(row=0, column=1, padx=(8, 0))
-        ttk.Label(
-            scenario,
-            text="Formato esperado: minute,inflow_lps",
-            foreground="#555555",
-        ).grid(row=4, column=1, sticky="w")
-
-        hydro_deltas = ttk.Frame(scenario)
-        hydro_deltas.grid(row=5, column=1, sticky="w", pady=(10, 0))
-        ttk.Label(scenario, text="Factores hidrograma").grid(row=5, column=0, sticky="w", pady=(10, 0))
-        ttk.Label(hydro_deltas, text="Cantidad").grid(row=0, column=0, sticky="w")
-        self.hydrograph_delta_count_entry = ttk.Entry(
-            hydro_deltas,
-            textvariable=self.hydrograph_delta_count_var,
-            width=8,
-        )
-        self.hydrograph_delta_count_entry.grid(row=0, column=1, sticky="w", padx=(6, 14))
-        ttk.Label(hydro_deltas, text="Paso multiplicador").grid(row=0, column=2, sticky="w")
-        self.hydrograph_delta_step_entry = ttk.Entry(
-            hydro_deltas,
-            textvariable=self.hydrograph_delta_step_var,
-            width=8,
-        )
-        self.hydrograph_delta_step_entry.grid(row=0, column=3, sticky="w", padx=(6, 0))
-        ttk.Label(
-            scenario,
-            text="Ejemplo: cantidad=3 y paso=0.5 genera 0.5x, 1.0x, 1.5x sobre todo el hidrograma.",
-            foreground="#555555",
-        ).grid(row=6, column=1, sticky="w")
-
-        ttk.Label(scenario, text="Nodos a evaluar").grid(row=7, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(scenario, text="Nodos a evaluar").grid(row=3, column=0, sticky="w", pady=(10, 0))
         nodes_frame = ttk.Frame(scenario)
-        nodes_frame.grid(row=7, column=1, sticky="ew", pady=(10, 0))
+        nodes_frame.grid(row=3, column=1, sticky="ew", pady=(10, 0))
         nodes_frame.columnconfigure(1, weight=1)
         ttk.Checkbutton(
             nodes_frame,
@@ -247,13 +180,13 @@ class ResilienciaDesktopApp:
             scenario,
             text="Si desmarcas todos: escribe IDs separados por coma, por ejemplo J1,J2,J3",
             foreground="#555555",
-        ).grid(row=8, column=1, sticky="w")
+        ).grid(row=4, column=1, sticky="w")
 
         ttk.Checkbutton(
             scenario,
             text="Reemplazar base existente antes de correr",
             variable=self.reset_db_var,
-        ).grid(row=9, column=1, sticky="w", pady=(12, 0))
+        ).grid(row=5, column=1, sticky="w", pady=(12, 0))
         ttk.Label(
             scenario,
             text=(
@@ -263,10 +196,10 @@ class ResilienciaDesktopApp:
             ),
             foreground="#555555",
             wraplength=760,
-        ).grid(row=10, column=1, sticky="w", pady=(4, 0))
+        ).grid(row=6, column=1, sticky="w", pady=(4, 0))
 
         actions = ttk.Frame(scenario)
-        actions.grid(row=11, column=1, sticky="e", pady=(14, 0))
+        actions.grid(row=7, column=1, sticky="e", pady=(14, 0))
         self.run_button = ttk.Button(actions, text="Ejecutar corrida", command=self._run_simulation)
         self.run_button.grid(row=0, column=0)
         ttk.Button(actions, text="Limpiar log", command=self._clear_log).grid(row=0, column=1, padx=(8, 0))
@@ -446,14 +379,6 @@ class ResilienciaDesktopApp:
         if path:
             self.predict_inp_var.set(path)
 
-    def _browse_hydrograph(self):
-        path = filedialog.askopenfilename(
-            title="Selecciona hidrograma CSV",
-            filetypes=[("CSV", "*.csv"), ("Todos", "*.*")],
-        )
-        if path:
-            self.hydrograph_var.set(path)
-
     def _browse_db_save(self):
         path = filedialog.asksaveasfilename(
             title="Selecciona base SQLite",
@@ -488,13 +413,7 @@ class ResilienciaDesktopApp:
             self.artifacts_dir_var.set(path)
 
     def _toggle_mode(self):
-        hydrograph_enabled = self.mode_var.get() == "hydrograph"
-        self.deltas_entry.configure(state="disabled" if hydrograph_enabled else "normal")
-        state = "normal" if hydrograph_enabled else "disabled"
-        self.hydrograph_entry.configure(state=state)
-        self.hydrograph_button.configure(state=state)
-        self.hydrograph_delta_count_entry.configure(state=state)
-        self.hydrograph_delta_step_entry.configure(state=state)
+        self.deltas_entry.configure(state="normal")
         self._toggle_nodes()
 
     def _toggle_nodes(self):
@@ -595,19 +514,7 @@ class ResilienciaDesktopApp:
                 all_nodes=self.all_nodes_var.get(),
             )
 
-            if self.mode_var.get() == "steady":
-                deltas = parse_numeric_values(self.deltas_var.get(), "factores steady")
-                hydrograph_file = None
-                hydrograph_multipliers = None
-            else:
-                hydrograph_file = Path(self.hydrograph_var.get()).expanduser()
-                if not hydrograph_file.exists():
-                    raise ValueError(f"No existe el CSV de hidrograma: {hydrograph_file}")
-                deltas = None
-                hydrograph_multipliers = parse_hydrograph_multipliers(
-                    self.hydrograph_delta_count_var.get(),
-                    self.hydrograph_delta_step_var.get(),
-                )
+            deltas = parse_numeric_values(self.deltas_var.get(), "factores multiplicadores")
         except Exception as exc:
             messagebox.showerror("Configuracion invalida", str(exc))
             return
@@ -621,8 +528,6 @@ class ResilienciaDesktopApp:
                 db_file=db_file,
                 output_csv=output_csv,
                 inflow_multipliers=deltas,
-                hydrograph_file=hydrograph_file,
-                hydrograph_multipliers=hydrograph_multipliers,
                 target_nodes=target_nodes,
                 reset_db=self.reset_db_var.get(),
             )

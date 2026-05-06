@@ -24,7 +24,6 @@ def _decimal_range(start: float, stop: float, step: float) -> list[float]:
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data"
 NETWORKS_DIR = DATA_DIR / "networks"
-HYDROGRAPHS_DIR = DATA_DIR / "hydrographs"
 TRAINING_DIR = DATA_DIR / "training"
 DEFAULT_DATASET_REVIEW_DIR = TRAINING_DIR / "dataset_review"
 DEFAULT_NETWORK_KEY = "chico_steady"
@@ -38,10 +37,9 @@ DEFAULT_DB_FILE = TRAINING_DIR / "swmm_resilience.db"
 DEFAULT_OUTPUT_CSV = DEFAULT_RESULTS_DIR / "dataset_ml.csv"
 DEFAULT_MODEL_ARTIFACTS_DIR = DEFAULT_RESULTS_DIR / "model_artifacts"
 
-DEFAULT_INFLOW_MULTIPLIERS = _decimal_range(0.1, 2.0, 0.1)
-DEFAULT_HYDROGRAPH_FILE = None
+DEFAULT_INFLOW_MULTIPLIERS = _decimal_range(0.0, 2.0, 0.5)
 DEFAULT_TARGET_NODES = None
-DEFAULT_SCENARIO_TYPE = "uniform_inflow_multiplier_sweep"
+DEFAULT_SCENARIO_TYPE = "embedded_inflow_multiplier_sweep"
 DEFAULT_SPATIAL_PATTERN = "uniform"
 
 # ML configuration
