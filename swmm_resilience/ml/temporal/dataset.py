@@ -14,11 +14,16 @@ from .schemas import TemporalDatasetSpec, TemporalWindowSpec
 REQUIRED_TIMESERIES_COLUMNS = [
     "run_id",
     "node_id",
-    "time_min",
-    "inflow_lps",
+    "step_index",
+    "time_sec",
+    "total_inflow_lps",
+    "lateral_inflow_lps",
     "depth_m",
-    "max_depth_ratio",
-    "flooded",
+    "depth_ratio",
+    "flooding_lps",
+    "total_outflow_lps",
+    "head_m",
+    "failed_now",
 ]
 
 

@@ -632,7 +632,12 @@ def normalize_scenario_label(raw_value: object) -> str:
         return "hydrograph"
     if value == "embedded_inflow_multiplier_sweep":
         return "embedded_hydrograph"
-    if value in {"uniform_inflow_multiplier_sweep", "uniform_inflow_sweep", "steady_inflow"}:
+    if value in {
+        "uniform_inflow_multiplier_sweep",
+        "uniform_inflow_sweep",
+        "steady_inflow",
+        "steady_inflow_multiplier_sweep",
+    }:
         return "steady"
 
     cleaned = "".join(character if character.isalnum() else "_" for character in value)

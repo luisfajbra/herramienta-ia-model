@@ -5,8 +5,6 @@ Main orchestration for the SWMM resilience pipeline.
 import os
 from pathlib import Path
 
-from pyswmm import Links, Nodes, Simulation
-
 from .analysis.dataset import export_ml_dataset
 from .analysis.eda import run_dataset_review
 from .config import (
@@ -20,6 +18,10 @@ from .config import (
     DEFAULT_TARGET_NODES,
     LEGACY_INP_FILE,
     NETWORKS_DIR,
+    SCENARIO_MODE_STEADY,
+    SCENARIO_MODE_TIMESERIES,
+    SCENARIO_MODE_TO_TYPE,
+    SUPPORTED_SCENARIO_MODES,
     TRAINING_DIR,
 )
 from .database.repository import (
@@ -31,7 +33,14 @@ from .database.repository import (
     verify_run_saved,
 )
 from .simulation.runner import extract_static_topology, run_simulation
-from .utils import file_hash, new_id
+from .utils import file_hash, new_id, normalize_inflow_multipliers
+
+
+def _load_pyswmm():
+    """Import PySWMM lazily to avoid OpenMP conflicts during app startup."""
+    from pyswmm import Links, Nodes, Simulation
+
+    return Nodes, Links, Simulation
 
 
 def resolve_inp_file(inp_file=None) -> Path:
@@ -53,6 +62,14 @@ def network_display_name(inp_path: Path) -> str:
     return inp_path.name
 
 
+def infer_scenario_mode(inp_path: Path) -> str:
+    """Best-effort scenario-mode guess from the selected file name."""
+    file_name = inp_path.name.lower()
+    if "steady" in file_name:
+        return SCENARIO_MODE_STEADY
+    return SCENARIO_MODE_TIMESERIES
+
+
 def ensure_directories(inp_path: Path):
     """Create expected data directories."""
     NETWORKS_DIR.mkdir(parents=True, exist_ok=True)
@@ -72,12 +89,46 @@ def _normalize_target_nodes(target_nodes):
 def _normalize_inflow_multipliers(inflow_multipliers):
     if inflow_multipliers is None:
         return list(DEFAULT_INFLOW_MULTIPLIERS)
-    multipliers = [float(value) for value in inflow_multipliers]
-    if not multipliers:
-        raise ValueError("Debes indicar al menos un multiplicador de caudal.")
-    if any(value < 0 for value in multipliers):
-        raise ValueError("Los multiplicadores de caudal no pueden ser negativos.")
-    return multipliers
+    return normalize_inflow_multipliers(
+        inflow_multipliers,
+        minimum=1.0,
+        label="Los factores multiplicadores de caudal",
+    )
+
+
+def normalize_scenario_mode(scenario_mode, inp_path: Path) -> str:
+    """Normalize user-facing scenario labels into one supported scaling mode."""
+    if scenario_mode is None:
+        return infer_scenario_mode(inp_path)
+
+    normalized = str(scenario_mode).strip().lower()
+    aliases = {
+        "timeseries": SCENARIO_MODE_TIMESERIES,
+        "time_series": SCENARIO_MODE_TIMESERIES,
+        "time-series": SCENARIO_MODE_TIMESERIES,
+        "hidrograma": SCENARIO_MODE_TIMESERIES,
+        "hidrograma_interno": SCENARIO_MODE_TIMESERIES,
+        "hydrograph": SCENARIO_MODE_TIMESERIES,
+        "steady": SCENARIO_MODE_STEADY,
+        "steady_flow": SCENARIO_MODE_STEADY,
+        "steady-flow": SCENARIO_MODE_STEADY,
+        "baseline": SCENARIO_MODE_STEADY,
+        "baseline_inflow": SCENARIO_MODE_STEADY,
+    }
+    resolved = aliases.get(normalized, normalized)
+    if resolved not in SUPPORTED_SCENARIO_MODES:
+        supported = ", ".join(SUPPORTED_SCENARIO_MODES)
+        raise ValueError(
+            f"Modo de escenario invalido: '{scenario_mode}'. Usa uno de: {supported}."
+        )
+    return resolved
+
+
+def resolve_scenario_type(scenario_mode: str, scenario_type: str | None) -> str:
+    """Resolve the stored scenario label for the run metadata."""
+    if scenario_type is not None:
+        return str(scenario_type)
+    return SCENARIO_MODE_TO_TYPE.get(scenario_mode, DEFAULT_SCENARIO_TYPE)
 
 
 def run_experiment(
@@ -87,7 +138,8 @@ def run_experiment(
     inflow_multipliers=None,
     delta_inflows_lps=None,
     target_nodes=DEFAULT_TARGET_NODES,
-    scenario_type: str = DEFAULT_SCENARIO_TYPE,
+    scenario_mode: str | None = None,
+    scenario_type: str | None = None,
     spatial_pattern: str = DEFAULT_SPATIAL_PATTERN,
     reset_db: bool = False,
 ):
@@ -101,6 +153,8 @@ def run_experiment(
         if output_csv is not None
         else network_results_dir(inp_path) / DEFAULT_OUTPUT_CSV.name
     )
+    scenario_mode = normalize_scenario_mode(scenario_mode, inp_path)
+    scenario_type = resolve_scenario_type(scenario_mode, scenario_type)
     target_nodes = _normalize_target_nodes(target_nodes)
     if inflow_multipliers is not None and delta_inflows_lps is not None:
         raise ValueError("Usa inflow_multipliers o delta_inflows_lps, pero no ambos.")
@@ -133,12 +187,15 @@ def run_experiment(
     print("  SWMM Resilience ML - Generador de Base de Datos")
     print(f"  Red        : {network_display_name(inp_path)}")
     print(f"  Hash       : {network_hash[:12]}...")
+    print(f"  Escenario  : {scenario_mode} ({scenario_type})")
     print(f"  Modo BD    : {'reiniciar y reemplazar' if reset_db else 'agregar a existente (append)'}")
     print(f"  Corridas   : {len(run_plan)}")
     print(f"  Factores   : {', '.join(f'{multiplier:g}' for multiplier in run_plan)}")
     print(f"  Nodos      : {'todos' if target_nodes is None else ', '.join(target_nodes)}")
     print(f"  DB Salida  : {db_path}")
     print(f"{'=' * 70}\n")
+
+    Nodes, Links, Simulation = _load_pyswmm()
 
     print("  [1/2] Extrayendo topologia estatica...")
     topology = extract_static_topology(str(inp_path), network_hash, Nodes, Links, Simulation)
@@ -150,7 +207,6 @@ def run_experiment(
     for index, scenario_multiplier in enumerate(run_plan, start=1):
         run_id = new_id()
         inflow_multiplier = scenario_multiplier
-        legacy_delta_value = inflow_multiplier
         print(
             f"[{index:>2}/{len(run_plan)}] run={run_id[:8]}  factor={inflow_multiplier:.4f}x"
         )
@@ -168,7 +224,7 @@ def run_experiment(
                 network_hash,
                 scenario_type,
                 spatial_pattern,
-                legacy_delta_value,
+                inflow_multiplier,
                 inflow_multiplier,
             ),
         )
@@ -184,6 +240,7 @@ def run_experiment(
                 Simulation,
                 target_nodes=target_nodes,
                 node_inflow_profiles=node_inflow_profiles,
+                scenario_mode=scenario_mode,
             )
             save_results(conn, run_id, results)
             update_run_status(conn, run_id, "completed")

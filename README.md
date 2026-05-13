@@ -7,6 +7,7 @@ Pipeline para ejecutar simulaciones SWMM, guardar resultados en SQLite y exporta
 ```text
 main.py
 view_db.py
+app.py
 swmm_resilience/
   __init__.py
   config.py
@@ -15,6 +16,7 @@ swmm_resilience/
   simulation/
     __init__.py
     runner.py
+    swmm_api_io.py
   database/
     __init__.py
     schema.py
@@ -109,6 +111,36 @@ DEFAULT_DELTA_INFLOWS_LPS = list(range(2, 52, 2))
 ```
 
 Los valores están en `L/s` por nodo.
+
+## Arquitectura swmm_api + PySWMM
+
+La herramienta divide responsabilidades entre dos librerías:
+
+| Librería | Rol |
+|---|---|
+| `swmm-api` | Manipula archivos `.inp` y lee resultados de `.rpt`/`.out` |
+| `PySWMM` | Ejecuta la simulación hidráulica |
+
+El flujo por corrida es:
+
+```text
+.inp original
+  -> swmm_api_io.write_scaled_inp()   # escala hidrogramas, escribe .inp temporal
+  -> PySWMM Simulation(temp.inp)      # ejecuta la simulación
+  -> .rpt/.out generados por SWMM
+  -> swmm_api_io.read_node_flooding_summary(.rpt)   # flooding_volume_m3, flooding_duration_min
+  -> PySWMM link.conduit_statistics                 # resultados de links
+  -> guardar en SQLite
+```
+
+Todo el acceso a `swmm-api` está encapsulado en `swmm_resilience/simulation/swmm_api_io.py`. El resto del código no importa objetos de `swmm_api` directamente.
+
+### Notas de riesgo
+
+- `swmm-api` aún no es versión `1.0`; su API puede cambiar en versiones futuras.
+- Si cambia la API de `swmm-api`, el único archivo que debe editarse es `swmm_api_io.py`.
+- No mezclar objetos de `swmm_api` fuera de esa capa.
+- Las unidades del `.rpt` son: volúmenes en `10^6 litros` (se convierten a m³ multiplicando por 1000), duraciones en horas (se convierten a minutos).
 
 ## Hidrogramas en archivos `.inp`
 
@@ -400,10 +432,19 @@ Esto ayuda a:
 
 - [swmm_resilience/simulation/runner.py](swmm_resilience/simulation/runner.py)
   Núcleo hidráulico del proyecto. Aquí están:
-  - la lectura de topología estática desde PySWMM y desde el `.inp`
-  - la extracción de `network_nodes` y `network_links`
-  - el escalado de hidrogramas internos creando un `.inp` temporal por corrida
-  - el cálculo de resultados por nodo y por link para cada corrida
+  - la extracción de topología estática (`network_nodes`, `network_links`) usando `swmm_api_io`
+  - el escalado de hidrogramas internos delegado a `swmm_api_io.write_scaled_inp`
+  - la ejecución de la simulación con PySWMM
+  - la lectura de resultados de inundación por nodo desde el `.rpt` vía `swmm_api_io`
+  - la extracción de estadísticas de links con `link.conduit_statistics` de PySWMM
+
+- [swmm_resilience/simulation/swmm_api_io.py](swmm_resilience/simulation/swmm_api_io.py)
+  Capa de I/O estructurado sobre archivos SWMM. Centraliza todo el uso de `swmm-api`:
+  - leer `.inp` con estructura de objetos (sin parseo manual de texto)
+  - detectar nodos con inflows y obtener sus timeseries
+  - escalar hidrogramas y escribir `.inp` temporales
+  - leer el resumen de inundación por nodo desde el `.rpt`
+  - leer series temporales desde el `.out` (scaffold para dataset temporal futuro)
 
 ### Base de datos
 

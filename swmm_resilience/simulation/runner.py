@@ -6,110 +6,29 @@ import json
 import tempfile
 from collections import defaultdict
 from contextlib import suppress
-from datetime import timedelta
 from pathlib import Path
+from statistics import median
 
+from ..config import (
+    INPUT_VALIDATION_MAX_REASONABLE_JUNCTION_DEPTH_M,
+    INPUT_VALIDATION_MAX_SUSPICIOUS_JUNCTION_DEPTH_FRACTION,
+    INPUT_VALIDATION_MIN_JUNCTIONS,
+    STRICT_INPUT_VALIDATION,
+    USE_SWMM_API_RPT_RESULTS,
+)
 from ..utils import (
     circular_full_flow_lps,
     new_id,
     node_type_str,
     safe_round,
 )
-
-
-def _parse_inp_sections(inp_file: str):
-    """Parse the minimum conduit and xsection data needed from a SWMM .inp file."""
-    conduit_rows = {}
-    xsection_rows = {}
-    inflow_rows = defaultdict(float)
-    inflow_defs = {}
-    timeseries_rows = defaultdict(list)
-    current_section = None
-
-    for raw_line in Path(inp_file).read_text(encoding="utf-8", errors="replace").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith(";;"):
-            continue
-
-        if line.startswith("[") and line.endswith("]"):
-            current_section = line.upper()
-            continue
-
-        parts = line.split()
-        if current_section == "[CONDUITS]" and len(parts) >= 6:
-            link_id = parts[0]
-            conduit_rows[link_id] = {
-                "inlet_node": parts[1],
-                "outlet_node": parts[2],
-                "length_m": float(parts[3]),
-                "roughness": float(parts[4]),
-                "inlet_offset": float(parts[5]),
-                "outlet_offset": float(parts[6]) if len(parts) > 6 else 0.0,
-            }
-        elif current_section == "[XSECTIONS]" and len(parts) >= 3:
-            link_id = parts[0]
-            xsection_rows[link_id] = {
-                "shape": parts[1],
-                "geom1": float(parts[2]),
-            }
-        elif current_section == "[INFLOWS]" and len(parts) >= 2:
-            node_id = parts[0]
-            try:
-                baseline = float(parts[6]) if len(parts) > 6 else 0.0
-                inflow_rows[node_id] += baseline
-            except ValueError:
-                baseline = 0.0
-            if len(parts) >= 3 and parts[1].upper() == "FLOW":
-                try:
-                    mfactor = float(parts[4]) if len(parts) > 4 else 1.0
-                except ValueError:
-                    mfactor = 1.0
-                inflow_defs[node_id] = {
-                    "timeseries": parts[2],
-                    "mfactor": mfactor,
-                    "baseline": baseline,
-                }
-        elif current_section == "[TIMESERIES]" and len(parts) >= 3:
-            series_id = parts[0]
-            if ":" in parts[1]:
-                time_token = parts[1]
-                value_token = parts[2]
-            elif len(parts) >= 4:
-                time_token = parts[2]
-                value_token = parts[3]
-            else:
-                continue
-            try:
-                timeseries_rows[series_id].append((
-                    _time_token_to_minutes(time_token),
-                    float(value_token),
-                ))
-            except ValueError:
-                continue
-
-    node_inflow_profiles = {}
-    for node_id, inflow_def in inflow_defs.items():
-        points = sorted(timeseries_rows.get(inflow_def["timeseries"], []))
-        node_inflow_profiles[node_id] = {
-            "timeseries": inflow_def["timeseries"],
-            "points": points,
-            "mfactor": inflow_def["mfactor"],
-            "baseline": inflow_def["baseline"],
-        }
-
-    return conduit_rows, xsection_rows, dict(inflow_rows), node_inflow_profiles
-
-
-def _time_token_to_minutes(token: str) -> float:
-    parts = token.split(":")
-    if len(parts) == 2:
-        hours, minutes = parts
-        seconds = 0.0
-    elif len(parts) == 3:
-        hours, minutes, seconds = parts
-    else:
-        raise ValueError(f"Formato de hora no reconocido: {token}")
-    return float(hours) * 60.0 + float(minutes) + float(seconds) / 60.0
+from .swmm_api_io import (
+    get_base_node_inflows_lps,
+    get_node_inflow_profiles,
+    load_inp,
+    read_node_flooding_summary,
+    write_scaled_inp,
+)
 
 
 def _profile_value_lps(profile, elapsed_min: float) -> float:
@@ -136,60 +55,71 @@ def _profile_value_lps(profile, elapsed_min: float) -> float:
     return baseline + points[-1][1] * mfactor
 
 
-def _write_scaled_inp(inp_file: str, inflow_multiplier: float, target_node_set, node_inflow_profiles) -> Path:
-    target_series = {
-        profile["timeseries"]
-        for node_id, profile in node_inflow_profiles.items()
-        if target_node_set is None or node_id in target_node_set
-    }
-    temp_dir = Path("C:/tmp")
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    handle = tempfile.NamedTemporaryFile(
-        "w",
-        encoding="utf-8",
-        errors="replace",
-        suffix=".inp",
-        prefix="swmm_scaled_",
-        dir=temp_dir,
-        delete=False,
-    )
-    temp_path = Path(handle.name)
-    current_section = None
-
-    with handle:
-        for raw_line in Path(inp_file).read_text(encoding="utf-8", errors="replace").splitlines():
-            line = raw_line.strip()
-            if line.startswith("[") and line.endswith("]"):
-                current_section = line.upper()
-                handle.write(raw_line + "\n")
-                continue
-            if current_section != "[TIMESERIES]" or not line or line.startswith(";;"):
-                handle.write(raw_line + "\n")
-                continue
-
-            parts = line.split()
-            if len(parts) < 3 or parts[0] not in target_series:
-                handle.write(raw_line + "\n")
-                continue
-
-            value_index = 2 if ":" in parts[1] else 3
-            if value_index >= len(parts):
-                handle.write(raw_line + "\n")
-                continue
-            try:
-                parts[value_index] = f"{float(parts[value_index]) * inflow_multiplier:.6f}"
-            except ValueError:
-                handle.write(raw_line + "\n")
-                continue
-            handle.write(" ".join(parts) + "\n")
-
-    return temp_path
-
-
 def _remove_swmm_temp_files(inp_path: Path):
     for suffix in (".inp", ".rpt", ".out"):
         with suppress(OSError):
             inp_path.with_suffix(suffix).unlink()
+
+
+def _agg_link_field(link_static: dict, link_ids: list, field: str) -> list:
+    return [
+        link_static[link_id][field]
+        for link_id in link_ids
+        if link_static.get(link_id, {}).get(field) is not None
+    ]
+
+
+def _safe_avg(values):
+    return round(sum(values) / len(values), 6) if values else None
+
+
+def _safe_max(values):
+    return round(max(values), 6) if values else None
+
+
+def _safe_min(values):
+    return round(min(values), 6) if values else None
+
+
+def _safe_sum(values):
+    return round(sum(values), 6) if values else None
+
+
+def _validate_network_geometry(inp_file: str, junction_depths: list[tuple[str, float]]):
+    """Fail fast when a network's junction depths are implausibly large."""
+    if not STRICT_INPUT_VALIDATION:
+        return
+    if len(junction_depths) < INPUT_VALIDATION_MIN_JUNCTIONS:
+        return
+
+    too_deep = [
+        (node_id, depth)
+        for node_id, depth in junction_depths
+        if depth > INPUT_VALIDATION_MAX_REASONABLE_JUNCTION_DEPTH_M
+    ]
+    deep_fraction = len(too_deep) / len(junction_depths)
+    if deep_fraction < INPUT_VALIDATION_MAX_SUSPICIOUS_JUNCTION_DEPTH_FRACTION:
+        return
+
+    median_depth = median(depth for _, depth in junction_depths)
+    examples = ", ".join(
+        f"{node_id}={depth:.3f} m"
+        for node_id, depth in too_deep[:5]
+    )
+    raise ValueError(
+        "La red "
+        f"'{Path(inp_file).name}' tiene profundidades utiles de junction "
+        f"sospechosamente altas: mediana={median_depth:.3f} m y "
+        f"{len(too_deep)}/{len(junction_depths)} nodos superan "
+        f"{INPUT_VALIDATION_MAX_REASONABLE_JUNCTION_DEPTH_M:.1f} m. "
+        "Con esos MaxDepth, SWMM puede no reportar flooding aunque el hidrograma "
+        "si se haya multiplicado correctamente. Esto vuelve no comparables casos "
+        "como Qx1*3 frente a Qx3 si las geometrías no coinciden. "
+        f"Ejemplos: {examples}. "
+        "Revisa la seccion [JUNCTIONS] del .inp y corrige MaxDepth antes de correr. "
+        "Si quieres omitir este bloqueo conscientemente, desactiva "
+        "STRICT_INPUT_VALIDATION en swmm_resilience/config.py."
+    )
 
 
 def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulation):
@@ -197,7 +127,30 @@ def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulati
     node_records = []
     link_records = []
     link_static = {}
-    conduit_rows, xsection_rows, base_node_inflows_lps, node_inflow_profiles = _parse_inp_sections(inp_file)
+    junction_depths = []
+
+    inp = load_inp(inp_file)
+    base_node_inflows_lps = get_base_node_inflows_lps(inp)
+    node_inflow_profiles = get_node_inflow_profiles(inp)
+
+    conduit_rows = {}
+    if "CONDUITS" in inp:
+        for link_id, c in inp["CONDUITS"].items():
+            conduit_rows[str(link_id)] = {
+                "inlet_node": c.from_node,
+                "outlet_node": c.to_node,
+                "length_m": float(c.length) if c.length is not None else None,
+                "roughness": float(c.roughness) if c.roughness is not None else None,
+                "inlet_offset": float(c.offset_upstream) if c.offset_upstream is not None else 0.0,
+                "outlet_offset": float(c.offset_downstream) if c.offset_downstream is not None else 0.0,
+            }
+    xsection_rows = {}
+    if "XSECTIONS" in inp:
+        for link_id, x in inp["XSECTIONS"].items():
+            xsection_rows[str(link_id)] = {
+                "shape": x.shape,
+                "geom1": float(x.height) if x.height is not None else None,
+            }
 
     upstream_links = defaultdict(list)
     downstream_links = defaultdict(list)
@@ -284,61 +237,47 @@ def extract_static_topology(inp_file: str, net_hash: str, Nodes, Links, Simulati
         for node in nodes:
             node_id = node.nodeid
             node_type = node_type_str(node)
+            full_depth = node.full_depth
+            if node_type == "junction" and full_depth is not None:
+                junction_depths.append((node_id, float(full_depth)))
 
             upstream_ids = upstream_links.get(node_id, [])
             downstream_ids = downstream_links.get(node_id, [])
 
-            def agg(link_ids: list, field: str):
-                return [
-                    link_static[link_id][field]
-                    for link_id in link_ids
-                    if link_static.get(link_id, {}).get(field) is not None
-                ]
+            upstream_diams = _agg_link_field(link_static, upstream_ids, "diameter_m")
+            upstream_slopes = [abs(value) for value in _agg_link_field(link_static, upstream_ids, "slope_m_per_m") if value is not None]
+            upstream_caps = _agg_link_field(link_static, upstream_ids, "full_flow_capacity_lps")
 
-            def safe_avg(values):
-                return round(sum(values) / len(values), 6) if values else None
-
-            def safe_max(values):
-                return round(max(values), 6) if values else None
-
-            def safe_min(values):
-                return round(min(values), 6) if values else None
-
-            def safe_sum(values):
-                return round(sum(values), 6) if values else None
-
-            upstream_diams = agg(upstream_ids, "diameter_m")
-            upstream_slopes = [abs(value) for value in agg(upstream_ids, "slope_m_per_m") if value is not None]
-            upstream_caps = agg(upstream_ids, "full_flow_capacity_lps")
-
-            downstream_diams = agg(downstream_ids, "diameter_m")
-            downstream_slopes = [abs(value) for value in agg(downstream_ids, "slope_m_per_m") if value is not None]
-            downstream_caps = agg(downstream_ids, "full_flow_capacity_lps")
+            downstream_diams = _agg_link_field(link_static, downstream_ids, "diameter_m")
+            downstream_slopes = [abs(value) for value in _agg_link_field(link_static, downstream_ids, "slope_m_per_m") if value is not None]
+            downstream_caps = _agg_link_field(link_static, downstream_ids, "full_flow_capacity_lps")
 
             node_records.append({
                 "node_uid": node_id,
                 "network_hash": net_hash,
                 "invert_elev_m": safe_round(node.invert_elevation),
-                "full_depth_m": safe_round(node.full_depth),
+                "full_depth_m": safe_round(full_depth),
                 "base_inflow_lps": safe_round(base_node_inflows_lps.get(node_id, 0.0), 6),
                 "node_type": node_type,
                 "in_degree": len(upstream_ids),
                 "out_degree": len(downstream_ids),
                 "upstream_pipes_count": len(upstream_ids),
-                "upstream_diam_max_m": safe_max(upstream_diams),
-                "upstream_diam_min_m": safe_min(upstream_diams),
-                "upstream_diam_avg_m": safe_avg(upstream_diams),
-                "upstream_slope_avg": safe_avg(upstream_slopes),
-                "upstream_slope_max": safe_max(upstream_slopes),
-                "upstream_capacity_lps": safe_sum(upstream_caps),
+                "upstream_diam_max_m": _safe_max(upstream_diams),
+                "upstream_diam_min_m": _safe_min(upstream_diams),
+                "upstream_diam_avg_m": _safe_avg(upstream_diams),
+                "upstream_slope_avg": _safe_avg(upstream_slopes),
+                "upstream_slope_max": _safe_max(upstream_slopes),
+                "upstream_capacity_lps": _safe_sum(upstream_caps),
                 "downstream_pipes_count": len(downstream_ids),
-                "downstream_diam_max_m": safe_max(downstream_diams),
-                "downstream_diam_min_m": safe_min(downstream_diams),
-                "downstream_diam_avg_m": safe_avg(downstream_diams),
-                "downstream_slope_avg": safe_avg(downstream_slopes),
-                "downstream_slope_max": safe_max(downstream_slopes),
-                "downstream_capacity_lps": safe_sum(downstream_caps),
+                "downstream_diam_max_m": _safe_max(downstream_diams),
+                "downstream_diam_min_m": _safe_min(downstream_diams),
+                "downstream_diam_avg_m": _safe_avg(downstream_diams),
+                "downstream_slope_avg": _safe_avg(downstream_slopes),
+                "downstream_slope_max": _safe_max(downstream_slopes),
+                "downstream_capacity_lps": _safe_sum(downstream_caps),
             })
+
+    _validate_network_geometry(inp_file, junction_depths)
 
     return {
         "node_records": node_records,
@@ -358,10 +297,11 @@ def run_simulation(
     Simulation,
     target_nodes=None,
     node_inflow_profiles=None,
+    scenario_mode=None,
 ):
     """Execute one SWMM run scaling embedded .inp lateral inflows by a multiplier."""
 
-    first_flood_step = None
+    first_flood_elapsed_min = None
     step_count = 0
     timestep_sec = None
     depth_rate_tracker = {}
@@ -376,11 +316,14 @@ def run_simulation(
     scaled_inp_path = None
     simulation_inp = inp_file
     if inflow_multiplier != 1.0 or target_node_set is not None:
-        scaled_inp_path = _write_scaled_inp(
+        _tmp_dir = Path(tempfile.mkdtemp(prefix="swmm_scaled_"))
+        _tmp_inp = _tmp_dir / f"swmm_scaled_{Path(inp_file).stem}.inp"
+        scaled_inp_path = write_scaled_inp(
             inp_file,
             inflow_multiplier,
             target_node_set,
-            node_inflow_profiles,
+            _tmp_inp,
+            scenario_mode=scenario_mode,
         )
         simulation_inp = str(scaled_inp_path)
 
@@ -394,7 +337,7 @@ def run_simulation(
         downstream_link_peak_flows = defaultdict(dict)
 
         for node in nodes:
-            depth_rate_tracker[node.nodeid] = {"prev": 0.0, "max_rate": 0.0}
+            depth_rate_tracker[node.nodeid] = {"prev": None, "max_rate": 0.0}
             outflow_tracker[node.nodeid] = {
                 "max_total_outflow_lps": 0.0,
                 "time_to_peak_outflow_min": None,
@@ -437,12 +380,12 @@ def run_simulation(
                 if abs(scaled_lateral_lps) > abs(input_metrics["peak_scaled_lateral_lps"]):
                     input_metrics["peak_scaled_lateral_lps"] = scaled_lateral_lps
 
-                if first_flood_step is None and node.flooding > 0:
-                    first_flood_step = step_count
+                if first_flood_elapsed_min is None and node.flooding > 0:
+                    first_flood_elapsed_min = elapsed_min
 
                 depth = node.depth
                 tracker = depth_rate_tracker[node_id]
-                if timestep_sec > 0:
+                if tracker["prev"] is not None and timestep_sec and timestep_sec > 0:
                     rate = (depth - tracker["prev"]) / (timestep_sec / 60.0)
                     if rate > tracker["max_rate"]:
                         tracker["max_rate"] = rate
@@ -479,9 +422,13 @@ def run_simulation(
             flood_minutes = flood_hours * 60.0
 
             raw_peak = stats.get("time_max_depth")
-            if raw_peak and sim_start:
-                peak_dt = sim_start + timedelta(days=raw_peak - int(sim_start.toordinal()))
-                time_to_peak = max(0.0, (peak_dt - sim_start).total_seconds() / 60.0)
+            if raw_peak is not None and sim_start:
+                sim_start_ord = (
+                    sim_start.toordinal()
+                    + (sim_start.hour * 3600 + sim_start.minute * 60 + sim_start.second)
+                    / 86400.0
+                )
+                time_to_peak = max(0.0, (raw_peak - sim_start_ord) * 24.0 * 60.0)
             else:
                 time_to_peak = None
 
@@ -546,7 +493,7 @@ def run_simulation(
 
             link_records.append({
                 "result_id": new_id(),
-                "delta_inflow_lps": safe_round(inflow_multiplier, 6),
+                "delta_inflow_lps": None,
                 "inflow_multiplier": safe_round(inflow_multiplier, 6),
                 "link_id": link_id,
                 "max_flow_lps": safe_round(peak_flow_lps, 4),
@@ -556,15 +503,44 @@ def run_simulation(
                 "surcharged": int(surcharged),
                 "time_full_flow_hrs": safe_round(time_full_hours, 4),
             })
+    # Override flooding_volume_m3 and flooding_duration_min from the .rpt file.
+    # The .rpt is fully written only after the Simulation context manager exits.
+    if USE_SWMM_API_RPT_RESULTS:
+        _rpt_path = Path(simulation_inp).with_suffix(".rpt")
+        _rpt_df = read_node_flooding_summary(_rpt_path)
+        if _rpt_df is not None:
+            _rpt_lookup = {str(row["node_id"]): row for _, row in _rpt_df.iterrows()}
+            for record in node_records:
+                rpt_row = _rpt_lookup.get(str(record["node_id"]))
+                if rpt_row is not None:
+                    vol = rpt_row.get("flooding_volume_m3")
+                    dur = rpt_row.get("flooding_duration_min")
+                    try:
+                        fvol = float(vol)
+                        if fvol == fvol:  # NaN check
+                            record["flooding_volume_m3"] = safe_round(fvol)
+                    except (TypeError, ValueError):
+                        pass
+                    try:
+                        fdur = float(dur)
+                        if fdur == fdur:
+                            record["flooding_duration_min"] = safe_round(fdur, 2)
+                    except (TypeError, ValueError):
+                        pass
+                    record["flooded"] = int((record.get("flooding_volume_m3") or 0) > 0)
+            total_flooded = sum(r["flooded"] for r in node_records)
+
     if scaled_inp_path is not None:
         _remove_swmm_temp_files(scaled_inp_path)
+        with suppress(OSError):
+            scaled_inp_path.parent.rmdir()
 
     total_nodes = len(node_records)
     total_flood_vol = sum(record["flooding_volume_m3"] or 0 for record in node_records)
     pct_flooded = (total_flooded / total_nodes * 100) if total_nodes > 0 else 0.0
     time_to_first = (
-        round(first_flood_step * timestep_sec / 60.0, 2)
-        if first_flood_step and timestep_sec
+        round(first_flood_elapsed_min, 2)
+        if first_flood_elapsed_min is not None
         else None
     )
     resilience = round(1.0 - (total_flooded / total_nodes), 4) if total_nodes > 0 else 1.0

@@ -7,12 +7,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
+
+# Import train/xgboost before PySWMM. On macOS, swmm-toolkit ships its own
+# OpenMP runtime and loading PySWMM first can make xgboost fail to load
+# `libxgboost.dylib` due to a conflicting `libomp`.
+from . import train
 from pyswmm import Links, Nodes, Simulation
 
 from ..config import DEFAULT_INP_FILE, DEFAULT_MODEL_ARTIFACTS_DIR
 from ..simulation.runner import extract_static_topology
-from ..utils import file_hash
-from . import train
+from ..utils import file_hash, normalize_inflow_multipliers
 from .predict_tabular import TabularPredictionResult, align_feature_columns
 
 
@@ -67,6 +71,11 @@ def predict_steady_flows_from_inp(
     regressor_name: str | None = None,
 ) -> TabularPredictionResult:
     """Predict flooded state and flooding volume for a new .inp without running SWMM."""
+    inflow_multipliers = normalize_inflow_multipliers(
+        inflow_multipliers,
+        minimum=1.0,
+        label="Los factores de prediccion",
+    )
     prediction_rows, _network_hash = _prediction_rows_from_inp(
         inp_file=inp_file,
         inflow_multipliers=inflow_multipliers,

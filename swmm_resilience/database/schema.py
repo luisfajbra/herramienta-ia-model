@@ -85,7 +85,7 @@ CREATE TABLE IF NOT EXISTS node_results (
 CREATE TABLE IF NOT EXISTS link_results (
     result_id           TEXT PRIMARY KEY,
     run_id              TEXT NOT NULL REFERENCES runs(run_id),
-    delta_inflow_lps    REAL NOT NULL,
+    delta_inflow_lps    REAL,
     inflow_multiplier   REAL NOT NULL DEFAULT 1,
     link_id             TEXT NOT NULL,
     max_flow_lps        REAL,
@@ -129,7 +129,7 @@ REQUIRED_COLUMNS = {
         "downstream_link_peak_flows_lps_json": "TEXT"
     },
     "link_results": {
-        "delta_inflow_lps": "REAL NOT NULL DEFAULT 0",
+        "delta_inflow_lps": "REAL",
         "inflow_multiplier": "REAL NOT NULL DEFAULT 1"
     },
     "run_summary": {
@@ -241,11 +241,62 @@ def _migrate_run_summary(conn):
     )
 
 
+def _migrate_link_results_nullable_delta(conn):
+    """Remove NOT NULL from link_results.delta_inflow_lps.
+
+    Links (conduits) don't have direct inflows so the column is meaningless
+    for them; NULL is the correct representation.  SQLite doesn't support
+    ALTER COLUMN, so we recreate the table when the constraint is still present.
+    """
+    info = conn.execute("PRAGMA table_info(link_results)").fetchall()
+    # row layout: (cid, name, type, notnull, dflt_value, pk)
+    needs_migration = any(row[1] == "delta_inflow_lps" and row[3] == 1 for row in info)
+    if not needs_migration:
+        return
+
+    # Build the INSERT using only columns that exist in the legacy table so
+    # the migration works regardless of how many columns the old table has.
+    legacy_cols = [row[1] for row in info]
+    new_cols = [
+        "result_id", "run_id", "delta_inflow_lps", "inflow_multiplier", "link_id",
+        "max_flow_lps", "max_velocity_mps", "max_depth_m", "max_capacity_ratio",
+        "surcharged", "time_full_flow_hrs",
+    ]
+    shared_cols = [c for c in new_cols if c in legacy_cols]
+    col_list = ", ".join(shared_cols)
+
+    conn.executescript(
+        f"""
+        ALTER TABLE link_results RENAME TO link_results_legacy;
+
+        CREATE TABLE link_results (
+            result_id           TEXT PRIMARY KEY,
+            run_id              TEXT NOT NULL REFERENCES runs(run_id),
+            delta_inflow_lps    REAL,
+            inflow_multiplier   REAL NOT NULL DEFAULT 1,
+            link_id             TEXT NOT NULL,
+            max_flow_lps        REAL,
+            max_velocity_mps    REAL,
+            max_depth_m         REAL,
+            max_capacity_ratio  REAL,
+            surcharged          INTEGER NOT NULL DEFAULT 0,
+            time_full_flow_hrs  REAL
+        );
+
+        INSERT INTO link_results ({col_list})
+        SELECT {col_list} FROM link_results_legacy;
+
+        DROP TABLE link_results_legacy;
+        """
+    )
+
+
 def create_schema(conn):
     """Create all database tables."""
     conn.executescript(SCHEMA_SQL)
     _migrate_legacy_run_inputs(conn)
     _migrate_run_summary(conn)
+    _migrate_link_results_nullable_delta(conn)
     run_scoped_tables = {"run_inputs", "node_results", "link_results", "run_summary"}
     for table_name, columns in REQUIRED_COLUMNS.items():
         existing = {
@@ -263,6 +314,11 @@ def create_schema(conn):
         }
         if table_name in run_scoped_tables:
             if "delta_inflow_lps" in existing:
+                # Only backfill rows that are truly NULL (column was added to a legacy DB
+                # that already had rows). Never treat 0 as missing: for the
+                # embedded_inflow_multiplier_sweep scenario, 0 is the correct delta for
+                # nodes with no base inflow. Copying runs.delta_inflow_lps here would
+                # replace a valid physical quantity with the run-level multiplier.
                 conn.execute(
                     f"""
                     UPDATE {table_name}
@@ -272,7 +328,7 @@ def create_schema(conn):
                         WHERE runs.run_id = {table_name}.run_id
                     )
                     WHERE run_id IN (SELECT run_id FROM runs)
-                      AND (delta_inflow_lps IS NULL OR delta_inflow_lps = 0)
+                      AND delta_inflow_lps IS NULL
                     """
                 )
             if "inflow_multiplier" in existing:

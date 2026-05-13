@@ -7,6 +7,30 @@ import math
 import uuid
 
 
+def normalize_inflow_multipliers(
+    values,
+    *,
+    minimum: float = 1.0,
+    label: str = "Los factores multiplicadores",
+) -> list[float]:
+    """Normalize multiplier inputs and enforce a lower bound.
+
+    The current project semantics interpret values below 1.0 as a reduction
+    of the embedded inflow, which would generate a negative injected-flow
+    delta. To keep `delta_inflow_lps` physically meaningful as injected flow,
+    we reject factors smaller than the configured minimum.
+    """
+    multipliers = [float(value) for value in values]
+    if not multipliers:
+        raise ValueError(f"Debes indicar al menos un valor para {label.lower()}.")
+    if any(value < minimum for value in multipliers):
+        raise ValueError(
+            f"{label} deben ser mayores o iguales a {minimum:.1f}. "
+            "Valores menores generan un caudal inyectado negativo."
+        )
+    return multipliers
+
+
 def file_hash(path: str) -> str:
     """Calculate an MD5 hash for a file."""
     digest = hashlib.md5()

@@ -41,6 +41,9 @@ KNOWN_RESULT_COLUMNS = {
     "time_to_peak_min",
     "depth_rate_m_per_min",
     "flooding_duration_min",
+    "max_total_outflow_lps",
+    "time_to_peak_outflow_min",
+    "downstream_link_peak_flows_lps_json",
 }
 
 

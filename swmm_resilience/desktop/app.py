@@ -5,12 +5,38 @@ Local Tkinter desktop application for running simulations and ML workflows.
 from __future__ import annotations
 
 import contextlib
+import os
 import re
+import sys
 import threading
 import traceback
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
+
+
+@contextlib.contextmanager
+def _suppress_appkit_warnings():
+    """Redirect OS-level stderr to /dev/null to suppress macOS AppKit warnings.
+
+    Tkinter on macOS prints harmless Objective-C runtime messages (NSOpenPanel
+    identifier override, NSButton height) directly to fd 2, bypassing Python's
+    sys.stderr.  This context manager redirects the raw fd for the duration of
+    the call and restores it afterwards.  Only active on macOS.
+    """
+    if sys.platform != "darwin":
+        yield
+        return
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    saved = os.dup(2)
+    os.dup2(devnull, 2)
+    os.close(devnull)
+    try:
+        yield
+    finally:
+        os.dup2(saved, 2)
+        os.close(saved)
+
 
 from swmm_resilience.config import (
     DEFAULT_DB_FILE,
@@ -18,8 +44,10 @@ from swmm_resilience.config import (
     DEFAULT_INP_FILE,
     DEFAULT_MODEL_ARTIFACTS_DIR,
     DEFAULT_OUTPUT_CSV,
+    SCENARIO_MODE_STEADY,
+    SCENARIO_MODE_TIMESERIES,
 )
-from swmm_resilience.main import network_results_dir, run_experiment
+from swmm_resilience.main import infer_scenario_mode, network_results_dir, run_experiment
 from swmm_resilience.ml.predict_from_inp import predict_steady_flows_from_inp
 from swmm_resilience.ml.predict_tabular import (
     available_classification_models,
@@ -27,6 +55,7 @@ from swmm_resilience.ml.predict_tabular import (
     predict_steady_flows,
 )
 from swmm_resilience.ml import train as ml_train
+from swmm_resilience.utils import normalize_inflow_multipliers
 
 
 def _float_range(start: float, stop: float, step: float) -> list[float]:
@@ -94,12 +123,14 @@ class ResilienciaDesktopApp:
         self.deltas_var = tk.StringVar(
             value=",".join(str(value) for value in DEFAULT_INFLOW_MULTIPLIERS)
         )
+        self.scenario_mode_var = tk.StringVar(value=infer_scenario_mode(DEFAULT_INP_FILE))
         self.all_nodes_var = tk.BooleanVar(value=True)
         self.target_nodes_var = tk.StringVar(value="")
         self.reset_db_var = tk.BooleanVar(value=False)
         self.predict_source_var = tk.StringVar(value="csv")
+        self.predict_network_var = tk.StringVar(value="")
         self.predict_inp_var = tk.StringVar(value=str(DEFAULT_INP_FILE))
-        self.predict_flows_var = tk.StringVar(value="0.1,0.2,0.3")
+        self.predict_flows_var = tk.StringVar(value="1.0,1.5,2.0")
         self.predict_all_nodes_var = tk.BooleanVar(value=True)
         self.predict_target_nodes_var = tk.StringVar(value="")
         self.predict_regressor_var = tk.StringVar(value=ml_train.default_regression_model_name())
@@ -150,23 +181,43 @@ class ResilienciaDesktopApp:
         ttk.Label(scenario, text="Tipo de evaluacion").grid(row=0, column=0, sticky="w")
         mode_frame = ttk.Frame(scenario)
         mode_frame.grid(row=0, column=1, sticky="w")
-        ttk.Label(
+        ttk.Radiobutton(
             mode_frame,
-            text="Hidrogramas internos del archivo .inp",
+            text="Hidrograma interno (TIMESERIES)",
+            value=SCENARIO_MODE_TIMESERIES,
+            variable=self.scenario_mode_var,
         ).grid(row=0, column=0, sticky="w")
-
-        ttk.Label(scenario, text="Factores multiplicadores").grid(row=1, column=0, sticky="w", pady=(10, 0))
-        self.deltas_entry = ttk.Entry(scenario, textvariable=self.deltas_var)
-        self.deltas_entry.grid(row=1, column=1, sticky="ew", pady=(10, 0))
+        ttk.Radiobutton(
+            mode_frame,
+            text="Steady flow (Baseline en INFLOWS)",
+            value=SCENARIO_MODE_STEADY,
+            variable=self.scenario_mode_var,
+        ).grid(row=0, column=1, sticky="w", padx=(16, 0))
         ttk.Label(
             scenario,
-            text="Puedes usar: 1,2,3  o  range(0,4,0.5). 3 = triplicar el hidrograma interno del .inp.",
+            text=(
+                "Usa 'Hidrograma interno' si el .inp toma caudales desde [TIMESERIES]. "
+                "Usa 'Steady flow' si el caudal esta en Baseline dentro de [INFLOWS]."
+            ),
             foreground="#555555",
-        ).grid(row=2, column=1, sticky="w")
+            wraplength=760,
+        ).grid(row=1, column=1, sticky="w", pady=(4, 0))
 
-        ttk.Label(scenario, text="Nodos a evaluar").grid(row=3, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(scenario, text="Factores multiplicadores").grid(row=2, column=0, sticky="w", pady=(10, 0))
+        self.deltas_entry = ttk.Entry(scenario, textvariable=self.deltas_var)
+        self.deltas_entry.grid(row=2, column=1, sticky="ew", pady=(10, 0))
+        ttk.Label(
+            scenario,
+            text=(
+                "Puedes usar: 1,1.5,2  o  range(1,4,0.5). "
+                "3 = triplicar la serie o el Baseline, segun el modo elegido."
+            ),
+            foreground="#555555",
+        ).grid(row=3, column=1, sticky="w")
+
+        ttk.Label(scenario, text="Nodos a evaluar").grid(row=4, column=0, sticky="w", pady=(10, 0))
         nodes_frame = ttk.Frame(scenario)
-        nodes_frame.grid(row=3, column=1, sticky="ew", pady=(10, 0))
+        nodes_frame.grid(row=4, column=1, sticky="ew", pady=(10, 0))
         nodes_frame.columnconfigure(1, weight=1)
         ttk.Checkbutton(
             nodes_frame,
@@ -180,13 +231,13 @@ class ResilienciaDesktopApp:
             scenario,
             text="Si desmarcas todos: escribe IDs separados por coma, por ejemplo J1,J2,J3",
             foreground="#555555",
-        ).grid(row=4, column=1, sticky="w")
+        ).grid(row=5, column=1, sticky="w")
 
         ttk.Checkbutton(
             scenario,
             text="Reemplazar base existente antes de correr",
             variable=self.reset_db_var,
-        ).grid(row=5, column=1, sticky="w", pady=(12, 0))
+        ).grid(row=6, column=1, sticky="w", pady=(12, 0))
         ttk.Label(
             scenario,
             text=(
@@ -196,10 +247,10 @@ class ResilienciaDesktopApp:
             ),
             foreground="#555555",
             wraplength=760,
-        ).grid(row=6, column=1, sticky="w", pady=(4, 0))
+        ).grid(row=7, column=1, sticky="w", pady=(4, 0))
 
         actions = ttk.Frame(scenario)
-        actions.grid(row=7, column=1, sticky="e", pady=(14, 0))
+        actions.grid(row=8, column=1, sticky="e", pady=(14, 0))
         self.run_button = ttk.Button(actions, text="Ejecutar corrida", command=self._run_simulation)
         self.run_button.grid(row=0, column=0)
         ttk.Button(actions, text="Limpiar log", command=self._clear_log).grid(row=0, column=1, padx=(8, 0))
@@ -266,38 +317,47 @@ class ResilienciaDesktopApp:
         self.predict_csv_button = ttk.Button(form, text="Buscar...", command=self._browse_csv_open)
         self.predict_csv_button.grid(row=1, column=2, pady=(10, 0))
 
-        ttk.Label(form, text="Red .inp a evaluar").grid(row=2, column=0, sticky="w", pady=(10, 0))
-        self.predict_inp_entry = ttk.Entry(form, textvariable=self.predict_inp_var)
-        self.predict_inp_entry.grid(row=2, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
-        self.predict_inp_button = ttk.Button(form, text="Buscar...", command=self._browse_predict_inp)
-        self.predict_inp_button.grid(row=2, column=2, pady=(10, 0))
+        ttk.Label(form, text="Red dentro del CSV").grid(row=2, column=0, sticky="w", pady=(10, 0))
+        self.predict_network_entry = ttk.Entry(form, textvariable=self.predict_network_var)
+        self.predict_network_entry.grid(row=2, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
+        ttk.Label(
+            form,
+            text="Opcional si el CSV contiene una sola red. Usa nombre del .inp o prefijo del network_hash.",
+            foreground="#555555",
+        ).grid(row=3, column=1, sticky="w", padx=(8, 0))
 
-        ttk.Label(form, text="Artefactos entrenados").grid(row=3, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(form, text="Red .inp a evaluar").grid(row=4, column=0, sticky="w", pady=(10, 0))
+        self.predict_inp_entry = ttk.Entry(form, textvariable=self.predict_inp_var)
+        self.predict_inp_entry.grid(row=4, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
+        self.predict_inp_button = ttk.Button(form, text="Buscar...", command=self._browse_predict_inp)
+        self.predict_inp_button.grid(row=4, column=2, pady=(10, 0))
+
+        ttk.Label(form, text="Artefactos entrenados").grid(row=5, column=0, sticky="w", pady=(10, 0))
         self.artifacts_dir_entry = ttk.Entry(form, textvariable=self.artifacts_dir_var)
-        self.artifacts_dir_entry.grid(row=3, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
+        self.artifacts_dir_entry.grid(row=5, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
         self.artifacts_dir_button = ttk.Button(
             form,
             text="Buscar...",
             command=self._browse_artifacts_dir,
         )
-        self.artifacts_dir_button.grid(row=3, column=2, pady=(10, 0))
+        self.artifacts_dir_button.grid(row=5, column=2, pady=(10, 0))
 
-        ttk.Label(form, text="Factores a evaluar").grid(row=4, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(form, text="Factores a evaluar").grid(row=6, column=0, sticky="w", pady=(10, 0))
         ttk.Entry(form, textvariable=self.predict_flows_var).grid(
-            row=4, column=1, sticky="ew", padx=(8, 8), pady=(10, 0)
+            row=6, column=1, sticky="ew", padx=(8, 8), pady=(10, 0)
         )
         ttk.Label(
             form,
             text=(
-                "Ejemplo: 0.1,0.2,0.3  o  range(0.1,2,0.1). "
+                "Ejemplo: 1.0,1.5,2.0  o  range(1,3,0.25). "
                 "Por ahora la inferencia ML directa es solo para steady flow."
             ),
             foreground="#555555",
-        ).grid(row=5, column=1, sticky="w", padx=(8, 0))
+        ).grid(row=7, column=1, sticky="w", padx=(8, 0))
 
-        ttk.Label(form, text="Nodos").grid(row=6, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(form, text="Nodos").grid(row=8, column=0, sticky="w", pady=(10, 0))
         nodes = ttk.Frame(form)
-        nodes.grid(row=6, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
+        nodes.grid(row=8, column=1, sticky="ew", padx=(8, 8), pady=(10, 0))
         nodes.columnconfigure(1, weight=1)
         ttk.Checkbutton(
             nodes,
@@ -308,7 +368,7 @@ class ResilienciaDesktopApp:
         self.predict_target_nodes_entry = ttk.Entry(nodes, textvariable=self.predict_target_nodes_var)
         self.predict_target_nodes_entry.grid(row=0, column=1, sticky="ew", padx=(12, 0))
 
-        ttk.Label(form, text="Modelo clasificación").grid(row=7, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(form, text="Modelo clasificación").grid(row=9, column=0, sticky="w", pady=(10, 0))
         self.predict_classifier_combo = ttk.Combobox(
             form,
             textvariable=self.predict_classifier_var,
@@ -316,9 +376,9 @@ class ResilienciaDesktopApp:
             state="readonly",
             width=28,
         )
-        self.predict_classifier_combo.grid(row=7, column=1, sticky="w", padx=(8, 8), pady=(10, 0))
+        self.predict_classifier_combo.grid(row=9, column=1, sticky="w", padx=(8, 8), pady=(10, 0))
 
-        ttk.Label(form, text="Modelo regresión").grid(row=8, column=0, sticky="w", pady=(10, 0))
+        ttk.Label(form, text="Modelo regresión").grid(row=10, column=0, sticky="w", pady=(10, 0))
         self.predict_regressor_combo = ttk.Combobox(
             form,
             textvariable=self.predict_regressor_var,
@@ -326,10 +386,10 @@ class ResilienciaDesktopApp:
             state="readonly",
             width=28,
         )
-        self.predict_regressor_combo.grid(row=8, column=1, sticky="w", padx=(8, 8), pady=(10, 0))
+        self.predict_regressor_combo.grid(row=10, column=1, sticky="w", padx=(8, 8), pady=(10, 0))
 
         actions = ttk.Frame(form)
-        actions.grid(row=9, column=1, sticky="e", pady=(12, 0))
+        actions.grid(row=11, column=1, sticky="e", pady=(12, 0))
         self.predict_button = ttk.Button(actions, text="Predecir con ML", command=self._predict_with_ml)
         self.predict_button.grid(row=0, column=0)
         ttk.Button(actions, text="Limpiar resultados", command=self._clear_prediction_output).grid(
@@ -361,54 +421,61 @@ class ResilienciaDesktopApp:
         ttk.Button(parent, text="Buscar...", command=command).grid(row=row, column=2, pady=(0, 6))
 
     def _browse_inp(self):
-        path = filedialog.askopenfilename(
-            title="Selecciona archivo SWMM .inp",
-            filetypes=[("SWMM input", "*.inp"), ("Todos", "*.*")],
-        )
+        with _suppress_appkit_warnings():
+            path = filedialog.askopenfilename(
+                title="Selecciona archivo SWMM .inp",
+                filetypes=[("SWMM input", "*.inp"), ("Todos", "*.*")],
+            )
         if path:
             self.inp_var.set(path)
             self.predict_inp_var.set(path)
+            self.scenario_mode_var.set(infer_scenario_mode(Path(path).expanduser()))
             self.csv_var.set(str(network_results_dir(Path(path).expanduser()) / DEFAULT_OUTPUT_CSV.name))
             self._sync_artifacts_dir()
 
     def _browse_predict_inp(self):
-        path = filedialog.askopenfilename(
-            title="Selecciona archivo SWMM .inp para inferencia",
-            filetypes=[("SWMM input", "*.inp"), ("Todos", "*.*")],
-        )
+        with _suppress_appkit_warnings():
+            path = filedialog.askopenfilename(
+                title="Selecciona archivo SWMM .inp para inferencia",
+                filetypes=[("SWMM input", "*.inp"), ("Todos", "*.*")],
+            )
         if path:
             self.predict_inp_var.set(path)
 
     def _browse_db_save(self):
-        path = filedialog.asksaveasfilename(
-            title="Selecciona base SQLite",
-            defaultextension=".db",
-            filetypes=[("SQLite", "*.db"), ("Todos", "*.*")],
-        )
+        with _suppress_appkit_warnings():
+            path = filedialog.asksaveasfilename(
+                title="Selecciona base SQLite",
+                defaultextension=".db",
+                filetypes=[("SQLite", "*.db"), ("Todos", "*.*")],
+            )
         if path:
             self.db_var.set(path)
 
     def _browse_csv_save(self):
-        path = filedialog.asksaveasfilename(
-            title="Selecciona dataset CSV",
-            defaultextension=".csv",
-            filetypes=[("CSV", "*.csv"), ("Todos", "*.*")],
-        )
+        with _suppress_appkit_warnings():
+            path = filedialog.asksaveasfilename(
+                title="Selecciona dataset CSV",
+                defaultextension=".csv",
+                filetypes=[("CSV", "*.csv"), ("Todos", "*.*")],
+            )
         if path:
             self.csv_var.set(path)
             self._sync_artifacts_dir()
 
     def _browse_csv_open(self):
-        path = filedialog.askopenfilename(
-            title="Selecciona dataset CSV",
-            filetypes=[("CSV", "*.csv"), ("Todos", "*.*")],
-        )
+        with _suppress_appkit_warnings():
+            path = filedialog.askopenfilename(
+                title="Selecciona dataset CSV",
+                filetypes=[("CSV", "*.csv"), ("Todos", "*.*")],
+            )
         if path:
             self.csv_var.set(path)
             self._sync_artifacts_dir()
 
     def _browse_artifacts_dir(self):
-        path = filedialog.askdirectory(title="Selecciona carpeta de artefactos ML")
+        with _suppress_appkit_warnings():
+            path = filedialog.askdirectory(title="Selecciona carpeta de artefactos ML")
         if path:
             self.artifacts_dir_var.set(path)
 
@@ -430,6 +497,7 @@ class ResilienciaDesktopApp:
         inp_state = "disabled" if use_csv else "normal"
         self.predict_csv_entry.configure(state=csv_state)
         self.predict_csv_button.configure(state=csv_state)
+        self.predict_network_entry.configure(state=csv_state)
         self.predict_inp_entry.configure(state=inp_state)
         self.predict_inp_button.configure(state=inp_state)
         self.artifacts_dir_entry.configure(state=inp_state)
@@ -514,7 +582,12 @@ class ResilienciaDesktopApp:
                 all_nodes=self.all_nodes_var.get(),
             )
 
-            deltas = parse_numeric_values(self.deltas_var.get(), "factores multiplicadores")
+            deltas = normalize_inflow_multipliers(
+                parse_numeric_values(self.deltas_var.get(), "factores multiplicadores"),
+                minimum=1.0,
+                label="Los factores multiplicadores",
+            )
+            scenario_mode = self.scenario_mode_var.get()
         except Exception as exc:
             messagebox.showerror("Configuracion invalida", str(exc))
             return
@@ -529,6 +602,7 @@ class ResilienciaDesktopApp:
                 output_csv=output_csv,
                 inflow_multipliers=deltas,
                 target_nodes=target_nodes,
+                scenario_mode=scenario_mode,
                 reset_db=self.reset_db_var.get(),
             )
 
@@ -602,13 +676,18 @@ class ResilienciaDesktopApp:
     def _predict_with_ml(self):
         try:
             predict_source = self.predict_source_var.get()
-            flow_values = parse_numeric_values(self.predict_flows_var.get(), "factores de prediccion")
+            flow_values = normalize_inflow_multipliers(
+                parse_numeric_values(self.predict_flows_var.get(), "factores de prediccion"),
+                minimum=1.0,
+                label="Los factores de prediccion",
+            )
             target_nodes = parse_target_nodes(
                 self.predict_target_nodes_var.get(),
                 all_nodes=self.predict_all_nodes_var.get(),
             )
             classifier_name = self.predict_classifier_var.get()
             regressor_name = self.predict_regressor_var.get()
+            network_selector = self.predict_network_var.get().strip() or None
             csv_path = Path(self.csv_var.get()).expanduser()
             inp_path = Path(self.predict_inp_var.get()).expanduser()
             artifacts_dir = Path(self.artifacts_dir_var.get()).expanduser()
@@ -638,12 +717,14 @@ class ResilienciaDesktopApp:
             print(f"Regresor solicitado: {regressor_name}")
             if predict_source == "csv":
                 print(f"Dataset: {csv_path}")
+                print(f"Red seleccionada: {network_selector or 'auto'}")
                 result = predict_steady_flows(
                     inflow_multipliers=flow_values,
                     dataset_csv=csv_path,
                     target_nodes=target_nodes,
                     classifier_name=classifier_name,
                     regressor_name=regressor_name,
+                    network_selector=network_selector,
                 )
             else:
                 print(f"Archivo .inp: {inp_path.name}")
@@ -719,6 +800,8 @@ class _CallbackLogWriter:
 
 
 def main():
-    root = tk.Tk()
-    ResilienciaDesktopApp(root)
+    with _suppress_appkit_warnings():
+        root = tk.Tk()
+        app = ResilienciaDesktopApp(root)
+        root.update()  # force initial render so startup AppKit warnings fire here
     root.mainloop()

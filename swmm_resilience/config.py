@@ -37,10 +37,31 @@ DEFAULT_DB_FILE = TRAINING_DIR / "swmm_resilience.db"
 DEFAULT_OUTPUT_CSV = DEFAULT_RESULTS_DIR / "dataset_ml.csv"
 DEFAULT_MODEL_ARTIFACTS_DIR = DEFAULT_RESULTS_DIR / "model_artifacts"
 
-DEFAULT_INFLOW_MULTIPLIERS = _decimal_range(0.0, 2.0, 0.5)
+DEFAULT_INFLOW_MULTIPLIERS = _decimal_range(1.0, 2.5, 0.5)
+
+SCENARIO_MODE_TIMESERIES = "timeseries"
+SCENARIO_MODE_STEADY = "steady"
+SUPPORTED_SCENARIO_MODES = (
+    SCENARIO_MODE_TIMESERIES,
+    SCENARIO_MODE_STEADY,
+)
+SCENARIO_MODE_TO_TYPE = {
+    SCENARIO_MODE_TIMESERIES: "embedded_inflow_multiplier_sweep",
+    SCENARIO_MODE_STEADY: "steady_inflow_multiplier_sweep",
+}
+
+# When True, node flooding_volume_m3 and flooding_duration_min are read from the
+# SWMM .rpt file after each simulation.  PySWMM node.statistics remains the
+# source for max_depth, time_to_peak, and all link statistics.
+USE_SWMM_API_RPT_RESULTS = True
 DEFAULT_TARGET_NODES = None
-DEFAULT_SCENARIO_TYPE = "embedded_inflow_multiplier_sweep"
+DEFAULT_SCENARIO_MODE = SCENARIO_MODE_STEADY
+DEFAULT_SCENARIO_TYPE = SCENARIO_MODE_TO_TYPE[DEFAULT_SCENARIO_MODE]
 DEFAULT_SPATIAL_PATTERN = "uniform"
+STRICT_INPUT_VALIDATION = True
+INPUT_VALIDATION_MIN_JUNCTIONS = 20
+INPUT_VALIDATION_MAX_REASONABLE_JUNCTION_DEPTH_M = 10.0
+INPUT_VALIDATION_MAX_SUSPICIOUS_JUNCTION_DEPTH_FRACTION = 0.25
 
 # ML configuration
 ML_TARGET_REGRESSION = "flooding_volume_m3"
@@ -68,7 +89,7 @@ ML_DROP_COLUMNS = [
     "node_id",
     "scenario_type",
     "spatial_pattern",
-    "applied_inflow_lps",
+    "delta_inflow_lps",
     "upstream_diam_avg_m",
     "downstream_diam_avg_m",
     "flooded",
