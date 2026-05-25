@@ -32,6 +32,7 @@ from .database.repository import (
     update_run_status,
     verify_run_saved,
 )
+from .ml.temporal.dataset import save_node_timeseries_parquet
 from .simulation.runner import extract_static_topology, run_simulation
 from .utils import file_hash, new_id, normalize_inflow_multipliers
 
@@ -57,6 +58,11 @@ def network_results_dir(inp_path: Path) -> Path:
     return inp_path.parent / "results"
 
 
+def network_node_timeseries_dir(inp_path: Path) -> Path:
+    """Return the folder for per-run node time series artifacts."""
+    return network_results_dir(inp_path) / "temporal" / "node_timeseries"
+
+
 def network_display_name(inp_path: Path) -> str:
     """Return the display/storage name for one network file."""
     return inp_path.name
@@ -76,6 +82,7 @@ def ensure_directories(inp_path: Path):
     TRAINING_DIR.mkdir(parents=True, exist_ok=True)
     inp_path.parent.mkdir(parents=True, exist_ok=True)
     network_results_dir(inp_path).mkdir(parents=True, exist_ok=True)
+    network_node_timeseries_dir(inp_path).mkdir(parents=True, exist_ok=True)
 
 
 def _normalize_target_nodes(target_nodes):
@@ -241,8 +248,17 @@ def run_experiment(
                 target_nodes=target_nodes,
                 node_inflow_profiles=node_inflow_profiles,
                 scenario_mode=scenario_mode,
+                run_id=run_id,
+                network_hash=network_hash,
             )
             save_results(conn, run_id, results)
+            node_timeseries_path = (
+                network_node_timeseries_dir(inp_path) / f"run_{run_id}.parquet"
+            )
+            save_node_timeseries_parquet(
+                results["node_timeseries_records"],
+                node_timeseries_path,
+            )
             update_run_status(conn, run_id, "completed")
             verify_run_saved(conn, run_id)
 
@@ -253,6 +269,7 @@ def run_experiment(
             )
             print(f"    ok Vol total : {summary['total_flooding_volume_m3']:.2f} m3")
             print(f"    ok Resiliencia: {summary['resilience_index']:.3f}")
+            print(f"    ok Temporal  : {node_timeseries_path}")
             if summary["time_to_first_flood_min"]:
                 print(f"    ok 1er flood : {summary['time_to_first_flood_min']:.1f} min")
             print()

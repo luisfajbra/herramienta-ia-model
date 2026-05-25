@@ -145,19 +145,20 @@ node_id
 time_min
 scenario_type
 input_source
-inflow_lps
 total_inflow_lps
 lateral_inflow_lps
 depth_m
 depth_ratio
-head_m
 flooding_lps
 total_outflow_lps
 failed_now
-upstream_flow_sum_lps
-downstream_flow_sum_lps
 static node features...
 ```
+
+Nota: `head_m`, `upstream_flow_sum_lps` y `downstream_flow_sum_lps` quedan
+fuera del MVP temporal. `head_m` se puede derivar de `invert_elev_m + depth_m`;
+los agregados upstream/downstream requieren iterar links por timestep y se dejan
+para una fase posterior.
 
 ### Esquema recomendado de la capa por timestep
 
@@ -177,12 +178,9 @@ total_inflow_lps
 lateral_inflow_lps
 depth_m
 depth_ratio
-head_m
 flooding_lps
 total_outflow_lps
 failed_now
-upstream_flow_sum_lps
-downstream_flow_sum_lps
 ```
 
 Y para links:
@@ -207,6 +205,7 @@ Notas:
 - `time_sec` debe ser el tiempo real desde inicio, no un supuesto paso fijo
 - `depth_ratio` puede derivarse usando `full_depth_m` del nodo
 - `failed_now` debe ser binario y simple en la primera version
+- `head_m` no se guarda en el MVP porque duplica informacion derivable
 
 ### Regla de entrenamiento temporal
 
@@ -1271,7 +1270,6 @@ Cambios exactos:
   - `lateral_inflow_lps`
   - `depth_m`
   - `depth_ratio`
-  - `head_m`
   - `flooding_lps`
   - `total_outflow_lps`
   - `failed_now`
@@ -1631,6 +1629,61 @@ Objetivos posibles:
 - minimizar `total_flooding_volume_m3`
 - minimizar costo
 - minimizar tiempo de recuperacion
+
+## Fases escalonadas actualizadas
+
+### Fase 0. Decisiones base
+
+- `failed_now = 1` si `flooding_lps > 0`
+- frecuencia objetivo de resampleo para ML: `5 minutos`
+- ventana inicial: `window_min = 20`
+- horizonte inicial: `horizon_min = 5`
+- avance entre ventanas: `step_min = 5`
+- `link_timeseries` queda fuera del MVP
+- `head_m` no se guarda en el MVP
+- todas las corridas generan `node_timeseries`, incluyendo escenarios steady
+- `PyTorch` entra solo cuando existan ventanas temporales listas
+
+### Fase 1. Persistencia temporal MVP
+
+Estado:
+
+- implementada la persistencia de `node_timeseries` por corrida
+- pendiente: registrar estos archivos en `temporal_artifacts` y construir
+  ventanas temporales
+
+Cada corrida genera:
+
+```text
+data/networks/<red>/results/temporal/node_timeseries/run_<run_id>.parquet
+```
+
+Columnas del Parquet:
+
+```text
+run_id
+network_hash
+node_id
+step_index
+time_sec
+time_min
+total_inflow_lps
+lateral_inflow_lps
+depth_m
+depth_ratio
+flooding_lps
+total_outflow_lps
+failed_now
+```
+
+### Fase 2. Registro de artefactos temporales
+
+Siguiente fase propuesta:
+
+- crear tabla minima `temporal_artifacts`
+- registrar `artifact_id`, `run_id`, `artifact_type`, `path`,
+  `rows_count`, `created_at`
+- enlazar cada corrida de SQLite con su Parquet temporal
 
 ## Estrategia de evaluacion
 

@@ -79,9 +79,10 @@ ML_PCA_SVD_SOLVER = "full"
 
 # Temporal/CNN planning configuration. These values are placeholders for the
 # future 1D CNN workflow and do not affect the current tabular models.
+ML_TEMPORAL_RESAMPLE_MIN = 5
 ML_TEMPORAL_WINDOW_MIN = 20
 ML_TEMPORAL_HORIZON_MIN = 5
-ML_TEMPORAL_STEP_MIN = 1
+ML_TEMPORAL_STEP_MIN = 5
 ML_TEMPORAL_TARGET = "failure_within_horizon"
 
 ML_DROP_COLUMNS = [

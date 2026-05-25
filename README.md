@@ -96,6 +96,47 @@ swmm_resilience/ml/temporal/
 
 Por ahora esa carpeta es solo scaffold: no entrena redes neuronales ni agrega dependencias como PyTorch o TensorFlow. La idea es usarla mas adelante cuando guardemos series temporales por nodo y podamos construir ventanas tipo `[samples, timesteps, features]`.
 
+### Fase temporal actual
+
+La Fase 0 queda definida asi:
+
+- `failed_now = 1` cuando `flooding_lps > 0`
+- todas las corridas generan `node_timeseries`, incluyendo escenarios steady
+- frecuencia objetivo para ML: `5 minutos`
+- ventana historica inicial: `20 minutos`
+- horizonte inicial de prediccion: `5 minutos`
+- avance entre ventanas: `5 minutos`
+- `link_timeseries` queda fuera del MVP
+- `head_m` no se guarda porque se puede derivar de `invert_elev_m + depth_m`
+
+La Fase 1 ya persiste un Parquet temporal por corrida en:
+
+```text
+data/networks/<red>/results/temporal/node_timeseries/run_<run_id>.parquet
+```
+
+Columnas obligatorias de `node_timeseries`:
+
+```text
+run_id
+network_hash
+node_id
+step_index
+time_sec
+time_min
+total_inflow_lps
+lateral_inflow_lps
+depth_m
+depth_ratio
+flooding_lps
+total_outflow_lps
+failed_now
+```
+
+Este archivo guarda la serie cruda observada durante la simulacion. Todavia no
+construye ventanas ni entrena CNN/LSTM; eso corresponde a fases posteriores.
+Para escribir Parquet se requiere `pyarrow`.
+
 Puedes ver el resumen del plan con:
 
 ```bash

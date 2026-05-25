@@ -298,6 +298,8 @@ def run_simulation(
     target_nodes=None,
     node_inflow_profiles=None,
     scenario_mode=None,
+    run_id=None,
+    network_hash=None,
 ):
     """Execute one SWMM run scaling embedded .inp lateral inflows by a multiplier."""
 
@@ -305,6 +307,7 @@ def run_simulation(
     step_count = 0
     timestep_sec = None
     depth_rate_tracker = {}
+    node_timeseries_records = []
     node_inflow_profiles = node_inflow_profiles or {}
     if target_nodes is None:
         target_node_set = None
@@ -353,10 +356,10 @@ def run_simulation(
 
         for _ in sim:
             step_count += 1
+            elapsed_sec = (sim.current_time - sim_start).total_seconds()
             if timestep_sec is None:
-                dt = (sim.current_time - sim_start).total_seconds()
-                timestep_sec = dt if dt > 0 else 1.0
-            elapsed_min = (sim.current_time - sim_start).total_seconds() / 60.0
+                timestep_sec = elapsed_sec if elapsed_sec > 0 else 1.0
+            elapsed_min = elapsed_sec / 60.0
 
             for node in nodes:
                 node_id = node.nodeid
@@ -395,6 +398,29 @@ def run_simulation(
                 if total_outflow > outflow_tracker[node_id]["max_total_outflow_lps"]:
                     outflow_tracker[node_id]["max_total_outflow_lps"] = total_outflow
                     outflow_tracker[node_id]["time_to_peak_outflow_min"] = elapsed_min
+
+                full_depth = node.full_depth
+                depth_ratio = (
+                    depth / full_depth
+                    if (full_depth and full_depth > 0)
+                    else None
+                )
+                flooding_lps = node.flooding or 0.0
+                node_timeseries_records.append({
+                    "run_id": run_id,
+                    "network_hash": network_hash,
+                    "node_id": node_id,
+                    "step_index": step_count,
+                    "time_sec": safe_round(elapsed_sec, 4),
+                    "time_min": safe_round(elapsed_min, 6),
+                    "total_inflow_lps": safe_round(node.total_inflow or 0.0, 6),
+                    "lateral_inflow_lps": safe_round(node.lateral_inflow or 0.0, 6),
+                    "depth_m": safe_round(depth, 6),
+                    "depth_ratio": safe_round(depth_ratio, 6),
+                    "flooding_lps": safe_round(flooding_lps, 6),
+                    "total_outflow_lps": safe_round(total_outflow, 6),
+                    "failed_now": int(flooding_lps > 0),
+                })
 
             for link in links:
                 inlet_node = link_inlet_nodes.get(link.linkid)
@@ -560,5 +586,6 @@ def run_simulation(
         "node_records": node_records,
         "link_records": link_records,
         "run_inputs": run_inputs,
+        "node_timeseries_records": node_timeseries_records,
         "summary": summary,
     }
