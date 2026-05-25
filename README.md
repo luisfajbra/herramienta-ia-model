@@ -302,6 +302,7 @@ python view_db.py
 
 ## Documentos De Apoyo
 
+- `DOCUMENTACION_COMPLETA_PROYECTO.md`: explicacion integral del proyecto, datos, ML, PCA y ruta temporal.
 - `QUICKSTART.md`: guia rapida.
 - `PLAN_TEMPORAL_LSTM_CNN.md`: plan temporal por fases.
 - `DICCIONARIO_DATOS_ENTRENAMIENTO_ML.md`: diccionario de datos para ML.
