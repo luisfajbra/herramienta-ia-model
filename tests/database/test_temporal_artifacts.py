@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from swmm_resilience.database.schema import create_schema
+from swmm_resilience.database.queries import register_temporal_artifact
 from swmm_resilience.reset import reset_db
 
 
@@ -79,3 +80,50 @@ class TestInputSourceColumn:
             "SELECT input_source FROM runs WHERE run_id='run-default-check'"
         ).fetchone()
         assert row[0] == "steady"
+
+
+class TestRegisterTemporalArtifact:
+    def test_inserts_row(self, db):
+        _insert_run(db, "run-001")
+        register_temporal_artifact(
+            db,
+            run_id="run-001",
+            network_hash="abc123",
+            parquet_path=Path("/data/run_001.parquet"),
+            node_count=10,
+            step_count=20,
+        )
+        row = db.execute(
+            "SELECT run_id, node_count, step_count FROM temporal_artifacts WHERE run_id='run-001'"
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "run-001"
+        assert row[1] == 10
+        assert row[2] == 20
+
+    def test_returns_uuid(self, db):
+        _insert_run(db, "run-002")
+        artifact_id = register_temporal_artifact(
+            db,
+            run_id="run-002",
+            network_hash="abc123",
+            parquet_path=Path("/data/run_002.parquet"),
+            node_count=5,
+            step_count=10,
+        )
+        uuid.UUID(artifact_id)  # raises ValueError if not a valid UUID4
+
+    def test_parquet_path_stored_as_string(self, db):
+        _insert_run(db, "run-003")
+        register_temporal_artifact(
+            db,
+            run_id="run-003",
+            network_hash="abc123",
+            parquet_path=Path("/data/run_003.parquet"),
+            node_count=3,
+            step_count=6,
+        )
+        row = db.execute(
+            "SELECT parquet_path FROM temporal_artifacts WHERE run_id='run-003'"
+        ).fetchone()
+        assert row[0] == "/data/run_003.parquet"
