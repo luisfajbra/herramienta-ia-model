@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ...config import DEFAULT_DB_FILE, NETWORKS_DIR
+from ...config import DEFAULT_DB_FILE, DEFAULT_OUTPUT_CSV, NETWORKS_DIR
 from .schemas import TemporalDatasetSpec, TemporalWindowDataset, TemporalWindowSpec
 
 
@@ -38,6 +38,11 @@ TEMPORAL_COLS = [
     "depth_ratio",
     "flooding_lps",
     "total_outflow_lps",
+]
+
+SURROGATE_TEMPORAL_COLS = [
+    "total_inflow_lps",
+    "lateral_inflow_lps",
 ]
 
 STATIC_COLS = [
@@ -279,13 +284,13 @@ def build_surrogate_dataset(
                     node_df.set_index("time_min")
                     .reindex(grid)
                     .ffill()
-                    .dropna(subset=TEMPORAL_COLS)
+                    .dropna(subset=SURROGATE_TEMPORAL_COLS)
                     .reset_index()
                 )
                 if node_df.empty:
                     continue
 
-                seq = node_df[TEMPORAL_COLS].values.astype(np.float32)  # [T, 6]
+                seq = node_df[SURROGATE_TEMPORAL_COLS].values.astype(np.float32)  # [T, 2]
                 x_static = static_lookup[node_id]
 
                 if not use_temporal and inflow_multiplier is not None:
@@ -302,7 +307,7 @@ def build_surrogate_dataset(
 
     if not all_X_seq_list:
         return TemporalWindowDataset(
-            X_seq=np.empty((0, 1, len(TEMPORAL_COLS)), dtype=np.float32),
+            X_seq=np.empty((0, 1, len(SURROGATE_TEMPORAL_COLS)), dtype=np.float32),
             X_static=np.empty((0, len(STATIC_COLS)), dtype=np.float32),
             y_class=np.empty(0, dtype=np.int8),
             y_reg=np.empty(0, dtype=np.float32),
@@ -312,7 +317,7 @@ def build_surrogate_dataset(
 
     # Zero-pad sequences to the longest T found
     T_max = max(s.shape[0] for s in all_X_seq_list)
-    padded = np.zeros((len(all_X_seq_list), T_max, len(TEMPORAL_COLS)), dtype=np.float32)
+    padded = np.zeros((len(all_X_seq_list), T_max, len(SURROGATE_TEMPORAL_COLS)), dtype=np.float32)
     for i, seq in enumerate(all_X_seq_list):
         padded[i, : seq.shape[0], :] = seq
 
@@ -323,6 +328,151 @@ def build_surrogate_dataset(
         y_reg=np.array(all_y_reg, dtype=np.float32),
         groups=np.array(all_groups, dtype=object),
         meta=pd.DataFrame(meta_rows),
+    )
+
+
+SWMM_OUTPUT_COLS: list[str] = [
+    "max_depth_m",
+    "max_depth_ratio",
+    "time_to_peak_min",
+    "depth_rate_m_per_min",
+    "max_total_outflow_lps",
+    "time_to_peak_outflow_min",
+    "downstream_link_peak_flows_lps_json",
+]
+
+_UNIFIED_META_COLS: list[str] = [
+    "network_hash",
+    "network_file",
+    "scenario_type",
+    "spatial_pattern",
+    "flooding_duration_min",
+]
+
+_UNIFIED_TARGET_COLS: list[str] = ["flooded", "peak_flooding_lps"]
+
+
+def build_unified_dataset(
+    csv_path: Path = DEFAULT_OUTPUT_CSV,
+    db_path: Path = DEFAULT_DB_FILE,
+    resample_min: int = 5,
+) -> TemporalWindowDataset:
+    """Build one sample per (run_id, node_id) for the unified RF vs CNN comparison.
+
+    Reads static features from the CSV (dropping SWMM-output columns unavailable
+    before running SWMM). Joins inflow timeseries from Parquet files registered in
+    temporal_artifacts — one Parquet read per run for efficiency.
+
+    Returned dataset is shared by both models:
+    - RF/XGBoost: uses X_static directly (21 inference-available features)
+    - CNN: uses X_seq [T, 2] + X_static
+    """
+    csv_path = Path(csv_path)
+    df_csv = pd.read_csv(csv_path)
+
+    # Build static feature matrix: drop SWMM outputs, metadata, targets
+    drop_cols = set(SWMM_OUTPUT_COLS) | set(_UNIFIED_META_COLS) | set(_UNIFIED_TARGET_COLS)
+    feat_df = df_csv.drop(columns=[c for c in drop_cols if c in df_csv.columns])
+
+    # One-hot encode node_type (junction/outfall → 1 binary column, total stays 21)
+    if "node_type" in feat_df.columns:
+        feat_df = pd.get_dummies(feat_df, columns=["node_type"], drop_first=True)
+
+    # Fill NaNs (source nodes have no upstream; outfalls have no downstream pipes)
+    feat_df = feat_df.fillna(0.0)
+
+    feature_cols: list[str] = [
+        c for c in feat_df.columns if c not in ("run_id", "node_id")
+    ]
+
+    # Parquet lookup: run_id → path (one read per run below)
+    conn = sqlite3.connect(db_path)
+    try:
+        parquet_rows = conn.execute(
+            "SELECT run_id, parquet_path FROM temporal_artifacts"
+        ).fetchall()
+    finally:
+        conn.close()
+    parquet_lookup: dict[str, str] = {rid: ppath for rid, ppath in parquet_rows}
+
+    all_X_seq: list[np.ndarray] = []
+    all_X_static: list[np.ndarray] = []
+    all_y_class: list[int] = []
+    all_y_reg: list[float] = []
+    all_groups: list[str] = []
+    meta_rows: list[dict] = []
+
+    for run_id, run_group in df_csv.groupby("run_id", sort=False):
+        parquet_path = parquet_lookup.get(str(run_id))
+        if parquet_path is None:
+            warnings.warn(f"run_id '{run_id}' has no temporal_artifact — skipping.", stacklevel=2)
+            continue
+
+        parquet_df = pd.read_parquet(parquet_path)
+
+        for csv_idx in run_group.index:
+            csv_row = df_csv.loc[csv_idx]
+            node_id = str(csv_row["node_id"])
+
+            node_df = (
+                parquet_df[parquet_df["node_id"] == node_id]
+                .sort_values("time_min")
+                .drop_duplicates(subset=["time_min"], keep="last")
+                .reset_index(drop=True)
+            )
+            if node_df.empty:
+                continue
+
+            t_start = node_df["time_min"].iloc[0]
+            t_end = node_df["time_min"].iloc[-1]
+            n_grid = int(round((t_end - t_start) / resample_min)) + 1
+            grid = t_start + np.arange(n_grid, dtype=float) * resample_min
+            node_df = (
+                node_df.set_index("time_min")
+                .reindex(grid)
+                .ffill()
+                .dropna(subset=SURROGATE_TEMPORAL_COLS)
+                .reset_index()
+            )
+            if node_df.empty:
+                continue
+
+            seq = node_df[SURROGATE_TEMPORAL_COLS].values.astype(np.float32)
+            x_static = feat_df.loc[csv_idx, feature_cols].values.astype(np.float32)
+
+            all_X_seq.append(seq)
+            all_X_static.append(x_static)
+            all_y_class.append(int(csv_row["flooded"]))
+            all_y_reg.append(float(csv_row["peak_flooding_lps"]))
+            all_groups.append(str(run_id))
+            meta_rows.append({"run_id": str(run_id), "node_id": node_id, "window_start_min": 0.0})
+
+    if not all_X_seq:
+        return TemporalWindowDataset(
+            X_seq=np.empty((0, 1, len(SURROGATE_TEMPORAL_COLS)), dtype=np.float32),
+            X_static=np.empty((0, len(feature_cols)), dtype=np.float32),
+            y_class=np.empty(0, dtype=np.int8),
+            y_reg=np.empty(0, dtype=np.float32),
+            groups=np.empty(0, dtype=object),
+            meta=pd.DataFrame(columns=["run_id", "node_id", "window_start_min"]),
+        )
+
+    T_max = max(s.shape[0] for s in all_X_seq)
+    F = len(SURROGATE_TEMPORAL_COLS)
+    padded = np.zeros((len(all_X_seq), T_max, F), dtype=np.float32)
+    for i, seq in enumerate(all_X_seq):
+        padded[i, : seq.shape[0], :] = seq
+
+    meta_df = pd.DataFrame(meta_rows)
+    meta_df.attrs["static_feature_names"] = feature_cols
+
+    return TemporalWindowDataset(
+        X_seq=padded,
+        X_static=np.stack(all_X_static),
+        y_class=np.array(all_y_class, dtype=np.int8),
+        y_reg=np.array(all_y_reg, dtype=np.float32),
+        groups=np.array(all_groups, dtype=object),
+        meta=meta_df,
     )
 
 
