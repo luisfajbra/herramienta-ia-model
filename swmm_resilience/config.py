@@ -36,6 +36,7 @@ LEGACY_INP_FILE = BASE_DIR / "SWMM - Chico (PVC) Prueba 1 - Steady.inp"
 DEFAULT_DB_FILE = TRAINING_DIR / "swmm_resilience.db"
 DEFAULT_OUTPUT_CSV = DEFAULT_RESULTS_DIR / "dataset_ml.csv"
 DEFAULT_MODEL_ARTIFACTS_DIR = DEFAULT_RESULTS_DIR / "model_artifacts"
+DEFAULT_TEMPORAL_ARTIFACTS_DIR = DEFAULT_RESULTS_DIR / "temporal" / "model_artifacts"
 
 DEFAULT_INFLOW_MULTIPLIERS = _decimal_range(1.0, 2.5, 0.5)
 
