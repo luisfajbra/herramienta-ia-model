@@ -2,15 +2,21 @@
 
 ## Context
 
-The existing CNN (SP3) is an **early-warning system**: it takes SWMM hydraulic output timeseries
-(depth, outflow, flooding) as input and predicts whether a node will flood in the next 5 minutes.
-This requires SWMM to be running in real time.
+Both the early-warning CNN (SP3) and this surrogate use SWMM simulation runs to generate training
+data — that is an **offline, one-time process**. The difference is what happens **at inference**:
 
-This spec redesigns the model as a **surrogate**: given a storm inflow multiplier and network static
-features, predict which nodes flood and their peak flooding volume — **without running SWMM at all**.
+- **Early-warning CNN (SP3):** its temporal inputs are SWMM hydraulic outputs (`depth_m`,
+  `flooding_lps`, `total_outflow_lps`). At inference, those values must come from somewhere —
+  meaning a SWMM run is still required before the CNN can make a prediction. The CNN is only
+  useful as a faster step on top of SWMM, not as a replacement.
 
-The comparison goal: evaluate whether neural networks (with and without the inflow timeseries branch)
-outperform the existing tabular Random Forest baseline.
+- **Surrogate CNN (this spec):** its temporal input is the inflow hydrograph, which can be
+  synthesized from the Qx1.00 base run scaled by a new multiplier — no SWMM run needed.
+  Training data still comes from SWMM runs (offline), but once trained the model predicts
+  flooding for any multiplier on its own.
+
+The comparison goal: evaluate whether neural networks (with and without the inflow timeseries
+branch) outperform the existing tabular Random Forest baseline.
 
 ---
 
