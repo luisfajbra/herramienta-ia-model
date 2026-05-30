@@ -127,3 +127,29 @@ class TestRegisterTemporalArtifact:
             "SELECT parquet_path FROM temporal_artifacts WHERE run_id='run-003'"
         ).fetchone()
         assert row[0] == "/data/run_003.parquet"
+
+
+class TestResetClearsTemporalArtifacts:
+    def test_reset_db_clears_temporal_artifacts(self, tmp_path):
+        db_file = tmp_path / "test.db"
+        conn = sqlite3.connect(str(db_file))
+        create_schema(conn)
+        _insert_run(conn, "run-reset-me")
+        conn.execute(
+            """INSERT INTO temporal_artifacts
+                   (artifact_id, run_id, network_hash, parquet_path,
+                    node_count, step_count, created_at)
+               VALUES ('art-001', 'run-reset-me', 'abc123',
+                       '/data/run_reset_me.parquet', 5, 10, '2026-01-01T00:00:00')"""
+        )
+        conn.commit()
+        conn.close()
+
+        reset_db(db_file)
+
+        conn2 = sqlite3.connect(str(db_file))
+        count = conn2.execute(
+            "SELECT COUNT(*) FROM temporal_artifacts"
+        ).fetchone()[0]
+        conn2.close()
+        assert count == 0
