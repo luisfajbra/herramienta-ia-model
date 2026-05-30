@@ -120,3 +120,23 @@ class TestNoDataLeakageBetweenFolds:
             val_groups = set(fold["val_groups"])
             overlap = train_groups & val_groups
             assert not overlap, f"Data leakage in fold {fold['fold']}: {overlap}"
+
+
+class TestRegressionArtifactsSaved:
+    def test_regression_artifacts_exist(self, tmp_path):
+        dataset = _synthetic_dataset()
+        artifacts_dir = tmp_path / "artifacts"
+
+        train_cnn(
+            artifacts_dir=artifacts_dir,
+            task="regression",
+            n_epochs=2,
+            batch_size=16,
+            n_cv_folds=2,
+            _dataset=dataset,
+        )
+
+        assert (artifacts_dir / "cnn_regressor_weights.pt").exists()
+        assert (artifacts_dir / "cnn_regressor_scaler_seq.joblib").exists()
+        assert (artifacts_dir / "cnn_regressor_scaler_static.joblib").exists()
+        assert (artifacts_dir / "cnn_regressor_metrics.csv").exists()
