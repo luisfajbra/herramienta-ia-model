@@ -125,20 +125,24 @@ def reset_artifacts(
     networks_dir: Path = NETWORKS_DIR,
     callback: Callable[[str], None] | None = None,
 ) -> int:
-    """Delete all ML artifact files (.joblib, manifest.json, metric CSVs/XLSX). Returns count deleted."""
+    """Delete all ML artifact files (.joblib, manifest.json, metric CSVs/XLSX, .pt). Returns count deleted."""
     count = 0
-    suffixes = {".joblib", ".json", ".csv", ".xlsx"}
+    suffixes = {".joblib", ".json", ".csv", ".xlsx", ".pt"}
     for net_dir in sorted(networks_dir.iterdir()):
         if not net_dir.is_dir():
             continue
-        artifacts_dir = net_dir / "results" / "model_artifacts"
-        if not artifacts_dir.exists():
-            continue
-        for f in sorted(artifacts_dir.iterdir()):
-            if f.is_file() and f.suffix in suffixes:
-                f.unlink()
-                _log(f"  Eliminado: {f.relative_to(networks_dir)}", callback)
-                count += 1
+        artifact_dirs = [
+            net_dir / "results" / "model_artifacts",
+            net_dir / "results" / "temporal" / "model_artifacts",
+        ]
+        for artifacts_dir in artifact_dirs:
+            if not artifacts_dir.exists():
+                continue
+            for f in sorted(artifacts_dir.iterdir()):
+                if f.is_file() and f.suffix in suffixes:
+                    f.unlink()
+                    _log(f"  Eliminado: {f.relative_to(networks_dir)}", callback)
+                    count += 1
     return count
 
 
