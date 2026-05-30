@@ -5,6 +5,7 @@ Temporal dataset helpers for hydrograph/CNN experiments.
 from __future__ import annotations
 
 import sqlite3
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -85,7 +86,7 @@ def build_temporal_windows(
     db_path: Path = DEFAULT_DB_FILE,
     networks_dir: Path = NETWORKS_DIR,
     window_spec: TemporalWindowSpec | None = None,
-    dataset_spec: TemporalDatasetSpec | None = None,
+    dataset_spec: TemporalDatasetSpec | None = None,  # reserved for future filtering
 ) -> TemporalWindowDataset:
     """Build sliding temporal windows from all Parquets in temporal_artifacts.
 
@@ -100,6 +101,11 @@ def build_temporal_windows(
     window_steps = window_spec.window_min // resample_min
     horizon_steps = window_spec.horizon_min // resample_min
     step_steps = window_spec.step_min // resample_min
+
+    if step_steps == 0:
+        raise ValueError(
+            f"step_min ({window_spec.step_min}) must be >= resample_min ({resample_min})"
+        )
 
     all_X_seq: list[np.ndarray] = []
     all_X_static: list[np.ndarray] = []
@@ -132,6 +138,11 @@ def build_temporal_windows(
 
             for node_id in df["node_id"].unique():
                 if node_id not in static_lookup:
+                    warnings.warn(
+                        f"node_id '{node_id}' (run_id={run_id}) has no matching row in network_nodes "
+                        f"for network_hash={network_hash!r}. Skipping.",
+                        stacklevel=2,
+                    )
                     continue
                 x_static = static_lookup[node_id]
 
