@@ -132,7 +132,7 @@ def build_temporal_windows(
                 (network_hash,),
             ).fetchall()
             static_lookup: dict[str, np.ndarray] = {
-                row[0]: np.array(row[1:], dtype=np.float32)
+                row[0]: np.nan_to_num(np.array(row[1:], dtype=np.float32), nan=0.0)
                 for row in static_rows
             }
 
@@ -149,6 +149,7 @@ def build_temporal_windows(
                 node_df = (
                     df[df["node_id"] == node_id]
                     .sort_values("time_min")
+                    .drop_duplicates(subset=["time_min"], keep="last")
                     .reset_index(drop=True)
                 )
                 if node_df.empty:
