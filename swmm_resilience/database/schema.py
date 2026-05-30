@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS node_results (
     inflow_multiplier       REAL NOT NULL DEFAULT 1,
     node_id                 TEXT NOT NULL,
     flooded                 INTEGER NOT NULL DEFAULT 0,
-    flooding_volume_m3      REAL,
+    peak_flooding_lps       REAL,
     flooding_duration_min   REAL,
     max_depth_m             REAL,
     max_depth_ratio         REAL,
@@ -102,10 +102,20 @@ CREATE TABLE IF NOT EXISTS run_summary (
     inflow_multiplier           REAL NOT NULL DEFAULT 1,
     total_nodes                 INTEGER,
     failed_nodes_count          INTEGER,
-    total_flooding_volume_m3    REAL,
+    total_peak_flooding_lps     REAL,
     pct_flooded_nodes           REAL,
     time_to_first_flood_min     REAL,
     resilience_index            REAL
+);
+
+CREATE TABLE IF NOT EXISTS temporal_artifacts (
+    artifact_id     TEXT PRIMARY KEY,
+    run_id          TEXT NOT NULL REFERENCES runs(run_id),
+    network_hash    TEXT NOT NULL,
+    parquet_path    TEXT NOT NULL,
+    node_count      INTEGER NOT NULL,
+    step_count      INTEGER NOT NULL,
+    created_at      TEXT NOT NULL
 );
 """
 
@@ -115,7 +125,8 @@ REQUIRED_COLUMNS = {
         "base_inflow_lps": "REAL"
     },
     "runs": {
-        "inflow_multiplier": "REAL NOT NULL DEFAULT 1"
+        "inflow_multiplier": "REAL NOT NULL DEFAULT 1",
+        "input_source": "TEXT NOT NULL DEFAULT 'steady'",
     },
     "run_inputs": {
         "delta_inflow_lps": "REAL NOT NULL DEFAULT 0",
@@ -181,7 +192,7 @@ def _migrate_run_summary(conn):
         "inflow_multiplier",
         "total_nodes",
         "failed_nodes_count",
-        "total_flooding_volume_m3",
+        "total_peak_flooding_lps",
         "pct_flooded_nodes",
         "time_to_first_flood_min",
         "resilience_index",
@@ -197,6 +208,13 @@ def _migrate_run_summary(conn):
     else:
         failed_expr = "0"
 
+    if "total_peak_flooding_lps" in columns:
+        flood_expr = "total_peak_flooding_lps"
+    elif "total_flooding_volume_m3" in columns:
+        flood_expr = "total_flooding_volume_m3"
+    else:
+        flood_expr = "NULL"
+
     conn.executescript(
         f"""
         ALTER TABLE run_summary RENAME TO run_summary_legacy;
@@ -207,7 +225,7 @@ def _migrate_run_summary(conn):
             inflow_multiplier           REAL NOT NULL DEFAULT 1,
             total_nodes                 INTEGER,
             failed_nodes_count          INTEGER,
-            total_flooding_volume_m3    REAL,
+            total_peak_flooding_lps     REAL,
             pct_flooded_nodes           REAL,
             time_to_first_flood_min     REAL,
             resilience_index            REAL
@@ -219,7 +237,7 @@ def _migrate_run_summary(conn):
             inflow_multiplier,
             total_nodes,
             failed_nodes_count,
-            total_flooding_volume_m3,
+            total_peak_flooding_lps,
             pct_flooded_nodes,
             time_to_first_flood_min,
             resilience_index
@@ -230,7 +248,7 @@ def _migrate_run_summary(conn):
             {inflow_expr},
             total_nodes,
             {failed_expr},
-            total_flooding_volume_m3,
+            {flood_expr},
             pct_flooded_nodes,
             time_to_first_flood_min,
             resilience_index
@@ -291,12 +309,21 @@ def _migrate_link_results_nullable_delta(conn):
     )
 
 
+def _migrate_node_results_peak_flooding(conn):
+    """Rename flooding_volume_m3 to peak_flooding_lps in node_results."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(node_results)").fetchall()}
+    if "flooding_volume_m3" in cols and "peak_flooding_lps" not in cols:
+        conn.execute("ALTER TABLE node_results RENAME COLUMN flooding_volume_m3 TO peak_flooding_lps")
+        conn.commit()
+
+
 def create_schema(conn):
     """Create all database tables."""
     conn.executescript(SCHEMA_SQL)
     _migrate_legacy_run_inputs(conn)
     _migrate_run_summary(conn)
     _migrate_link_results_nullable_delta(conn)
+    _migrate_node_results_peak_flooding(conn)
     run_scoped_tables = {"run_inputs", "node_results", "link_results", "run_summary"}
     for table_name, columns in REQUIRED_COLUMNS.items():
         existing = {
