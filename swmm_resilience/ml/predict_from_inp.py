@@ -113,7 +113,7 @@ def predict_steady_flows_from_inp(
             "inflow_multiplier": prediction_rows["inflow_multiplier"],
             "predicted_flooded": pd.Series(predicted_flooded).astype(int),
             "flooded_probability": flooded_probability,
-            "predicted_flooding_volume_m3": predicted_volume,
+            "predicted_peak_flooding_lps": predicted_volume,
         }
     )
     return TabularPredictionResult(

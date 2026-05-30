@@ -164,7 +164,7 @@ def export_run_summary(db_file: str):
             s.total_nodes,
             s.failed_nodes_count AS nodos_fallidos,
             s.pct_flooded_nodes,
-            s.total_flooding_volume_m3,
+            s.total_peak_flooding_lps,
             s.resilience_index,
             s.time_to_first_flood_min
         FROM runs r

@@ -5,7 +5,7 @@ standard DataFrame consumed by flood_map.plot_flood_map().
 Standard columns
 ----------------
 node_id              : str
-flooding_volume_m3   : float  (0 for non-flooded nodes)
+peak_flooding_lps   : float  (0 for non-flooded nodes)
 flooded              : int    (0 or 1)
 source               : str    ('swmm' | 'ml')
 inflow_multiplier    : float
@@ -20,14 +20,14 @@ import pandas as pd
 
 from ..config import DEFAULT_DB_FILE, DEFAULT_MODEL_ARTIFACTS_DIR
 
-_STANDARD_COLS = ["node_id", "flooding_volume_m3", "flooded", "source", "inflow_multiplier"]
+_STANDARD_COLS = ["node_id", "peak_flooding_lps", "flooded", "source", "inflow_multiplier"]
 
 
 def _standardize(df: pd.DataFrame, source: str, inflow_multiplier: float) -> pd.DataFrame:
     out = df.copy()
     out["source"] = source
     out["inflow_multiplier"] = inflow_multiplier
-    out["flooding_volume_m3"] = out["flooding_volume_m3"].clip(lower=0.0)
+    out["peak_flooding_lps"] = out["peak_flooding_lps"].clip(lower=0.0)
     out["node_id"] = out["node_id"].astype(str)
     return out[_STANDARD_COLS].reset_index(drop=True)
 
@@ -46,7 +46,7 @@ def load_from_swmm(run_id: str, db_path: Path | str = DEFAULT_DB_FILE) -> pd.Dat
         query = """
             SELECT
                 nr.node_id,
-                COALESCE(nr.flooding_volume_m3, 0.0) AS flooding_volume_m3,
+                COALESCE(nr.peak_flooding_lps, 0.0) AS peak_flooding_lps,
                 COALESCE(nr.flooded, 0)              AS flooded,
                 r.inflow_multiplier
             FROM node_results nr
@@ -109,7 +109,7 @@ def load_from_ml(
     )
     preds = result.predictions.copy()
     preds = preds.rename(columns={
-        "predicted_flooding_volume_m3": "flooding_volume_m3",
+        "predicted_peak_flooding_lps": "peak_flooding_lps",
         "predicted_flooded": "flooded",
     })
     return _standardize(preds, source="ml", inflow_multiplier=inflow_multiplier)
@@ -132,7 +132,7 @@ def load_all_ml(
         artifacts_dir=artifacts_dir,
     )
     preds = result.predictions.rename(columns={
-        "predicted_flooding_volume_m3": "flooding_volume_m3",
+        "predicted_peak_flooding_lps": "peak_flooding_lps",
         "predicted_flooded": "flooded",
     })
     out = []

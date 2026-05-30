@@ -26,7 +26,7 @@ DATA_DIR = BASE_DIR / "data"
 NETWORKS_DIR = DATA_DIR / "networks"
 TRAINING_DIR = DATA_DIR / "training"
 DEFAULT_DATASET_REVIEW_DIR = TRAINING_DIR / "dataset_review"
-DEFAULT_NETWORK_KEY = "chico_steady"
+DEFAULT_NETWORK_KEY = "chico_hydro-qx1"
 DEFAULT_NETWORK_DIR = NETWORKS_DIR / DEFAULT_NETWORK_KEY
 DEFAULT_RESULTS_DIR = DEFAULT_NETWORK_DIR / "results"
 
@@ -50,9 +50,9 @@ SCENARIO_MODE_TO_TYPE = {
     SCENARIO_MODE_STEADY: "steady_inflow_multiplier_sweep",
 }
 
-# When True, node flooding_volume_m3 and flooding_duration_min are read from the
-# SWMM .rpt file after each simulation.  PySWMM node.statistics remains the
-# source for max_depth, time_to_peak, and all link statistics.
+# When True, flooding_duration_min is read from the SWMM .rpt file after each
+# simulation.  peak_flooding_lps is always taken from the simulation loop.
+# PySWMM node.statistics is the source for max_depth, time_to_peak, and links.
 USE_SWMM_API_RPT_RESULTS = True
 DEFAULT_TARGET_NODES = None
 DEFAULT_SCENARIO_MODE = SCENARIO_MODE_STEADY
@@ -64,7 +64,7 @@ INPUT_VALIDATION_MAX_REASONABLE_JUNCTION_DEPTH_M = 10.0
 INPUT_VALIDATION_MAX_SUSPICIOUS_JUNCTION_DEPTH_FRACTION = 0.25
 
 # ML configuration
-ML_TARGET_REGRESSION = "flooding_volume_m3"
+ML_TARGET_REGRESSION = "peak_flooding_lps"
 ML_TARGET_CLASSIFICATION = "flooded"
 ML_TEST_SIZE = 0.2
 ML_RANDOM_STATE = 42
@@ -94,7 +94,7 @@ ML_DROP_COLUMNS = [
     "upstream_diam_avg_m",
     "downstream_diam_avg_m",
     "flooded",
-    "flooding_volume_m3",
+    "peak_flooding_lps",
     "flooding_duration_min",
     "max_depth_m",
     "max_depth_ratio",

@@ -49,6 +49,9 @@ from swmm_resilience.config import (
 )
 from swmm_resilience.main import infer_scenario_mode, network_results_dir, run_experiment
 from swmm_resilience.ml.predict_from_inp import predict_steady_flows_from_inp
+from swmm_resilience.visualization.runner import generate_ml_map
+from swmm_resilience import reset as reset_module
+from swmm_resilience.reset import RESET_CATEGORIES
 from swmm_resilience.ml.predict_tabular import (
     available_classification_models,
     available_regression_models,
@@ -150,15 +153,18 @@ class ResilienciaDesktopApp:
         self.predict_tab = ttk.Frame(notebook, padding=12)
         self.ml_tab = ttk.Frame(notebook, padding=12)
         self.db_tab = ttk.Frame(notebook, padding=12)
+        self.reset_tab = ttk.Frame(notebook, padding=12)
         notebook.add(self.sim_tab, text="Cuestionario de corrida")
         notebook.add(self.predict_tab, text="Predicción ML")
         notebook.add(self.ml_tab, text="Entrenamiento ML")
         notebook.add(self.db_tab, text="Base de datos")
+        notebook.add(self.reset_tab, text="Mantenimiento")
 
         self._build_simulation_tab()
         self._build_prediction_tab()
         self._build_ml_tab()
         self._build_db_tab()
+        self._build_reset_tab()
 
         status = ttk.Label(self.root, textvariable=self.status_var, anchor="w", padding=(10, 4))
         status.grid(row=1, column=0, sticky="ew")
@@ -401,6 +407,102 @@ class ResilienciaDesktopApp:
         self.prediction_output.configure(state="disabled")
         self._toggle_prediction_nodes()
         self._toggle_prediction_source()
+
+    def _build_reset_tab(self):
+        self.reset_tab.columnconfigure(0, weight=1)
+        self.reset_tab.rowconfigure(1, weight=1)
+
+        options_frame = ttk.LabelFrame(
+            self.reset_tab, text="¿Qué deseas limpiar?", padding=12
+        )
+        options_frame.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+
+        self._reset_vars: dict[str, tk.BooleanVar] = {
+            key: tk.BooleanVar(value=False) for key in RESET_CATEGORIES
+        }
+
+        labels = {
+            "db":        "Base de datos (corridas y resultados)",
+            "plots":     "Imágenes generadas (mapas PNG)",
+            "dataset":   "Archivos dataset_ml.csv",
+            "artifacts": "Artefactos ML (.joblib, manifest.json, métricas)",
+            "temporal":  "Series temporales (archivos Parquet)",
+        }
+        for i, (key, label) in enumerate(labels.items()):
+            ttk.Checkbutton(
+                options_frame, text=label, variable=self._reset_vars[key]
+            ).grid(row=i, column=0, sticky="w", pady=2)
+
+        def _toggle_all():
+            all_on = all(v.get() for v in self._reset_vars.values())
+            for v in self._reset_vars.values():
+                v.set(not all_on)
+
+        btn_row = ttk.Frame(options_frame)
+        btn_row.grid(row=len(labels), column=0, sticky="w", pady=(10, 0))
+        ttk.Button(btn_row, text="Seleccionar todo / Ninguno", command=_toggle_all).pack(side="left")
+
+        warning = ttk.Label(
+            options_frame,
+            text="⚠ Esta operación es irreversible. Afecta TODAS las redes.",
+            foreground="red",
+        )
+        warning.grid(row=len(labels) + 1, column=0, sticky="w", pady=(8, 0))
+
+        ttk.Button(
+            options_frame, text="Limpiar seleccionado", command=self._run_reset
+        ).grid(row=len(labels) + 2, column=0, sticky="w", pady=(10, 0))
+
+        self.reset_log = tk.Text(self.reset_tab, height=20, wrap="word")
+        self.reset_log.grid(row=1, column=0, sticky="nsew", pady=(0, 0))
+        self.reset_log.configure(state="disabled")
+
+    def append_reset_log(self, text: str):
+        self.reset_log.configure(state="normal")
+        self.reset_log.insert("end", text)
+        self.reset_log.see("end")
+        self.reset_log.configure(state="disabled")
+
+    def _run_reset(self):
+        selected = {k for k, v in self._reset_vars.items() if v.get()}
+        if not selected:
+            messagebox.showwarning("Sin selección", "Selecciona al menos una categoría para limpiar.")
+            return
+
+        labels = {
+            "db":        "Base de datos",
+            "plots":     "Imágenes PNG",
+            "dataset":   "dataset_ml.csv",
+            "artifacts": "Artefactos ML",
+            "temporal":  "Parquet temporales",
+        }
+        items = "\n  • ".join(labels[k] for k in selected)
+        confirmed = messagebox.askyesno(
+            "Confirmar limpieza",
+            f"Se eliminarán permanentemente:\n\n  • {items}\n\n¿Continuar?",
+            icon="warning",
+        )
+        if not confirmed:
+            return
+
+        self.reset_log.configure(state="normal")
+        self.reset_log.delete("1.0", "end")
+        self.reset_log.configure(state="disabled")
+
+        db_path = Path(self.db_var.get()).expanduser()
+
+        def worker():
+            reset_module.reset(
+                db="db" in selected,
+                plots="plots" in selected,
+                dataset="dataset" in selected,
+                artifacts="artifacts" in selected,
+                temporal="temporal" in selected,
+                db_path=db_path,
+                callback=None,
+            )
+
+        self._run_in_thread("Limpieza", worker, self.append_reset_log)
 
     def _build_db_tab(self):
         self.db_tab.columnconfigure(0, weight=1)
@@ -748,10 +850,21 @@ class ResilienciaDesktopApp:
             display["flooded_probability"] = display["flooded_probability"].map(
                 lambda value: f"{value:.3f}"
             )
-            display["predicted_flooding_volume_m3"] = display[
-                "predicted_flooding_volume_m3"
+            display["predicted_peak_flooding_lps"] = display[
+                "predicted_peak_flooding_lps"
             ].map(lambda value: f"{value:.3f}")
             print(display.to_string(index=False))
+
+            if predict_source == "inp":
+                print("\nGenerando mapa(s) de inundación ML...")
+                for mult in flow_values:
+                    map_path = generate_ml_map(
+                        inp_path=inp_path,
+                        inflow_multiplier=mult,
+                        artifacts_dir=artifacts_dir,
+                        open_after=True,
+                    )
+                    print(f"  Guardado: {map_path}")
 
         self._run_in_thread("Prediccion ML", worker, self.append_prediction_output)
 

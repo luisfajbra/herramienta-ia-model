@@ -32,7 +32,7 @@ def select_features_for_model(
 
     Args:
         df: Raw dataset from CSV
-        target: Target column name ('flooding_volume_m3' or 'flooded')
+        target: Target column name ('peak_flooding_lps' or 'flooded')
         drop_columns: List of columns to exclude. If None, uses ML_DROP_COLUMNS.
 
     Returns:

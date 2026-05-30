@@ -1,5 +1,5 @@
 {
   "enabledPlugins": {
-    "superpowers@superpowers-dev": false
+    "superpowers@superpowers-dev": true
   }
 }

@@ -247,6 +247,8 @@ def read_node_flooding_summary(rpt_file: Path | str) -> Optional["pd.DataFrame"]
 
     Returns a DataFrame with columns:
         node_id, flooding_volume_m3, flooding_duration_min
+    Note: flooding_volume_m3 from the .rpt is no longer used as a stored metric;
+    only flooding_duration_min is extracted for use in node_results.
 
     Returns None on failure; caller should fall back to PySWMM statistics.
     """

@@ -47,7 +47,7 @@ def export_ml_dataset(db_file: str, output_csv: str, network_hash: str | None = 
             nr.time_to_peak_outflow_min,
             nr.downstream_link_peak_flows_lps_json,
             nr.flooded,
-            nr.flooding_volume_m3,
+            nr.peak_flooding_lps,
             nr.flooding_duration_min
         FROM node_results nr
         JOIN runs r ON nr.run_id = r.run_id

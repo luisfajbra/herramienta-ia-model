@@ -209,7 +209,7 @@ Combina:
 El entrenamiento tabular usa como targets:
 
 - clasificacion: `flooded`
-- regresion: `flooding_volume_m3`
+- regresion: `peak_flooding_lps`
 
 La validacion se agrupa por `run_id` para evitar que filas de una misma corrida
 queden repartidas entre entrenamiento y prueba.
@@ -279,6 +279,30 @@ Tablas principales:
 - `node_results`: resultados agregados por nodo
 - `link_results`: resultados agregados por enlace
 - `run_summary`: resumen ejecutivo de cada corrida
+
+### Metrica de inundacion por nodo
+
+`peak_flooding_lps` reemplaza al antiguo `flooding_volume_m3`. Es el **caudal
+maximo instantaneo de desborde** (lps) observado en cada nodo a lo largo de
+la simulacion, es decir, el peor valor puntual de `node.flooding` durante
+todos los pasos de tiempo.
+
+Por que el pico y no el volumen total:
+
+- El volumen total acumula todo el desborde durante el evento; depende del
+  paso de tiempo y de cuanto dura la lluvia, lo que introduce variabilidad
+  no relacionada con la capacidad hidraulica del nodo.
+- El caudal pico es mas interpretable como indicador de severidad: refleja
+  directamente que tan saturado quedo el nodo en su momento critico.
+- Para clasificacion (`flooded`), ambas metricas son equivalentes: si el
+  pico > 0, el nodo desbordo.
+
+`flooding_duration_min` sigue siendo la duracion total del desborde, leida
+desde el `.rpt` generado por SWMM cuando `USE_SWMM_API_RPT_RESULTS = True`.
+
+En `run_summary`, `total_peak_flooding_lps` es la suma de los picos de todos
+los nodos (no es un pico de red, sino un indicador escalar del nivel de
+saturacion global del sistema en esa corrida).
 
 El visor local se abre con:
 

@@ -307,6 +307,7 @@ def run_simulation(
     step_count = 0
     timestep_sec = None
     depth_rate_tracker = {}
+    peak_flooding_lps_tracker = {}
     node_timeseries_records = []
     node_inflow_profiles = node_inflow_profiles or {}
     if target_nodes is None:
@@ -341,6 +342,7 @@ def run_simulation(
 
         for node in nodes:
             depth_rate_tracker[node.nodeid] = {"prev": None, "max_rate": 0.0}
+            peak_flooding_lps_tracker[node.nodeid] = 0.0
             outflow_tracker[node.nodeid] = {
                 "max_total_outflow_lps": 0.0,
                 "time_to_peak_outflow_min": None,
@@ -406,6 +408,8 @@ def run_simulation(
                     else None
                 )
                 flooding_lps = node.flooding or 0.0
+                if flooding_lps > peak_flooding_lps_tracker[node_id]:
+                    peak_flooding_lps_tracker[node_id] = flooding_lps
                 node_timeseries_records.append({
                     "run_id": run_id,
                     "network_hash": network_hash,
@@ -443,9 +447,9 @@ def run_simulation(
 
             full_depth = node.full_depth
             max_depth = stats.get("max_depth", 0.0) or 0.0
-            flood_vol = stats.get("flooding_volume", 0.0) or 0.0
             flood_hours = stats.get("time_flooded", 0.0) or 0.0
             flood_minutes = flood_hours * 60.0
+            peak_flooding_lps = peak_flooding_lps_tracker[node_id]
 
             raw_peak = stats.get("time_max_depth")
             if raw_peak is not None and sim_start:
@@ -459,7 +463,7 @@ def run_simulation(
                 time_to_peak = None
 
             depth_ratio = (max_depth / full_depth) if (full_depth and full_depth > 0) else None
-            flooded = flood_vol > 0
+            flooded = peak_flooding_lps > 0
             if flooded:
                 total_flooded += 1
 
@@ -476,7 +480,7 @@ def run_simulation(
                 "inflow_multiplier": safe_round(inflow_multiplier, 6),
                 "node_id": node_id,
                 "flooded": int(flooded),
-                "flooding_volume_m3": safe_round(flood_vol),
+                "peak_flooding_lps": safe_round(peak_flooding_lps, 4),
                 "flooding_duration_min": safe_round(flood_minutes, 2),
                 "max_depth_m": safe_round(max_depth),
                 "max_depth_ratio": safe_round(depth_ratio),
@@ -529,7 +533,8 @@ def run_simulation(
                 "surcharged": int(surcharged),
                 "time_full_flow_hrs": safe_round(time_full_hours, 4),
             })
-    # Override flooding_volume_m3 and flooding_duration_min from the .rpt file.
+    # Override flooding_duration_min from the .rpt file.
+    # peak_flooding_lps is taken from the simulation loop, not the .rpt.
     # The .rpt is fully written only after the Simulation context manager exits.
     if USE_SWMM_API_RPT_RESULTS:
         _rpt_path = Path(simulation_inp).with_suffix(".rpt")
@@ -539,21 +544,14 @@ def run_simulation(
             for record in node_records:
                 rpt_row = _rpt_lookup.get(str(record["node_id"]))
                 if rpt_row is not None:
-                    vol = rpt_row.get("flooding_volume_m3")
                     dur = rpt_row.get("flooding_duration_min")
-                    try:
-                        fvol = float(vol)
-                        if fvol == fvol:  # NaN check
-                            record["flooding_volume_m3"] = safe_round(fvol)
-                    except (TypeError, ValueError):
-                        pass
                     try:
                         fdur = float(dur)
                         if fdur == fdur:
                             record["flooding_duration_min"] = safe_round(fdur, 2)
                     except (TypeError, ValueError):
                         pass
-                    record["flooded"] = int((record.get("flooding_volume_m3") or 0) > 0)
+                    record["flooded"] = int((record.get("peak_flooding_lps") or 0) > 0)
             total_flooded = sum(r["flooded"] for r in node_records)
 
     if scaled_inp_path is not None:
@@ -562,7 +560,7 @@ def run_simulation(
             scaled_inp_path.parent.rmdir()
 
     total_nodes = len(node_records)
-    total_flood_vol = sum(record["flooding_volume_m3"] or 0 for record in node_records)
+    total_peak_flooding_lps = sum(record["peak_flooding_lps"] or 0 for record in node_records)
     pct_flooded = (total_flooded / total_nodes * 100) if total_nodes > 0 else 0.0
     time_to_first = (
         round(first_flood_elapsed_min, 2)
@@ -576,7 +574,7 @@ def run_simulation(
         "inflow_multiplier": safe_round(inflow_multiplier, 6),
         "total_nodes": total_nodes,
         "failed_nodes_count": total_flooded,
-        "total_flooding_volume_m3": round(total_flood_vol, 4),
+        "total_peak_flooding_lps": round(total_peak_flooding_lps, 4),
         "pct_flooded_nodes": round(pct_flooded, 2),
         "time_to_first_flood_min": time_to_first,
         "resilience_index": resilience,

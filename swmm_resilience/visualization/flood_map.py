@@ -2,7 +2,7 @@
 Figure 2 — Flood map.
 
 Receives a standard DataFrame with node-level flood results and renders
-a spatial map with a color+size gradient for flooding_volume_m3.
+a spatial map with a color+size gradient for peak_flooding_lps.
 Works identically regardless of whether data came from SWMM or ML.
 """
 
@@ -53,7 +53,7 @@ def plot_flood_map(
 
     Parameters
     ----------
-    node_data    : DataFrame with columns [node_id, flooding_volume_m3, flooded,
+    node_data    : DataFrame with columns [node_id, peak_flooding_lps, flooded,
                    source, inflow_multiplier].
     inp_path     : Path to the SWMM .inp file (topology + coordinates).
     output_path  : Destination PNG path.
@@ -80,7 +80,7 @@ def plot_flood_map(
     df["x"] = df["node_id"].map(lambda n: coords[n][0])
     df["y"] = df["node_id"].map(lambda n: coords[n][1])
 
-    vmax = vmax_global if vmax_global is not None else float(df["flooding_volume_m3"].max())
+    vmax = vmax_global if vmax_global is not None else float(df["peak_flooding_lps"].max())
     if vmax == 0:
         vmax = 1.0  # avoid degenerate colormap
 
@@ -98,7 +98,7 @@ def plot_flood_map(
         ax.plot([x0, x1], [y0, y1], color=PIPE_COLOR, lw=PIPE_LW, zorder=1)
 
     # ── dry nodes ────────────────────────────────────────────────────────────
-    dry = df[df["flooding_volume_m3"] <= 0]
+    dry = df[df["peak_flooding_lps"] <= 0]
     ax.scatter(
         dry["x"], dry["y"],
         s=NODE_DRY_SIZE,
@@ -110,14 +110,14 @@ def plot_flood_map(
     )
 
     # ── flooded nodes ────────────────────────────────────────────────────────
-    wet = df[df["flooding_volume_m3"] > 0].copy()
+    wet = df[df["peak_flooding_lps"] > 0].copy()
     if not wet.empty:
-        sizes = _scale_sizes(wet["flooding_volume_m3"], vmax)
-        colors = cmap(norm(wet["flooding_volume_m3"].to_numpy()))
+        sizes = _scale_sizes(wet["peak_flooding_lps"], vmax)
+        colors = cmap(norm(wet["peak_flooding_lps"].to_numpy()))
         sc = ax.scatter(
             wet["x"], wet["y"],
             s=sizes,
-            c=wet["flooding_volume_m3"].to_numpy(),
+            c=wet["peak_flooding_lps"].to_numpy(),
             cmap=COLORMAP,
             norm=norm,
             edgecolors="white",
@@ -127,20 +127,20 @@ def plot_flood_map(
         )
         # colorbar
         cbar = fig.colorbar(sc, ax=ax, fraction=0.03, pad=0.02)
-        cbar.set_label("Volumen de inundación (m³)", fontsize=10)
+        cbar.set_label("Caudal pico de inundación (lps)", fontsize=10)
     else:
         # still render a colorbar even if nothing flooded
         sm = cm.ScalarMappable(norm=norm, cmap=COLORMAP)
         sm.set_array([])
         cbar = fig.colorbar(sm, ax=ax, fraction=0.03, pad=0.02)
-        cbar.set_label("Volumen de inundación (m³)", fontsize=10)
+        cbar.set_label("Caudal pico de inundación (lps)", fontsize=10)
 
     # ── top-N annotations ────────────────────────────────────────────────────
-    top = df.nlargest(TOP_N_LABELS, "flooding_volume_m3")
-    top = top[top["flooding_volume_m3"] > 0]
+    top = df.nlargest(TOP_N_LABELS, "peak_flooding_lps")
+    top = top[top["peak_flooding_lps"] > 0]
     for _, row in top.iterrows():
         ax.annotate(
-            f"{row['node_id']}\n{row['flooding_volume_m3']:.1f} m³",
+            f"{row['node_id']}\n{row['peak_flooding_lps']:.1f} lps",
             xy=(row["x"], row["y"]),
             xytext=(8, 8),
             textcoords="offset points",

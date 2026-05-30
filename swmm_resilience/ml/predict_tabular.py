@@ -201,7 +201,7 @@ def predict_steady_flows(
             scenario_column: prediction_rows[scenario_column],
             "predicted_flooded": predicted_flooded.astype(int),
             "flooded_probability": flooded_probability,
-            "predicted_flooding_volume_m3": predicted_volume,
+            "predicted_peak_flooding_lps": predicted_volume,
         }
     )
     if selected_network is not None:
