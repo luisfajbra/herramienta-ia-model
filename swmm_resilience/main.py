@@ -32,6 +32,7 @@ from .database.repository import (
     update_run_status,
     verify_run_saved,
 )
+from .database.queries import register_temporal_artifact
 from .ml.temporal.dataset import save_node_timeseries_parquet
 from .simulation.runner import extract_static_topology, run_simulation
 from .utils import file_hash, new_id, normalize_inflow_multipliers
@@ -222,8 +223,9 @@ def run_experiment(
             """
             INSERT INTO runs
               (run_id, network_file, network_hash, scenario_type,
-               spatial_pattern, delta_inflow_lps, inflow_multiplier, executed_at, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), 'running')
+               spatial_pattern, delta_inflow_lps, inflow_multiplier,
+               input_source, executed_at, status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), 'running')
             """,
             (
                 run_id,
@@ -233,6 +235,7 @@ def run_experiment(
                 spatial_pattern,
                 inflow_multiplier,
                 inflow_multiplier,
+                "hydrograph" if scenario_mode == SCENARIO_MODE_TIMESERIES else "steady",
             ),
         )
         conn.commit()
@@ -255,9 +258,24 @@ def run_experiment(
             node_timeseries_path = (
                 network_node_timeseries_dir(inp_path) / f"run_{run_id}.parquet"
             )
-            save_node_timeseries_parquet(
-                results["node_timeseries_records"],
-                node_timeseries_path,
+            ts_records = results["node_timeseries_records"]
+            save_node_timeseries_parquet(ts_records, node_timeseries_path)
+
+            if ts_records:
+                _node_ids = {r["node_id"] for r in ts_records}
+                _node_count = len(_node_ids)
+                _step_count = len(ts_records) // _node_count if _node_count else 0
+            else:
+                _node_count = 0
+                _step_count = 0
+
+            register_temporal_artifact(
+                conn,
+                run_id=run_id,
+                network_hash=network_hash,
+                parquet_path=node_timeseries_path,
+                node_count=_node_count,
+                step_count=_step_count,
             )
             update_run_status(conn, run_id, "completed")
             verify_run_saved(conn, run_id)
@@ -267,7 +285,7 @@ def run_experiment(
                 f"    ok Fallaron  : {summary['failed_nodes_count']}/{summary['total_nodes']} "
                 f"({summary['pct_flooded_nodes']:.1f}%)"
             )
-            print(f"    ok Vol total : {summary['total_flooding_volume_m3']:.2f} m3")
+            print(f"    ok Pico flood: {summary['total_peak_flooding_lps']:.2f} lps (suma nodos)")
             print(f"    ok Resiliencia: {summary['resilience_index']:.3f}")
             print(f"    ok Temporal  : {node_timeseries_path}")
             if summary["time_to_first_flood_min"]:
