@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS runs (
     spatial_pattern     TEXT NOT NULL,
     delta_inflow_lps    REAL NOT NULL,
     inflow_multiplier   REAL NOT NULL DEFAULT 1,
-    executed_at         TEXT NOT NULL,
+    executed_at         TEXT NOT NULL DEFAULT (datetime('now')),
     status              TEXT NOT NULL DEFAULT 'pending'
 );
 
@@ -109,13 +109,13 @@ CREATE TABLE IF NOT EXISTS run_summary (
 );
 
 CREATE TABLE IF NOT EXISTS temporal_artifacts (
-    artifact_id     TEXT PRIMARY KEY,
+    artifact_id     TEXT PRIMARY KEY DEFAULT (hex(randomblob(16))),
     run_id          TEXT NOT NULL REFERENCES runs(run_id),
     network_hash    TEXT NOT NULL,
     parquet_path    TEXT NOT NULL,
-    node_count      INTEGER NOT NULL,
-    step_count      INTEGER NOT NULL,
-    created_at      TEXT NOT NULL
+    node_count      INTEGER NOT NULL DEFAULT 0,
+    step_count      INTEGER NOT NULL DEFAULT 0,
+    created_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
 """
 

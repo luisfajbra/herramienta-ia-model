@@ -208,6 +208,124 @@ def build_temporal_windows(
     )
 
 
+def build_surrogate_dataset(
+    db_path: Path = DEFAULT_DB_FILE,
+    networks_dir: Path = NETWORKS_DIR,
+    resample_min: int = 5,
+    use_temporal: bool = True,
+) -> TemporalWindowDataset:
+    """Build one sample per (run_id, node_id) for the surrogate CNN.
+
+    Unlike build_temporal_windows, no sliding windows are produced.
+    Each sample's X_seq is the full resampled inflow/hydraulic timeseries for
+    that node in that run. Sequences are zero-padded to the longest T found.
+
+    When use_temporal=False the inflow_multiplier for the run is appended as
+    an extra column to X_static (giving 8 columns instead of 7), so the
+    no-temporal ablation model receives the multiplier as a static feature.
+    """
+    all_X_seq_list: list[np.ndarray] = []
+    all_X_static: list[np.ndarray] = []
+    all_y_class: list[int] = []
+    all_y_reg: list[float] = []
+    all_groups: list[str] = []
+    meta_rows: list[dict] = []
+
+    conn = sqlite3.connect(db_path)
+    try:
+        artifacts = conn.execute(
+            "SELECT ta.run_id, ta.network_hash, ta.parquet_path, r.inflow_multiplier "
+            "FROM temporal_artifacts ta "
+            "JOIN runs r ON ta.run_id = r.run_id "
+            "ORDER BY r.inflow_multiplier"
+        ).fetchall()
+
+        for run_id, network_hash, parquet_path, inflow_multiplier in artifacts:
+            df = pd.read_parquet(parquet_path)
+
+            static_rows = conn.execute(
+                f"SELECT node_uid, {', '.join(STATIC_COLS)} "
+                "FROM network_nodes WHERE network_hash = ?",
+                (network_hash,),
+            ).fetchall()
+            static_lookup: dict[str, np.ndarray] = {
+                row[0]: np.nan_to_num(np.array(row[1:], dtype=np.float32), nan=0.0)
+                for row in static_rows
+            }
+
+            for node_id in df["node_id"].unique():
+                if node_id not in static_lookup:
+                    warnings.warn(
+                        f"node_id '{node_id}' (run_id={run_id}) not in network_nodes — skipping.",
+                        stacklevel=2,
+                    )
+                    continue
+
+                node_df = (
+                    df[df["node_id"] == node_id]
+                    .sort_values("time_min")
+                    .drop_duplicates(subset=["time_min"], keep="last")
+                    .reset_index(drop=True)
+                )
+                if node_df.empty:
+                    continue
+
+                # Resample to regular grid
+                t_start = node_df["time_min"].iloc[0]
+                t_end = node_df["time_min"].iloc[-1]
+                n_grid = int(round((t_end - t_start) / resample_min)) + 1
+                grid = t_start + np.arange(n_grid, dtype=float) * resample_min
+                node_df = (
+                    node_df.set_index("time_min")
+                    .reindex(grid)
+                    .ffill()
+                    .dropna(subset=TEMPORAL_COLS)
+                    .reset_index()
+                )
+                if node_df.empty:
+                    continue
+
+                seq = node_df[TEMPORAL_COLS].values.astype(np.float32)  # [T, 6]
+                x_static = static_lookup[node_id]
+
+                if not use_temporal and inflow_multiplier is not None:
+                    x_static = np.append(x_static, float(inflow_multiplier)).astype(np.float32)
+
+                all_X_seq_list.append(seq)
+                all_X_static.append(x_static)
+                all_y_class.append(int((node_df["flooding_lps"] > 0).any()))
+                all_y_reg.append(float(node_df["flooding_lps"].max()))
+                all_groups.append(run_id)
+                meta_rows.append({"run_id": run_id, "node_id": node_id, "window_start_min": 0.0})
+    finally:
+        conn.close()
+
+    if not all_X_seq_list:
+        return TemporalWindowDataset(
+            X_seq=np.empty((0, 1, len(TEMPORAL_COLS)), dtype=np.float32),
+            X_static=np.empty((0, len(STATIC_COLS)), dtype=np.float32),
+            y_class=np.empty(0, dtype=np.int8),
+            y_reg=np.empty(0, dtype=np.float32),
+            groups=np.empty(0, dtype=object),
+            meta=pd.DataFrame(columns=["run_id", "node_id", "window_start_min"]),
+        )
+
+    # Zero-pad sequences to the longest T found
+    T_max = max(s.shape[0] for s in all_X_seq_list)
+    padded = np.zeros((len(all_X_seq_list), T_max, len(TEMPORAL_COLS)), dtype=np.float32)
+    for i, seq in enumerate(all_X_seq_list):
+        padded[i, : seq.shape[0], :] = seq
+
+    return TemporalWindowDataset(
+        X_seq=padded,
+        X_static=np.stack(all_X_static),
+        y_class=np.array(all_y_class, dtype=np.int8),
+        y_reg=np.array(all_y_reg, dtype=np.float32),
+        groups=np.array(all_groups, dtype=object),
+        meta=pd.DataFrame(meta_rows),
+    )
+
+
 if __name__ == "__main__":
     import argparse
 
