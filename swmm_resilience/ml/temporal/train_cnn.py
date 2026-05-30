@@ -82,6 +82,11 @@ def train_cnn(
             stacklevel=2,
         )
 
+    if actual_folds < 2:
+        raise ValueError(
+            f"GroupKFold requires at least 2 unique run_id groups; found {n_unique}."
+        )
+
     gkf = GroupKFold(n_splits=actual_folds)
     prefix = _TASK_TO_PREFIX[task]
     dev = torch.device(device)

@@ -4,6 +4,7 @@ numpy>=1.21.0
 pyswmm>=0.15.0
 scikit-learn>=1.0.0
 joblib>=1.2.0
+torch>=2.0.0
 xgboost>=1.7.0
 swmm-api>=0.4
 ydata-profiling>=4.17,<5
