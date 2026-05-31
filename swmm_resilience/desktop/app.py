@@ -605,7 +605,8 @@ class ResilienciaDesktopApp:
             inp_path = Path(self.predict_inp_var.get()).expanduser()
             if not inp_path.exists():
                 raise ValueError(f"No existe el archivo .inp: {inp_path}")
-        except ValueError as exc:
+            db_path = Path(self.db_var.get()).expanduser()
+        except Exception as exc:
             messagebox.showerror("Valor inválido", str(exc))
             return
 
@@ -616,7 +617,7 @@ class ResilienciaDesktopApp:
             )
             preds = predict_surrogate_from_multiplier(
                 multiplier=multiplier,
-                db_path=Path(self.db_var.get()).expanduser(),
+                db_path=db_path,
             )
             map_path = plot_surrogate_map(
                 predictions=preds,
