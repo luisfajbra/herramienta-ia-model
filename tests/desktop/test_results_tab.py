@@ -44,3 +44,15 @@ def test_predict_surr_button_disabled_without_artifacts():
         assert str(app.surr_predict_btn.cget("state")) == "disabled"
     finally:
         root.destroy()
+
+
+def test_predict_surrogate_validates_input():
+    """Predict with invalid multiplier shows error (no crash)."""
+    root = tk.Tk()
+    root.withdraw()
+    app = ResilienciaDesktopApp(root)
+    try:
+        app.surr_mult_var.set("not-a-number")
+        app._predict_surrogate()
+    finally:
+        root.destroy()

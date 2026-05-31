@@ -597,8 +597,47 @@ class ResilienciaDesktopApp:
         self.surr_predict_btn.configure(state="normal" if artifacts_exist else "disabled")
 
     def _predict_surrogate(self):
-        """Run surrogate prediction in a background thread."""
-        pass
+        """Run surrogate prediction and display the resulting map."""
+        try:
+            multiplier = float(self.surr_mult_var.get())
+            if multiplier <= 0:
+                raise ValueError("El multiplicador debe ser mayor que cero.")
+            inp_path = Path(self.predict_inp_var.get()).expanduser()
+            if not inp_path.exists():
+                raise ValueError(f"No existe el archivo .inp: {inp_path}")
+        except ValueError as exc:
+            messagebox.showerror("Valor inválido", str(exc))
+            return
+
+        def worker():
+            from swmm_resilience.ml.temporal.predict import (
+                plot_surrogate_map,
+                predict_surrogate_from_multiplier,
+            )
+            preds = predict_surrogate_from_multiplier(
+                multiplier=multiplier,
+                db_path=Path(self.db_var.get()).expanduser(),
+            )
+            map_path = plot_surrogate_map(
+                predictions=preds,
+                inp_path=inp_path,
+                multiplier=multiplier,
+            )
+            print(f"Mapa guardado: {map_path}")
+            self.root.after(0, self._on_surrogate_done, str(map_path))
+
+        self._run_in_thread("Predicción surrogada", worker, self.append_log)
+
+    def _on_surrogate_done(self, map_path_str: str):
+        """After surrogate prediction completes: refresh tree, select new map."""
+        self._refresh_results_tree()
+        self.notebook.select(self.results_tab)
+        map_path = Path(map_path_str)
+        if map_path.exists():
+            self.results_tree.selection_set(map_path_str)
+            self.results_tree.focus(map_path_str)
+            self.results_tree.see(map_path_str)
+            self._display_image(map_path)
 
     def append_reset_log(self, text: str):
         self.reset_log.configure(state="normal")
@@ -787,7 +826,7 @@ class ResilienciaDesktopApp:
         self.prediction_output.delete("1.0", "end")
         self.prediction_output.configure(state="disabled")
 
-    def _run_in_thread(self, title: str, worker, log_callback):
+    def _run_in_thread(self, title: str, worker, log_callback, on_done=None):
         if self.worker_thread and self.worker_thread.is_alive():
             messagebox.showwarning("Proceso en curso", "Ya hay una tarea ejecutandose.")
             return
@@ -801,6 +840,8 @@ class ResilienciaDesktopApp:
                     worker()
                     print(f"\n=== {title} finalizado ===")
                 self.root.after(0, lambda: messagebox.showinfo("Listo", f"{title} finalizado."))
+                if on_done:
+                    self.root.after(0, on_done)
             except Exception:
                 error = traceback.format_exc()
                 self.root.after(0, log_callback, f"\n{error}\n")
@@ -851,7 +892,8 @@ class ResilienciaDesktopApp:
                 reset_db=self.reset_db_var.get(),
             )
 
-        self._run_in_thread("Corrida SWMM", worker, self.append_log)
+        self._run_in_thread("Corrida SWMM", worker, self.append_log,
+                            on_done=self._refresh_results_tree)
 
     def _train_models(self):
         def worker():
@@ -1009,7 +1051,8 @@ class ResilienciaDesktopApp:
                     )
                     print(f"  Guardado: {map_path}")
 
-        self._run_in_thread("Prediccion ML", worker, self.append_prediction_output)
+        self._run_in_thread("Prediccion ML", worker, self.append_prediction_output,
+                            on_done=self._refresh_results_tree)
 
     def _open_db_viewer(self):
         db_path = Path(self.db_var.get()).expanduser()
