@@ -85,6 +85,71 @@ def _safe_sum(values):
     return round(sum(values), 6) if values else None
 
 
+def _flood_volume_from_timeseries_m3(node_timeseries_records: list[dict]) -> dict[str, float]:
+    """Integrate node flooding time series from L/s to m3."""
+    rows_by_node = defaultdict(list)
+    for record in node_timeseries_records:
+        node_id = record.get("node_id")
+        if node_id is not None:
+            rows_by_node[str(node_id)].append(record)
+
+    volumes = {}
+    for node_id, records in rows_by_node.items():
+        previous_time_sec = 0.0
+        total_litres = 0.0
+        for record in sorted(records, key=lambda row: row.get("time_sec") or 0.0):
+            try:
+                time_sec = float(record.get("time_sec") or 0.0)
+                flooding_lps = float(record.get("flooding_lps") or 0.0)
+            except (TypeError, ValueError):
+                continue
+            dt_sec = time_sec - previous_time_sec
+            if dt_sec > 0:
+                total_litres += flooding_lps * dt_sec
+            previous_time_sec = time_sec
+        volumes[node_id] = round(total_litres / 1000.0, 6)
+    return volumes
+
+
+def _merge_rpt_flooding_metrics(node_records: list[dict], rpt_df) -> None:
+    """Overlay node flooding metrics parsed from the SWMM .rpt summary."""
+    if rpt_df is None:
+        return
+
+    def _is_positive(value) -> bool:
+        try:
+            metric = float(value)
+        except (TypeError, ValueError):
+            return False
+        return metric == metric and metric > 0
+
+    rpt_lookup = {str(row["node_id"]): row for _, row in rpt_df.iterrows()}
+    for record in node_records:
+        rpt_row = rpt_lookup.get(str(record["node_id"]))
+        if rpt_row is not None:
+            volume = rpt_row.get("flooding_volume_m3")
+            try:
+                fvol = float(volume)
+                if fvol == fvol:
+                    record["total_flood_volume_m3"] = safe_round(fvol, 6)
+            except (TypeError, ValueError):
+                pass
+
+            duration = rpt_row.get("flooding_duration_min")
+            try:
+                fdur = float(duration)
+                if fdur == fdur:
+                    record["flooding_duration_min"] = safe_round(fdur, 2)
+            except (TypeError, ValueError):
+                pass
+
+        record["flooded"] = int(
+            _is_positive(record.get("peak_flooding_lps"))
+            or _is_positive(record.get("total_flood_volume_m3"))
+            or _is_positive(record.get("flooding_duration_min"))
+        )
+
+
 def _validate_network_geometry(inp_file: str, junction_depths: list[tuple[str, float]]):
     """Fail fast when a network's junction depths are implausibly large."""
     if not STRICT_INPUT_VALIDATION:
@@ -437,6 +502,7 @@ def run_simulation(
                 if flow_lps > current_peak:
                     downstream_link_peak_flows[inlet_node][link.linkid] = flow_lps
 
+        fallback_flood_volume_m3 = _flood_volume_from_timeseries_m3(node_timeseries_records)
         node_records = []
         run_inputs = []
         total_flooded = 0
@@ -450,6 +516,7 @@ def run_simulation(
             flood_hours = stats.get("time_flooded", 0.0) or 0.0
             flood_minutes = flood_hours * 60.0
             peak_flooding_lps = peak_flooding_lps_tracker[node_id]
+            total_flood_volume_m3 = fallback_flood_volume_m3.get(node_id, 0.0)
 
             raw_peak = stats.get("time_max_depth")
             if raw_peak is not None and sim_start:
@@ -463,7 +530,7 @@ def run_simulation(
                 time_to_peak = None
 
             depth_ratio = (max_depth / full_depth) if (full_depth and full_depth > 0) else None
-            flooded = peak_flooding_lps > 0
+            flooded = peak_flooding_lps > 0 or total_flood_volume_m3 > 0
             if flooded:
                 total_flooded += 1
 
@@ -481,6 +548,7 @@ def run_simulation(
                 "node_id": node_id,
                 "flooded": int(flooded),
                 "peak_flooding_lps": safe_round(peak_flooding_lps, 4),
+                "total_flood_volume_m3": safe_round(total_flood_volume_m3, 6),
                 "flooding_duration_min": safe_round(flood_minutes, 2),
                 "max_depth_m": safe_round(max_depth),
                 "max_depth_ratio": safe_round(depth_ratio),
@@ -533,26 +601,10 @@ def run_simulation(
                 "surcharged": int(surcharged),
                 "time_full_flow_hrs": safe_round(time_full_hours, 4),
             })
-    # Override flooding_duration_min from the .rpt file.
-    # peak_flooding_lps is taken from the simulation loop, not the .rpt.
-    # The .rpt is fully written only after the Simulation context manager exits.
     if USE_SWMM_API_RPT_RESULTS:
         _rpt_path = Path(simulation_inp).with_suffix(".rpt")
-        _rpt_df = read_node_flooding_summary(_rpt_path)
-        if _rpt_df is not None:
-            _rpt_lookup = {str(row["node_id"]): row for _, row in _rpt_df.iterrows()}
-            for record in node_records:
-                rpt_row = _rpt_lookup.get(str(record["node_id"]))
-                if rpt_row is not None:
-                    dur = rpt_row.get("flooding_duration_min")
-                    try:
-                        fdur = float(dur)
-                        if fdur == fdur:
-                            record["flooding_duration_min"] = safe_round(fdur, 2)
-                    except (TypeError, ValueError):
-                        pass
-                    record["flooded"] = int((record.get("peak_flooding_lps") or 0) > 0)
-            total_flooded = sum(r["flooded"] for r in node_records)
+        _merge_rpt_flooding_metrics(node_records, read_node_flooding_summary(_rpt_path))
+        total_flooded = sum(r["flooded"] for r in node_records)
 
     if scaled_inp_path is not None:
         _remove_swmm_temp_files(scaled_inp_path)
@@ -561,6 +613,7 @@ def run_simulation(
 
     total_nodes = len(node_records)
     total_peak_flooding_lps = sum(record["peak_flooding_lps"] or 0 for record in node_records)
+    total_flood_volume_m3 = sum(record["total_flood_volume_m3"] or 0 for record in node_records)
     pct_flooded = (total_flooded / total_nodes * 100) if total_nodes > 0 else 0.0
     time_to_first = (
         round(first_flood_elapsed_min, 2)
@@ -575,6 +628,7 @@ def run_simulation(
         "total_nodes": total_nodes,
         "failed_nodes_count": total_flooded,
         "total_peak_flooding_lps": round(total_peak_flooding_lps, 4),
+        "total_flood_volume_m3": round(total_flood_volume_m3, 6),
         "pct_flooded_nodes": round(pct_flooded, 2),
         "time_to_first_flood_min": time_to_first,
         "resilience_index": resilience,
