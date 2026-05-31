@@ -60,6 +60,8 @@ from swmm_resilience.ml.predict_tabular import (
 from swmm_resilience.ml import train as ml_train
 from swmm_resilience.utils import normalize_inflow_multipliers
 
+from PIL import Image, ImageTk
+
 
 def _float_range(start: float, stop: float, step: float) -> list[float]:
     values: list[float] = []
@@ -461,7 +463,93 @@ class ResilienciaDesktopApp:
         self.reset_log.configure(state="disabled")
 
     def _build_results_tab(self):
-        """Build the Resultados tab UI."""
+        self.results_tab.columnconfigure(0, weight=0)
+        self.results_tab.columnconfigure(1, weight=1)
+        self.results_tab.rowconfigure(0, weight=1)
+        self.results_tab.rowconfigure(1, weight=0)
+
+        left = ttk.LabelFrame(self.results_tab, text="Carpetas", width=200)
+        left.grid(row=0, column=0, sticky="ns", padx=(0, 6))
+        left.grid_propagate(False)
+
+        tree_frame = ttk.Frame(left)
+        tree_frame.pack(fill="both", expand=True, padx=4, pady=4)
+        scroll = ttk.Scrollbar(tree_frame, orient="vertical")
+        self.results_tree = ttk.Treeview(
+            tree_frame, yscrollcommand=scroll.set, height=20
+        )
+        scroll.config(command=self.results_tree.yview)
+        scroll.pack(side="right", fill="y")
+        self.results_tree.pack(fill="both", expand=True)
+
+        self._swmm_root = self.results_tree.insert(
+            "", "end", text="SWMM", open=True
+        )
+        self._ml_root = self.results_tree.insert(
+            "", "end", text="ML Tabular", open=True
+        )
+        self._surr_root = self.results_tree.insert(
+            "", "end", text="Surrogado (CNN)", open=True
+        )
+
+        ttk.Button(left, text="\u21ba Actualizar", command=self._refresh_results_tree).pack(
+            pady=(0, 6)
+        )
+
+        right = ttk.LabelFrame(self.results_tab, text="Vista previa")
+        right.grid(row=0, column=1, sticky="nsew")
+        right.columnconfigure(0, weight=1)
+        right.rowconfigure(0, weight=1)
+
+        self.image_label = ttk.Label(
+            right, text="Selecciona una imagen", anchor="center", background="#f0f0f0"
+        )
+        self.image_label.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
+
+        pred = ttk.LabelFrame(self.results_tab, text="Predictor Surrogado", padding=12)
+        pred.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        pred.columnconfigure(1, weight=1)
+
+        ttk.Label(pred, text="Multiplicador:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        self.surr_mult_var = tk.StringVar(value="1.0")
+        ttk.Entry(pred, textvariable=self.surr_mult_var, width=12).grid(
+            row=0, column=1, sticky="w"
+        )
+
+        ttk.Label(pred, text="Red .inp:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(6, 0))
+        self.surr_inp_entry = ttk.Entry(pred, textvariable=self.predict_inp_var)
+        self.surr_inp_entry.grid(row=1, column=1, sticky="ew", pady=(6, 0))
+        ttk.Button(pred, text="Buscar...", command=self._browse_predict_inp).grid(
+            row=1, column=2, padx=(6, 0), pady=(6, 0)
+        )
+
+        self.surr_predict_btn = ttk.Button(
+            pred, text="Predecir y mostrar", command=self._predict_surrogate
+        )
+        self.surr_predict_btn.grid(row=2, column=1, sticky="e", pady=(10, 0))
+
+        self.results_tree.bind("<<TreeviewSelect>>", self._on_tree_select)
+
+        self._refresh_results_tree()
+        self._update_predict_button_state()
+
+    def _refresh_results_tree(self):
+        """Rescan all three map directories and populate the tree."""
+        pass
+
+    def _on_tree_select(self, event):
+        """Display the selected image in the right panel."""
+        pass
+
+    def _update_predict_button_state(self):
+        """Enable/disable the predict button based on artifact presence."""
+        inp_path = Path(self.predict_inp_var.get()).expanduser()
+        artifacts_dir = inp_path.parent / "results" / "temporal" / "model_artifacts"
+        artifacts_exist = (artifacts_dir / "surrogate_cnn_weights.pt").exists()
+        self.surr_predict_btn.configure(state="normal" if artifacts_exist else "disabled")
+
+    def _predict_surrogate(self):
+        """Run surrogate prediction in a background thread."""
         pass
 
     def append_reset_log(self, text: str):
