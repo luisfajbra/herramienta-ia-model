@@ -18,17 +18,18 @@ def test_results_tab_exists():
         root.destroy()
 
 
-def test_results_tree_has_three_folders():
+def test_results_tree_has_four_folders():
     root = tk.Tk()
     root.withdraw()
     app = ResilienciaDesktopApp(root)
     try:
         children = app.results_tree.get_children()
-        assert len(children) == 3
+        assert len(children) == 4
         texts = [app.results_tree.item(c, "text") for c in children]
         assert "SWMM" in texts
         assert "ML Tabular" in texts
         assert "Surrogado (CNN)" in texts
+        assert "Surrogado (LSTM)" in texts
     finally:
         root.destroy()
 
@@ -105,13 +106,13 @@ def test_refresh_tree_empty_when_no_dirs_exist():
     try:
         app.predict_inp_var.set("/nonexistent/path/model.inp")
         app._refresh_results_tree()
-        for root_key in (app._swmm_root, app._ml_root, app._surr_root):
+        for root_key in (app._swmm_root, app._ml_root, app._surr_root, app._lstm_root):
             assert len(app.results_tree.get_children(root_key)) == 0
     finally:
         root.destroy()
 
 
-def test_refresh_tree_shows_all_three_categories(tmp_path):
+def test_refresh_tree_shows_all_categories(tmp_path):
     """Tree populates children under each category folder."""
     root = tk.Tk()
     root.withdraw()
@@ -129,7 +130,8 @@ def test_refresh_tree_shows_all_three_categories(tmp_path):
 
         (swmm_dir / "flood_map_qx1.00_swmm.png").write_bytes(b"d")
         (ml_dir / "flood_map_qx1.00_ml.png").write_bytes(b"d")
-        (surr_dir / "surrogate_map_qx1.00.png").write_bytes(b"d")
+        (surr_dir / "surrogate_map_cnn_qx1.00.png").write_bytes(b"d")
+        (surr_dir / "surrogate_map_lstm_qx1.00.png").write_bytes(b"d")
 
         app.predict_inp_var.set(str(inp_file))
         app._refresh_results_tree()
@@ -137,5 +139,6 @@ def test_refresh_tree_shows_all_three_categories(tmp_path):
         assert len(app.results_tree.get_children(app._swmm_root)) == 1
         assert len(app.results_tree.get_children(app._ml_root)) == 1
         assert len(app.results_tree.get_children(app._surr_root)) == 1
+        assert len(app.results_tree.get_children(app._lstm_root)) == 1
     finally:
         root.destroy()

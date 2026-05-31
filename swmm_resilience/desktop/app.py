@@ -14,6 +14,8 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+import pandas as pd
+
 
 @contextlib.contextmanager
 def _suppress_appkit_warnings():
@@ -491,6 +493,9 @@ class ResilienciaDesktopApp:
         self._surr_root = self.results_tree.insert(
             "", "end", text="Surrogado (CNN)", open=True
         )
+        self._lstm_root = self.results_tree.insert(
+            "", "end", text="Surrogado (LSTM)", open=True
+        )
 
         ttk.Button(left, text="\u21ba Actualizar", command=self._refresh_results_tree).pack(
             pady=(0, 6)
@@ -506,39 +511,90 @@ class ResilienciaDesktopApp:
         )
         self.image_label.grid(row=0, column=0, sticky="nsew", padx=10, pady=10)
 
+        self.surr_model_var = tk.StringVar(value="cnn")
+
         pred = ttk.LabelFrame(self.results_tab, text="Predictor Surrogado", padding=12)
         pred.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
         pred.columnconfigure(1, weight=1)
+        pred.columnconfigure(3, weight=1)
 
-        ttk.Label(pred, text="Multiplicador:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        ttk.Label(pred, text="Modelo:").grid(row=0, column=0, sticky="w", padx=(0, 8))
+        model_combo = ttk.Combobox(
+            pred, textvariable=self.surr_model_var,
+            values=["cnn", "lstm"], state="readonly", width=8,
+        )
+        model_combo.grid(row=0, column=1, sticky="w")
+        model_combo.bind("<<ComboboxSelected>>", lambda e: self._update_predict_button_state())
+
+        ttk.Label(pred, text="Multiplicador:").grid(row=0, column=2, sticky="w", padx=(16, 8))
         self.surr_mult_var = tk.StringVar(value="1.0")
         ttk.Entry(pred, textvariable=self.surr_mult_var, width=12).grid(
-            row=0, column=1, sticky="w"
+            row=0, column=3, sticky="w"
         )
 
         ttk.Label(pred, text="Red .inp:").grid(row=1, column=0, sticky="w", padx=(0, 8), pady=(6, 0))
         self.surr_inp_entry = ttk.Entry(pred, textvariable=self.predict_inp_var)
-        self.surr_inp_entry.grid(row=1, column=1, sticky="ew", pady=(6, 0))
+        self.surr_inp_entry.grid(row=1, column=1, columnspan=2, sticky="ew", pady=(6, 0))
         ttk.Button(pred, text="Buscar...", command=self._browse_predict_inp).grid(
-            row=1, column=2, padx=(6, 0), pady=(6, 0)
+            row=1, column=3, padx=(6, 0), pady=(6, 0)
         )
 
         self.surr_predict_btn = ttk.Button(
             pred, text="Predecir y mostrar", command=self._predict_surrogate
         )
-        self.surr_predict_btn.grid(row=2, column=1, sticky="e", pady=(10, 0))
+        self.surr_predict_btn.grid(row=2, column=3, sticky="e", pady=(10, 0))
 
         self.results_tree.bind("<<TreeviewSelect>>", self._on_tree_select)
 
         self._refresh_results_tree()
         self._update_predict_button_state()
 
+        # ── Temporal Windows Summary ────────────────────────────────────────────
+        win_frame = ttk.LabelFrame(self.results_tab, text="Resumen de Ventanas Temporales", padding=12)
+        win_frame.grid(row=2, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+        win_frame.columnconfigure(0, weight=1)
+
+        self.win_summary_btn = ttk.Button(
+            win_frame, text="Generar Resumen", command=self._generate_window_summary
+        )
+        self.win_summary_btn.pack(anchor="w", pady=(0, 6))
+
+        win_tree_frame = ttk.Frame(win_frame)
+        win_tree_frame.pack(fill="both", expand=True)
+
+        win_columns = ("multiplier", "duration_min", "time_skip_days",
+                       "mean_capacity", "n_peaks", "n_drains", "n_swales")
+        self.win_tree = ttk.Treeview(
+            win_tree_frame, columns=win_columns, show="headings", height=8,
+        )
+        self.win_tree.heading("multiplier", text="Qx")
+        self.win_tree.heading("duration_min", text="Duración (min)")
+        self.win_tree.heading("time_skip_days", text="Salto (días)")
+        self.win_tree.heading("mean_capacity", text="Cap. Media (LPS)")
+        self.win_tree.heading("n_peaks", text="Picos")
+        self.win_tree.heading("n_drains", text="Drenajes")
+        self.win_tree.heading("n_swales", text="Cunetas")
+
+        self.win_tree.column("multiplier", width=70)
+        self.win_tree.column("duration_min", width=110)
+        self.win_tree.column("time_skip_days", width=100)
+        self.win_tree.column("mean_capacity", width=130)
+        self.win_tree.column("n_peaks", width=60)
+        self.win_tree.column("n_drains", width=80)
+        self.win_tree.column("n_swales", width=80)
+
+        win_scroll = ttk.Scrollbar(win_tree_frame, orient="vertical", command=self.win_tree.yview)
+        self.win_tree.configure(yscrollcommand=win_scroll.set)
+
+        self.win_tree.pack(side="left", fill="both", expand=True)
+        win_scroll.pack(side="right", fill="y")
+
     def _refresh_results_tree(self):
         """Rescan all three map directories and populate the tree."""
         inp_path = Path(self.predict_inp_var.get()).expanduser()
         network_dir = inp_path.parent
 
-        for root_key in (self._swmm_root, self._ml_root, self._surr_root):
+        for root_key in (self._swmm_root, self._ml_root, self._surr_root, self._lstm_root):
             for child in self.results_tree.get_children(root_key):
                 self.results_tree.delete(child)
 
@@ -554,11 +610,14 @@ class ResilienciaDesktopApp:
                 display = f.stem.replace("_ml", "")
                 self.results_tree.insert(self._ml_root, "end", iid=str(f), text=display)
 
-        surr_dir = network_dir / "results" / "temporal" / "maps"
-        if surr_dir.exists():
-            for f in sorted(surr_dir.glob("surrogate_map_qx*.png")):
+        maps_dir = network_dir / "results" / "temporal" / "maps"
+        if maps_dir.exists():
+            for f in sorted(maps_dir.glob("surrogate_map_cnn_qx*.png")):
                 display = f.stem
                 self.results_tree.insert(self._surr_root, "end", iid=str(f), text=display)
+            for f in sorted(maps_dir.glob("surrogate_map_lstm_qx*.png")):
+                display = f.stem
+                self.results_tree.insert(self._lstm_root, "end", iid=str(f), text=display)
 
     def _on_tree_select(self, event):
         """Display the selected image in the right panel."""
@@ -566,7 +625,7 @@ class ResilienciaDesktopApp:
         if not selection:
             return
         item = selection[0]
-        if item in (self._swmm_root, self._ml_root, self._surr_root):
+        if item in (self._swmm_root, self._ml_root, self._surr_root, self._lstm_root):
             return
         image_path = Path(item)
         if not image_path.exists():
@@ -593,7 +652,9 @@ class ResilienciaDesktopApp:
         """Enable/disable the predict button based on artifact presence."""
         inp_path = Path(self.predict_inp_var.get()).expanduser()
         artifacts_dir = inp_path.parent / "results" / "temporal" / "model_artifacts"
-        artifacts_exist = (artifacts_dir / "surrogate_cnn_weights.pt").exists()
+        model_type = self.surr_model_var.get()
+        prefix = "surrogate_cnn" if model_type == "cnn" else "surrogate_lstm"
+        artifacts_exist = (artifacts_dir / f"{prefix}_weights.pt").exists()
         self.surr_predict_btn.configure(state="normal" if artifacts_exist else "disabled")
 
     def _predict_surrogate(self):
@@ -606,6 +667,7 @@ class ResilienciaDesktopApp:
             if not inp_path.exists():
                 raise ValueError(f"No existe el archivo .inp: {inp_path}")
             db_path = Path(self.db_var.get()).expanduser()
+            model_type = self.surr_model_var.get()
         except Exception as exc:
             messagebox.showerror("Valor inválido", str(exc))
             return
@@ -618,11 +680,13 @@ class ResilienciaDesktopApp:
             preds = predict_surrogate_from_multiplier(
                 multiplier=multiplier,
                 db_path=db_path,
+                model_type=model_type,
             )
             map_path = plot_surrogate_map(
                 predictions=preds,
                 inp_path=inp_path,
                 multiplier=multiplier,
+                model_type=model_type,
             )
             print(f"Mapa guardado: {map_path}")
             self.root.after(0, self._on_surrogate_done, str(map_path))
@@ -639,6 +703,46 @@ class ResilienciaDesktopApp:
             self.results_tree.focus(map_path_str)
             self.results_tree.see(map_path_str)
             self._display_image(map_path)
+
+    def _generate_window_summary(self):
+        """Run build_temporal_window_summary and populate the tree."""
+        db_path = Path(self.db_var.get()).expanduser()
+        inp_path = Path(self.predict_inp_var.get()).expanduser()
+
+        def worker():
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            try:
+                # derive a network_hash from the DB using the inp filename
+                inp_name = inp_path.name
+                row = conn.execute(
+                    "SELECT network_hash FROM runs WHERE network_file = ? LIMIT 1",
+                    (inp_name,),
+                ).fetchone()
+                network_hash = row[0] if row else ""
+            finally:
+                conn.close()
+
+            from swmm_resilience.ml.temporal.predict import build_temporal_window_summary
+            df = build_temporal_window_summary(network_hash=network_hash, db_path=db_path)
+            self.root.after(0, self._display_window_summary, df)
+
+        self._run_in_thread("Resumen de ventanas", worker, self.append_log)
+
+    def _display_window_summary(self, df: pd.DataFrame):
+        """Populate the temporal window tree with summary data."""
+        for row in self.win_tree.get_children():
+            self.win_tree.delete(row)
+        for _, r in df.iterrows():
+            self.win_tree.insert("", "end", values=(
+                f"Qx{r['inflow_multiplier']:.2f}" if "inflow_multiplier" in r.index and pd.notna(r["inflow_multiplier"]) else "N/A",
+                f"{r['duration_min']:.0f}" if "duration_min" in r.index and pd.notna(r["duration_min"]) else "—",
+                f"{r['time_skip_days']:.0f}" if "time_skip_days" in r.index and pd.notna(r["time_skip_days"]) else "—",
+                f"{r['mean_capacity_lps']:.1f}" if "mean_capacity_lps" in r.index and pd.notna(r["mean_capacity_lps"]) else "—",
+                int(r["n_peaks"]) if "n_peaks" in r.index and pd.notna(r["n_peaks"]) else 0,
+                int(r["n_drains"]) if "n_drains" in r.index and pd.notna(r["n_drains"]) else 0,
+                int(r["n_swales"]) if "n_swales" in r.index and pd.notna(r["n_swales"]) else 0,
+            ))
 
     def append_reset_log(self, text: str):
         self.reset_log.configure(state="normal")
