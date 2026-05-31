@@ -1,5 +1,5 @@
 # swmm_resilience/ml/temporal/train_surrogate.py
-"""Surrogate CNN training pipeline for SWMM flood prediction."""
+"""Surrogate model training pipeline (CNN/LSTM) for SWMM flood prediction."""
 from __future__ import annotations
 
 import argparse
@@ -32,6 +32,12 @@ from .models.surrogate_lstm import SWMMSurrogateLSTM
 from .schemas import TemporalWindowDataset
 
 
+_MODEL_PREFIXES: dict[type, str] = {
+    SWMMSurrogateCNN: "surrogate_cnn",
+    SWMMSurrogateLSTM: "surrogate_lstm",
+}
+
+
 def train_surrogate(
     db_path: Path = DEFAULT_DB_FILE,
     networks_dir: Path = NETWORKS_DIR,
@@ -47,7 +53,7 @@ def train_surrogate(
     device: str = "cpu",
     _dataset: TemporalWindowDataset | None = None,
 ) -> dict:
-    """Train SWMMSurrogateCNN with GroupKFold. Returns per-fold metrics.
+    """Train surrogate model (CNN/LSTM) with GroupKFold. Returns per-fold metrics.
 
     Args:
         alpha: Weight for BCEWithLogitsLoss (classification).
@@ -57,8 +63,9 @@ def train_surrogate(
             8 columns when use_temporal=False.
         _dataset: Inject pre-built dataset (testing only).
     """
-    model_name = model_cls.__name__.lower().replace("swmmsurrogate", "surrogate_")
-    prefix = f"{model_name}{'' if use_temporal else '_notemporal'}"
+    prefix = _MODEL_PREFIXES[model_cls]
+    if not use_temporal:
+        prefix += "_notemporal"
 
     dataset = (
         _dataset
