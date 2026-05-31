@@ -726,6 +726,7 @@ class ResilienciaDesktopApp:
             )
         if path:
             self.predict_inp_var.set(path)
+            self._update_predict_button_state()
 
     def _browse_db_save(self):
         with _suppress_appkit_warnings():
