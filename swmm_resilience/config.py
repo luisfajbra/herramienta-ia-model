@@ -104,10 +104,6 @@ ML_DROP_COLUMNS = [
     "depth_rate_m_per_min",
     "max_total_outflow_lps",
     "time_to_peak_outflow_min",
-    "in_degree",
-    "out_degree",
-    "upstream_capacity_lps",
-    "downstream_capacity_lps",
 ]
 
 ML_MODEL_CONFIGS = {
