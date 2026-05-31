@@ -8,3 +8,4 @@ torch>=2.0.0
 xgboost>=1.7.0
 swmm-api>=0.4
 ydata-profiling>=4.17,<5
+Pillow>=10.0.0
