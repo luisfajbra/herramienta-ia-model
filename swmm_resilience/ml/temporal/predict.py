@@ -468,29 +468,32 @@ def plot_surrogate_map(
     output_path: Path | None = None,
     multiplier: float | None = None,
     vmax: float | None = None,
+    model_type: str = "cnn",
 ) -> Path:
-    """Save a prediction map from surrogate CNN output.
+    """Save a prediction map from surrogate CNN/LSTM output.
 
     Renames surrogate columns for plot_flood_map and saves the map
     with flooding volume (LPS) as the color/size gradient, not probability.
     """
+    model_label = "CNN" if model_type == "cnn" else "LSTM"
+
     if output_path is None:
         out_dir = DEFAULT_SURROGATE_MAPS_DIR
         out_dir.mkdir(parents=True, exist_ok=True)
         if multiplier is not None:
-            output_path = out_dir / f"surrogate_map_qx{multiplier:.2f}.png"
+            output_path = out_dir / f"surrogate_map_{model_type}_qx{multiplier:.2f}.png"
         else:
-            output_path = out_dir / "surrogate_map.png"
+            output_path = out_dir / f"surrogate_map_{model_type}.png"
 
     df = predictions.rename(columns={
         "peak_flooding_lps_pred": "peak_flooding_lps",
         "predicted_flooded": "flooded",
     })
-    df["source"] = "Surrogate CNN"
+    df["source"] = f"Surrogate {model_label}"
     df["inflow_multiplier"] = multiplier if multiplier is not None else 1.0
 
     title = (
-        f"Surrogate CNN — Volumen de Inundación Predicho"
+        f"Surrogate {model_label} — Volumen de Inundación Predicho"
         + (f"\nQx{multiplier:.2f}" if multiplier is not None else "")
     )
     return plot_flood_map(df, inp_path, output_path, title=title, vmax_global=vmax)

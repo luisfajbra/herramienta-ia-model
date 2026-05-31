@@ -158,6 +158,6 @@ class TestPlotSurrogateMap:
             tmp_path / "maps",
         )
         result = plot_surrogate_map(predictions=preds, inp_path=inp, multiplier=2.5)
-        expected = tmp_path / "maps" / "surrogate_map_qx2.50.png"
+        expected = tmp_path / "maps" / "surrogate_map_cnn_qx2.50.png"
         assert result == expected
         assert expected.exists()
