@@ -1160,6 +1160,9 @@ class ResilienciaDesktopApp:
         self._clear_prediction_output()
 
         def worker():
+            import matplotlib
+            matplotlib.use("Agg")
+
             print(f"Modo: {'dataset CSV' if predict_source == 'csv' else 'archivo .inp'}")
             print(f"Factores: {flow_values}")
             print(f"Nodos: {'todos' if target_nodes is None else ', '.join(target_nodes)}")
