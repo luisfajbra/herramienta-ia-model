@@ -1140,6 +1140,7 @@ class ResilienciaDesktopApp:
             csv_path = Path(self.csv_var.get()).expanduser()
             inp_path = Path(self.predict_inp_var.get()).expanduser()
             artifacts_dir = Path(self.artifacts_dir_var.get()).expanduser()
+            db_path = Path(self.db_var.get()).expanduser()
 
             if predict_source == "csv":
                 if not csv_path.exists():
