@@ -24,9 +24,9 @@ import numpy as np
 import pandas as pd
 import torch
 
-from ...config import DEFAULT_DB_FILE, DEFAULT_TEMPORAL_ARTIFACTS_DIR
+from ...config import DEFAULT_DB_FILE, DEFAULT_SURROGATE_MAPS_DIR, DEFAULT_TEMPORAL_ARTIFACTS_DIR
 from ...visualization._inp_parser import parse_conduits, parse_coordinates
-from .dataset import STATIC_COLS, TEMPORAL_COLS
+from .dataset import STATIC_COLS, SURROGATE_TEMPORAL_COLS, TEMPORAL_COLS
 from .models.cnn import SWMMTemporalCNN
 from .models.surrogate_cnn import SWMMSurrogateCNN
 from .schemas import TemporalWindowSpec
@@ -353,7 +353,7 @@ def predict_surrogate_from_multiplier(
     scaler_static = joblib.load(artifacts_dir / f"{prefix}_scaler_static.joblib")
 
     model = SWMMSurrogateCNN(
-        n_temporal_features=len(TEMPORAL_COLS),
+        n_temporal_features=len(SURROGATE_TEMPORAL_COLS),
         n_static_features=len(STATIC_COLS),
         use_temporal=True,
     ).to(device)
@@ -388,11 +388,6 @@ def predict_surrogate_from_multiplier(
 
     df = pd.read_parquet(base_parquet_path)
 
-    # Inflow feature indices within TEMPORAL_COLS
-    _INFLOW_COLS = {"total_inflow_lps", "lateral_inflow_lps"}
-    inflow_indices = [i for i, c in enumerate(TEMPORAL_COLS) if c in _INFLOW_COLS]
-    swmm_output_indices = [i for i, c in enumerate(TEMPORAL_COLS) if c not in _INFLOW_COLS]
-
     records: list[dict] = []
     for node_id in df["node_id"].unique():
         if node_id not in static_lookup:
@@ -418,17 +413,14 @@ def predict_surrogate_from_multiplier(
             node_df.set_index("time_min")
             .reindex(grid)
             .ffill()
-            .dropna(subset=TEMPORAL_COLS)
+            .dropna(subset=SURROGATE_TEMPORAL_COLS)
             .reset_index()
         )
         if node_df.empty:
             continue
 
-        seq = node_df[TEMPORAL_COLS].values.astype(np.float32)  # [T, 6]
-
-        # Scale inflow features, zero out SWMM-output features
-        seq[:, inflow_indices] *= multiplier
-        seq[:, swmm_output_indices] = 0.0
+        seq = node_df[SURROGATE_TEMPORAL_COLS].values.astype(np.float32)  # [T, 2]
+        seq *= multiplier  # both columns are inflow features
 
         T, F = seq.shape
         seq_sc = scaler_seq.transform(seq.reshape(-1, F)).reshape(1, T, F)
@@ -451,6 +443,39 @@ def predict_surrogate_from_multiplier(
         })
 
     return pd.DataFrame(records)
+
+
+def plot_surrogate_map(
+    predictions: pd.DataFrame,
+    inp_path: Path,
+    output_path: Path | None = None,
+    multiplier: float | None = None,
+    vmax: float | None = None,
+    high_risk_quantile: float = 0.75,
+) -> Path:
+    """Save a prediction map from surrogate CNN output.
+
+    Thin wrapper around plot_prediction_map() — renames surrogate columns
+    (flood_prob, predicted_flooded) to what the plotter expects.
+    """
+    if output_path is None:
+        out_dir = DEFAULT_SURROGATE_MAPS_DIR
+        out_dir.mkdir(parents=True, exist_ok=True)
+        if multiplier is not None:
+            output_path = out_dir / f"surrogate_map_qx{multiplier:.2f}.png"
+        else:
+            output_path = out_dir / "surrogate_map.png"
+
+    df = predictions.rename(columns={
+        "peak_flooding_lps_pred": "max_flood_prob",  # gradient = flooding volume
+        "predicted_flooded": "actual_flooded",
+    })
+    title = (
+        f"Surrogate CNN — Volumen de Inundación Predicho"
+        + (f"\nQx{multiplier:.2f}" if multiplier is not None else "")
+    )
+    return plot_prediction_map(df, inp_path, output_path, title=title, vmax=vmax,
+                               high_risk_quantile=high_risk_quantile)
 
 
 def predict_failure_timeline(*_args, **_kwargs):

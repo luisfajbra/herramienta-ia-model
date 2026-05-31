@@ -15,7 +15,10 @@ from sklearn.preprocessing import StandardScaler
 
 from swmm_resilience.database.schema import create_schema
 from swmm_resilience.ml.temporal.models.surrogate_cnn import SWMMSurrogateCNN
-from swmm_resilience.ml.temporal.predict import predict_surrogate_from_multiplier
+from swmm_resilience.ml.temporal.predict import (
+    plot_surrogate_map,
+    predict_surrogate_from_multiplier,
+)
 
 _PARQUET_COLS = [
     "run_id", "network_hash", "node_id", "step_index",
@@ -73,11 +76,11 @@ def _make_db_and_artifacts(tmp_path: Path, n_nodes: int = 4) -> tuple[Path, Path
     conn.close()
 
     # Save dummy model artifacts (untrained weights + fitted scalers)
-    model = SWMMSurrogateCNN(n_temporal_features=6, n_static_features=7)
+    model = SWMMSurrogateCNN(n_temporal_features=2, n_static_features=7)
     torch.save(model.state_dict(), artifacts_dir / "surrogate_cnn_weights.pt")
 
     scaler_seq = StandardScaler()
-    scaler_seq.fit(np.random.randn(100, 6).astype(np.float32))
+    scaler_seq.fit(np.random.randn(100, 2).astype(np.float32))
     joblib.dump(scaler_seq, artifacts_dir / "surrogate_cnn_scaler_seq.joblib")
 
     scaler_static = StandardScaler()
@@ -134,3 +137,27 @@ class TestMultiplierScaling:
         )
         # Both must return same number of nodes without crashing
         assert len(result_low) == len(result_high)
+
+
+class TestPlotSurrogateMap:
+    def test_plot_surrogate_map_default_path(self, tmp_path, monkeypatch):
+        """plot_surrogate_map saves to DEFAULT_SURROGATE_MAPS_DIR when output_path is None."""
+        from swmm_resilience.config import DEFAULT_SURROGATE_MAPS_DIR
+
+        preds = pd.DataFrame({
+            "node_id": ["J-001"], "flood_prob": [0.5],
+            "predicted_flooded": [1], "peak_flooding_lps_pred": [10.0],
+        })
+        inp = tmp_path / "test.inp"
+        inp.write_text(
+            "[COORDINATES]\n;;Node   X         Y\nJ-001  100.0  200.0\n"
+            "[CONDUITS]\n;;ID  From  To  Len  N  Z1  Z2  ZOff\n"
+        )
+        monkeypatch.setattr(
+            "swmm_resilience.ml.temporal.predict.DEFAULT_SURROGATE_MAPS_DIR",
+            tmp_path / "maps",
+        )
+        result = plot_surrogate_map(predictions=preds, inp_path=inp, multiplier=2.5)
+        expected = tmp_path / "maps" / "surrogate_map_qx2.50.png"
+        assert result == expected
+        assert expected.exists()
