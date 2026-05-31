@@ -673,6 +673,9 @@ class ResilienciaDesktopApp:
             return
 
         def worker():
+            import matplotlib
+            matplotlib.use("Agg")
+
             from swmm_resilience.ml.temporal.predict import (
                 plot_surrogate_map,
                 predict_surrogate_from_multiplier,
@@ -699,9 +702,12 @@ class ResilienciaDesktopApp:
         self.notebook.select(self.results_tab)
         map_path = Path(map_path_str)
         if map_path.exists():
-            self.results_tree.selection_set(map_path_str)
-            self.results_tree.focus(map_path_str)
-            self.results_tree.see(map_path_str)
+            try:
+                self.results_tree.selection_set(map_path_str)
+                self.results_tree.focus(map_path_str)
+                self.results_tree.see(map_path_str)
+            except tk.TclError:
+                pass
             self._display_image(map_path)
 
     def _generate_window_summary(self):
