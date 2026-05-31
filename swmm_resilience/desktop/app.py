@@ -146,25 +146,28 @@ class ResilienciaDesktopApp:
         self.root.columnconfigure(0, weight=1)
         self.root.rowconfigure(0, weight=1)
 
-        notebook = ttk.Notebook(self.root)
-        notebook.grid(row=0, column=0, sticky="nsew")
+        self.notebook = ttk.Notebook(self.root)
+        self.notebook.grid(row=0, column=0, sticky="nsew")
 
-        self.sim_tab = ttk.Frame(notebook, padding=12)
-        self.predict_tab = ttk.Frame(notebook, padding=12)
-        self.ml_tab = ttk.Frame(notebook, padding=12)
-        self.db_tab = ttk.Frame(notebook, padding=12)
-        self.reset_tab = ttk.Frame(notebook, padding=12)
-        notebook.add(self.sim_tab, text="Cuestionario de corrida")
-        notebook.add(self.predict_tab, text="Predicción ML")
-        notebook.add(self.ml_tab, text="Entrenamiento ML")
-        notebook.add(self.db_tab, text="Base de datos")
-        notebook.add(self.reset_tab, text="Mantenimiento")
+        self.sim_tab = ttk.Frame(self.notebook, padding=12)
+        self.predict_tab = ttk.Frame(self.notebook, padding=12)
+        self.ml_tab = ttk.Frame(self.notebook, padding=12)
+        self.db_tab = ttk.Frame(self.notebook, padding=12)
+        self.reset_tab = ttk.Frame(self.notebook, padding=12)
+        self.results_tab = ttk.Frame(self.notebook, padding=12)
+        self.notebook.add(self.sim_tab, text="Cuestionario de corrida")
+        self.notebook.add(self.predict_tab, text="Predicción ML")
+        self.notebook.add(self.ml_tab, text="Entrenamiento ML")
+        self.notebook.add(self.db_tab, text="Base de datos")
+        self.notebook.add(self.reset_tab, text="Mantenimiento")
+        self.notebook.add(self.results_tab, text="Resultados")
 
         self._build_simulation_tab()
         self._build_prediction_tab()
         self._build_ml_tab()
         self._build_db_tab()
         self._build_reset_tab()
+        self._build_results_tab()
 
         status = ttk.Label(self.root, textvariable=self.status_var, anchor="w", padding=(10, 4))
         status.grid(row=1, column=0, sticky="ew")
@@ -456,6 +459,10 @@ class ResilienciaDesktopApp:
         self.reset_log = tk.Text(self.reset_tab, height=20, wrap="word")
         self.reset_log.grid(row=1, column=0, sticky="nsew", pady=(0, 0))
         self.reset_log.configure(state="disabled")
+
+    def _build_results_tab(self):
+        """Build the Resultados tab UI."""
+        pass
 
     def append_reset_log(self, text: str):
         self.reset_log.configure(state="normal")
