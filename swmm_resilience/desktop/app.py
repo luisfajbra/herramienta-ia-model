@@ -1202,16 +1202,58 @@ class ResilienciaDesktopApp:
             ].map(lambda value: f"{value:.3f}")
             print(display.to_string(index=False))
 
-            if predict_source == "inp":
+            if inp_path.exists():
                 print("\nGenerando mapa(s) de inundación ML...")
-                for mult in flow_values:
-                    map_path = generate_ml_map(
-                        inp_path=inp_path,
-                        inflow_multiplier=mult,
-                        artifacts_dir=artifacts_dir,
-                        open_after=True,
-                    )
-                    print(f"  Guardado: {map_path}")
+                net_dir = inp_path.parent
+                out_dir = net_dir / "ml" / "results"
+                out_dir.mkdir(parents=True, exist_ok=True)
+
+                from swmm_resilience.visualization.flood_map import plot_flood_map
+                from swmm_resilience.visualization.runner import _global_vmax
+
+                vmax = None
+                if db_path.exists():
+                    try:
+                        vmax = _global_vmax(db_path)
+                    except Exception:
+                        pass
+
+                if predict_source == "csv":
+                    preds = result.predictions
+                    source_col = "inflow_multiplier" if "inflow_multiplier" in preds.columns else "delta_inflow_lps"
+                    for mult in flow_values:
+                        mult_preds = preds[preds[source_col] == mult].copy()
+                        if mult_preds.empty:
+                            continue
+                        map_df = mult_preds.rename(columns={
+                            "predicted_flooded": "flooded",
+                            "predicted_peak_flooding_lps": "peak_flooding_lps",
+                        })
+                        map_df["source"] = "ML Tabular"
+                        map_df["inflow_multiplier"] = mult
+                        out = out_dir / f"flood_map_qx{mult:.2f}_ml.png"
+                        network_name = net_dir.name
+                        title = (
+                            f"Mapa de inundación — {network_name}\n"
+                            f"Factor de caudal: Qx = {mult:.2f} (ML CSV)"
+                        )
+                        plot_flood_map(
+                            node_data=map_df,
+                            inp_path=inp_path,
+                            output_path=out,
+                            title=title,
+                            vmax_global=vmax,
+                        )
+                        print(f"  Guardado: {out}")
+                else:
+                    for mult in flow_values:
+                        map_path = generate_ml_map(
+                            inp_path=inp_path,
+                            inflow_multiplier=mult,
+                            artifacts_dir=artifacts_dir,
+                            open_after=True,
+                        )
+                        print(f"  Guardado: {map_path}")
 
         self._run_in_thread("Prediccion ML", worker, self.append_prediction_output,
                             on_done=self._refresh_results_tree)
