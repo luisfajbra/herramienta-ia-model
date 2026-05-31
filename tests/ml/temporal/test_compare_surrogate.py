@@ -84,6 +84,16 @@ class TestMetricColumns:
         for col in ["cnn_abl_auc_roc", "cnn_abl_f1", "cnn_abl_rmse"]:
             assert col in result.columns, f"Missing column: {col}"
 
+    def test_lstm_metrics_present(self, tmp_path):
+        ds = _synthetic_dataset()
+        result = compare_surrogate(
+            artifacts_dir=tmp_path / "artifacts",
+            n_epochs=1, batch_size=16, n_cv_folds=2,
+            _dataset=ds,
+        )
+        for col in ["lstm_auc_roc", "lstm_f1", "lstm_rmse"]:
+            assert col in result.columns, f"Missing column: {col}"
+
 
 class TestNoDataLeakage:
     def test_train_val_groups_disjoint(self, tmp_path):

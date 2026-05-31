@@ -36,6 +36,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from ...config import DEFAULT_DB_FILE, DEFAULT_OUTPUT_CSV, DEFAULT_TEMPORAL_ARTIFACTS_DIR
 from .dataset import build_unified_dataset
 from .models.surrogate_cnn import SWMMSurrogateCNN
+from .models.surrogate_lstm import SWMMSurrogateLSTM
 from .schemas import TemporalWindowDataset
 
 
@@ -53,7 +54,8 @@ def _cls_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray) -> 
     }
 
 
-def _train_eval_cnn(
+def _train_eval_model(
+    model_cls,
     X_seq_tr: np.ndarray, X_static_tr: np.ndarray,
     y_cls_tr: np.ndarray, y_reg_tr: np.ndarray,
     X_seq_val: np.ndarray, X_static_val: np.ndarray,
@@ -77,7 +79,7 @@ def _train_eval_cnn(
     n_neg = float(len(y_cls_tr)) - n_pos
     pos_weight = torch.tensor([n_neg / n_pos], dtype=torch.float32).to(dev)
 
-    model = SWMMSurrogateCNN(
+    model = model_cls(
         n_temporal_features=F,
         n_static_features=X_static_tr.shape[1],
         use_temporal=use_temporal,
@@ -196,7 +198,8 @@ def compare_surrogate(
             row[f"xgb_{k}"] = v
 
         # ── CNN full ─────────────────────────────────────────────────────────
-        cnn_m = _train_eval_cnn(
+        cnn_m = _train_eval_model(
+            SWMMSurrogateCNN,
             X_seq_tr, X_static_tr, y_cls_tr, y_reg_tr,
             X_seq_val, X_static_val, y_cls_val, y_reg_val,
             use_temporal=True,
@@ -207,7 +210,8 @@ def compare_surrogate(
             row[f"cnn_{k}"] = v
 
         # ── CNN ablation ──────────────────────────────────────────────────────
-        abl_m = _train_eval_cnn(
+        abl_m = _train_eval_model(
+            SWMMSurrogateCNN,
             X_seq_tr, X_static_tr, y_cls_tr, y_reg_tr,
             X_seq_val, X_static_val, y_cls_val, y_reg_val,
             use_temporal=False,
@@ -217,10 +221,23 @@ def compare_surrogate(
         for k, v in abl_m.items():
             row[f"cnn_abl_{k}"] = v
 
+        # ── LSTM ─────────────────────────────────────────────────────────────
+        lstm_m = _train_eval_model(
+            SWMMSurrogateLSTM,
+            X_seq_tr, X_static_tr, y_cls_tr, y_reg_tr,
+            X_seq_val, X_static_val, y_cls_val, y_reg_val,
+            use_temporal=True,
+            n_epochs=n_epochs, batch_size=batch_size, lr=lr,
+            alpha=alpha, beta=beta, device=device,
+        )
+        for k, v in lstm_m.items():
+            row[f"lstm_{k}"] = v
+
         fold_rows.append(row)
         print(
             f"Fold {fold_i}: XGB F1={row['xgb_f1']:.3f}  "
-            f"CNN F1={row['cnn_f1']:.3f}  Ablation F1={row['cnn_abl_f1']:.3f}"
+            f"CNN F1={row['cnn_f1']:.3f}  LSTM F1={row['lstm_f1']:.3f}  "
+            f"Ablation F1={row['cnn_abl_f1']:.3f}"
         )
 
     results_df = pd.DataFrame(fold_rows)
@@ -249,13 +266,14 @@ def main() -> None:
     )
 
     metrics = ["auc_roc", "f1", "precision", "recall", "accuracy"]
-    print(f"\n{'Metric':<14} {'XGBoost':>10} {'CNN Full':>10} {'CNN Ablation':>14}")
-    print("-" * 52)
+    print(f"\n{'Metric':<14} {'XGBoost':>10} {'CNN Full':>10} {'LSTM':>10} {'CNN Ablation':>14}")
+    print("-" * 62)
     for m in metrics:
         xgb = results[f"xgb_{m}"].mean()
         cnn = results[f"cnn_{m}"].mean()
+        lstm = results[f"lstm_{m}"].mean()
         abl = results[f"cnn_abl_{m}"].mean()
-        print(f"  {m:<12} {xgb:>10.4f} {cnn:>10.4f} {abl:>14.4f}")
+        print(f"  {m:<12} {xgb:>10.4f} {cnn:>10.4f} {lstm:>10.4f} {abl:>14.4f}")
 
     print(f"\nResults saved to: comparison_results.csv")
 
