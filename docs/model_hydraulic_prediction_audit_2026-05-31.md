@@ -430,3 +430,21 @@ Covered in the first pass:
 Deferred:
 
 - Findings 9, 14, 15, 16, 18, 19, and 20 remain planned for later model-quality and documentation passes.
+
+## Config cleanup verification note
+
+Full-suite verification command
+
+`pytest -v`
+
+Result
+
+1 test failed before the suite aborted.
+
+Failures
+
+- `tests/desktop/test_results_tab.py::test_results_tab_exists`: `Fatal Python error: Aborted` while constructing `tkinter.__init__.py:2459` from `tests/desktop/test_results_tab.py:11`.
+
+Relation to cleanup
+
+unrelated. The abort occurred in a desktop Tkinter UI smoke test during `tkinter` root construction after eight database tests had passed, before any config-cleanup or ML preprocessing assertions ran.
