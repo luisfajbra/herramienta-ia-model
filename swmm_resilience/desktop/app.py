@@ -535,11 +535,59 @@ class ResilienciaDesktopApp:
 
     def _refresh_results_tree(self):
         """Rescan all three map directories and populate the tree."""
-        pass
+        inp_path = Path(self.predict_inp_var.get()).expanduser()
+        network_dir = inp_path.parent
+
+        for root_key in (self._swmm_root, self._ml_root, self._surr_root):
+            for child in self.results_tree.get_children(root_key):
+                self.results_tree.delete(child)
+
+        swmm_dir = network_dir / "results" / "plots"
+        if swmm_dir.exists():
+            for f in sorted(swmm_dir.glob("flood_map_qx*_swmm.png")):
+                display = f.stem.replace("_swmm", "")
+                self.results_tree.insert(self._swmm_root, "end", iid=str(f), text=display)
+
+        ml_dir = network_dir / "ml" / "results"
+        if ml_dir.exists():
+            for f in sorted(ml_dir.glob("flood_map_qx*_ml.png")):
+                display = f.stem.replace("_ml", "")
+                self.results_tree.insert(self._ml_root, "end", iid=str(f), text=display)
+
+        surr_dir = network_dir / "results" / "temporal" / "maps"
+        if surr_dir.exists():
+            for f in sorted(surr_dir.glob("surrogate_map_qx*.png")):
+                display = f.stem
+                self.results_tree.insert(self._surr_root, "end", iid=str(f), text=display)
 
     def _on_tree_select(self, event):
         """Display the selected image in the right panel."""
-        pass
+        selection = self.results_tree.selection()
+        if not selection:
+            return
+        item = selection[0]
+        if item in (self._swmm_root, self._ml_root, self._surr_root):
+            return
+        image_path = Path(item)
+        if not image_path.exists():
+            return
+        self._display_image(image_path)
+
+    def _display_image(self, image_path: Path):
+        """Load and display an image scaled to fit the preview panel."""
+        try:
+            image = Image.open(image_path)
+            panel_width = self.image_label.winfo_width()
+            panel_height = self.image_label.winfo_height()
+            max_w = max(panel_width - 20, 200)
+            max_h = max(panel_height - 20, 150)
+            image.thumbnail((max_w, max_h), Image.LANCZOS)
+            photo = ImageTk.PhotoImage(image)
+            self.image_label.configure(image=photo)
+            self._current_photo = photo
+        except Exception as exc:
+            self.image_label.configure(image="")
+            self.image_label.configure(text=f"Error al cargar imagen:\n{exc}")
 
     def _update_predict_button_state(self):
         """Enable/disable the predict button based on artifact presence."""
