@@ -17,7 +17,11 @@ from pyswmm import Links, Nodes, Simulation
 from ..config import DEFAULT_INP_FILE, DEFAULT_MODEL_ARTIFACTS_DIR
 from ..simulation.runner import extract_static_topology
 from ..utils import file_hash, normalize_inflow_multipliers
-from .predict_tabular import TabularPredictionResult, align_feature_columns
+from .predict_tabular import (
+    TabularPredictionResult,
+    align_feature_columns,
+    validate_regression_artifact_target,
+)
 
 
 def _base_rows_from_inp(inp_file: Path | str, target_nodes: list[str] | None) -> tuple[pd.DataFrame, str]:
@@ -92,6 +96,7 @@ def predict_steady_flows_from_inp(
         artifacts_dir=artifacts_dir,
         model_name=classifier_name,
     )
+    validate_regression_artifact_target(regression_artifact)
 
     X_pred_reg = align_feature_columns(prediction_rows, regression_artifact.feature_columns)
     X_pred_cls = align_feature_columns(prediction_rows, classification_artifact.feature_columns)
@@ -113,7 +118,7 @@ def predict_steady_flows_from_inp(
             "inflow_multiplier": prediction_rows["inflow_multiplier"],
             "predicted_flooded": pd.Series(predicted_flooded).astype(int),
             "flooded_probability": flooded_probability,
-            "predicted_peak_flooding_lps": predicted_volume,
+            "predicted_total_flood_volume_m3": predicted_volume,
         }
     )
     return TabularPredictionResult(

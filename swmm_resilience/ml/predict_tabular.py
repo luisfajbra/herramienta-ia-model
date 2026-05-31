@@ -151,6 +151,16 @@ def align_feature_columns(rows: pd.DataFrame, feature_columns: list[str]) -> pd.
     return aligned[feature_columns]
 
 
+def validate_regression_artifact_target(regression_artifact) -> None:
+    """Reject stale persisted regressors trained for a previous target contract."""
+    if regression_artifact.target != ML_TARGET_REGRESSION:
+        raise ValueError(
+            "Stale regression artifact target "
+            f"'{regression_artifact.target}' does not match current target "
+            f"'{ML_TARGET_REGRESSION}'. Please retrain inference models before predicting."
+        )
+
+
 def predict_steady_flows(
     inflow_multipliers: list[float],
     dataset_csv: Path | str = DEFAULT_OUTPUT_CSV,
@@ -183,6 +193,7 @@ def predict_steady_flows(
     cls_artifact = train.load_saved_model_artifact(
         "classification", resolved_artifacts_dir, model_name=classifier_name
     )
+    validate_regression_artifact_target(reg_artifact)
 
     X_pred_reg = align_feature_columns(prediction_rows, reg_artifact.feature_columns)
     X_pred_cls = align_feature_columns(prediction_rows, cls_artifact.feature_columns)
@@ -201,7 +212,7 @@ def predict_steady_flows(
             scenario_column: prediction_rows[scenario_column],
             "predicted_flooded": predicted_flooded.astype(int),
             "flooded_probability": flooded_probability,
-            "predicted_peak_flooding_lps": predicted_volume,
+            "predicted_total_flood_volume_m3": predicted_volume,
         }
     )
     if selected_network is not None:

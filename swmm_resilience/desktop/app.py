@@ -1201,8 +1201,8 @@ class ResilienciaDesktopApp:
             display["flooded_probability"] = display["flooded_probability"].map(
                 lambda value: f"{value:.3f}"
             )
-            display["predicted_peak_flooding_lps"] = display[
-                "predicted_peak_flooding_lps"
+            display["predicted_total_flood_volume_m3"] = display[
+                "predicted_total_flood_volume_m3"
             ].map(lambda value: f"{value:.3f}")
             print(display.to_string(index=False))
 
@@ -1231,7 +1231,7 @@ class ResilienciaDesktopApp:
                             continue
                         map_df = mult_preds.rename(columns={
                             "predicted_flooded": "flooded",
-                            "predicted_peak_flooding_lps": "peak_flooding_lps",
+                            "predicted_total_flood_volume_m3": "total_flood_volume_m3",
                         })
                         map_df["source"] = "ML Tabular"
                         map_df["inflow_multiplier"] = mult

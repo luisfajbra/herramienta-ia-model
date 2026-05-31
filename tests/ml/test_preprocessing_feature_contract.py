@@ -21,6 +21,7 @@ def test_tabular_feature_selection_keeps_static_hydraulic_features():
             "downstream_capacity_lps": [40.0],
             "flooded": [1],
             "peak_flooding_lps": [12.0],
+            "total_flood_volume_m3": [3.5],
             "flooding_duration_min": [5.0],
             "max_depth_m": [1.8],
             "max_depth_ratio": [0.9],
@@ -31,7 +32,7 @@ def test_tabular_feature_selection_keeps_static_hydraulic_features():
         }
     )
 
-    features = get_feature_columns(df, target="peak_flooding_lps")
+    features = get_feature_columns(df, target="total_flood_volume_m3")
 
     assert "inflow_multiplier" in features
     assert "invert_elev_m" in features
@@ -41,6 +42,9 @@ def test_tabular_feature_selection_keeps_static_hydraulic_features():
     assert "out_degree" in features
     assert "upstream_capacity_lps" in features
     assert "downstream_capacity_lps" in features
+    assert "peak_flooding_lps" not in features
+    assert "total_flood_volume_m3" not in features
+    assert "flooding_duration_min" not in features
 
 
 def test_tabular_feature_selection_drops_result_and_metadata_columns():
@@ -58,6 +62,7 @@ def test_tabular_feature_selection_drops_result_and_metadata_columns():
             "downstream_capacity_lps": [40.0],
             "flooded": [1],
             "peak_flooding_lps": [12.0],
+            "total_flood_volume_m3": [3.5],
             "flooding_duration_min": [5.0],
             "max_depth_m": [1.8],
             "max_depth_ratio": [0.9],
@@ -68,7 +73,7 @@ def test_tabular_feature_selection_drops_result_and_metadata_columns():
         }
     )
 
-    features = get_feature_columns(df, target="peak_flooding_lps")
+    features = get_feature_columns(df, target="total_flood_volume_m3")
 
     assert set(features) == {
         "inflow_multiplier",
@@ -82,6 +87,7 @@ def test_tabular_feature_selection_drops_result_and_metadata_columns():
     assert "delta_inflow_lps" not in features
     assert "flooded" not in features
     assert "peak_flooding_lps" not in features
+    assert "total_flood_volume_m3" not in features
     assert "flooding_duration_min" not in features
     assert "max_depth_m" not in features
     assert "max_depth_ratio" not in features

@@ -66,7 +66,7 @@ INPUT_VALIDATION_MAX_REASONABLE_JUNCTION_DEPTH_M = 10.0
 INPUT_VALIDATION_MAX_SUSPICIOUS_JUNCTION_DEPTH_FRACTION = 0.25
 
 # ML configuration
-ML_TARGET_REGRESSION = "peak_flooding_lps"
+ML_TARGET_REGRESSION = "total_flood_volume_m3"
 ML_TARGET_CLASSIFICATION = "flooded"
 ML_TEST_SIZE = 0.2
 ML_RANDOM_STATE = 42
@@ -97,6 +97,7 @@ ML_DROP_COLUMNS = [
     "downstream_diam_avg_m",
     "flooded",
     "peak_flooding_lps",
+    "total_flood_volume_m3",
     "flooding_duration_min",
     "max_depth_m",
     "max_depth_ratio",

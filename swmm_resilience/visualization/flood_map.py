@@ -2,7 +2,8 @@
 Figure 2 — Flood map.
 
 Receives a standard DataFrame with node-level flood results and renders
-a spatial map with a color+size gradient for peak_flooding_lps.
+a spatial map with a color+size gradient for flood volume when available,
+falling back to peak_flooding_lps for legacy results.
 Works identically regardless of whether data came from SWMM or ML.
 """
 
@@ -53,8 +54,9 @@ def plot_flood_map(
 
     Parameters
     ----------
-    node_data    : DataFrame with columns [node_id, peak_flooding_lps, flooded,
-                   source, inflow_multiplier].
+    node_data    : DataFrame with columns [node_id, flooded, source,
+                   inflow_multiplier] and either total_flood_volume_m3
+                   or peak_flooding_lps.
     inp_path     : Path to the SWMM .inp file (topology + coordinates).
     output_path  : Destination PNG path.
     title        : Figure title (two lines separated by \\n are rendered as subtitle).
@@ -80,7 +82,31 @@ def plot_flood_map(
     df["x"] = df["node_id"].map(lambda n: coords[n][0])
     df["y"] = df["node_id"].map(lambda n: coords[n][1])
 
-    vmax = vmax_global if vmax_global is not None else float(df["peak_flooding_lps"].max())
+    has_volume = "total_flood_volume_m3" in df.columns
+    has_peak = "peak_flooding_lps" in df.columns
+    if not has_volume and not has_peak:
+        raise ValueError("node_data must include total_flood_volume_m3 or peak_flooding_lps.")
+
+    if has_volume:
+        df["total_flood_volume_m3"] = df["total_flood_volume_m3"].clip(lower=0.0)
+    if has_peak:
+        df["peak_flooding_lps"] = df["peak_flooding_lps"].clip(lower=0.0)
+
+    preferred_metric = node_data.attrs.get("preferred_flood_metric")
+    if preferred_metric in {"total_flood_volume_m3", "peak_flooding_lps"} and preferred_metric in df.columns:
+        metric_col = preferred_metric
+    elif has_volume and (not has_peak or float(df["total_flood_volume_m3"].max()) > 0):
+        metric_col = "total_flood_volume_m3"
+    else:
+        metric_col = "peak_flooding_lps"
+    metric_label = (
+        "Volumen total de inundación (m3)"
+        if metric_col == "total_flood_volume_m3"
+        else "Caudal pico de inundación (lps)"
+    )
+    metric_unit = "m3" if metric_col == "total_flood_volume_m3" else "lps"
+
+    vmax = vmax_global if vmax_global is not None else float(df[metric_col].max())
     if vmax == 0:
         vmax = 1.0  # avoid degenerate colormap
 
@@ -98,7 +124,7 @@ def plot_flood_map(
         ax.plot([x0, x1], [y0, y1], color=PIPE_COLOR, lw=PIPE_LW, zorder=1)
 
     # ── dry nodes ────────────────────────────────────────────────────────────
-    dry = df[df["peak_flooding_lps"] <= 0]
+    dry = df[df[metric_col] <= 0]
     ax.scatter(
         dry["x"], dry["y"],
         s=NODE_DRY_SIZE,
@@ -110,14 +136,14 @@ def plot_flood_map(
     )
 
     # ── flooded nodes ────────────────────────────────────────────────────────
-    wet = df[df["peak_flooding_lps"] > 0].copy()
+    wet = df[df[metric_col] > 0].copy()
     if not wet.empty:
-        sizes = _scale_sizes(wet["peak_flooding_lps"], vmax)
-        colors = cmap(norm(wet["peak_flooding_lps"].to_numpy()))
+        sizes = _scale_sizes(wet[metric_col], vmax)
+        colors = cmap(norm(wet[metric_col].to_numpy()))
         sc = ax.scatter(
             wet["x"], wet["y"],
             s=sizes,
-            c=wet["peak_flooding_lps"].to_numpy(),
+            c=wet[metric_col].to_numpy(),
             cmap=COLORMAP,
             norm=norm,
             edgecolors="white",
@@ -127,20 +153,20 @@ def plot_flood_map(
         )
         # colorbar
         cbar = fig.colorbar(sc, ax=ax, fraction=0.03, pad=0.02)
-        cbar.set_label("Caudal pico de inundación (lps)", fontsize=10)
+        cbar.set_label(metric_label, fontsize=10)
     else:
         # still render a colorbar even if nothing flooded
         sm = cm.ScalarMappable(norm=norm, cmap=COLORMAP)
         sm.set_array([])
         cbar = fig.colorbar(sm, ax=ax, fraction=0.03, pad=0.02)
-        cbar.set_label("Caudal pico de inundación (lps)", fontsize=10)
+        cbar.set_label(metric_label, fontsize=10)
 
     # ── top-N annotations ────────────────────────────────────────────────────
-    top = df.nlargest(TOP_N_LABELS, "peak_flooding_lps")
-    top = top[top["peak_flooding_lps"] > 0]
+    top = df.nlargest(TOP_N_LABELS, metric_col)
+    top = top[top[metric_col] > 0]
     for _, row in top.iterrows():
         ax.annotate(
-            f"{row['node_id']}\n{row['peak_flooding_lps']:.1f} lps",
+            f"{row['node_id']}\n{row[metric_col]:.1f} {metric_unit}",
             xy=(row["x"], row["y"]),
             xytext=(8, 8),
             textcoords="offset points",

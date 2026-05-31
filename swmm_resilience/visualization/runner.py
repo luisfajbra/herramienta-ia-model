@@ -67,18 +67,35 @@ def _ml_plots_dir(network_dir: Path) -> Path:
     return network_dir / "ml" / "results"
 
 
-def _global_vmax(db_path: Path) -> float:
-    """Return the maximum peak_flooding_lps across ALL completed runs."""
+def _global_volume_vmax(db_path: Path) -> float:
+    """Return the maximum total_flood_volume_m3 across ALL completed runs."""
     conn = sqlite3.connect(db_path)
     try:
         create_schema(conn)
         cur = conn.execute(
-            "SELECT MAX(peak_flooding_lps) FROM node_results"
+            "SELECT MAX(total_flood_volume_m3) FROM node_results"
         )
         result = cur.fetchone()[0]
     finally:
         conn.close()
-    return float(result) if result is not None else 1.0
+    return float(result) if result is not None and float(result) > 0 else 1.0
+
+
+def _global_peak_vmax(db_path: Path) -> float:
+    """Return the maximum peak_flooding_lps across ALL completed runs."""
+    conn = sqlite3.connect(db_path)
+    try:
+        create_schema(conn)
+        cur = conn.execute("SELECT MAX(peak_flooding_lps) FROM node_results")
+        result = cur.fetchone()[0]
+    finally:
+        conn.close()
+    return float(result) if result is not None and float(result) > 0 else 1.0
+
+
+def _global_vmax(db_path: Path) -> float:
+    """Backward-compatible volume color scale helper."""
+    return _global_volume_vmax(db_path)
 
 
 # ── on-demand ML map ──────────────────────────────────────────────────────────
@@ -108,7 +125,7 @@ def generate_ml_map(
     vmax = None
     if db_path.exists():
         try:
-            vmax = _global_vmax(db_path)
+            vmax = _global_volume_vmax(db_path)
         except Exception:
             pass
 
@@ -158,7 +175,8 @@ def run(
         return
 
     network_name = network_dir.name
-    vmax = _global_vmax(db_path)
+    volume_vmax = _global_volume_vmax(db_path)
+    peak_vmax = _global_peak_vmax(db_path)
     generated = 0
 
     # ── Figure 1: topology (once per network) ─────────────────────────────────
@@ -188,7 +206,14 @@ def run(
                 inp_path=inp,
                 output_path=out,
                 title=title,
-                vmax_global=vmax,
+                vmax_global=(
+                    volume_vmax
+                    if (
+                        "total_flood_volume_m3" in node_data.columns
+                        and float(node_data["total_flood_volume_m3"].max()) > 0
+                    )
+                    else peak_vmax
+                ),
             )
             print(f"[OK]   {out.name}")
             generated += 1
@@ -218,7 +243,7 @@ def run(
                     inp_path=inp,
                     output_path=out,
                     title=title,
-                    vmax_global=vmax,
+                    vmax_global=volume_vmax,
                 )
                 print(f"[OK]   {out.name}")
                 generated += 1
