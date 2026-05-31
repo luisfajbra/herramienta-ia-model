@@ -44,6 +44,13 @@ _SURROGATE_PREFIXES: dict[str, str] = {
 }
 
 
+TEMPORAL_WINDOW_COLUMNS: list[str] = [
+    "regression_id", "run_id", "inflow_multiplier",
+    "duration_min", "time_skip_days",
+    "mean_capacity_lps", "n_peaks", "n_drains", "n_swales", "n_inlets",
+]
+
+
 _PROB_CMAP = "plasma"
 _NODE_SIZE_MIN = 30
 _NODE_SIZE_MAX = 400
@@ -460,6 +467,58 @@ def predict_surrogate_from_multiplier(
         })
 
     return pd.DataFrame(records)
+
+
+def build_temporal_window_summary(
+    network_hash: str,
+    db_path: Path | None = None,
+) -> pd.DataFrame:
+    """Query regression windows and return a summary DataFrame."""
+    if db_path is None:
+        db_path = DEFAULT_DB_FILE
+
+    if not db_path.exists():
+        return pd.DataFrame(columns=TEMPORAL_WINDOW_COLUMNS)
+
+    conn = sqlite3.connect(db_path)
+    try:
+        tables_needed = {"regression_windows", "regression_runs"}
+        existing_tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
+        if not tables_needed.issubset(existing_tables):
+            return pd.DataFrame(columns=TEMPORAL_WINDOW_COLUMNS)
+
+        df = pd.read_sql_query(
+            """
+            SELECT rw.regression_id,
+                   rr.run_id,
+                   r.inflow_multiplier,
+                   rw.duration_min,
+                   rw.time_skip_days,
+                   rw.mean_capacity_lps,
+                   rw.n_peaks,
+                   rw.n_drains,
+                   rw.n_swales,
+                   rw.n_inlets
+            FROM regression_windows rw
+            JOIN regression_runs rr ON rr.regression_id = rw.regression_id
+            JOIN runs r ON r.run_id = rr.run_id
+            WHERE rr.network_hash = ?
+            ORDER BY r.inflow_multiplier, rw.duration_min
+            """,
+            conn,
+            params=(network_hash,),
+        )
+    finally:
+        conn.close()
+
+    if df.empty:
+        return pd.DataFrame(columns=TEMPORAL_WINDOW_COLUMNS)
+    return df
 
 
 def plot_surrogate_map(
