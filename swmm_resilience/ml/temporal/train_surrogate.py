@@ -28,6 +28,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from ...config import DEFAULT_DB_FILE, DEFAULT_TEMPORAL_ARTIFACTS_DIR, NETWORKS_DIR
 from .dataset import build_surrogate_dataset
 from .models.surrogate_cnn import SWMMSurrogateCNN
+from .models.surrogate_lstm import SWMMSurrogateLSTM
 from .schemas import TemporalWindowDataset
 
 
@@ -42,6 +43,7 @@ def train_surrogate(
     alpha: float = 1.0,
     beta: float = 0.01,
     use_temporal: bool = True,
+    model_cls: type = SWMMSurrogateCNN,
     device: str = "cpu",
     _dataset: TemporalWindowDataset | None = None,
 ) -> dict:
@@ -55,7 +57,8 @@ def train_surrogate(
             8 columns when use_temporal=False.
         _dataset: Inject pre-built dataset (testing only).
     """
-    prefix = "surrogate_cnn" if use_temporal else "surrogate_cnn_notemporal"
+    model_name = model_cls.__name__.lower().replace("swmmsurrogate", "surrogate_")
+    prefix = f"{model_name}{'' if use_temporal else '_notemporal'}"
 
     dataset = (
         _dataset
@@ -113,7 +116,7 @@ def train_surrogate(
         pos_weight = torch.tensor([n_neg / n_pos], dtype=torch.float32).to(dev)
 
         n_static_features = X_static_tr.shape[1]
-        model = SWMMSurrogateCNN(
+        model = model_cls(
             n_temporal_features=F,
             n_static_features=n_static_features,
             use_temporal=use_temporal,
@@ -222,11 +225,16 @@ def main() -> None:
         "--no-temporal", action="store_true",
         help="Ablation: disable temporal branch, use multiplier as static feature.",
     )
+    parser.add_argument(
+        "--model", default="cnn", choices=["cnn", "lstm"],
+        help="Model architecture (default: cnn).",
+    )
     args = parser.parse_args()
 
     use_temporal = not args.no_temporal
+    model_cls = {"cnn": SWMMSurrogateCNN, "lstm": SWMMSurrogateLSTM}[args.model]
     label = "full" if use_temporal else "ablation (no temporal)"
-    print(f"\n=== Training surrogate CNN [{label}] ===")
+    print(f"\n=== Training surrogate {args.model} [{label}] ===")
     result = train_surrogate(
         n_epochs=args.epochs,
         batch_size=args.batch_size,
@@ -234,6 +242,7 @@ def main() -> None:
         n_cv_folds=args.folds,
         device=args.device,
         use_temporal=use_temporal,
+        model_cls=model_cls,
     )
     print(f"Folds: {result['n_folds']}, best fold: {result['best_fold']}")
     for fold in result["folds"]:
