@@ -11,7 +11,12 @@ import pandas as pd
 import pytest
 
 from swmm_resilience.database.schema import create_schema
-from swmm_resilience.ml.temporal.dataset import build_surrogate_dataset
+from swmm_resilience.ml.temporal.dataset import (
+    PRE_SWMM_TEMPORAL_COLS,
+    STATIC_COLS,
+    SWMM_OUTPUT_TEMPORAL_COLS,
+    build_surrogate_dataset,
+)
 from swmm_resilience.ml.temporal.schemas import TemporalWindowDataset
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -116,7 +121,7 @@ class TestOutputShapes:
         ds = build_surrogate_dataset(db_path=db_path)
         N, T, F = ds.X_seq.shape
         assert N == 6
-        assert F == 6, f"Expected 6 temporal features, got {F}"
+        assert F == 2, f"Expected 2 surrogate temporal features (inflow only), got {F}"
         assert T >= 1, "Sequence length must be at least 1"
 
     def test_x_static_shape(self, tmp_path):
@@ -167,3 +172,24 @@ class TestNoTemporalMode:
         db_path, _ = _setup_db(tmp_path, n_runs=2, n_nodes=3)
         ds = build_surrogate_dataset(db_path=db_path, use_temporal=False)
         assert ds.X_static.shape == (6, 8), f"Expected (6, 8), got {ds.X_static.shape}"
+
+
+class TestFeatureContracts:
+    def test_surrogate_features_exclude_swmm_outputs(self):
+        forbidden = set(SWMM_OUTPUT_TEMPORAL_COLS)
+        assert forbidden
+        assert not (set(PRE_SWMM_TEMPORAL_COLS) & forbidden)
+
+    def test_surrogate_meta_records_temporal_feature_names(self, tmp_path):
+        db_path, _ = _setup_db(tmp_path, n_runs=2, n_nodes=3)
+        ds = build_surrogate_dataset(db_path=db_path)
+
+        assert ds.meta.attrs["temporal_feature_names"] == PRE_SWMM_TEMPORAL_COLS
+        assert ds.meta.attrs["static_feature_names"] == STATIC_COLS
+
+    def test_surrogate_no_temporal_meta_records_multiplier_feature(self, tmp_path):
+        db_path, _ = _setup_db(tmp_path, n_runs=2, n_nodes=3)
+        ds = build_surrogate_dataset(db_path=db_path, use_temporal=False)
+
+        assert ds.meta.attrs["temporal_feature_names"] == PRE_SWMM_TEMPORAL_COLS
+        assert ds.meta.attrs["static_feature_names"] == STATIC_COLS + ["inflow_multiplier"]

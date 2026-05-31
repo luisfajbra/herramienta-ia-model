@@ -2,6 +2,8 @@
 """TDD tests for train_surrogate() pipeline."""
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -108,3 +110,34 @@ class TestNoTemporalMode:
         artifacts_dir = tmp_path / "artifacts"
         assert (artifacts_dir / "surrogate_cnn_notemporal_weights.pt").exists()
         assert (artifacts_dir / "surrogate_cnn_notemporal_metrics.csv").exists()
+
+
+def test_surrogate_manifest_records_training_contract(tmp_path):
+    dataset = _synthetic_surrogate_dataset(n_runs=4, n_nodes=3, T=8)
+    train_surrogate(
+        artifacts_dir=tmp_path / "artifacts",
+        n_epochs=1,
+        batch_size=8,
+        n_cv_folds=2,
+        _dataset=dataset,
+    )
+    manifest = json.loads((tmp_path / "artifacts" / "surrogate_cnn_manifest.json").read_text())
+    assert manifest["model_type"] == "cnn"
+    assert manifest["seed"] == 42
+    assert manifest["trained_run_ids"] == ["run_00", "run_01", "run_02", "run_03"]
+    assert manifest["temporal_feature_names"]
+    assert manifest["static_feature_names"]
+    assert manifest["regression_target"] == "peak_flooding_lps"
+    assert manifest["regression_target_transform"] == "log1p"
+
+
+def test_train_surrogate_returns_final_training_marker(tmp_path):
+    dataset = _synthetic_surrogate_dataset(n_runs=4, n_nodes=3, T=8)
+    result = train_surrogate(
+        artifacts_dir=tmp_path / "artifacts",
+        n_epochs=1,
+        batch_size=8,
+        n_cv_folds=2,
+        _dataset=dataset,
+    )
+    assert result["final_model_trained_on_all_groups"] is True

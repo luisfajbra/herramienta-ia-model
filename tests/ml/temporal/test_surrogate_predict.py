@@ -2,6 +2,7 @@
 """TDD tests for predict_surrogate_from_multiplier()."""
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 from pathlib import Path
@@ -137,6 +138,59 @@ class TestMultiplierScaling:
         )
         # Both must return same number of nodes without crashing
         assert len(result_low) == len(result_high)
+
+
+def _write_manifest(artifacts_dir: Path, run_ids: list[str] | None = None) -> None:
+    manifest = {
+        "model_type": "cnn",
+        "prefix": "surrogate_cnn",
+        "seed": 42,
+        "use_temporal": True,
+        "trained_run_ids": run_ids or ["run_qx100"],
+        "trained_rows": 4,
+        "temporal_feature_names": ["total_inflow_lps", "lateral_inflow_lps"],
+        "static_feature_names": [
+            "full_depth_m",
+            "in_degree",
+            "out_degree",
+            "upstream_diam_avg_m",
+            "downstream_diam_avg_m",
+            "upstream_capacity_lps",
+            "downstream_capacity_lps",
+        ],
+        "regression_target": "peak_flooding_lps",
+        "regression_target_transform": "log1p",
+        "min_multiplier": 1.0,
+        "max_multiplier": 2.0,
+    }
+    (artifacts_dir / "surrogate_cnn_manifest.json").write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+
+
+class TestManifestGuardrails:
+    def test_surrogate_prediction_warns_outside_manifest_multiplier_range(self, tmp_path):
+        db_path, artifacts_dir = _make_db_and_artifacts(tmp_path)
+        _write_manifest(artifacts_dir)
+
+        with pytest.warns(UserWarning, match="outside the training multiplier range"):
+            predict_surrogate_from_multiplier(
+                multiplier=5.0,
+                db_path=db_path,
+                artifacts_dir=artifacts_dir,
+            )
+
+    def test_surrogate_prediction_rejects_manifest_run_id_mismatch(self, tmp_path):
+        db_path, artifacts_dir = _make_db_and_artifacts(tmp_path)
+        _write_manifest(artifacts_dir, run_ids=["missing_run"])
+
+        with pytest.raises(ValueError, match="manifest run IDs"):
+            predict_surrogate_from_multiplier(
+                multiplier=1.5,
+                db_path=db_path,
+                artifacts_dir=artifacts_dir,
+            )
 
 
 class TestPlotSurrogateMap:

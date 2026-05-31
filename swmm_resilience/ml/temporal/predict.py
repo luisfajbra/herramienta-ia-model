@@ -12,6 +12,7 @@ CLI
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import warnings
 from pathlib import Path
@@ -44,6 +45,76 @@ _SURROGATE_PREFIXES: dict[str, str] = {
 }
 
 
+def _surrogate_manifest_path(artifacts_dir: Path, prefix: str) -> Path:
+    return artifacts_dir / f"{prefix}_manifest.json"
+
+
+def _load_surrogate_manifest(artifacts_dir: Path, prefix: str) -> dict:
+    path = _surrogate_manifest_path(artifacts_dir, prefix)
+    if not path.exists():
+        warnings.warn(
+            f"No surrogate manifest found at {path}; inference will run without artifact contract validation.",
+            stacklevel=2,
+        )
+        return {}
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _db_run_ids(db_path: Path) -> set[str]:
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute("SELECT run_id FROM runs").fetchall()
+    finally:
+        conn.close()
+    return {str(row[0]) for row in rows}
+
+
+def _validate_surrogate_manifest(manifest: dict, *, db_path: Path, multiplier: float) -> None:
+    if not manifest:
+        return
+
+    manifest_run_ids = {str(run_id) for run_id in manifest.get("trained_run_ids", [])}
+    if manifest_run_ids:
+        db_ids = _db_run_ids(db_path)
+        if not manifest_run_ids.issubset(db_ids):
+            missing = sorted(manifest_run_ids - db_ids)
+            raise ValueError(
+                "The surrogate manifest run IDs do not match the current database. "
+                f"Missing run IDs: {', '.join(missing[:5])}"
+            )
+
+    min_multiplier = manifest.get("min_multiplier")
+    max_multiplier = manifest.get("max_multiplier")
+    if min_multiplier is not None and max_multiplier is not None:
+        if multiplier < float(min_multiplier) or multiplier > float(max_multiplier):
+            warnings.warn(
+                f"Requested multiplier Qx{multiplier:.2f} is outside the training multiplier range "
+                f"Qx{float(min_multiplier):.2f}-Qx{float(max_multiplier):.2f}.",
+                stacklevel=2,
+            )
+
+
+def _output_columns_for_temporal_task(task: str) -> list[str]:
+    if task == "classification":
+        return [
+            "node_id",
+            "max_flood_prob",
+            "mean_flood_prob",
+            "windows_total",
+            "windows_flood_predicted",
+            "actual_flooded",
+        ]
+    if task == "regression":
+        return [
+            "node_id",
+            "max_peak_flooding_lps_pred",
+            "mean_peak_flooding_lps_pred",
+            "windows_total",
+            "actual_peak_flooding_lps",
+        ]
+    raise ValueError("task must be 'classification' or 'regression'.")
+
+
 TEMPORAL_WINDOW_COLUMNS: list[str] = [
     "regression_id", "run_id", "inflow_multiplier",
     "duration_min", "time_skip_days",
@@ -73,6 +144,7 @@ def predict_from_parquet(
         node_id, max_flood_prob, mean_flood_prob,
         windows_total, windows_flood_predicted, actual_flooded
     """
+    _output_columns_for_temporal_task(task)
     spec = TemporalWindowSpec()
     resample_min = spec.resample_min
     window_steps = spec.window_min // resample_min
@@ -131,6 +203,7 @@ def predict_from_parquet(
             continue
 
         actual_flooded = int((node_df["flooding_lps"] > 0).any())
+        actual_peak_flooding_lps = float(node_df["flooding_lps"].max())
 
         t_start = node_df["time_min"].iloc[0]
         t_end = node_df["time_min"].iloc[-1]
@@ -152,14 +225,23 @@ def predict_from_parquet(
             i += step_steps
 
         if not windows:
-            records.append({
-                "node_id": node_id,
-                "max_flood_prob": float("nan"),
-                "mean_flood_prob": float("nan"),
-                "windows_total": 0,
-                "windows_flood_predicted": 0,
-                "actual_flooded": actual_flooded,
-            })
+            if task == "classification":
+                records.append({
+                    "node_id": node_id,
+                    "max_flood_prob": float("nan"),
+                    "mean_flood_prob": float("nan"),
+                    "windows_total": 0,
+                    "windows_flood_predicted": 0,
+                    "actual_flooded": actual_flooded,
+                })
+            else:
+                records.append({
+                    "node_id": node_id,
+                    "max_peak_flooding_lps_pred": float("nan"),
+                    "mean_peak_flooding_lps_pred": float("nan"),
+                    "windows_total": 0,
+                    "actual_peak_flooding_lps": actual_peak_flooding_lps,
+                })
             continue
 
         X_seq = np.stack(windows)          # [N, window_steps, n_features]
@@ -168,7 +250,7 @@ def predict_from_parquet(
         X_static_sc = scaler_static.transform(np.tile(x_static_raw, (N, 1)))
 
         with torch.no_grad():
-            probs = (
+            outputs = (
                 model(
                     torch.tensor(X_seq_sc, dtype=torch.float32).to(device),
                     torch.tensor(X_static_sc, dtype=torch.float32).to(device),
@@ -178,14 +260,24 @@ def predict_from_parquet(
                 .flatten()
             )
 
-        records.append({
-            "node_id": node_id,
-            "max_flood_prob": float(probs.max()),
-            "mean_flood_prob": float(probs.mean()),
-            "windows_total": int(len(probs)),
-            "windows_flood_predicted": int((probs >= 0.5).sum()),
-            "actual_flooded": actual_flooded,
-        })
+        if task == "classification":
+            records.append({
+                "node_id": node_id,
+                "max_flood_prob": float(outputs.max()),
+                "mean_flood_prob": float(outputs.mean()),
+                "windows_total": int(len(outputs)),
+                "windows_flood_predicted": int((outputs >= 0.5).sum()),
+                "actual_flooded": actual_flooded,
+            })
+        else:
+            clipped = np.clip(outputs, a_min=0.0, a_max=None)
+            records.append({
+                "node_id": node_id,
+                "max_peak_flooding_lps_pred": float(clipped.max()),
+                "mean_peak_flooding_lps_pred": float(clipped.mean()),
+                "windows_total": int(len(clipped)),
+                "actual_peak_flooding_lps": actual_peak_flooding_lps,
+            })
 
     return pd.DataFrame(records)
 
@@ -367,6 +459,12 @@ def predict_surrogate_from_multiplier(
 
     prefix = _SURROGATE_PREFIXES[model_type]
     model_cls = _SURROGATE_MODELS[model_type]
+    manifest = _load_surrogate_manifest(artifacts_dir, prefix)
+    _validate_surrogate_manifest(
+        manifest,
+        db_path=Path(db_path),
+        multiplier=float(multiplier),
+    )
 
     state_dict = torch.load(
         artifacts_dir / f"{prefix}_weights.pt",
@@ -457,7 +555,11 @@ def predict_surrogate_from_multiplier(
                 torch.tensor(x_static_sc, dtype=torch.float32).to(device),
             )
             flood_prob = float(torch.sigmoid(cls_logit).cpu().item())
-            peak_lps = float(reg_out.cpu().item())
+            raw_peak = float(reg_out.cpu().item())
+            if manifest.get("regression_target_transform") == "log1p":
+                peak_lps = float(np.expm1(raw_peak))
+            else:
+                peak_lps = raw_peak
 
         records.append({
             "node_id": node_id,

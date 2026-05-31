@@ -14,6 +14,7 @@ link/conduit statistics while equivalence with .rpt/swmm_api is being validated.
 
 from __future__ import annotations
 
+import copy
 import warnings
 from pathlib import Path
 from typing import Optional
@@ -147,44 +148,68 @@ def _selected_flow_inflows(inp, target_nodes: set[str] | None) -> list[tuple[str
     return selected
 
 
+def _clone_timeseries_object(ts_obj, name: str, scaled_data):
+    """Return a timeseries object with the same metadata and replaced data."""
+    cloned = copy.copy(ts_obj)
+    cloned.name = name
+    cloned.data = list(scaled_data)
+    return cloned
+
+
+def _unique_timeseries_name(inp, base_name: str, node_id: str) -> str:
+    """Return a timeseries name that does not collide with existing entries."""
+    candidate = f"{base_name}__scaled_{node_id}"
+    index = 1
+    while candidate in inp["TIMESERIES"]:
+        index += 1
+        candidate = f"{base_name}__scaled_{node_id}_{index}"
+    return candidate
+
+
 def _scale_target_timeseries(inp, selected_inflows: list[tuple[str, object]], multiplier: float) -> int:
-    """Scale timeseries values used by the selected nodes."""
+    """Scale timeseries values used by selected nodes without mutating shared users."""
     if "TIMESERIES" not in inp:
         raise ValueError(
             "El escenario 'timeseries' requiere una seccion [TIMESERIES] en el archivo .inp."
         )
 
-    target_series = {
-        ts_name
-        for _, inflow in selected_inflows
-        if (ts_name := _normalize_timeseries_name(inflow.time_series)) is not None
-    }
-    if not target_series:
-        raise ValueError(
-            "El escenario 'timeseries' no encontro series temporales asociadas a los nodos seleccionados. "
-            "Usa el modo 'steady' si el caudal esta en Baseline dentro de [INFLOWS]."
-        )
-
     changed_values = 0
     missing_series: list[str] = []
-    for ts_name in sorted(target_series):
+
+    for node_id, inflow in selected_inflows:
+        ts_name = _normalize_timeseries_name(inflow.time_series)
+        if ts_name is None:
+            continue
         if ts_name not in inp["TIMESERIES"]:
             missing_series.append(ts_name)
             continue
+
         ts_obj = inp["TIMESERIES"][ts_name]
-        new_data = []
+        scaled_data = []
         for time_value, flow_value in ts_obj.data:
             scaled_value = flow_value * multiplier
             if scaled_value != flow_value:
                 changed_values += 1
-            new_data.append((time_value, scaled_value))
-        ts_obj.data = new_data
+            scaled_data.append((time_value, scaled_value))
+
+        new_name = _unique_timeseries_name(inp, str(ts_name), str(node_id))
+        inp["TIMESERIES"][new_name] = _clone_timeseries_object(
+            ts_obj,
+            new_name,
+            scaled_data,
+        )
+        inflow.time_series = new_name
 
     if missing_series:
-        missing = ", ".join(missing_series)
+        missing = ", ".join(sorted(set(missing_series)))
         raise ValueError(
             "El escenario 'timeseries' referencia series que no existen en [TIMESERIES]: "
             f"{missing}"
+        )
+    if changed_values == 0:
+        raise ValueError(
+            "El escenario 'timeseries' no encontro valores de serie temporal para escalar. "
+            "Usa el modo 'steady' si el caudal esta en Baseline dentro de [INFLOWS]."
         )
     return changed_values
 

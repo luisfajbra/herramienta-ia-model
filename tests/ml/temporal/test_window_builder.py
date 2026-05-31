@@ -9,7 +9,13 @@ import pandas as pd
 import pytest
 
 from swmm_resilience.database.schema import create_schema
-from swmm_resilience.ml.temporal.dataset import build_temporal_windows
+from swmm_resilience.ml.temporal.dataset import (
+    PRE_SWMM_TEMPORAL_COLS,
+    STATIC_COLS,
+    SWMM_OUTPUT_TEMPORAL_COLS,
+    TEMPORAL_COLS,
+    build_temporal_windows,
+)
 from swmm_resilience.ml.temporal.schemas import TemporalWindowDataset, TemporalWindowSpec
 
 # ── shared fixture helpers ────────────────────────────────────────────────────
@@ -243,3 +249,35 @@ class TestStaticFeatures:
         # upstream_capacity_lps=50.0, downstream_capacity_lps=40.0
         expected = np.array([2.0, 2.0, 1.0, 0.3, 0.25, 50.0, 40.0], dtype=np.float32)
         np.testing.assert_allclose(ds.X_static[0], expected)
+
+
+class TestFeatureContracts:
+    def test_deployable_temporal_features_exclude_swmm_outputs(self):
+        assert PRE_SWMM_TEMPORAL_COLS == ["total_inflow_lps", "lateral_inflow_lps"]
+        forbidden = set(SWMM_OUTPUT_TEMPORAL_COLS)
+        assert forbidden
+        assert not (set(PRE_SWMM_TEMPORAL_COLS) & forbidden)
+
+    def test_legacy_temporal_cols_are_explicitly_post_swmm(self):
+        assert "flooding_lps" in SWMM_OUTPUT_TEMPORAL_COLS
+        assert "depth_m" in SWMM_OUTPUT_TEMPORAL_COLS
+        assert "total_outflow_lps" in SWMM_OUTPUT_TEMPORAL_COLS
+        assert TEMPORAL_COLS == PRE_SWMM_TEMPORAL_COLS + SWMM_OUTPUT_TEMPORAL_COLS
+
+    def test_window_dataset_meta_records_feature_names(self, tmp_path):
+        run_id = str(uuid.uuid4())
+        network_hash = "hash_contract"
+        pq = _make_parquet(tmp_path, run_id, network_hash, n_nodes=1, n_steps=20)
+        db = _make_db(
+            tmp_path,
+            run_id=run_id,
+            network_hash=network_hash,
+            parquet_path=pq,
+            n_nodes=1,
+            n_steps=20,
+        )
+
+        ds = build_temporal_windows(db_path=db, window_spec=_SPEC)
+
+        assert ds.meta.attrs["temporal_feature_names"] == TEMPORAL_COLS
+        assert ds.meta.attrs["static_feature_names"] == STATIC_COLS

@@ -31,19 +31,21 @@ REQUIRED_TIMESERIES_COLUMNS = [
     "failed_now",
 ]
 
-TEMPORAL_COLS = [
+PRE_SWMM_TEMPORAL_COLS = [
     "total_inflow_lps",
     "lateral_inflow_lps",
+]
+
+SWMM_OUTPUT_TEMPORAL_COLS = [
     "depth_m",
     "depth_ratio",
     "flooding_lps",
     "total_outflow_lps",
 ]
 
-SURROGATE_TEMPORAL_COLS = [
-    "total_inflow_lps",
-    "lateral_inflow_lps",
-]
+TEMPORAL_COLS = PRE_SWMM_TEMPORAL_COLS + SWMM_OUTPUT_TEMPORAL_COLS
+
+SURROGATE_TEMPORAL_COLS = PRE_SWMM_TEMPORAL_COLS
 
 STATIC_COLS = [
     "full_depth_m",
@@ -54,6 +56,17 @@ STATIC_COLS = [
     "upstream_capacity_lps",
     "downstream_capacity_lps",
 ]
+
+
+def _with_dataset_attrs(
+    meta: pd.DataFrame,
+    *,
+    temporal_feature_names: list[str],
+    static_feature_names: list[str],
+) -> pd.DataFrame:
+    meta.attrs["temporal_feature_names"] = list(temporal_feature_names)
+    meta.attrs["static_feature_names"] = list(static_feature_names)
+    return meta
 
 
 def expected_timeseries_columns() -> list[str]:
@@ -200,8 +213,18 @@ def build_temporal_windows(
             y_class=np.empty(0, dtype=np.int8),
             y_reg=np.empty(0, dtype=np.float32),
             groups=np.empty(0, dtype=object),
-            meta=pd.DataFrame(columns=["run_id", "node_id", "window_start_min"]),
+            meta=_with_dataset_attrs(
+                pd.DataFrame(columns=["run_id", "node_id", "window_start_min"]),
+                temporal_feature_names=TEMPORAL_COLS,
+                static_feature_names=STATIC_COLS,
+            ),
         )
+
+    meta = _with_dataset_attrs(
+        pd.DataFrame(meta_rows),
+        temporal_feature_names=TEMPORAL_COLS,
+        static_feature_names=STATIC_COLS,
+    )
 
     return TemporalWindowDataset(
         X_seq=np.stack(all_X_seq),
@@ -209,7 +232,7 @@ def build_temporal_windows(
         y_class=np.array(all_y_class, dtype=np.int8),
         y_reg=np.array(all_y_reg, dtype=np.float32),
         groups=np.array(all_groups, dtype=object),
-        meta=pd.DataFrame(meta_rows),
+        meta=meta,
     )
 
 
@@ -306,13 +329,18 @@ def build_surrogate_dataset(
         conn.close()
 
     if not all_X_seq_list:
+        static_feature_names = STATIC_COLS + ([] if use_temporal else ["inflow_multiplier"])
         return TemporalWindowDataset(
             X_seq=np.empty((0, 1, len(SURROGATE_TEMPORAL_COLS)), dtype=np.float32),
-            X_static=np.empty((0, len(STATIC_COLS)), dtype=np.float32),
+            X_static=np.empty((0, len(static_feature_names)), dtype=np.float32),
             y_class=np.empty(0, dtype=np.int8),
             y_reg=np.empty(0, dtype=np.float32),
             groups=np.empty(0, dtype=object),
-            meta=pd.DataFrame(columns=["run_id", "node_id", "window_start_min"]),
+            meta=_with_dataset_attrs(
+                pd.DataFrame(columns=["run_id", "node_id", "window_start_min"]),
+                temporal_feature_names=SURROGATE_TEMPORAL_COLS,
+                static_feature_names=static_feature_names,
+            ),
         )
 
     # Zero-pad sequences to the longest T found
@@ -321,13 +349,20 @@ def build_surrogate_dataset(
     for i, seq in enumerate(all_X_seq_list):
         padded[i, : seq.shape[0], :] = seq
 
+    static_feature_names = STATIC_COLS + ([] if use_temporal else ["inflow_multiplier"])
+    meta = _with_dataset_attrs(
+        pd.DataFrame(meta_rows),
+        temporal_feature_names=SURROGATE_TEMPORAL_COLS,
+        static_feature_names=static_feature_names,
+    )
+
     return TemporalWindowDataset(
         X_seq=padded,
         X_static=np.stack(all_X_static),
         y_class=np.array(all_y_class, dtype=np.int8),
         y_reg=np.array(all_y_reg, dtype=np.float32),
         groups=np.array(all_groups, dtype=object),
-        meta=pd.DataFrame(meta_rows),
+        meta=meta,
     )
 
 
@@ -454,7 +489,11 @@ def build_unified_dataset(
             y_class=np.empty(0, dtype=np.int8),
             y_reg=np.empty(0, dtype=np.float32),
             groups=np.empty(0, dtype=object),
-            meta=pd.DataFrame(columns=["run_id", "node_id", "window_start_min"]),
+            meta=_with_dataset_attrs(
+                pd.DataFrame(columns=["run_id", "node_id", "window_start_min"]),
+                temporal_feature_names=SURROGATE_TEMPORAL_COLS,
+                static_feature_names=feature_cols,
+            ),
         )
 
     T_max = max(s.shape[0] for s in all_X_seq)
@@ -463,8 +502,11 @@ def build_unified_dataset(
     for i, seq in enumerate(all_X_seq):
         padded[i, : seq.shape[0], :] = seq
 
-    meta_df = pd.DataFrame(meta_rows)
-    meta_df.attrs["static_feature_names"] = feature_cols
+    meta_df = _with_dataset_attrs(
+        pd.DataFrame(meta_rows),
+        temporal_feature_names=SURROGATE_TEMPORAL_COLS,
+        static_feature_names=feature_cols,
+    )
 
     return TemporalWindowDataset(
         X_seq=padded,

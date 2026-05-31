@@ -152,6 +152,13 @@ def run_experiment(
     reset_db: bool = False,
 ):
     """Run the full simulation-to-database-to-dataset pipeline."""
+    if delta_inflows_lps is not None:
+        raise ValueError(
+            "delta_inflows_lps esta deshabilitado temporalmente porque antes se "
+            "interpretaba como multiplicadores de caudal. Usa inflow_multipliers=[...] "
+            "para escenarios Qx."
+        )
+
     inp_path = resolve_inp_file(inp_file)
     ensure_directories(inp_path)
 
@@ -164,11 +171,7 @@ def run_experiment(
     scenario_mode = normalize_scenario_mode(scenario_mode, inp_path)
     scenario_type = resolve_scenario_type(scenario_mode, scenario_type)
     target_nodes = _normalize_target_nodes(target_nodes)
-    if inflow_multipliers is not None and delta_inflows_lps is not None:
-        raise ValueError("Usa inflow_multipliers o delta_inflows_lps, pero no ambos.")
-    multipliers = _normalize_inflow_multipliers(
-        inflow_multipliers if inflow_multipliers is not None else delta_inflows_lps
-    )
+    multipliers = _normalize_inflow_multipliers(inflow_multipliers)
     run_plan = multipliers
 
     if not inp_path.exists():
