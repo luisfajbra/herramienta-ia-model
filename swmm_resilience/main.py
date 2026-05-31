@@ -289,6 +289,7 @@ def run_experiment(
                 f"({summary['pct_flooded_nodes']:.1f}%)"
             )
             print(f"    ok Pico flood: {summary['total_peak_flooding_lps']:.2f} lps (suma nodos)")
+            print(f"    ok Vol flood : {summary['total_flood_volume_m3']:.3f} m3 (suma nodos)")
             print(f"    ok Resiliencia: {summary['resilience_index']:.3f}")
             print(f"    ok Temporal  : {node_timeseries_path}")
             if summary["time_to_first_flood_min"]:
