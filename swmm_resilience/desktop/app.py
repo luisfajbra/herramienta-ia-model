@@ -539,6 +539,11 @@ class ResilienciaDesktopApp:
             row=1, column=3, padx=(6, 0), pady=(6, 0)
         )
 
+        self.surr_predict_all_btn = ttk.Button(
+            pred, text="Regenerar todos", command=self._predict_surrogate_all
+        )
+        self.surr_predict_all_btn.grid(row=2, column=1, sticky="w", pady=(10, 0))
+
         self.surr_predict_btn = ttk.Button(
             pred, text="Predecir y mostrar", command=self._predict_surrogate
         )
@@ -655,7 +660,9 @@ class ResilienciaDesktopApp:
         model_type = self.surr_model_var.get()
         prefix = "surrogate_cnn" if model_type == "cnn" else "surrogate_lstm"
         artifacts_exist = (artifacts_dir / f"{prefix}_weights.pt").exists()
-        self.surr_predict_btn.configure(state="normal" if artifacts_exist else "disabled")
+        state = "normal" if artifacts_exist else "disabled"
+        self.surr_predict_btn.configure(state=state)
+        self.surr_predict_all_btn.configure(state=state)
 
     def _predict_surrogate(self):
         """Run surrogate prediction and display the resulting map."""
@@ -695,6 +702,49 @@ class ResilienciaDesktopApp:
             self.root.after(0, self._on_surrogate_done, str(map_path))
 
         self._run_in_thread("Predicción surrogada", worker, self.append_log)
+
+    def _predict_surrogate_all(self):
+        """Regenerate surrogate maps for all default multipliers."""
+        try:
+            inp_path = Path(self.predict_inp_var.get()).expanduser()
+            if not inp_path.exists():
+                raise ValueError(f"No existe el archivo .inp: {inp_path}")
+            db_path = Path(self.db_var.get()).expanduser()
+            model_type = self.surr_model_var.get()
+        except Exception as exc:
+            messagebox.showerror("Valor inválido", str(exc))
+            return
+
+        def worker():
+            import matplotlib
+            matplotlib.use("Agg")
+
+            from swmm_resilience.ml.temporal.predict import (
+                plot_surrogate_map,
+                predict_surrogate_from_multiplier,
+            )
+            for multiplier in DEFAULT_INFLOW_MULTIPLIERS:
+                print(f"Generando mapa Qx{multiplier:.2f}...")
+                preds = predict_surrogate_from_multiplier(
+                    multiplier=multiplier,
+                    db_path=db_path,
+                    model_type=model_type,
+                )
+                plot_surrogate_map(
+                    predictions=preds,
+                    inp_path=inp_path,
+                    multiplier=multiplier,
+                    model_type=model_type,
+                )
+            self.root.after(0, self._on_regenerate_all_done)
+
+        self._run_in_thread("Regenerar todos los mapas", worker, self.append_log)
+
+    def _on_regenerate_all_done(self):
+        """After regenerating all maps: refresh tree."""
+        self._refresh_results_tree()
+        self.notebook.select(self.results_tab)
+        messagebox.showinfo("Listo", "Todos los mapas surrogados fueron regenerados.")
 
     def _on_surrogate_done(self, map_path_str: str):
         """After surrogate prediction completes: refresh tree, select new map."""
