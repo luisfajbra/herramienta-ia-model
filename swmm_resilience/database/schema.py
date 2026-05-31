@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS node_results (
     node_id                 TEXT NOT NULL,
     flooded                 INTEGER NOT NULL DEFAULT 0,
     peak_flooding_lps       REAL,
+    total_flood_volume_m3   REAL,
     flooding_duration_min   REAL,
     max_depth_m             REAL,
     max_depth_ratio         REAL,
@@ -103,6 +104,7 @@ CREATE TABLE IF NOT EXISTS run_summary (
     total_nodes                 INTEGER,
     failed_nodes_count          INTEGER,
     total_peak_flooding_lps     REAL,
+    total_flood_volume_m3       REAL,
     pct_flooded_nodes           REAL,
     time_to_first_flood_min     REAL,
     resilience_index            REAL
@@ -135,9 +137,11 @@ REQUIRED_COLUMNS = {
     "node_results": {
         "delta_inflow_lps": "REAL NOT NULL DEFAULT 0",
         "inflow_multiplier": "REAL NOT NULL DEFAULT 1",
+        "peak_flooding_lps": "REAL",
         "max_total_outflow_lps": "REAL",
         "time_to_peak_outflow_min": "REAL",
-        "downstream_link_peak_flows_lps_json": "TEXT"
+        "downstream_link_peak_flows_lps_json": "TEXT",
+        "total_flood_volume_m3": "REAL",
     },
     "link_results": {
         "delta_inflow_lps": "REAL",
@@ -145,7 +149,8 @@ REQUIRED_COLUMNS = {
     },
     "run_summary": {
         "inflow_multiplier": "REAL NOT NULL DEFAULT 1",
-        "failed_nodes_count": "INTEGER"
+        "failed_nodes_count": "INTEGER",
+        "total_flood_volume_m3": "REAL",
     },
 }
 
@@ -193,6 +198,7 @@ def _migrate_run_summary(conn):
         "total_nodes",
         "failed_nodes_count",
         "total_peak_flooding_lps",
+        "total_flood_volume_m3",
         "pct_flooded_nodes",
         "time_to_first_flood_min",
         "resilience_index",
@@ -210,10 +216,15 @@ def _migrate_run_summary(conn):
 
     if "total_peak_flooding_lps" in columns:
         flood_expr = "total_peak_flooding_lps"
-    elif "total_flooding_volume_m3" in columns:
-        flood_expr = "total_flooding_volume_m3"
     else:
         flood_expr = "NULL"
+
+    if "total_flood_volume_m3" in columns:
+        volume_expr = "total_flood_volume_m3"
+    elif "total_flooding_volume_m3" in columns:
+        volume_expr = "total_flooding_volume_m3"
+    else:
+        volume_expr = "NULL"
 
     conn.executescript(
         f"""
@@ -226,6 +237,7 @@ def _migrate_run_summary(conn):
             total_nodes                 INTEGER,
             failed_nodes_count          INTEGER,
             total_peak_flooding_lps     REAL,
+            total_flood_volume_m3       REAL,
             pct_flooded_nodes           REAL,
             time_to_first_flood_min     REAL,
             resilience_index            REAL
@@ -238,6 +250,7 @@ def _migrate_run_summary(conn):
             total_nodes,
             failed_nodes_count,
             total_peak_flooding_lps,
+            total_flood_volume_m3,
             pct_flooded_nodes,
             time_to_first_flood_min,
             resilience_index
@@ -249,6 +262,7 @@ def _migrate_run_summary(conn):
             total_nodes,
             {failed_expr},
             {flood_expr},
+            {volume_expr},
             pct_flooded_nodes,
             time_to_first_flood_min,
             resilience_index
@@ -309,11 +323,11 @@ def _migrate_link_results_nullable_delta(conn):
     )
 
 
-def _migrate_node_results_peak_flooding(conn):
-    """Rename flooding_volume_m3 to peak_flooding_lps in node_results."""
+def _migrate_legacy_node_flooding_volume(conn):
+    """Preserve legacy volume columns without confusing them with peak flow."""
     cols = {row[1] for row in conn.execute("PRAGMA table_info(node_results)").fetchall()}
-    if "flooding_volume_m3" in cols and "peak_flooding_lps" not in cols:
-        conn.execute("ALTER TABLE node_results RENAME COLUMN flooding_volume_m3 TO peak_flooding_lps")
+    if "flooding_volume_m3" in cols and "total_flood_volume_m3" not in cols:
+        conn.execute("ALTER TABLE node_results RENAME COLUMN flooding_volume_m3 TO total_flood_volume_m3")
         conn.commit()
 
 
@@ -323,7 +337,7 @@ def create_schema(conn):
     _migrate_legacy_run_inputs(conn)
     _migrate_run_summary(conn)
     _migrate_link_results_nullable_delta(conn)
-    _migrate_node_results_peak_flooding(conn)
+    _migrate_legacy_node_flooding_volume(conn)
     run_scoped_tables = {"run_inputs", "node_results", "link_results", "run_summary"}
     for table_name, columns in REQUIRED_COLUMNS.items():
         existing = {
