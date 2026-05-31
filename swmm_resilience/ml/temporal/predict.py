@@ -26,10 +26,22 @@ import torch
 
 from ...config import DEFAULT_DB_FILE, DEFAULT_SURROGATE_MAPS_DIR, DEFAULT_TEMPORAL_ARTIFACTS_DIR
 from ...visualization._inp_parser import parse_conduits, parse_coordinates
+from ...visualization.flood_map import plot_flood_map
 from .dataset import STATIC_COLS, SURROGATE_TEMPORAL_COLS, TEMPORAL_COLS
 from .models.cnn import SWMMTemporalCNN
 from .models.surrogate_cnn import SWMMSurrogateCNN
+from .models.surrogate_lstm import SWMMSurrogateLSTM
 from .schemas import TemporalWindowSpec
+
+
+_SURROGATE_MODELS: dict[str, type] = {
+    "cnn": SWMMSurrogateCNN,
+    "lstm": SWMMSurrogateLSTM,
+}
+_SURROGATE_PREFIXES: dict[str, str] = {
+    "cnn": "surrogate_cnn",
+    "lstm": "surrogate_lstm",
+}
 
 
 _PROB_CMAP = "plasma"
@@ -330,6 +342,7 @@ def predict_surrogate_from_multiplier(
     db_path: Path = DEFAULT_DB_FILE,
     artifacts_dir: Path = DEFAULT_TEMPORAL_ARTIFACTS_DIR,
     device: str = "cpu",
+    model_type: str = "cnn",
 ) -> pd.DataFrame:
     """Predict flood risk for every node given an inflow multiplier.
 
@@ -342,7 +355,11 @@ def predict_surrogate_from_multiplier(
         node_id, flood_prob, predicted_flooded, peak_flooding_lps_pred
     """
     artifacts_dir = Path(artifacts_dir)
-    prefix = "surrogate_cnn"
+    if model_type not in _SURROGATE_MODELS:
+        raise ValueError(f"Unknown model_type '{model_type}'. Choose from: {list(_SURROGATE_MODELS.keys())}")
+
+    prefix = _SURROGATE_PREFIXES[model_type]
+    model_cls = _SURROGATE_MODELS[model_type]
 
     state_dict = torch.load(
         artifacts_dir / f"{prefix}_weights.pt",
@@ -352,7 +369,7 @@ def predict_surrogate_from_multiplier(
     scaler_seq = joblib.load(artifacts_dir / f"{prefix}_scaler_seq.joblib")
     scaler_static = joblib.load(artifacts_dir / f"{prefix}_scaler_static.joblib")
 
-    model = SWMMSurrogateCNN(
+    model = model_cls(
         n_temporal_features=len(SURROGATE_TEMPORAL_COLS),
         n_static_features=len(STATIC_COLS),
         use_temporal=True,
@@ -451,12 +468,11 @@ def plot_surrogate_map(
     output_path: Path | None = None,
     multiplier: float | None = None,
     vmax: float | None = None,
-    high_risk_quantile: float = 0.75,
 ) -> Path:
     """Save a prediction map from surrogate CNN output.
 
-    Thin wrapper around plot_prediction_map() — renames surrogate columns
-    (flood_prob, predicted_flooded) to what the plotter expects.
+    Renames surrogate columns for plot_flood_map and saves the map
+    with flooding volume (LPS) as the color/size gradient, not probability.
     """
     if output_path is None:
         out_dir = DEFAULT_SURROGATE_MAPS_DIR
@@ -467,15 +483,17 @@ def plot_surrogate_map(
             output_path = out_dir / "surrogate_map.png"
 
     df = predictions.rename(columns={
-        "peak_flooding_lps_pred": "max_flood_prob",  # gradient = flooding volume
-        "predicted_flooded": "actual_flooded",
+        "peak_flooding_lps_pred": "peak_flooding_lps",
+        "predicted_flooded": "flooded",
     })
+    df["source"] = "Surrogate CNN"
+    df["inflow_multiplier"] = multiplier if multiplier is not None else 1.0
+
     title = (
         f"Surrogate CNN — Volumen de Inundación Predicho"
         + (f"\nQx{multiplier:.2f}" if multiplier is not None else "")
     )
-    return plot_prediction_map(df, inp_path, output_path, title=title, vmax=vmax,
-                               high_risk_quantile=high_risk_quantile)
+    return plot_flood_map(df, inp_path, output_path, title=title, vmax_global=vmax)
 
 
 def predict_failure_timeline(*_args, **_kwargs):
