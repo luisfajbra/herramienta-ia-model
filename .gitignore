@@ -60,3 +60,6 @@ ml_outputs/
 # SWMM outputs generados
 *.rpt
 *.out
+
+docs/
+.superpowers/obsidian/
