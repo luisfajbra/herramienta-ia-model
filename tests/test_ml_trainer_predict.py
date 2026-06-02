@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import joblib
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -25,6 +26,28 @@ def test_train_models_writes_artifacts(tmp_path, tiny_config_factory, trainer_tr
     assert (tmp_path / "models" / "training_inp_hash.txt").exists()
 
 
+class RecordingRegressor:
+    def __init__(self):
+        self.fit_y = None
+
+    def fit(self, X, y):
+        self.fit_y = np.asarray(y, dtype=float)
+        return self
+
+    def predict(self, X):
+        return np.zeros(len(X), dtype=float)
+
+
+def test_train_models_fits_regressor_in_log_space(monkeypatch, tmp_path, tiny_config_factory, trainer_training_df):
+    recorded = RecordingRegressor()
+    monkeypatch.setattr(trainer, "make_regressor", lambda config: recorded)
+
+    trainer.train_models(trainer_training_df, tiny_config_factory(), tmp_path / "models")
+
+    flooded = trainer_training_df[trainer_training_df["inunda"] == 1]
+    np.testing.assert_allclose(recorded.fit_y, np.log1p(flooded["vol_inundacion_m3"].to_numpy()))
+
+
 class FakeClassifier:
     def predict(self, X):
         assert list(X.columns) == trainer.FEATURE_COLS
@@ -34,7 +57,7 @@ class FakeClassifier:
 class FakeRegressor:
     def predict(self, X):
         assert list(X.columns) == trainer.FEATURE_COLS
-        return [33.0]
+        return np.log1p([33.0])
 
 
 def test_predict_network_uses_dataframe_features(monkeypatch, tmp_path, tiny_config_factory):

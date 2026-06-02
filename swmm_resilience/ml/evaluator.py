@@ -56,7 +56,7 @@ def _run_cv(df: pd.DataFrame, config: Config, cv) -> dict:
         reg = make_regressor(config)
         flooded_tr = yc_tr == 1
         if flooded_tr.sum() > 0:
-            reg.fit(X_tr[flooded_tr], yr_tr[flooded_tr])
+            reg.fit(X_tr[flooded_tr], np.log1p(yr_tr[flooded_tr]))
 
         # Level 1 — classifier
         yc_pred = clf.predict(X_te)
@@ -72,10 +72,12 @@ def _run_cv(df: pd.DataFrame, config: Config, cv) -> dict:
         # Level 2 — regressor oracle (true labels used to filter)
         flooded_te = yc_te == 1
         if flooded_te.sum() > 0:
-            yr_pred_oracle = reg.predict(X_te[flooded_te])
+            yr_pred_oracle = np.expm1(reg.predict(X_te[flooded_te]))
+            yr_pred_oracle = np.clip(yr_pred_oracle, a_min=0.0, a_max=None)
             yr_true_oracle = yr_te[flooded_te]
             reg_m.append({
                 "nse": _nse(yr_true_oracle, yr_pred_oracle),
+                "log_nse": _nse(np.log1p(yr_true_oracle), np.log1p(yr_pred_oracle)),
                 "rmse": float(np.sqrt(mean_squared_error(yr_true_oracle, yr_pred_oracle))),
                 "mae": float(mean_absolute_error(yr_true_oracle, yr_pred_oracle)),
                 "r2": float(r2_score(yr_true_oracle, yr_pred_oracle)),
@@ -85,7 +87,8 @@ def _run_cv(df: pd.DataFrame, config: Config, cv) -> dict:
         yr_pred_e2e = np.zeros(len(X_te))
         clf_flood_mask = yc_pred == 1
         if clf_flood_mask.sum() > 0:
-            yr_pred_e2e[clf_flood_mask] = reg.predict(X_te[clf_flood_mask])
+            yr_pred_e2e[clf_flood_mask] = np.expm1(reg.predict(X_te[clf_flood_mask]))
+            yr_pred_e2e = np.clip(yr_pred_e2e, a_min=0.0, a_max=None)
         e2e_m.append({
             "pct_nodos_correctos": float((yc_pred == yc_te).mean()),
             "rmse_vol_todos_nodos": float(np.sqrt(mean_squared_error(yr_te, yr_pred_e2e))),

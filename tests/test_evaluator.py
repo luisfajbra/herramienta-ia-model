@@ -42,3 +42,6 @@ def test_evaluate_models_writes_expected_json_files(tmp_path, tiny_config_factor
     reg_metrics = json.loads((tmp_path / "metrics" / "metrics_regressor.json").read_text(encoding="utf-8"))
     assert "nse" in reg_metrics
     assert math.isfinite(reg_metrics["nse"])
+    assert "log_nse" in reg_metrics
+    assert math.isfinite(reg_metrics["log_nse"])
+    assert reg_metrics["log_nse"] > -10

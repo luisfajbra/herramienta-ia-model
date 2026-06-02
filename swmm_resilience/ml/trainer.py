@@ -1,5 +1,6 @@
 import hashlib
 import joblib
+import numpy as np
 import pandas as pd
 from pathlib import Path
 from sklearn.impute import SimpleImputer
@@ -77,7 +78,7 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
     if df_flooded.empty:
         raise ValueError("No hay filas inundadas para entrenar el regresor.")
     reg = make_regressor(config)
-    reg.fit(df_flooded[FEATURE_COLS], df_flooded["vol_inundacion_m3"])
+    reg.fit(df_flooded[FEATURE_COLS], np.log1p(df_flooded["vol_inundacion_m3"]))
 
     joblib.dump(clf, output_dir / "classifier.joblib")
     joblib.dump(reg, output_dir / "regressor.joblib")

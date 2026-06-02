@@ -51,7 +51,8 @@ def predict_network(factor: float, config: Config, models_dir: Path) -> pd.DataF
     vol_pred = np.zeros(len(X))
     flood_mask = inunda_pred == 1
     if flood_mask.sum() > 0:
-        vol_pred[flood_mask] = reg.predict(X.loc[flood_mask])
+        vol_pred[flood_mask] = np.expm1(reg.predict(X.loc[flood_mask]))
+        vol_pred = np.clip(vol_pred, a_min=0.0, a_max=None)
 
     merged["inunda_pred"] = inunda_pred
     merged["vol_pred_m3"] = vol_pred
