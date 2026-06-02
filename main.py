@@ -27,6 +27,7 @@ from swmm_resilience.ml.predict import predict_network
 from swmm_resilience.ml.trainer import train_models
 from swmm_resilience.visualization.flood_map import generate_flood_map
 from swmm_resilience.visualization.hydrograph import plot_hydrograph
+from swmm_resilience.visualization.network_map import generate_network_map
 
 MODELS_DIR = Path("outputs/models")
 METRICS_DIR = Path("outputs/metrics")
@@ -47,6 +48,8 @@ def main():
     parser.add_argument("--factor", type=float, help="Factor para --predict")
     parser.add_argument("--hydrograph", action="store_true",
                         help="Graficar hidrograma del nodo con mayor caudal pico")
+    parser.add_argument("--network-map", action="store_true",
+                        help="Generar mapa de topología de la red con clasificación de tuberías")
     args = parser.parse_args()
 
     if args.skip_simulation and not (args.skip_extraction or args.only_ml):
@@ -76,6 +79,12 @@ def main():
     if args.hydrograph:
         out = config.visualization.output_path / "hydrograph_Qx1.png"
         plot_hydrograph(config.network.inp_path, out)
+        return
+
+    # ── Modo: mapa de red ────────────────────────────────────────────────────
+    if args.network_map:
+        out = config.visualization.output_path / "network_map.png"
+        generate_network_map(config.network.inp_path, out, config.network.name)
         return
 
     # ── Modo: solo mapas ─────────────────────────────────────────────────────
