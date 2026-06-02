@@ -42,13 +42,23 @@ def _regressor_oracle_metrics(y_true, y_pred) -> dict:
     }
 
 
+def _pooled_regressor_oracle_metrics(y_true_parts: list, y_pred_parts: list) -> dict:
+    if not y_true_parts:
+        return {}
+    return _regressor_oracle_metrics(
+        np.concatenate(y_true_parts),
+        np.concatenate(y_pred_parts),
+    )
+
+
 def _run_cv(df: pd.DataFrame, config: Config, cv) -> dict:
     X = df[FEATURE_COLS].values
     y_clf = df["inunda"].values
     y_reg = df["vol_inundacion_m3"].values
     groups = df["factor_mult"].values
 
-    clf_m, reg_m, e2e_m = [], [], []
+    clf_m, e2e_m = [], []
+    reg_true_parts, reg_pred_parts = [], []
     by_factor: dict = {}
 
     for train_idx, test_idx in cv.split(X, y_clf, groups):
@@ -85,7 +95,8 @@ def _run_cv(df: pd.DataFrame, config: Config, cv) -> dict:
             yr_pred_oracle = np.expm1(reg.predict(X_te[flooded_te]))
             yr_pred_oracle = np.clip(yr_pred_oracle, a_min=0.0, a_max=None)
             yr_true_oracle = yr_te[flooded_te]
-            reg_m.append(_regressor_oracle_metrics(yr_true_oracle, yr_pred_oracle))
+            reg_true_parts.append(yr_true_oracle)
+            reg_pred_parts.append(yr_pred_oracle)
 
         # Level 3 — end-to-end (predicted labels used to route to regressor)
         yr_pred_e2e = np.zeros(len(X_te))
@@ -114,7 +125,7 @@ def _run_cv(df: pd.DataFrame, config: Config, cv) -> dict:
 
     result = {
         "classifier": _mean_metrics(clf_m),
-        "regressor_oracle": _mean_metrics(reg_m),
+        "regressor_oracle": _pooled_regressor_oracle_metrics(reg_true_parts, reg_pred_parts),
         "end_to_end": _mean_metrics(e2e_m),
     }
     if config.evaluation.stratify_by_factor:

@@ -5,7 +5,12 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from swmm_resilience.ml.evaluator import _nse, _regressor_oracle_metrics, evaluate_models
+from swmm_resilience.ml.evaluator import (
+    _nse,
+    _pooled_regressor_oracle_metrics,
+    _regressor_oracle_metrics,
+    evaluate_models,
+)
 from swmm_resilience.ml.trainer import FEATURE_COLS
 
 
@@ -37,6 +42,26 @@ def test_regressor_oracle_metrics_compute_log_nse_in_log_space():
     expected_log_nse = _nse(np.log1p(y_true), np.log1p(y_pred))
     assert metrics["log_nse"] == pytest.approx(expected_log_nse)
     assert metrics["log_nse"] != pytest.approx(metrics["nse"])
+
+
+def test_regressor_oracle_metrics_pool_predictions_before_nse():
+    y_true_parts = [
+        np.array([7.0, 10.0]),
+        np.array([100.0, 200.0, 300.0, 400.0]),
+    ]
+    y_pred_parts = [
+        np.array([35.0, 35.0]),
+        np.array([101.0, 199.0, 301.0, 399.0]),
+    ]
+
+    metrics = _pooled_regressor_oracle_metrics(y_true_parts, y_pred_parts)
+    fold_log_nse = [
+        _nse(np.log1p(y_true), np.log1p(y_pred))
+        for y_true, y_pred in zip(y_true_parts, y_pred_parts)
+    ]
+
+    assert sum(fold_log_nse) / len(fold_log_nse) < 0
+    assert metrics["log_nse"] > 0
 
 
 def test_evaluate_models_writes_expected_json_files(tmp_path, tiny_config_factory):
