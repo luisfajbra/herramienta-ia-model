@@ -26,6 +26,7 @@ from swmm_resilience.ml.feature_importance import generate_feature_importance_pl
 from swmm_resilience.ml.predict import predict_network
 from swmm_resilience.ml.trainer import train_models
 from swmm_resilience.visualization.flood_map import generate_flood_map
+from swmm_resilience.visualization.hydrograph import plot_hydrograph
 
 MODELS_DIR = Path("outputs/models")
 METRICS_DIR = Path("outputs/metrics")
@@ -44,6 +45,8 @@ def main():
     parser.add_argument("--predict", action="store_true",
                         help="Inferencia sin SWMM para el factor dado")
     parser.add_argument("--factor", type=float, help="Factor para --predict")
+    parser.add_argument("--hydrograph", action="store_true",
+                        help="Graficar hidrograma del nodo con mayor caudal pico")
     args = parser.parse_args()
 
     if args.skip_simulation and not (args.skip_extraction or args.only_ml):
@@ -67,6 +70,12 @@ def main():
         flooded = result[result["inunda_pred"] == 1]
         print(f"\n{len(flooded)} nodos predichos como inundados:")
         print(flooded.to_string(index=False))
+        return
+
+    # ── Modo: hidrograma ──────────────────────────────────────────────────────
+    if args.hydrograph:
+        out = config.visualization.output_path / "hydrograph_Qx1.png"
+        plot_hydrograph(config.network.inp_path, out)
         return
 
     # ── Modo: solo mapas ─────────────────────────────────────────────────────
