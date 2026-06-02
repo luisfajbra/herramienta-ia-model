@@ -30,6 +30,8 @@ from swmm_resilience.visualization.hydrograph import plot_hydrograph
 from swmm_resilience.visualization.network_map import generate_network_map
 from swmm_resilience.analysis.resilience import compute_resilience_curve
 from swmm_resilience.visualization.resilience_curve import plot_resilience_curve
+from swmm_resilience.analysis.flood_volume import compute_flood_volume_curve
+from swmm_resilience.visualization.flood_volume_curve import plot_flood_volume_curve
 
 MODELS_DIR = Path("outputs/models")
 METRICS_DIR = Path("outputs/metrics")
@@ -54,6 +56,8 @@ def main():
                         help="Generar mapa de topología de la red con clasificación de tuberías")
     parser.add_argument("--resilience-curve", action="store_true",
                         help="Calcular y graficar curva de resiliencia SWMM vs ML")
+    parser.add_argument("--flood-volume-curve", action="store_true",
+                        help="Graficar volumen total de inundación por factor (SWMM vs ML)")
     args = parser.parse_args()
 
     if args.skip_simulation and not (args.skip_extraction or args.only_ml):
@@ -100,6 +104,17 @@ def main():
         print("\nResiliencia por factor:")
         print(result.to_string(index=False))
         plot_resilience_curve(result, METRICS_DIR)
+        return
+
+    # ── Modo: curva de volumen de inundación ─────────────────────────────────
+    if args.flood_volume_curve:
+        print("\nCalculando curva de volumen de inundación...")
+        df = pd.read_csv(config.dataset.output_path)
+        factors = sorted(df["factor_mult"].unique())
+        result = compute_flood_volume_curve(df, factors, config, MODELS_DIR)
+        print("\nVolumen total por factor:")
+        print(result.to_string(index=False))
+        plot_flood_volume_curve(result, METRICS_DIR)
         return
 
     # ── Modo: solo mapas ─────────────────────────────────────────────────────
