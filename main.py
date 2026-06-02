@@ -28,6 +28,8 @@ from swmm_resilience.ml.trainer import train_models
 from swmm_resilience.visualization.flood_map import generate_flood_map
 from swmm_resilience.visualization.hydrograph import plot_hydrograph
 from swmm_resilience.visualization.network_map import generate_network_map
+from swmm_resilience.analysis.resilience import compute_resilience_curve
+from swmm_resilience.visualization.resilience_curve import plot_resilience_curve
 
 MODELS_DIR = Path("outputs/models")
 METRICS_DIR = Path("outputs/metrics")
@@ -50,6 +52,8 @@ def main():
                         help="Graficar hidrograma del nodo con mayor caudal pico")
     parser.add_argument("--network-map", action="store_true",
                         help="Generar mapa de topología de la red con clasificación de tuberías")
+    parser.add_argument("--resilience-curve", action="store_true",
+                        help="Calcular y graficar curva de resiliencia SWMM vs ML")
     args = parser.parse_args()
 
     if args.skip_simulation and not (args.skip_extraction or args.only_ml):
@@ -85,6 +89,18 @@ def main():
     if args.network_map:
         out = config.visualization.output_path / "network_map.png"
         generate_network_map(config.network.inp_path, out, config.network.name)
+        return
+
+    # ── Modo: curva de resiliencia ────────────────────────────────────────────
+    if args.resilience_curve:
+        print("\nCalculando curva de resiliencia...")
+        df = pd.read_csv(config.dataset.output_path)
+        factors = sorted(df["factor_mult"].unique())
+        result = compute_resilience_curve(df, factors, config, MODELS_DIR)
+        print("\nResiliencia por factor:")
+        print(result.to_string(index=False))
+        out = METRICS_DIR / "resilience_curve.png"
+        plot_resilience_curve(result, out)
         return
 
     # ── Modo: solo mapas ─────────────────────────────────────────────────────
