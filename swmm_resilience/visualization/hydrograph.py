@@ -13,6 +13,12 @@ def plot_hydrograph(inp_path: Path, output_path: Path) -> Path:
     inp = load_inp(inp_path)
     profiles = get_node_inflow_profiles(inp)
 
+    if not profiles:
+        raise ValueError(
+            f"No se encontraron perfiles de inflow en {inp_path}. "
+            "Verifica la seccion [INFLOWS] del .inp."
+        )
+
     peak_node, peak_profile = max(
         profiles.items(),
         key=lambda kv: max((q for _, q in kv[1]["points"]), default=0.0),
@@ -30,7 +36,7 @@ def plot_hydrograph(inp_path: Path, output_path: Path) -> Path:
     ax.grid(True, alpha=0.3)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    plt.savefig(output_path, dpi=150, bbox_inches="tight")
-    plt.close()
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
     print(f"Hidrograma guardado: {output_path}")
     return output_path
