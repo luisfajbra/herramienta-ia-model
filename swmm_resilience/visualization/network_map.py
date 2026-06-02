@@ -56,14 +56,15 @@ def generate_network_map(
 
         mx, my = (x0 + x1) / 2.0, (y0 + y1) / 2.0
         dx, dy = x1 - x0, y1 - y0
-        step = 0.01
-        ax.annotate(
-            "",
-            xy=(mx + dx * step, my + dy * step),
-            xytext=(mx - dx * step, my - dy * step),
-            arrowprops=dict(arrowstyle="->", color=color, lw=1.0, mutation_scale=8),
-            zorder=2,
-        )
+        if abs(dx) + abs(dy) > 1e-9:
+            step = 0.01
+            ax.annotate(
+                "",
+                xy=(mx + dx * step, my + dy * step),
+                xytext=(mx - dx * step, my - dy * step),
+                arrowprops=dict(arrowstyle="->", color=color, lw=1.0, mutation_scale=8),
+                zorder=2,
+            )
 
     for nid, (x, y) in coords.items():
         if nid in outfalls:
