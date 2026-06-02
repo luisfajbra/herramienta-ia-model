@@ -99,8 +99,7 @@ def main():
         result = compute_resilience_curve(df, factors, config, MODELS_DIR)
         print("\nResiliencia por factor:")
         print(result.to_string(index=False))
-        out = METRICS_DIR / "resilience_curve.png"
-        plot_resilience_curve(result, out)
+        plot_resilience_curve(result, METRICS_DIR)
         return
 
     # ── Modo: solo mapas ─────────────────────────────────────────────────────
