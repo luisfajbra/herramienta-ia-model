@@ -42,3 +42,35 @@ def plot_flood_volume_curve(df: pd.DataFrame, output_dir: Path) -> tuple[Path, P
     print(f"Curva de volumen ML guardada: {path_ml}")
 
     return path_swmm, path_ml
+
+
+def plot_flood_volume_combined(df: pd.DataFrame, output_dir: Path) -> Path:
+    """Generate a single PNG with SWMM and ML curves overlaid on the same axes.
+
+    Two subplots: linear scale (left) and log scale (right).
+    df must have columns: factor, vol_total_swmm, vol_total_ml.
+    Returns path to the combined PNG.
+    """
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "flood_volume_combined.png"
+
+    fig, (ax_lin, ax_log) = plt.subplots(1, 2, figsize=(14, 5))
+
+    for ax, scale in ((ax_lin, "linear"), (ax_log, "log")):
+        ax.plot(df["factor"], df["vol_total_swmm"],
+                color="#2176ae", marker="o", linewidth=2, label="SWMM (real)")
+        ax.plot(df["factor"], df["vol_total_ml"],
+                color="#e07b39", marker="s", linewidth=2, label="Predicción ML")
+        ax.set_xlabel("Factor multiplicador de caudal")
+        ax.set_ylabel("Volumen total inundado (m³)")
+        ax.set_yscale(scale)
+        ax.set_title("Escala lineal" if scale == "linear" else "Escala logarítmica")
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+
+    fig.suptitle("Volumen total de inundación — SWMM vs ML", fontsize=13)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Curva de volumen combinada guardada: {output_path}")
+    return output_path
