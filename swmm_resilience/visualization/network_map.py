@@ -70,9 +70,7 @@ def generate_network_map(
         if nid in outfalls:
             ax.scatter(x, y, marker="v", color="black", s=60, zorder=4)
         else:
-            ax.scatter(x, y, color="#cccccc", s=8, zorder=3,
-                       edgecolors="#888888", linewidths=0.5)
-        ax.text(x, y, nid, fontsize=5, ha="center", va="bottom", zorder=5)
+            ax.scatter(x, y, color="black", s=8, zorder=3)
 
     legend_elements = [
         mpatches.Patch(facecolor=_INITIAL_COLOR,    label="Tubería inicial"),
