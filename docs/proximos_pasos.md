@@ -43,6 +43,31 @@ Estado al 2026-06-02. Modelo entrenado, 19 tests pasan, smoke run exitoso.
 
 ---
 
+## 5. Gráfica de la red (`--network-map`)
+
+**Qué:** PNG estático de la topología de la red con tuberías coloreadas por tipo y flechas de dirección de flujo.
+
+**Comportamiento:**
+- Cada tubería se dibuja como una línea con una flecha en el extremo del nodo destino.
+- **Tubería inicial** (azul): el nodo de origen no tiene ninguna tubería de entrada aguas arriba. Es cabecera de cuenca.
+- **Tubería continua** (naranja): el nodo de origen tiene al menos una tubería de entrada aguas arriba. El flujo viene de otra tubería.
+- Los nodos se dibujan como puntos neutros sin diferenciación visual.
+- Se incluye leyenda con los dos tipos de tubería.
+- Guarda en `outputs/maps/network_map.png`.
+
+**Definición formal de "inicial" vs "continua":**
+```
+nodos_con_entrada = {to_node para cada conduit en la red}
+tubería es INICIAL  si su from_node NO está en nodos_con_entrada
+tubería es CONTINUA si su from_node SÍ está en nodos_con_entrada
+```
+
+**Dónde:** Función nueva `generate_network_map(inp_path, output_path)` en `swmm_resilience/visualization/network_map.py` + flag `--network-map` en `main.py`. Lee coordenadas y conduits de `load_inp` (ya disponible en `swmm_api_io.py`).
+
+**Esfuerzo:** ~1 h (incluye test con red sintética de 3 nodos).
+
+---
+
 ## Comandos de referencia actuales
 
 ```bash
@@ -61,5 +86,8 @@ python main.py --predict --factor 5.0
 Salidas principales:
 - `outputs/maps/flood_map_factor_*.png` — mapas con datos reales SWMM
 - `outputs/maps/flood_map_pred_*.png` — mapas con predicción ML
+- `outputs/maps/network_map.png` — topología de la red (pendiente)
 - `outputs/metrics/metrics_*.json` — métricas en JSON
 - `outputs/metrics/feature_importance_*.png` — importancia de variables
+- `outputs/metrics/learning_curves.png` — curvas de aprendizaje (pendiente)
+- `outputs/maps/hydrograph_Qx1.png` — hidrograma base (pendiente)
