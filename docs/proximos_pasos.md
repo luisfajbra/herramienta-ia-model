@@ -37,7 +37,38 @@ Estado al 2026-06-02. Modelo entrenado, 19 tests pasan, smoke run exitoso.
 
 ---
 
-## 4. Mapas por factor — ya implementado
+## 4. Etiquetas descriptivas en gráficas de importancia de variables
+
+**Qué:** En las dos gráficas de importancia (`feature_importance_classifier.png` y `feature_importance_regressor.png`), reemplazar los nombres técnicos de las variables por su nombre completo descriptivo en español. El cambio es **únicamente visual** — el dataset, los modelos y el código interno no se tocan.
+
+**Mapa de nombres (validar antes de implementar):**
+
+| Variable técnica | Nombre en la gráfica |
+|---|---|
+| `elev_fondo` | Elevación del fondo del nodo (m) |
+| `prof_max` | Profundidad máxima del nodo (m) |
+| `n_tuberias_in` | Número de tuberías de entrada |
+| `n_tuberias_out` | Número de tuberías de salida |
+| `diam_max_in` | Diámetro máximo de tubería de entrada (m) |
+| `diam_max_out` | Diámetro máximo de tubería de salida (m) |
+| `pendiente_max_in` | Pendiente máxima de tubería de entrada (m/m) |
+| `pendiente_out` | Pendiente de tubería de salida (m/m) |
+| `base_inflow_lps` | Caudal de entrada base (L/s) |
+| `dist_outfall_m` | Distancia al punto de descarga (m) |
+| `n_nodos_aguas_arriba` | Número de nodos aguas arriba |
+| `q_pico_acum_base` | Caudal pico acumulado aguas arriba — base (L/s) |
+| `upstream_capacity_lps` | Capacidad de transporte aguas arriba (L/s) |
+| `factor_mult` | Factor de escala de lluvia |
+| `q_pico_nodo` | Caudal pico en el nodo escalado (L/s) |
+| `q_pico_acum_escalado` | Caudal pico acumulado aguas arriba — escalado (L/s) |
+
+**Dónde:** `swmm_resilience/ml/feature_importance.py`, diccionario de mapeo aplicado solo al eje Y del gráfico antes de `plt.savefig`.
+
+**Esfuerzo:** ~20 min.
+
+---
+
+## 5. Mapas por factor — ya implementado
 
 `--only-maps` ahora genera un mapa por cada factor en el dataset (25 mapas), en lugar de los 5 configurados en `visualization.factors_to_plot`.
 
