@@ -2,6 +2,7 @@ import pandas as pd
 import pytest
 
 from swmm_resilience.analysis import resilience
+from swmm_resilience.visualization import resilience_curve
 
 
 def swmm_df():
@@ -57,3 +58,17 @@ def test_compute_resilience_ml_values():
 
     assert result.loc[result["factor"] == 1.0, "resilience_ml"].iloc[0] == pytest.approx(1.0)
     assert result.loc[result["factor"] == 2.0, "resilience_ml"].iloc[0] == pytest.approx(0.5)
+
+
+def test_plot_resilience_curve_writes_png(tmp_path):
+    df = pd.DataFrame({
+        "factor": [1.0, 2.0],
+        "resilience_swmm": [1.0, 0.5],
+        "resilience_ml": [1.0, 0.6],
+    })
+
+    output = resilience_curve.plot_resilience_curve(df, tmp_path / "resilience.png")
+
+    assert output == tmp_path / "resilience.png"
+    assert (tmp_path / "resilience.png").exists()
+    assert (tmp_path / "resilience.png").stat().st_size > 0
