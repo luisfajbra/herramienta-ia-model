@@ -72,11 +72,16 @@ Selecciona automáticamente el nodo con mayor caudal pico (nodo 87I, 26 L/s) y g
 
 ---
 
-## ✅ 6. Gráfica de la red (`--network-map`) — IMPLEMENTADO
+## ✅ 6. Gráfica de la red (`--network-map`) — IMPLEMENTADO ⚠️ PENDIENTE CORRECCIÓN
 
 Comando: `python main.py --network-map`
 
-Genera `outputs/maps/network_map.png` con tuberías iniciales (azul), continuas (gris), flechas de flujo en el punto medio de cada tubería, nodos como círculos negros y nodo de salida como triángulo.
+Genera `outputs/maps/network_map.png` con flechas de flujo en el punto medio de cada tubería, nodos como círculos negros y nodo de salida como triángulo.
+
+**⚠️ Corrección pendiente:** La distinción visual entre tuberías iniciales (azul) y continuas (gris oscuro) está temporalmente desactivada — todas las tuberías se pintan del mismo gris. También la leyenda solo muestra el nodo de salida. Hay que restaurar:
+- Tuberías iniciales → azul `#2176ae`, grosor 1.5
+- Tuberías continuas → gris oscuro `#444444`, grosor 1.0
+- Leyenda con los tres elementos: tubería inicial, tubería continua, nodo de salida
 
 ---
 

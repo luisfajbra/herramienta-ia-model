@@ -48,9 +48,8 @@ def generate_network_map(
             continue
         x0, y0 = coords[fn]
         x1, y1 = coords[tn]
-        is_initial = fn not in to_nodes
-        color = _INITIAL_COLOR if is_initial else _CONTINUOUS_COLOR
-        lw = 1.5 if is_initial else 1.0
+        color = _CONTINUOUS_COLOR
+        lw = 1.0
 
         ax.plot([x0, x1], [y0, y1], color=color, linewidth=lw, zorder=1)
 
@@ -73,8 +72,6 @@ def generate_network_map(
             ax.scatter(x, y, color="black", s=8, zorder=3)
 
     legend_elements = [
-        mpatches.Patch(facecolor=_INITIAL_COLOR,    label="Tubería inicial"),
-        mpatches.Patch(facecolor=_CONTINUOUS_COLOR, label="Tubería continua"),
         plt.Line2D([0], [0], marker="v", color="w", markerfacecolor="black",
                    markersize=8, label="Nodo de salida"),
     ]
