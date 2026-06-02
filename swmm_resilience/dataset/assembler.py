@@ -23,9 +23,10 @@ def assemble_dataset(
     all_rows = []
     for _, dynamic_df, labels_df in simulation_results:
         merged = static_base.merge(dynamic_df, on="node_id", how="left")
-        merged = merged.merge(labels_df, on="node_id", how="left")
-        if "vol_inundacion_m3" not in merged.columns or "inunda" not in merged.columns:
+        required_label_cols = {"vol_inundacion_m3", "inunda"}
+        if not required_label_cols.issubset(labels_df.columns):
             raise ValueError("labels_df debe incluir columnas vol_inundacion_m3 e inunda")
+        merged = merged.merge(labels_df, on="node_id", how="left")
         merged["vol_inundacion_m3"] = merged["vol_inundacion_m3"].fillna(0.0)
         merged["inunda"] = merged["inunda"].fillna(0).astype(int)
         all_rows.append(merged)

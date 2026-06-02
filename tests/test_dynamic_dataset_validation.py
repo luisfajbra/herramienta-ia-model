@@ -45,10 +45,23 @@ def test_assemble_dataset_fills_missing_labels_as_zero(tmp_path):
 
     dataset = assemble_dataset(static_df, [(1.0, dynamic_df, labels_df)], tmp_path / "dataset.csv")
 
+    assert len(dataset) == 2
     row_j1 = dataset[dataset["node_id"] == "J1"].iloc[0]
     assert row_j1["vol_inundacion_m3"] == 0.0
     assert row_j1["inunda"] == 0
+    row_j2 = dataset[dataset["node_id"] == "J2"].iloc[0]
+    assert row_j2["vol_inundacion_m3"] == 12.0
+    assert row_j2["inunda"] == 1
     assert (tmp_path / "dataset.csv").exists()
+
+
+def test_assemble_dataset_rejects_missing_label_columns(tmp_path):
+    static_df = static_topology_df()
+    dynamic_df = compute_dynamic_features(static_df, 1.0)
+    labels_df = pd.DataFrame({"node_id": ["J2"], "vol_inundacion_m3": [12.0]})
+
+    with pytest.raises(ValueError, match="labels_df debe incluir columnas vol_inundacion_m3 e inunda"):
+        assemble_dataset(static_df, [(1.0, dynamic_df, labels_df)], tmp_path / "dataset.csv")
 
 
 def test_validate_dataset_rejects_wrong_row_count():
