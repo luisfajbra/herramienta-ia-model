@@ -5,7 +5,7 @@ from pathlib import Path
 from ..simulation.swmm_api_io import load_inp
 
 _INITIAL_COLOR = "#2176ae"    # blue — pipe whose from_node has no upstream input
-_CONTINUOUS_COLOR = "#888888"  # gray — pipe whose from_node receives upstream flow
+_CONTINUOUS_COLOR = "#444444"  # dark gray — pipe whose from_node receives upstream flow
 
 
 def generate_network_map(
@@ -62,7 +62,7 @@ def generate_network_map(
                 "",
                 xy=(mx + dx * step, my + dy * step),
                 xytext=(mx - dx * step, my - dy * step),
-                arrowprops=dict(arrowstyle="->", color=color, lw=1.0, mutation_scale=8),
+                arrowprops=dict(arrowstyle="->", color=color, lw=1.5, mutation_scale=16),
                 zorder=2,
             )
 
@@ -78,7 +78,8 @@ def generate_network_map(
         plt.Line2D([0], [0], marker="v", color="w", markerfacecolor="black",
                    markersize=8, label="Nodo de salida"),
     ]
-    ax.legend(handles=legend_elements, loc="upper right", fontsize=8)
+    ax.legend(handles=legend_elements, loc="upper right", fontsize=13,
+              framealpha=0.9, edgecolor="#cccccc")
     ax.set_title(network_name, fontsize=13)
     ax.set_aspect("equal")
     ax.axis("off")
