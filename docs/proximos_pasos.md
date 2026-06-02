@@ -56,11 +56,11 @@ Estado al 2026-06-02. Modelo entrenado, 19 tests pasan, smoke run exitoso.
 | `base_inflow_lps` | Caudal de entrada base (L/s) |
 | `dist_outfall_m` | Distancia al punto de descarga (m) |
 | `n_nodos_aguas_arriba` | Número de nodos aguas arriba |
-| `q_pico_acum_base` | Caudal pico acumulado aguas arriba — base (L/s) |
+| `q_pico_acum_base` | Caudal pico acumulado base (L/s) |
 | `upstream_capacity_lps` | Capacidad de transporte aguas arriba (L/s) |
 | `factor_mult` | Factor de escala de lluvia |
 | `q_pico_nodo` | Caudal pico en el nodo escalado (L/s) |
-| `q_pico_acum_escalado` | Caudal pico acumulado aguas arriba — escalado (L/s) |
+| `q_pico_acum_escalado` | Caudal pico acumulado (L/s) |
 
 **Dónde:** `swmm_resilience/ml/feature_importance.py`, diccionario de mapeo aplicado solo al eje Y del gráfico antes de `plt.savefig`.
 
