@@ -72,17 +72,17 @@ def main():
     # ── Modo: solo mapas ─────────────────────────────────────────────────────
     if args.only_maps:
         df = pd.read_csv(config.dataset.output_path)
-        for factor in config.visualization.factors_to_plot:
+        factors_in_dataset = sorted(df["factor_mult"].unique())
+        print(f"Generando {len(factors_in_dataset)} mapas SWMM...")
+        for factor in factors_in_dataset:
             df_f = df[abs(df["factor_mult"] - factor) < 1e-6]
-            if df_f.empty:
-                print(f"Factor {factor:.2f} no encontrado en dataset, saltando.")
-                continue
             out = config.visualization.output_path / f"flood_map_factor_{factor:.2f}.png"
             generate_flood_map(
                 config.network.inp_path, df_f, factor, out,
                 config.network.name, config.visualization.colormap,
                 config.visualization.show_labels_top_n,
             )
+        print(f"  Mapas guardados en {config.visualization.output_path}")
         return
 
     # ── Pipeline completo (o parcial) ─────────────────────────────────────────
