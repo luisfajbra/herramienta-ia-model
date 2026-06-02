@@ -60,15 +60,16 @@ def test_compute_resilience_ml_values():
     assert result.loc[result["factor"] == 2.0, "resilience_ml"].iloc[0] == pytest.approx(0.5)
 
 
-def test_plot_resilience_curve_writes_png(tmp_path):
+def test_plot_resilience_curve_writes_two_pngs(tmp_path):
     df = pd.DataFrame({
         "factor": [1.0, 2.0],
         "resilience_swmm": [1.0, 0.5],
-        "resilience_ml": [1.0, 0.6],
+        "resilience_ml":   [1.0, 0.6],
     })
 
-    output = resilience_curve.plot_resilience_curve(df, tmp_path / "resilience.png")
+    path_swmm, path_ml = resilience_curve.plot_resilience_curve(df, tmp_path)
 
-    assert output == tmp_path / "resilience.png"
-    assert (tmp_path / "resilience.png").exists()
-    assert (tmp_path / "resilience.png").stat().st_size > 0
+    assert path_swmm == tmp_path / "resilience_swmm.png"
+    assert path_ml   == tmp_path / "resilience_ml.png"
+    assert path_swmm.exists() and path_swmm.stat().st_size > 0
+    assert path_ml.exists()   and path_ml.stat().st_size > 0
