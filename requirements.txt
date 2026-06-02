@@ -7,3 +7,4 @@ joblib>=1.2.0
 xgboost>=1.7.0
 swmm-api>=0.4
 ydata-profiling>=4.17,<5
+pytest>=8.0
