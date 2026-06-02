@@ -1,6 +1,6 @@
 # Próximos pasos — pipeline spec v4
 
-Estado al 2026-06-02. Modelo entrenado, 22 tests pasan, smoke run exitoso.
+Estado al 2026-06-02. Modelo entrenado, 25 tests pasan, smoke run exitoso.
 
 ---
 
@@ -80,6 +80,34 @@ Genera `outputs/maps/network_map.png` con tuberías iniciales (azul), continuas 
 
 ---
 
+## ✅ 7. Curva de resiliencia (`--resilience-curve`) — IMPLEMENTADO
+
+Comando: `python main.py --resilience-curve`
+
+Calcula `resiliencia = nodos no inundados / total nodos` por factor, comparando datos reales SWMM vs predicción ML. Genera dos PNGs separados:
+- `outputs/metrics/resilience_swmm.png` — curva SWMM (azul)
+- `outputs/metrics/resilience_ml.png` — curva ML (naranja)
+
+Imprime la tabla completa de resiliencia por factor en terminal.
+
+---
+
+## 8. Curva de volumen de inundación total (`--flood-volume-curve`)
+
+**Qué:** Curva que muestra el **volumen total inundado de la red** (suma de `vol_inundacion_m3` de todos los nodos) por cada factor multiplicador, comparando datos reales SWMM vs predicción ML. Complementa la curva de resiliencia: mientras esta dice cuántos nodos fallan (binario), esta dice cuánto volumen se acumula (magnitud).
+
+**Fórmula:**
+```
+vol_total_swmm(factor) = Σ vol_inundacion_m3  para todos los nodos en ese factor
+vol_total_ml(factor)   = Σ vol_pred_m3         de predict_network(factor)
+```
+
+**Dónde:** Función nueva `compute_flood_volume_curve` en `swmm_resilience/analysis/resilience.py` + función `plot_flood_volume_curve(df, output_dir)` en `swmm_resilience/visualization/resilience_curve.py` + flag `--flood-volume-curve` en `main.py`. Genera dos PNGs: `outputs/metrics/flood_volume_swmm.png` y `outputs/metrics/flood_volume_ml.png`.
+
+**Esfuerzo:** ~45 min (estructura idéntica a la curva de resiliencia).
+
+---
+
 ## Comandos de referencia actuales
 
 ```bash
@@ -99,13 +127,23 @@ python main.py --hydrograph
 
 # Mapa de topología de la red
 python main.py --network-map
+
+# Curva de resiliencia SWMM vs ML
+python main.py --resilience-curve
+
+# Curva de volumen de inundación total SWMM vs ML (pendiente)
+python main.py --flood-volume-curve
 ```
 
 Salidas principales:
-- `outputs/maps/flood_map_factor_*.png` — mapas con datos reales SWMM
-- `outputs/maps/flood_map_pred_*.png` — mapas con predicción ML
+- `outputs/maps/flood_map_factor_*.png` — mapas con datos reales SWMM ✅
+- `outputs/maps/flood_map_pred_*.png` — mapas con predicción ML ✅
 - `outputs/maps/network_map.png` — topología de la red ✅
+- `outputs/maps/hydrograph_Qx1.png` — hidrograma base ✅
 - `outputs/metrics/metrics_*.json` — métricas en JSON
 - `outputs/metrics/feature_importance_*.png` — importancia de variables
+- `outputs/metrics/resilience_swmm.png` — curva de resiliencia SWMM ✅
+- `outputs/metrics/resilience_ml.png` — curva de resiliencia ML ✅
+- `outputs/metrics/flood_volume_swmm.png` — curva de volumen total SWMM (pendiente)
+- `outputs/metrics/flood_volume_ml.png` — curva de volumen total ML (pendiente)
 - `outputs/metrics/learning_curves.png` — curvas de aprendizaje (pendiente)
-- `outputs/maps/hydrograph_Qx1.png` — hidrograma base ✅
