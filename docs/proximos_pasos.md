@@ -1,6 +1,6 @@
 # Próximos pasos — pipeline spec v4
 
-Estado al 2026-06-02. Modelo entrenado, 19 tests pasan, smoke run exitoso.
+Estado al 2026-06-02. Modelo entrenado, 22 tests pasan, smoke run exitoso.
 
 ---
 
@@ -27,13 +27,11 @@ Estado al 2026-06-02. Modelo entrenado, 19 tests pasan, smoke run exitoso.
 
 ---
 
-## 3. Visualización del hidrograma
+## ✅ 3. Visualización del hidrograma — IMPLEMENTADO
 
-**Qué:** Gráfico de la forma del hidrograma de entrada a la red (tiempo en minutos vs caudal en L/s), para un nodo representativo al factor base Qx1. Útil para entender qué tan agresivo es cada escenario de tormenta.
+Comando: `python main.py --hydrograph`
 
-**Dónde:** Función nueva en `swmm_resilience/visualization/` + flag `--hydrograph` en `main.py`. Lee datos de `get_node_inflow_profiles` (ya disponible). Guarda `outputs/maps/hydrograph_Qx1.png`.
-
-**Esfuerzo:** ~30 min.
+Selecciona automáticamente el nodo con mayor caudal pico (nodo 87I, 26 L/s) y genera `outputs/maps/hydrograph_Qx1.png` con el hidrograma de entrada (tiempo en min vs caudal en L/s).
 
 ---
 
@@ -68,34 +66,17 @@ Estado al 2026-06-02. Modelo entrenado, 19 tests pasan, smoke run exitoso.
 
 ---
 
-## 5. Mapas por factor — ya implementado
+## ✅ 5. Mapas por factor — IMPLEMENTADO
 
-`--only-maps` ahora genera un mapa por cada factor en el dataset (25 mapas), en lugar de los 5 configurados en `visualization.factors_to_plot`.
+`--only-maps` genera un mapa por cada factor en el dataset (25 mapas).
 
 ---
 
-## 5. Gráfica de la red (`--network-map`)
+## ✅ 6. Gráfica de la red (`--network-map`) — IMPLEMENTADO
 
-**Qué:** PNG estático de la topología de la red con tuberías coloreadas por tipo y flechas de dirección de flujo.
+Comando: `python main.py --network-map`
 
-**Comportamiento:**
-- Cada tubería se dibuja como una línea con una flecha en el extremo del nodo destino.
-- **Tubería inicial** (azul): el nodo de origen no tiene ninguna tubería de entrada aguas arriba. Es cabecera de cuenca.
-- **Tubería continua** (naranja): el nodo de origen tiene al menos una tubería de entrada aguas arriba. El flujo viene de otra tubería.
-- Los nodos se dibujan como puntos neutros sin diferenciación visual.
-- Se incluye leyenda con los dos tipos de tubería.
-- Guarda en `outputs/maps/network_map.png`.
-
-**Definición formal de "inicial" vs "continua":**
-```
-nodos_con_entrada = {to_node para cada conduit en la red}
-tubería es INICIAL  si su from_node NO está en nodos_con_entrada
-tubería es CONTINUA si su from_node SÍ está en nodos_con_entrada
-```
-
-**Dónde:** Función nueva `generate_network_map(inp_path, output_path)` en `swmm_resilience/visualization/network_map.py` + flag `--network-map` en `main.py`. Lee coordenadas y conduits de `load_inp` (ya disponible en `swmm_api_io.py`).
-
-**Esfuerzo:** ~1 h (incluye test con red sintética de 3 nodos).
+Genera `outputs/maps/network_map.png` con tuberías iniciales (azul), continuas (gris), flechas de flujo en el punto medio de cada tubería, nodos como círculos negros y nodo de salida como triángulo.
 
 ---
 
@@ -112,13 +93,19 @@ python main.py --only-maps
 python main.py --predict --factor 2.0
 python main.py --predict --factor 3.5
 python main.py --predict --factor 5.0
+
+# Hidrograma del nodo con mayor caudal pico
+python main.py --hydrograph
+
+# Mapa de topología de la red
+python main.py --network-map
 ```
 
 Salidas principales:
 - `outputs/maps/flood_map_factor_*.png` — mapas con datos reales SWMM
 - `outputs/maps/flood_map_pred_*.png` — mapas con predicción ML
-- `outputs/maps/network_map.png` — topología de la red (pendiente)
+- `outputs/maps/network_map.png` — topología de la red ✅
 - `outputs/metrics/metrics_*.json` — métricas en JSON
 - `outputs/metrics/feature_importance_*.png` — importancia de variables
 - `outputs/metrics/learning_curves.png` — curvas de aprendizaje (pendiente)
-- `outputs/maps/hydrograph_Qx1.png` — hidrograma base (pendiente)
+- `outputs/maps/hydrograph_Qx1.png` — hidrograma base ✅
