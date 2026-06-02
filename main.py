@@ -46,8 +46,8 @@ def main():
     parser.add_argument("--factor", type=float, help="Factor para --predict")
     args = parser.parse_args()
 
-    if args.skip_simulation and not args.skip_extraction:
-        parser.error("--skip-simulation requiere --skip-extraction en esta version; el pipeline aun no indexa .rpt persistentes")
+    if args.skip_simulation and not (args.skip_extraction or args.only_ml):
+        parser.error("--skip-simulation requiere --skip-extraction o --only-ml en esta version; el pipeline aun no indexa .rpt persistentes")
 
     config = load_config("config.yaml")
 
@@ -138,17 +138,18 @@ def main():
     print("\nGenerando gráficos de importancia de variables...")
     generate_feature_importance_plots(clf, reg, METRICS_DIR)
 
-    print("\nGenerando mapas de inundación...")
-    for factor in config.visualization.factors_to_plot:
-        df_f = df[abs(df["factor_mult"] - factor) < 1e-6]
-        if df_f.empty:
-            continue
-        out = config.visualization.output_path / f"flood_map_factor_{factor:.2f}.png"
-        generate_flood_map(
-            config.network.inp_path, df_f, factor, out,
-            config.network.name, config.visualization.colormap,
-            config.visualization.show_labels_top_n,
-        )
+    if not args.only_ml:
+        print("\nGenerando mapas de inundación...")
+        for factor in config.visualization.factors_to_plot:
+            df_f = df[abs(df["factor_mult"] - factor) < 1e-6]
+            if df_f.empty:
+                continue
+            out = config.visualization.output_path / f"flood_map_factor_{factor:.2f}.png"
+            generate_flood_map(
+                config.network.inp_path, df_f, factor, out,
+                config.network.name, config.visualization.colormap,
+                config.visualization.show_labels_top_n,
+            )
 
     print("\n" + "=" * 50)
     print("RESUMEN DE MÉTRICAS (LOSO)")
