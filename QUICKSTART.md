@@ -1,42 +1,54 @@
 # Quickstart
 
-## 1. Instalar dependencias
+## 1. Instalar Dependencias
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 2. Poner el archivo SWMM
+## 2. Revisar Configuracion
 
-Coloca el `.inp` en:
+Edita `config.yaml` y confirma:
 
-```text
-data/networks/
-```
+- `network.inp_path`
+- `simulation.factor_min`, `simulation.factor_max`, `simulation.factor_step`
+- `dataset.output_path`
+- algoritmos en `ml.classifier.algorithm` y `ml.regressor.algorithm`
+- factores de `visualization.factors_to_plot`
 
-## 3. Ajustar caudales de inyección
+## Ejecucion Recomendada
 
-Edita [swmm_resilience/config.py](swmm_resilience/config.py):
+1. Revisa `config.yaml`.
+2. Ejecuta `python main.py --only-ml` si ya existe
+   `data/training/dataset_final.csv`.
+3. Ejecuta `python main.py --only-maps` para regenerar mapas desde el CSV.
+4. Ejecuta `python main.py --predict --factor 3.5` para inferencia sin SWMM.
+5. Ejecuta `python main.py` solo cuando quieras recalcular simulaciones SWMM.
 
-```python
-DEFAULT_DELTA_INFLOWS_LPS = [5 * step for step in range(1, 21)]
-```
-
-## 4. Ejecutar
-
-Para abrir la aplicacion local con formulario:
-
-```bash
-python app.py
-```
-
-Tambien puedes ejecutar el pipeline directo desde consola.
+## Comandos Utiles
 
 ```bash
-python main.py
+python main.py --only-ml
+python main.py --only-maps
+python main.py --predict --factor 3.5
+python main.py --skip-extraction
+python main.py --skip-simulation --skip-extraction
 ```
 
-## 5. Revisar resultados
+## Resultados
 
-- SQLite central: `data/training/swmm_resilience.db`
-- CSV por red: `data/networks/chico_steady/results/dataset_ml.csv`
+- Dataset: `data/training/dataset_final.csv`
+- Modelos: `outputs/models/classifier.joblib` y
+  `outputs/models/regressor.joblib`
+- Metricas: `outputs/metrics/metrics_classifier.json`,
+  `outputs/metrics/metrics_regressor.json`,
+  `outputs/metrics/metrics_endtoend.json` y
+  `outputs/metrics/metrics_by_factor.json`
+- Mapas: `outputs/maps/*.png`
+
+## Verificacion Rapida
+
+```bash
+python -m pytest tests -v
+python -m compileall main.py swmm_resilience
+```
