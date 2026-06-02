@@ -72,3 +72,12 @@ def test_load_config_rejects_non_positive_step(tmp_path):
 
     with pytest.raises(ValueError, match="factor_step debe ser mayor que 0"):
         load_config(cfg_path)
+
+
+def test_load_config_rejects_unknown_algorithm(tmp_path):
+    cfg_path = write_config(tmp_path)
+    text = cfg_path.read_text(encoding="utf-8")
+    cfg_path.write_text(text.replace('algorithm: "xgboost"', 'algorithm: "svm"', 1), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Algoritmo de clasificador no soportado"):
+        load_config(cfg_path)
