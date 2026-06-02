@@ -3,7 +3,7 @@ import math
 
 import pandas as pd
 
-from swmm_resilience.ml.evaluator import evaluate_models
+from swmm_resilience.ml.evaluator import _nse, evaluate_models
 from swmm_resilience.ml.trainer import FEATURE_COLS
 
 
@@ -19,6 +19,11 @@ def evaluation_df():
             row["vol_inundacion_m3"] = factor * 10.0 if row["inunda"] else 0.0
             rows.append(row)
     return pd.DataFrame(rows)
+
+
+def test_nse_zero_variance_contract():
+    assert _nse(pd.Series([5.0, 5.0]), pd.Series([5.0, 5.0])) == 1.0
+    assert _nse(pd.Series([5.0, 5.0]), pd.Series([4.0, 6.0])) == 0.0
 
 
 def test_evaluate_models_writes_expected_json_files(tmp_path, tiny_config_factory):
