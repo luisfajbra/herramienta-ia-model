@@ -56,3 +56,21 @@ def test_compute_flood_volume_ml_values():
 
     assert result.loc[result["factor"] == 1.0, "vol_total_ml"].iloc[0] == pytest.approx(0.0)
     assert result.loc[result["factor"] == 2.0, "vol_total_ml"].iloc[0] == pytest.approx(20.0)
+
+
+from swmm_resilience.visualization import flood_volume_curve
+
+
+def test_plot_flood_volume_curve_writes_two_pngs(tmp_path):
+    df = pd.DataFrame({
+        "factor": [1.0, 2.0, 3.0],
+        "vol_total_swmm": [0.0, 20.0, 80.0],
+        "vol_total_ml":   [0.0, 18.0, 75.0],
+    })
+
+    path_swmm, path_ml = flood_volume_curve.plot_flood_volume_curve(df, tmp_path)
+
+    assert path_swmm == tmp_path / "flood_volume_swmm.png"
+    assert path_ml   == tmp_path / "flood_volume_ml.png"
+    assert path_swmm.exists() and path_swmm.stat().st_size > 0
+    assert path_ml.exists()   and path_ml.stat().st_size > 0
