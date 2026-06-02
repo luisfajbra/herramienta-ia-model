@@ -1,9 +1,11 @@
 import json
 import math
 
+import numpy as np
 import pandas as pd
+import pytest
 
-from swmm_resilience.ml.evaluator import _nse, evaluate_models
+from swmm_resilience.ml.evaluator import _nse, _regressor_oracle_metrics, evaluate_models
 from swmm_resilience.ml.trainer import FEATURE_COLS
 
 
@@ -24,6 +26,17 @@ def evaluation_df():
 def test_nse_zero_variance_contract():
     assert _nse(pd.Series([5.0, 5.0]), pd.Series([5.0, 5.0])) == 1.0
     assert _nse(pd.Series([5.0, 5.0]), pd.Series([4.0, 6.0])) == 0.0
+
+
+def test_regressor_oracle_metrics_compute_log_nse_in_log_space():
+    y_true = np.array([1.0, 10.0, 100.0])
+    y_pred = np.array([1.0, 20.0, 80.0])
+
+    metrics = _regressor_oracle_metrics(y_true, y_pred)
+
+    expected_log_nse = _nse(np.log1p(y_true), np.log1p(y_pred))
+    assert metrics["log_nse"] == pytest.approx(expected_log_nse)
+    assert metrics["log_nse"] != pytest.approx(metrics["nse"])
 
 
 def test_evaluate_models_writes_expected_json_files(tmp_path, tiny_config_factory):

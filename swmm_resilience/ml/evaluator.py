@@ -32,6 +32,16 @@ def _mean_metrics(lst: list) -> dict:
     return {k: _avg(lst, k) for k in lst[0]}
 
 
+def _regressor_oracle_metrics(y_true, y_pred) -> dict:
+    return {
+        "nse": _nse(y_true, y_pred),
+        "log_nse": _nse(np.log1p(y_true), np.log1p(y_pred)),
+        "rmse": float(np.sqrt(mean_squared_error(y_true, y_pred))),
+        "mae": float(mean_absolute_error(y_true, y_pred)),
+        "r2": float(r2_score(y_true, y_pred)),
+    }
+
+
 def _run_cv(df: pd.DataFrame, config: Config, cv) -> dict:
     X = df[FEATURE_COLS].values
     y_clf = df["inunda"].values
@@ -75,13 +85,7 @@ def _run_cv(df: pd.DataFrame, config: Config, cv) -> dict:
             yr_pred_oracle = np.expm1(reg.predict(X_te[flooded_te]))
             yr_pred_oracle = np.clip(yr_pred_oracle, a_min=0.0, a_max=None)
             yr_true_oracle = yr_te[flooded_te]
-            reg_m.append({
-                "nse": _nse(yr_true_oracle, yr_pred_oracle),
-                "log_nse": _nse(np.log1p(yr_true_oracle), np.log1p(yr_pred_oracle)),
-                "rmse": float(np.sqrt(mean_squared_error(yr_true_oracle, yr_pred_oracle))),
-                "mae": float(mean_absolute_error(yr_true_oracle, yr_pred_oracle)),
-                "r2": float(r2_score(yr_true_oracle, yr_pred_oracle)),
-            })
+            reg_m.append(_regressor_oracle_metrics(yr_true_oracle, yr_pred_oracle))
 
         # Level 3 — end-to-end (predicted labels used to route to regressor)
         yr_pred_e2e = np.zeros(len(X_te))
