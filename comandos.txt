@@ -1,0 +1,26 @@
+# Pipeline completo desde cero (corre SWMM ~25 min)
+python main.py
+
+# Re-entrena y evalúa desde el CSV existente (~30 s)
+python main.py --only-ml
+
+# Salta simulaciones SWMM, re-entrena desde CSV existente
+python main.py --skip-extraction
+
+# Genera los 25 mapas de inundación reales (SWMM) uno por factor
+python main.py --only-maps
+
+# Predice nodos inundados para un factor específico y genera mapa
+python main.py --predict --factor 2.0
+
+# Grafica el hidrograma de entrada del nodo con mayor caudal pico
+python main.py --hydrograph
+
+# Genera el mapa de topología de la red
+python main.py --network-map
+
+# Calcula y grafica curva de resiliencia (nodos no inundados / total) SWMM vs ML
+python main.py --resilience-curve
+
+# Calcula y grafica curva de volumen total inundado por factor SWMM vs ML
+python main.py --flood-volume-curve
