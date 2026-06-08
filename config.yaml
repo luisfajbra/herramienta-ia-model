@@ -1,0 +1,40 @@
+network:
+  inp_path: "data/networks/chico_hydro-qx1/SWMM - Chico (PVC) Prueba 1 - Qx1.00.inp"
+  name: "Chico Sur"
+
+simulation:
+  factor_min: 0.2
+  factor_max: 5.0
+  factor_step: 0.2
+
+dataset:
+  output_path: "data/training/dataset_final.csv"
+  flood_threshold_m3: 0.0
+
+ml:
+  classifier:
+    algorithm: "xgboost"
+    n_estimators: 200
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.8
+    scale_pos_weight: "auto"
+  regressor:
+    algorithm: "xgboost"
+    n_estimators: 200
+    max_depth: 6
+    learning_rate: 0.05
+    subsample: 0.8
+  use_scaler: false
+
+evaluation:
+  methods:
+    - "LOSO"
+    - "GroupKFold5"
+  stratify_by_factor: true
+
+visualization:
+  factors_to_plot: [1.4, 1.6, 2.0, 3.0, 5.0]
+  colormap: "RdYlBu_r"
+  output_path: "outputs/maps/"
+  show_labels_top_n: 5

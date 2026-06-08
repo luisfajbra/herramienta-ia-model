@@ -1,0 +1,85 @@
+import json
+import math
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from swmm_resilience.ml.evaluator import (
+    _nse,
+    _pooled_regressor_oracle_metrics,
+    _regressor_oracle_metrics,
+    evaluate_models,
+)
+from swmm_resilience.ml.trainer import FEATURE_COLS
+
+
+def evaluation_df():
+    rows = []
+    for factor in [1.0, 1.5, 2.0, 2.5, 3.0]:
+        for node_idx in range(4):
+            row = {col: float(node_idx + 1) for col in FEATURE_COLS}
+            row["factor_mult"] = factor
+            row["q_pico_nodo"] = factor * (node_idx + 1)
+            row["q_pico_acum_escalado"] = factor * (node_idx + 2)
+            row["inunda"] = 1 if factor >= 2.0 and node_idx >= 2 else 0
+            row["vol_inundacion_m3"] = factor * 10.0 if row["inunda"] else 0.0
+            rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def test_nse_zero_variance_contract():
+    assert _nse(pd.Series([5.0, 5.0]), pd.Series([5.0, 5.0])) == 1.0
+    assert _nse(pd.Series([5.0, 5.0]), pd.Series([4.0, 6.0])) == 0.0
+
+
+def test_regressor_oracle_metrics_compute_log_nse_in_log_space():
+    y_true = np.array([1.0, 10.0, 100.0])
+    y_pred = np.array([1.0, 20.0, 80.0])
+
+    metrics = _regressor_oracle_metrics(y_true, y_pred)
+
+    expected_log_nse = _nse(np.log1p(y_true), np.log1p(y_pred))
+    assert metrics["log_nse"] == pytest.approx(expected_log_nse)
+    assert metrics["log_nse"] != pytest.approx(metrics["nse"])
+
+
+def test_regressor_oracle_metrics_pool_predictions_before_nse():
+    y_true_parts = [
+        np.array([7.0, 10.0]),
+        np.array([100.0, 200.0, 300.0, 400.0]),
+    ]
+    y_pred_parts = [
+        np.array([35.0, 35.0]),
+        np.array([101.0, 199.0, 301.0, 399.0]),
+    ]
+
+    metrics = _pooled_regressor_oracle_metrics(y_true_parts, y_pred_parts)
+    fold_log_nse = [
+        _nse(np.log1p(y_true), np.log1p(y_pred))
+        for y_true, y_pred in zip(y_true_parts, y_pred_parts)
+    ]
+
+    assert sum(fold_log_nse) / len(fold_log_nse) < 0
+    assert metrics["log_nse"] > 0
+
+
+def test_evaluate_models_writes_expected_json_files(tmp_path, tiny_config_factory):
+    cfg = tiny_config_factory(algorithm="random_forest")
+    cfg.evaluation = type("Eval", (), {"methods": ["LOSO", "GroupKFold5"], "stratify_by_factor": True})()
+
+    results = evaluate_models(evaluation_df(), cfg, tmp_path / "metrics")
+
+    assert "LOSO" in results
+    assert "GroupKFold5" in results
+    assert (tmp_path / "metrics" / "metrics_classifier.json").exists()
+    assert (tmp_path / "metrics" / "metrics_regressor.json").exists()
+    assert (tmp_path / "metrics" / "metrics_endtoend.json").exists()
+    assert (tmp_path / "metrics" / "metrics_by_factor.json").exists()
+
+    reg_metrics = json.loads((tmp_path / "metrics" / "metrics_regressor.json").read_text(encoding="utf-8"))
+    assert "nse" in reg_metrics
+    assert math.isfinite(reg_metrics["nse"])
+    assert "log_nse" in reg_metrics
+    assert math.isfinite(reg_metrics["log_nse"])
+    assert reg_metrics["log_nse"] > -10

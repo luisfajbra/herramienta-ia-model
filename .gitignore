@@ -33,6 +33,7 @@ MANIFEST
 # IDE
 .vscode/
 .idea/
+.claude/
 *.swp
 *.swo
 *~
@@ -45,19 +46,32 @@ Thumbs.db
 .env.*.local
 
 # Resultados generados
+.pytest_cache/
 *.db
+outputs/*
+!outputs/models/
+outputs/models/*
 data/**/results/
 data/training/dataset_review/
 entrenar/
 dataset_ml.csv
 ml_outputs/
 *.pkl
+*.joblib
+*.h5
+*.keras
+*.pt
+*.pth
+!outputs/models/classifier.joblib
+!outputs/models/regressor.joblib
+!outputs/models/training_inp_hash.txt
 *.csv
 !data/hydrographs/*.csv
 *.xlsx
 *.png
 
 # SWMM outputs generados
+data/networks/**/*.ini
 *.rpt
 *.out
 

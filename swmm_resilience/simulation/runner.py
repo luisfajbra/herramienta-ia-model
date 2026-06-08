@@ -641,3 +641,27 @@ def run_simulation(
         "node_timeseries_records": node_timeseries_records,
         "summary": summary,
     }
+
+
+def run_simulation_simple(inp_path: Path, factor: float, run_dir: Path) -> Path:
+    """Simple single-factor SWMM run. Scales inflows, runs, returns .rpt path.
+
+    Used by batch.py (origin/main interface). The original .inp is never modified.
+    """
+    from pyswmm import Simulation as _Simulation
+
+    run_dir.mkdir(parents=True, exist_ok=True)
+    tmp_inp = run_dir / f"factor_{factor:.4f}.inp"
+    write_scaled_inp(str(inp_path), factor, None, str(tmp_inp), scenario_mode="timeseries")
+
+    with _Simulation(str(tmp_inp)) as sim:
+        for _ in sim:
+            pass
+
+    rpt_path = tmp_inp.with_suffix(".rpt")
+    with suppress(OSError):
+        tmp_inp.unlink()
+
+    if not rpt_path.exists():
+        raise FileNotFoundError(f"SWMM no genero el archivo .rpt esperado: {rpt_path}")
+    return rpt_path

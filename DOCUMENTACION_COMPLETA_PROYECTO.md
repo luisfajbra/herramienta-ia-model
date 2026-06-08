@@ -95,6 +95,11 @@ no desde el CSV tabular resumen.
 
 ## 3. Arquitectura del programa
 
+Nota de migracion: la version spec v4 usa un pipeline directo basado en
+`config.yaml`, CSV, modelos joblib, metricas JSON y mapas PNG. La arquitectura
+anterior con SQLite, app Tkinter y modulos temporales fue reemplazada en esta
+rama de trabajo para alinear el codigo con `spec_tecnico_desarrollo.md`.
+
 Los archivos principales son:
 
 ```text
@@ -967,6 +972,116 @@ Decision importante:
 La prediccion no debe reentrenar modelos cada vez.
 Debe cargar artefactos persistidos.
 ```
+
+## 19.1. Resultados actuales de modelos ML
+
+Esta seccion resume los resultados concretos disponibles actualmente en:
+
+```text
+data/networks/chico_hydro-qx1/results/
+```
+
+Archivos usados:
+
+```text
+regression_comparison_flooding_volume_m3.csv
+classification_comparison_flooded.csv
+```
+
+Estos resultados corresponden al dataset de la red `chico_hydro-qx1`, con:
+
+- `feature_space = pca_components`
+- `pca_components = 5`
+- `split_strategy = grouped_by_run_id`
+- `group_column = run_id`
+- `train_group_count = 24`
+- `test_group_count = 7`
+- `train_size = 3864`
+- `test_size = 1127`
+- `random_state = 42`
+- `cv_folds = 5`
+- escenario evaluado en test: `embedded_hydrograph`
+
+### 19.1.1. Regresion: `flooding_volume_m3`
+
+El objetivo de regresion es predecir el volumen de flooding por nodo.
+
+| Modelo | MAE | RMSE | R2 | CV MAE mean | CV RMSE mean | CV R2 mean |
+|---|---:|---:|---:|---:|---:|---:|
+| `xgboost` | 7.739 | 19.528 | 0.958 | 8.757 | 17.078 | 0.980 |
+| `svr_rbf` | 26.080 | 72.093 | 0.423 | 46.696 | 107.220 | 0.356 |
+| `ridge` | 51.465 | 85.686 | 0.184 | 73.678 | 115.025 | 0.251 |
+| `lasso` | 51.469 | 85.688 | 0.184 | 73.682 | 115.026 | 0.251 |
+
+Interpretacion:
+
+- El mejor modelo actual de regresion es `xgboost`.
+- Tiene el menor `MAE` y `RMSE`.
+- Tiene el mayor `R2` en test.
+- Tambien tiene el mejor desempeno en validacion cruzada agrupada.
+
+Conclusion:
+
+```text
+Para predecir flooding_volume_m3, XGBoost es claramente el mejor modelo actual.
+```
+
+### 19.1.2. Clasificacion: `flooded`
+
+El objetivo de clasificacion es predecir si el nodo se inunda o no.
+
+| Modelo | Accuracy | Precision | Recall | F1 | CV Accuracy mean | CV Precision mean | CV Recall mean | CV F1 mean |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `xgboost_classifier` | 0.925 | 0.991 | 0.795 | 0.882 | 0.973 | 0.990 | 0.951 | 0.970 |
+| `svc_rbf` | 0.893 | 0.846 | 0.848 | 0.847 | 0.895 | 0.867 | 0.913 | 0.889 |
+| `logistic_regression` | 0.812 | 0.802 | 0.615 | 0.696 | 0.829 | 0.810 | 0.829 | 0.819 |
+
+Interpretacion:
+
+- El mejor modelo global actual de clasificacion es `xgboost_classifier`.
+- Tiene el mayor `accuracy`, `precision` y `F1` en test.
+- En validacion cruzada agrupada tambien es el mejor por `CV F1 mean`.
+- `svc_rbf` tiene mejor `recall` en test que `xgboost_classifier`
+  (`0.848` frente a `0.795`), pero con menor precision y menor F1.
+
+Conclusion:
+
+```text
+Para clasificacion general, XGBoost Classifier es el mejor modelo actual.
+Si el objetivo operativo fuera priorizar no perder fallas, se debe revisar el
+trade-off con SVC porque tiene mayor recall en el split de test actual.
+```
+
+### 19.1.3. Decision practica actual
+
+Con los resultados disponibles, la configuracion recomendada para artefactos de
+inferencia tabular es:
+
+```text
+Regresion:     xgboost
+Clasificacion: xgboost_classifier
+```
+
+Esto coincide con la preferencia implementada en `train.py`, que selecciona
+XGBoost como modelo preferido cuando esta disponible.
+
+### 19.1.4. Advertencia sobre estos resultados
+
+Estos resultados no deben interpretarse como desempeno final del proyecto.
+Representan el estado actual con:
+
+- una red principal evaluada
+- un conjunto de escenarios disponible
+- features tabulares con PCA
+- particion agrupada por `run_id`
+
+Para afirmar generalizacion real a otras redes, falta validar con:
+
+- multiples redes
+- split por `network_hash`
+- escenarios hidraulicos mas diversos
+- comparacion contra modelos entrenados sin PCA
+- validacion temporal cuando exista el dataset CNN/LSTM
 
 ## 20. Inferencia
 
