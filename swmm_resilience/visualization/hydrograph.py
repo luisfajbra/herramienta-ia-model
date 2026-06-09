@@ -23,15 +23,14 @@ def plot_hydrograph(inp_path: Path, output_path: Path) -> Path:
         profiles.items(),
         key=lambda kv: max((q for _, q in kv[1]["points"]), default=0.0),
     )
-
     times = [t for t, _ in peak_profile["points"]]
     flows = [q for _, q in peak_profile["points"]]
 
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(times, flows, color="#2176ae", linewidth=2)
     ax.fill_between(times, flows, alpha=0.15, color="#2176ae")
-    ax.set_xlabel("Tiempo (min)")
-    ax.set_ylabel("Caudal (L/s)")
+    ax.set_xlabel("Time (min)")
+    ax.set_ylabel("Flow (L/s)")
     ax.set_title(f"Hidrograma de entrada — Nodo {peak_node} (Qx1)")
     ax.grid(True, alpha=0.3)
 
