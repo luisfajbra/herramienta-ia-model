@@ -58,6 +58,18 @@ def main():
                         help="Calcular y graficar curva de resiliencia SWMM vs ML")
     parser.add_argument("--flood-volume-curve", action="store_true",
                         help="Graficar volumen total de inundación por factor (SWMM vs ML)")
+    parser.add_argument("--evaluate-hydrographs", metavar="DIR",
+                        help="Directorio de archivos CSV de hidrogramas para validación batch")
+    parser.add_argument("--base-inp", metavar="PATH",
+                        help="Ruta al archivo .inp base de SWMM (requerido con --evaluate-hydrographs)")
+    parser.add_argument("--clf-path", metavar="PATH",
+                        help="Ruta al clasificador entrenado (.pkl) (requerido con --evaluate-hydrographs)")
+    parser.add_argument("--reg-path", metavar="PATH",
+                        help="Ruta al regresor entrenado (.pkl) (requerido con --evaluate-hydrographs)")
+    parser.add_argument("--flood-threshold", type=float, default=None,
+                        help="Umbral mínimo de volumen (m³) para considerar un nodo inundado (default: desde config.yaml o 0.1)")
+    parser.add_argument("--out-dir", metavar="PATH", default="./validation_output",
+                        help="Directorio de salida para validación batch (default: ./validation_output)")
     args = parser.parse_args()
 
     if args.skip_simulation and not (args.skip_extraction or args.only_ml):
@@ -115,6 +127,57 @@ def main():
         print("\nVolumen total por factor:")
         print(result.to_string(index=False))
         plot_flood_volume_curve(result, METRICS_DIR)
+        return
+
+    # ── Modo: validación batch de hidrogramas ────────────────────────────────
+    if args.evaluate_hydrographs:
+        if args.base_inp is None:
+            parser.error("--evaluate-hydrographs requiere --base-inp PATH")
+        if args.clf_path is None:
+            parser.error("--evaluate-hydrographs requiere --clf-path PATH")
+        if args.reg_path is None:
+            parser.error("--evaluate-hydrographs requiere --reg-path PATH")
+
+        # Resolve flood threshold: CLI > config.yaml > fallback 0.1
+        if args.flood_threshold is not None:
+            flood_threshold = args.flood_threshold
+        else:
+            try:
+                flood_threshold = config.dataset.flood_threshold_m3
+            except Exception:
+                flood_threshold = 0.1
+
+        from swmm_resilience.validation.hydrograph_batch import run_batch_validation
+
+        print(f"\nValidando hidrogramas en '{args.evaluate_hydrographs}'...")
+        summary = run_batch_validation(
+            csv_dir=Path(args.evaluate_hydrographs),
+            base_inp_path=Path(args.base_inp),
+            clf_path=Path(args.clf_path),
+            reg_path=Path(args.reg_path),
+            flood_threshold_m3=flood_threshold,
+            out_dir=Path(args.out_dir),
+        )
+
+        print("\n" + "=" * 50)
+        print("RESUMEN DE VALIDACIÓN DE HIDROGRAMAS")
+        print("=" * 50)
+        print(f"  Escenarios procesados : {summary['n_scenarios']}")
+        print("\n  Métricas de clasificación:")
+        for k, v in summary["classification"].items():
+            if isinstance(v, float):
+                print(f"    {k}: {v:.4f}")
+            else:
+                print(f"    {k}: {v}")
+        print("\n  Métricas de volumen:")
+        for k, v in summary["volume"].items():
+            if v is None:
+                print(f"    {k}: N/A")
+            elif isinstance(v, float):
+                print(f"    {k}: {v:.4f}")
+            else:
+                print(f"    {k}: {v}")
+        print(f"\n  CSV de resumen: {summary['summary_csv_path']}")
         return
 
     # ── Modo: solo mapas ─────────────────────────────────────────────────────
