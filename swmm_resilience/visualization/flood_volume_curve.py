@@ -7,10 +7,10 @@ import pandas as pd
 def _plot_dual(fig, ax_lin, ax_log, x, y, color, marker):
     for ax, scale in ((ax_lin, "linear"), (ax_log, "log")):
         ax.plot(x, y, color=color, marker=marker, linewidth=2)
-        ax.set_xlabel("Factor multiplicador de caudal")
-        ax.set_ylabel("Volumen total inundado (m³)")
+        ax.set_xlabel("Flow Multiplier")
+        ax.set_ylabel("Total Flood Volume (m³)")
         ax.set_yscale(scale)
-        ax.set_title("Escala lineal" if scale == "linear" else "Escala logarítmica")
+        ax.set_title("Linear Scale" if scale == "linear" else "Logarithmic Scale")
         ax.grid(True, alpha=0.3)
 
 
@@ -26,20 +26,20 @@ def plot_flood_volume_curve(df: pd.DataFrame, output_dir: Path) -> tuple[Path, P
     path_swmm = output_dir / "flood_volume_swmm.png"
     fig, (ax_lin, ax_log) = plt.subplots(1, 2, figsize=(14, 5))
     _plot_dual(fig, ax_lin, ax_log, df["factor"], df["vol_total_swmm"], "#2176ae", "o")
-    fig.suptitle("Volumen total de inundación — SWMM (real)", fontsize=13)
+    fig.suptitle("Total Flood Volume - SWMM (Actual)", fontsize=13)
     fig.tight_layout()
     fig.savefig(path_swmm, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Curva de volumen SWMM guardada: {path_swmm}")
+    print(f"SWMM flood volume curve saved: {path_swmm}")
 
     path_ml = output_dir / "flood_volume_ml.png"
     fig, (ax_lin, ax_log) = plt.subplots(1, 2, figsize=(14, 5))
     _plot_dual(fig, ax_lin, ax_log, df["factor"], df["vol_total_ml"], "#e07b39", "s")
-    fig.suptitle("Volumen total de inundación — Predicción ML", fontsize=13)
+    fig.suptitle("Total Flood Volume - ML Prediction", fontsize=13)
     fig.tight_layout()
     fig.savefig(path_ml, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Curva de volumen ML guardada: {path_ml}")
+    print(f"ML flood volume curve saved: {path_ml}")
 
     return path_swmm, path_ml
 
@@ -58,19 +58,19 @@ def plot_flood_volume_combined(df: pd.DataFrame, output_dir: Path) -> Path:
 
     for ax, scale in ((ax_lin, "linear"), (ax_log, "log")):
         ax.plot(df["factor"], df["vol_total_swmm"],
-                color="#2176ae", marker="o", linewidth=2, label="SWMM (real)")
+                color="#2176ae", marker="o", linewidth=2, label="SWMM (Actual)")
         ax.plot(df["factor"], df["vol_total_ml"],
-                color="#e07b39", marker="s", linewidth=2, label="Predicción ML")
-        ax.set_xlabel("Factor multiplicador de caudal")
-        ax.set_ylabel("Volumen total inundado (m³)")
+                color="#e07b39", marker="s", linewidth=2, label="ML Prediction")
+        ax.set_xlabel("Flow Multiplier")
+        ax.set_ylabel("Total Flood Volume (m³)")
         ax.set_yscale(scale)
-        ax.set_title("Escala lineal" if scale == "linear" else "Escala logarítmica")
+        ax.set_title("Linear Scale" if scale == "linear" else "Logarithmic Scale")
         ax.legend()
         ax.grid(True, alpha=0.3)
 
-    fig.suptitle("Volumen total de inundación — SWMM vs ML", fontsize=13)
+    fig.suptitle("Total Flood Volume - SWMM vs ML", fontsize=13)
     fig.tight_layout()
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Curva de volumen combinada guardada: {output_path}")
+    print(f"Combined flood volume curve saved: {output_path}")
     return output_path

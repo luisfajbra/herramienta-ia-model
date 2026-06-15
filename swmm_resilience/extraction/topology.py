@@ -6,6 +6,11 @@ from ..simulation.swmm_api_io import load_inp
 from ..utils import circular_full_flow_lps
 
 
+def build_network_graph(inp):
+    """Public alias of _build_graph for use outside this module."""
+    return _build_graph(inp)
+
+
 def _build_graph(inp):
     """Build directed graph (from_node → to_node) and return (G, outfalls_set)."""
     G = nx.DiGraph()

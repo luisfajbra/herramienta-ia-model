@@ -131,8 +131,8 @@ def generate_ml_map(
 
     network_name = network_dir.name
     title = (
-        f"Mapa de inundación — {network_name}\n"
-        f"Factor de caudal: Qx = {inflow_multiplier:.2f} (ML)"
+        f"Flood Map - {network_name}\n"
+        f"Flow Multiplier: Qx = {inflow_multiplier:.2f} (ML)"
     )
     plot_flood_map(
         node_data=node_data,
@@ -187,7 +187,7 @@ def run(
         plot_network(
             inp_path=inp,
             output_path=net_out,
-            title=f"Topología de red — {network_name}",
+            title=f"Network Topology - {network_name}",
         )
         print(f"[OK]   {net_out}")
         generated += 1
@@ -200,7 +200,7 @@ def run(
             if skip_existing and out.exists():
                 print(f"[skip] {out.name}")
                 continue
-            title = f"Mapa de inundación — {network_name}\nFactor de caudal: Qx = {mult:.2f} (SWMM)"
+            title = f"Flood Map - {network_name}\nFlow Multiplier: Qx = {mult:.2f} (SWMM)"
             plot_flood_map(
                 node_data=node_data,
                 inp_path=inp,
@@ -237,7 +237,7 @@ def run(
                 if skip_existing and out.exists():
                     print(f"[skip] {out.name}")
                     continue
-                title = f"Mapa de inundación — {network_name}\nFactor de caudal: Qx = {mult:.2f} (ML)"
+                title = f"Flood Map - {network_name}\nFlow Multiplier: Qx = {mult:.2f} (ML)"
                 plot_flood_map(
                     node_data=node_data,
                     inp_path=inp,
@@ -248,7 +248,7 @@ def run(
                 print(f"[OK]   {out.name}")
                 generated += 1
 
-    print(f"\n{generated} figura(s) generada(s) para {network_name}.")
+    print(f"\n{generated} figure(s) generated for {network_name}.")
 
 
 def _cli() -> None:

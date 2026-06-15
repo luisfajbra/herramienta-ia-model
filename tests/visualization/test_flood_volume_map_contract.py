@@ -75,4 +75,4 @@ def test_metric_choice_respects_preferred_volume_even_when_zero(monkeypatch, tmp
         title="Mapa",
     )
 
-    assert labels[-1] == "Volumen total de inundación (m3)"
+    assert labels[-1] == "Total Flood Volume (m3)"

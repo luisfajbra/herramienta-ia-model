@@ -77,13 +77,60 @@ def compute_classification_metrics(
     else:
         f1 = None
 
+    # Critical Success Index (threat score): ignores trivial true negatives,
+    # standard in flood validation where most node-scenario pairs are dry.
+    csi = tp / (tp + fp + fn) if (tp + fp + fn) > 0 else None
+
     return {
         "tp": tp, "tn": tn, "fp": fp, "fn": fn,
         "accuracy": accuracy,
         "precision": precision,
         "recall": recall,
         "f1": f1,
+        "csi": csi,
     }
+
+
+def compute_conditional_volume_metrics(
+    vol_swmm: "array-like",
+    vol_pred: "array-like",
+    inunda_swmm: "array-like",
+) -> dict:
+    """Volume metrics restricted to nodes that actually flooded in SWMM.
+
+    Unconditional MAE/RMSE are deflated by the many (0, 0) node pairs; these
+    metrics measure the case that matters. Returns None values when no node
+    flooded.
+    """
+    y_true = np.asarray(vol_swmm, dtype=float)
+    y_pred = np.asarray(vol_pred, dtype=float)
+    mask = np.asarray(inunda_swmm, dtype=int) == 1
+
+    n_flooded = int(mask.sum())
+    if n_flooded == 0:
+        return {"mae_flooded_m3": None, "rmse_flooded_m3": None, "n_flooded": 0}
+
+    return {
+        "mae_flooded_m3": float(mean_absolute_error(y_true[mask], y_pred[mask])),
+        "rmse_flooded_m3": float(
+            np.sqrt(mean_squared_error(y_true[mask], y_pred[mask]))
+        ),
+        "n_flooded": n_flooded,
+    }
+
+
+def compute_pr_auc(
+    inunda_swmm: "array-like",
+    prob_inunda: "array-like",
+) -> float | None:
+    """Average precision (PR-AUC) over pooled nodes. None if a single class."""
+    from sklearn.metrics import average_precision_score
+
+    y_true = np.asarray(inunda_swmm, dtype=int)
+    probs = np.asarray(prob_inunda, dtype=float)
+    if len(y_true) == 0 or len(np.unique(y_true)) < 2:
+        return None
+    return float(average_precision_score(y_true, probs))
 
 
 def compute_volume_metrics(

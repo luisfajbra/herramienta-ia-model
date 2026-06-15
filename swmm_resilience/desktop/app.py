@@ -1238,8 +1238,8 @@ class ResilienciaDesktopApp:
                         out = out_dir / f"flood_map_qx{mult:.2f}_ml.png"
                         network_name = net_dir.name
                         title = (
-                            f"Mapa de inundación — {network_name}\n"
-                            f"Factor de caudal: Qx = {mult:.2f} (ML CSV)"
+                            f"Flood Map - {network_name}\n"
+                            f"Flow Multiplier: Qx = {mult:.2f} (ML CSV)"
                         )
                         plot_flood_map(
                             node_data=map_df,

@@ -6,7 +6,7 @@ Keep this file limited to paths and high-level parameters.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Union
 
@@ -238,6 +238,11 @@ class VisualizationConfig:
 
 
 @dataclass
+class ValidationConfig:
+    drain_down_hours: float = 6.0
+
+
+@dataclass
 class Config:
     network: NetworkConfig
     simulation: SimulationConfig
@@ -245,6 +250,7 @@ class Config:
     ml: MLConfig
     evaluation: EvaluationConfig
     visualization: VisualizationConfig
+    validation: ValidationConfig = field(default_factory=ValidationConfig)
 
     def factors(self) -> list:
         """Return list of simulation factors from factor_min to factor_max (inclusive)."""
@@ -318,5 +324,10 @@ def load_config(config_path: str = "config.yaml") -> Config:
             colormap=viz["colormap"],
             output_path=base_dir / viz["output_path"],
             show_labels_top_n=int(viz["show_labels_top_n"]),
+        ),
+        validation=ValidationConfig(
+            drain_down_hours=float(
+                (raw.get("validation") or {}).get("drain_down_hours", 6.0)
+            ),
         ),
     )

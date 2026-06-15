@@ -68,10 +68,54 @@ def test_replaces_all_expected_series(monkeypatch, tmp_path):
     monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
 
     scenario = _make_scenario()
-    ts_mod.write_scenario_inp(tmp_path / "base.inp", scenario, tmp_path / "out")
+    ts_mod.write_scenario_inp(
+        tmp_path / "base.inp", scenario, tmp_path / "out", drain_down_hours=0.0
+    )
 
     assert fake_inp["TIMESERIES"]["1C"].data == scenario.node_series["1C"]
     assert fake_inp["TIMESERIES"]["2C"].data == scenario.node_series["2C"]
+
+
+def test_drain_down_appends_zero_point_and_extends_end_time(monkeypatch, tmp_path):
+    fake_inp = _FakeInp()
+    monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
+
+    scenario = _make_scenario(5.0)
+    ts_mod.write_scenario_inp(
+        tmp_path / "base.inp", scenario, tmp_path / "out", drain_down_hours=6.0
+    )
+
+    assert fake_inp["TIMESERIES"]["1C"].data[-1] == (11.0, 0.0)
+    assert fake_inp["TIMESERIES"]["1C"].data[:-1] == scenario.node_series["1C"]
+    assert fake_inp["OPTIONS"]["END_TIME"] == "11:00:00"
+
+
+def test_warns_when_hydrograph_does_not_end_near_zero(monkeypatch, tmp_path):
+    fake_inp = _FakeInp()
+    monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
+
+    # _make_scenario ends at values 2.0 / 1.5 (well above 1% of the peaks)
+    with pytest.warns(UserWarning, match="no termina cerca de cero"):
+        ts_mod.write_scenario_inp(
+            tmp_path / "base.inp", _make_scenario(), tmp_path / "out"
+        )
+
+
+def test_no_warning_when_hydrograph_ends_at_zero(monkeypatch, tmp_path, recwarn):
+    fake_inp = _FakeInp()
+    monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
+
+    scenario = HydrographScenario(
+        scenario_id="ends_zero",
+        node_series={
+            "1C": [(0.0, 0.0), (1.0, 5.0), (2.0, 0.0)],
+            "2C": [(0.0, 0.0), (1.0, 8.0), (2.0, 0.0)],
+        },
+        time_grid_hours=[0.0, 1.0, 2.0],
+        last_time_hours=2.0,
+    )
+    ts_mod.write_scenario_inp(tmp_path / "base.inp", scenario, tmp_path / "out")
+    assert not [w for w in recwarn if "no termina cerca de cero" in str(w.message)]
 
 
 def test_inflows_section_unchanged(monkeypatch, tmp_path):
@@ -105,23 +149,29 @@ def test_base_inp_file_not_modified(monkeypatch, tmp_path):
     assert base.read_text() == "original content"
 
 
-def test_adjusts_end_time_no_date_rollover(monkeypatch, tmp_path):
-    # last_time=5h, base_duration=3h → new end = 8h → same date
+def test_end_time_matches_csv_duration(monkeypatch, tmp_path):
+    # last_time=5h -> the simulation ends 5h after START_TIME.
     fake_inp = _FakeInp()
     monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
 
-    ts_mod.write_scenario_inp(tmp_path / "base.inp", _make_scenario(5.0), tmp_path / "out")
+    ts_mod.write_scenario_inp(
+        tmp_path / "base.inp", _make_scenario(5.0), tmp_path / "out",
+        drain_down_hours=0.0,
+    )
 
-    assert fake_inp["OPTIONS"]["END_TIME"] == "08:00:00"
+    assert fake_inp["OPTIONS"]["END_TIME"] == "05:00:00"
     assert fake_inp["OPTIONS"]["END_DATE"] == datetime.date(2025, 1, 4)
 
 
 def test_adjusts_end_date_on_midnight_crossover(monkeypatch, tmp_path):
-    # last_time=22h, base_duration=3h → new end = 25h → next day 01:00:00
+    # last_time=25h -> the simulation ends next day at 01:00.
     fake_inp = _FakeInp()
     monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
 
-    ts_mod.write_scenario_inp(tmp_path / "base.inp", _make_scenario(22.0), tmp_path / "out")
+    ts_mod.write_scenario_inp(
+        tmp_path / "base.inp", _make_scenario(25.0), tmp_path / "out",
+        drain_down_hours=0.0,
+    )
 
     assert fake_inp["OPTIONS"]["END_TIME"] == "01:00:00"
     assert fake_inp["OPTIONS"]["END_DATE"] == datetime.date(2025, 1, 5)

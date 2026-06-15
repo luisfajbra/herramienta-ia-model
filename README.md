@@ -74,6 +74,18 @@ El clasificador predice `inunda`. El regresor predice `vol_inundacion_m3` solo
 para nodos inundados; se entrena en espacio `log1p` y las predicciones se
 devuelven a m3 con `expm1`.
 
+Contrato de features v2 (junio 2026): los modelos usan 15 features;
+`factor_mult` ya NO es entrada del modelo (es un atributo global de escenario
+sin definicion valida para hidrogramas arbitrarios) y queda en el dataset solo
+como metadato para LOSO y estratificacion. La señal dinamica entra via
+`q_pico_nodo` y `q_pico_acum_escalado`.
+
+Regla de etiquetado unificada (`swmm_resilience/extraction/labels.py`):
+`inunda = vol >= flood_threshold_m3`, con umbral default 1.0 m3 (resolucion
+del .rpt). Entrenamiento y validacion importan la misma funcion. Regla de
+conciliacion: `inunda_pred` la decide el clasificador; `vol_pred_m3` se
+reporta tal cual.
+
 La evaluacion reporta:
 
 - clasificador aislado
@@ -84,6 +96,43 @@ La evaluacion reporta:
 `metrics_regressor.json` incluye `nse` y `log_nse`. El `log_nse` se calcula en
 espacio logaritmico sobre predicciones out-of-fold apiladas para evitar que
 folds LOSO con muy pocos nodos inundados dominen la metrica global.
+
+## Validacion Con Hidrogramas (CSV)
+
+```bash
+python main.py --evaluate-hydrographs DIR --base-inp PATH \
+  --clf-path outputs/models/classifier.joblib \
+  --reg-path outputs/models/regressor.joblib \
+  [--flood-threshold M3] [--allow-inp-mismatch] [--out-dir DIR]
+```
+
+Comportamiento del harness:
+
+- Guardas de validez: aborta si `FLOW_UNITS != LPS` o si el hash MD5 del
+  `.inp` base no coincide con `training_inp_hash.txt` (forzable con
+  `--allow-inp-mismatch`); advierte con `ALLOW_PONDING` activo y con error de
+  continuidad SWMM > 5% por escenario.
+- Drenaje post-evento: cada serie se extiende con caudal 0 durante
+  `validation.drain_down_hours` (config, default 6.0) para no truncar el
+  volumen de inundacion; advierte si el CSV no termina cerca de cero.
+- La comparacion cubre TODAS las junctions de la red (no solo los nodos con
+  inflow del CSV); los modelos y las features estaticas se cargan una sola
+  vez por batch (`ScenarioPredictor`).
+- Marca `extrapolated` por nodo cuando el pico del escenario sale del rango
+  de entrenamiento `base_inflow x [factor_min, factor_max]`.
+
+Salidas en `--out-dir`:
+
+- `comparison_summary.csv`: por nodo y escenario.
+- `scenario_totals.csv`: volumen total de red SWMM vs ML por escenario, con
+  error absoluto/porcentual y `n_extrapolated`.
+- `timings.csv`: `t_write_inp_s, t_swmm_s, t_parse_rpt_s, t_features_s,
+  t_inference_s, speedup` por escenario, mas `t_model_load_s` y
+  `t_static_features_s` (costos unicos del batch) y `device`.
+- `metrics_per_scenario.csv`: clasificacion + CSI + MAE/RMSE condicionales a
+  nodos inundados + error de continuidad, por escenario.
+- `plots/totals_comparison.png`: barras pareadas SWMM vs ML por escenario.
+- La consola imprime totales por escenario, PR-AUC y speed-up medio.
 
 ## Instalacion
 

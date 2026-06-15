@@ -20,6 +20,7 @@ import pandas as pd
 
 from ..simulation.swmm_api_io import load_inp
 from ._inp_parser import parse_conduits, parse_coordinates
+from .labels import format_node_label
 
 # ── visual constants ─────────────────────────────────────────────────────────
 PIPE_COLOR = "#B0BEC5"
@@ -95,11 +96,11 @@ def plot_flood_map(
     else:
         metric_col = "peak_flooding_lps"
     metric_label = (
-        "Volumen total de inundación (m3)"
+        "Total Flood Volume (m3)"
         if metric_col == "total_flood_volume_m3"
-        else "Caudal pico de inundación (lps)"
+        else "Peak Flooding Flow (L/s)"
     )
-    metric_unit = "m3" if metric_col == "total_flood_volume_m3" else "lps"
+    metric_unit = "m3" if metric_col == "total_flood_volume_m3" else "L/s"
 
     vmax = vmax_global if vmax_global is not None else float(df[metric_col].max())
     if vmax == 0:
@@ -124,7 +125,7 @@ def plot_flood_map(
         edgecolors=NODE_DRY_EDGE,
         linewidths=0.5,
         zorder=2,
-        label="Nodos sin inundación",
+        label="Non-Flooded Nodes",
     )
 
     wet = df[df[metric_col] > 0].copy()
@@ -139,7 +140,7 @@ def plot_flood_map(
             edgecolors="white",
             linewidths=0.4,
             zorder=3,
-            label="Nodos inundados",
+            label="Flooded Nodes",
         )
         cbar = fig.colorbar(sc, ax=ax, fraction=0.03, pad=0.02)
         cbar.set_label(metric_label, fontsize=10)
@@ -153,7 +154,7 @@ def plot_flood_map(
     top = top[top[metric_col] > 0]
     for _, row in top.iterrows():
         ax.annotate(
-            f"{row['node_id']}\n{row[metric_col]:.1f} {metric_unit}",
+            f"{format_node_label(row['node_id'])}\n{row[metric_col]:.1f} {metric_unit}",
             xy=(row["x"], row["y"]),
             xytext=(8, 8),
             textcoords="offset points",
@@ -163,8 +164,8 @@ def plot_flood_map(
         )
 
     ax.legend(loc="upper right", framealpha=0.9, fontsize=9, markerscale=0.8)
-    ax.set_xlabel("Coordenada X (m)", fontsize=10)
-    ax.set_ylabel("Coordenada Y (m)", fontsize=10)
+    ax.set_xlabel("X Coordinate (m)", fontsize=10)
+    ax.set_ylabel("Y Coordinate (m)", fontsize=10)
 
     lines = title.split("\n", 1)
     fig.suptitle(lines[0], fontsize=12, fontweight="bold", y=1.02)
@@ -185,7 +186,7 @@ def generate_flood_map(
     vol_data: pd.DataFrame,
     factor: float,
     output_path: Path,
-    network_name: str = "Red",
+    network_name: str = "Network",
     colormap: str = "RdYlBu_r",
     show_labels_top_n: int = 5,
 ):
@@ -247,20 +248,20 @@ def generate_flood_map(
         if vol > 0:
             x, y = coords[nid]
             ax.annotate(
-                f"{nid}\n{vol:.1f} m³", (x, y),
+                f"{format_node_label(nid)}\n{vol:.1f} m³", (x, y),
                 textcoords="offset points", xytext=(6, 4), fontsize=7.5,
                 bbox=dict(boxstyle="round,pad=0.2", fc="white", alpha=0.7),
             )
 
     sm = plt.cm.ScalarMappable(cmap=cmap_obj, norm=norm)
     sm.set_array([])
-    plt.colorbar(sm, ax=ax, label="Volumen de inundación (m³)", shrink=0.7)
-    ax.set_title(f"{network_name} — Factor de escala: {factor:.2f}", fontsize=13)
+    plt.colorbar(sm, ax=ax, label="Flood Volume (m³)", shrink=0.7)
+    ax.set_title(f"{network_name} - Scale Factor: {factor:.2f}", fontsize=13)
     ax.set_aspect("equal")
     ax.axis("off")
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close()
-    print(f"Mapa guardado: {output_path}")
+    print(f"Map saved: {output_path}")
     return output_path

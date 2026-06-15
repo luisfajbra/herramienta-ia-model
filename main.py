@@ -31,7 +31,11 @@ from swmm_resilience.visualization.network_map import generate_network_map
 from swmm_resilience.analysis.resilience import compute_resilience_curve
 from swmm_resilience.visualization.resilience_curve import plot_resilience_curve
 from swmm_resilience.analysis.flood_volume import compute_flood_volume_curve
-from swmm_resilience.visualization.flood_volume_curve import plot_flood_volume_curve
+from swmm_resilience.analysis.factor_comparison import generate_factor_comparisons
+from swmm_resilience.visualization.flood_volume_curve import (
+    plot_flood_volume_combined,
+    plot_flood_volume_curve,
+)
 
 MODELS_DIR = Path("outputs/models")
 METRICS_DIR = Path("outputs/metrics")
@@ -58,6 +62,13 @@ def main():
                         help="Calcular y graficar curva de resiliencia SWMM vs ML")
     parser.add_argument("--flood-volume-curve", action="store_true",
                         help="Graficar volumen total de inundación por factor (SWMM vs ML)")
+    parser.add_argument(
+        "--factor-comparison",
+        "--factor-comparisons",
+        dest="factor_comparison",
+        action="store_true",
+        help="Graficar volumen SWMM vs XGBoost por nodo y paridad para cada factor",
+    )
     parser.add_argument("--evaluate-hydrographs", metavar="DIR",
                         help="Directorio de archivos CSV de hidrogramas para validación batch")
     parser.add_argument("--base-inp", metavar="PATH",
@@ -67,7 +78,9 @@ def main():
     parser.add_argument("--reg-path", metavar="PATH",
                         help="Ruta al regresor entrenado (.pkl) (requerido con --evaluate-hydrographs)")
     parser.add_argument("--flood-threshold", type=float, default=None,
-                        help="Umbral mínimo de volumen (m³) para considerar un nodo inundado (default: desde config.yaml o 0.1)")
+                        help="Umbral mínimo de volumen (m³) para considerar un nodo inundado (default: desde config.yaml o 1.0)")
+    parser.add_argument("--allow-inp-mismatch", action="store_true",
+                        help="Continuar (con warning) si el .inp base no coincide con el hash de entrenamiento")
     parser.add_argument("--out-dir", metavar="PATH", default="./validation_output",
                         help="Directorio de salida para validación batch (default: ./validation_output)")
     args = parser.parse_args()
@@ -127,6 +140,22 @@ def main():
         print("\nVolumen total por factor:")
         print(result.to_string(index=False))
         plot_flood_volume_curve(result, METRICS_DIR)
+        plot_flood_volume_combined(result, METRICS_DIR)
+        return
+
+    # -- Modo: comparacion SWMM vs XGBoost por factor -------------------------
+    if args.factor_comparison:
+        output_dir = METRICS_DIR / "factor_comparison"
+        print("\nGenerando comparaciones SWMM vs XGBoost por factor...")
+        paths = generate_factor_comparisons(
+            dataset_path=config.dataset.output_path,
+            config=config,
+            models_dir=MODELS_DIR,
+            output_dir=output_dir,
+        )
+        print(f"\nGraficas generadas ({len(paths)}):")
+        for path in paths:
+            print(f"  {path}")
         return
 
     # ── Modo: validación batch de hidrogramas ────────────────────────────────
@@ -138,14 +167,23 @@ def main():
         if args.reg_path is None:
             parser.error("--evaluate-hydrographs requiere --reg-path PATH")
 
-        # Resolve flood threshold: CLI > config.yaml > fallback 0.1
+        # Resolve flood threshold: CLI > config.yaml > fallback 1.0
         if args.flood_threshold is not None:
             flood_threshold = args.flood_threshold
         else:
             try:
                 flood_threshold = config.dataset.flood_threshold_m3
             except Exception:
-                flood_threshold = 0.1
+                flood_threshold = 1.0
+
+        try:
+            drain_down_hours = config.validation.drain_down_hours
+        except Exception:
+            drain_down_hours = 6.0
+        try:
+            factor_range = (config.simulation.factor_min, config.simulation.factor_max)
+        except Exception:
+            factor_range = None
 
         from swmm_resilience.validation.hydrograph_batch import run_batch_validation
 
@@ -157,6 +195,9 @@ def main():
             reg_path=Path(args.reg_path),
             flood_threshold_m3=flood_threshold,
             out_dir=Path(args.out_dir),
+            drain_down_hours=drain_down_hours,
+            allow_inp_mismatch=args.allow_inp_mismatch,
+            factor_range=factor_range,
         )
 
         print("\n" + "=" * 50)
@@ -169,6 +210,8 @@ def main():
                 print(f"    {k}: {v:.4f}")
             else:
                 print(f"    {k}: {v}")
+        if summary.get("pr_auc") is not None:
+            print(f"    pr_auc: {summary['pr_auc']:.4f}")
         print("\n  Métricas de volumen:")
         for k, v in summary["volume"].items():
             if v is None:
@@ -177,7 +220,37 @@ def main():
                 print(f"    {k}: {v:.4f}")
             else:
                 print(f"    {k}: {v}")
-        print(f"\n  CSV de resumen: {summary['summary_csv_path']}")
+        for k, v in summary.get("volume_flooded_only", {}).items():
+            print(f"    {k}: {'N/A' if v is None else v}")
+
+        if summary.get("per_scenario"):
+            print("\n  Volumen total inundado por escenario (SWMM vs ML):")
+            for rec in summary["per_scenario"]:
+                err_pct = rec.get("error_pct")
+                err_txt = f"{err_pct:+.1f}%" if err_pct is not None else "N/A"
+                extra = rec.get("n_extrapolated", 0)
+                extra_txt = f"  [extrapolados: {extra}]" if extra else ""
+                print(
+                    f"    {rec['scenario_id']}: SWMM={rec['vol_total_swmm_m3']:.1f} m³  "
+                    f"ML={rec['vol_total_pred_m3']:.1f} m³  ({err_txt}){extra_txt}"
+                )
+
+        if summary.get("timings"):
+            speedups = [t["speedup"] for t in summary["timings"] if t.get("speedup")]
+            t_swmm_total = sum(t["t_swmm_s"] for t in summary["timings"])
+            t_ml_total = sum(
+                t["t_features_s"] + t["t_inference_s"] for t in summary["timings"]
+            )
+            print("\n  Tiempos de cómputo:")
+            print(f"    SWMM total      : {t_swmm_total:.2f} s")
+            print(f"    ML total        : {t_ml_total:.4f} s (features + inferencia)")
+            if speedups:
+                print(f"    Speed-up medio  : x{sum(speedups) / len(speedups):.0f}")
+
+        print(f"\n  CSV de resumen     : {summary['summary_csv_path']}")
+        print(f"  Totales/escenario  : {summary['scenario_totals_csv_path']}")
+        print(f"  Tiempos            : {summary['timings_csv_path']}")
+        print(f"  Métricas/escenario : {summary['metrics_per_scenario_csv_path']}")
         return
 
     # ── Modo: solo mapas ─────────────────────────────────────────────────────

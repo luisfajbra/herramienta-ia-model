@@ -9,7 +9,10 @@ simulation:
 
 dataset:
   output_path: "data/training/dataset_final.csv"
-  flood_threshold_m3: 0.0
+  flood_threshold_m3: 1.0
+
+validation:
+  drain_down_hours: 6.0
 
 ml:
   classifier:

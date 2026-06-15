@@ -90,14 +90,14 @@ def plot_network(
     ax.scatter(xs, ys, s=NODE_SIZE, color=COLOR_NODE, zorder=4, linewidths=0.4, edgecolors="#5A7A92")
 
     legend_handles = [
-        mpatches.Patch(color=COLOR_INITIAL, label="Tubería inicial (nodo hoja)"),
-        mpatches.Patch(color=COLOR_CONTINUOUS, label="Tubería continua"),
+        mpatches.Patch(color=COLOR_INITIAL, label="Initial Pipe (Leaf Node)"),
+        mpatches.Patch(color=COLOR_CONTINUOUS, label="Continuous Pipe"),
     ]
     ax.legend(handles=legend_handles, loc="upper right", framealpha=0.9, fontsize=9)
 
-    ax.set_xlabel("Coordenada X (m)", fontsize=10)
-    ax.set_ylabel("Coordenada Y (m)", fontsize=10)
-    ax.set_title(title or f"Topología de red — {inp_path.stem}", fontsize=12, fontweight="bold")
+    ax.set_xlabel("X Coordinate (m)", fontsize=10)
+    ax.set_ylabel("Y Coordinate (m)", fontsize=10)
+    ax.set_title(title or f"Network Topology - {inp_path.stem}", fontsize=12, fontweight="bold")
     ax.set_aspect("equal")
     ax.grid(True, linestyle="--", alpha=0.3)
 
@@ -110,7 +110,7 @@ def plot_network(
 def generate_network_map(
     inp_path: Path,
     output_path: Path,
-    network_name: str = "Red",
+    network_name: str = "Network",
 ) -> Path:
     """Render network topology with pipe-type coloring and arrows (origin/main interface).
 
@@ -165,7 +165,7 @@ def generate_network_map(
 
     legend_elements = [
         plt.Line2D([0], [0], marker="v", color="w", markerfacecolor="black",
-                   markersize=8, label="Nodo de salida"),
+                   markersize=8, label="Outfall Node"),
     ]
     ax.legend(handles=legend_elements, loc="upper right", fontsize=13,
               framealpha=0.9, edgecolor="#cccccc")
@@ -176,5 +176,5 @@ def generate_network_map(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
-    print(f"Mapa de red guardado: {output_path}")
+    print(f"Network map saved: {output_path}")
     return output_path

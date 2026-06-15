@@ -1,5 +1,11 @@
 # Diccionario de datos de simulacion y entrenamiento ML
 
+> **Nota (junio 2026, contrato v2 del pipeline spec v4):** este documento
+> describe el flujo legacy via SQLite. El pipeline actual entrena desde
+> `data/training/dataset_final.csv` con 15 features (`factor_mult` quedo como
+> metadato, ya no es entrada del modelo) y regla de etiquetado unificada
+> `inunda = vol >= 1.0 m3` (ver `README.md`, seccion "Modelos Y Metricas").
+
 ## Resumen rapido
 
 - La simulacion se ejecuta con `PySWMM`.

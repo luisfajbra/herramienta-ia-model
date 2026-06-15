@@ -28,6 +28,7 @@ import torch
 from ...config import DEFAULT_DB_FILE, DEFAULT_SURROGATE_MAPS_DIR, DEFAULT_TEMPORAL_ARTIFACTS_DIR
 from ...visualization._inp_parser import parse_conduits, parse_coordinates
 from ...visualization.flood_map import plot_flood_map
+from ...visualization.labels import format_node_label
 from .dataset import STATIC_COLS, SURROGATE_TEMPORAL_COLS, TEMPORAL_COLS
 from .models.cnn import SWMMTemporalCNN
 from .models.surrogate_cnn import SWMMSurrogateCNN
@@ -373,13 +374,13 @@ def plot_prediction_map(
             edgecolors="#E53935",
             linewidths=1.8,
             zorder=3,
-            label=f"Inundado (real): {len(actual_wet)} nodos",
+            label=f"Actually Flooded: {len(actual_wet)} Nodes",
         )
 
     # ── colorbar ───────────────────────────────────────────────────────────────
     cbar = fig.colorbar(sc, ax=ax, fraction=0.03, pad=0.02)
     cbar.set_label(
-        f"Prob. máx. de inundación (CNN, escala 0–{_vmax:.3f})", fontsize=10
+        f"Maximum Flood Probability (CNN, Scale 0-{_vmax:.3f})", fontsize=10
     )
     # Mark the quantile threshold on the colorbar
     thresh_pos = risk_threshold / _vmax
@@ -391,7 +392,7 @@ def plot_prediction_map(
     top = top[top["max_flood_prob"] > 0.1]
     for _, row in top.iterrows():
         ax.annotate(
-            f"{row['node_id']}\n{row['max_flood_prob']:.2f}",
+            f"{format_node_label(row['node_id'])}\n{row['max_flood_prob']:.2f}",
             xy=(row["x"], row["y"]),
             xytext=(8, 8),
             textcoords="offset points",
@@ -402,11 +403,11 @@ def plot_prediction_map(
 
     # ── summary stats in legend ────────────────────────────────────────────────
     legend_entries = [
-        f"Umbral: top {pct_label} de riesgo predicho",
-        f"  TP (detectados):          {len(tp)}",
-        f"  FP (falsas alarmas):       {len(fp)}",
-        f"  FN (no detectados):        {len(fn)}",
-        f"  TN (correctamente seguros): {len(tn)}",
+        f"Threshold: Top {pct_label} of Predicted Risk",
+        f"  TP (Detected):       {len(tp)}",
+        f"  FP (False Alarms):   {len(fp)}",
+        f"  FN (Missed):         {len(fn)}",
+        f"  TN (Correctly Safe): {len(tn)}",
     ]
     ax.annotate(
         "\n".join(legend_entries),
@@ -420,8 +421,8 @@ def plot_prediction_map(
     )
 
     ax.legend(loc="upper right", framealpha=0.9, fontsize=9)
-    ax.set_xlabel("Coordenada X (m)", fontsize=10)
-    ax.set_ylabel("Coordenada Y (m)", fontsize=10)
+    ax.set_xlabel("X Coordinate (m)", fontsize=10)
+    ax.set_ylabel("Y Coordinate (m)", fontsize=10)
     ax.set_aspect("equal")
     ax.grid(True, linestyle="--", alpha=0.25)
 
@@ -654,7 +655,7 @@ def plot_surrogate_map(
     df["inflow_multiplier"] = multiplier if multiplier is not None else 1.0
 
     title = (
-        f"Surrogate {model_label} — Volumen de Inundación Predicho"
+        f"Surrogate {model_label} - Predicted Flooding Flow"
         + (f"\nQx{multiplier:.2f}" if multiplier is not None else "")
     )
     return plot_flood_map(df, inp_path, output_path, title=title, vmax_global=vmax)
@@ -715,9 +716,9 @@ def main() -> None:
     n_nodes = len(preds)
     n_actual = int(preds["actual_flooded"].sum())
     n_predicted = int((preds["max_flood_prob"] >= 0.5).sum())
-    print(f"\nResultados ({n_nodes} nodos):")
-    print(f"  Inundados reales:     {n_actual}")
-    print(f"  Predichos inundados:  {n_predicted}")
+    print(f"\nResults ({n_nodes} nodes):")
+    print(f"  Actually flooded:  {n_actual}")
+    print(f"  Predicted flooded: {n_predicted}")
 
     try:
         run_id = str(pd.read_parquet(args.parquet)["run_id"].iloc[0])
@@ -739,9 +740,9 @@ def main() -> None:
     multiplier_label = f"Qx{inflow_multiplier:.2f}" if inflow_multiplier is not None else run_id[:8]
 
     title = (
-        f"CNN — Predicción de Inundación\n"
-        f"{multiplier_label} | Nodos: {n_nodes} | "
-        f"Reales: {n_actual} | Predichos: {n_predicted}"
+        f"CNN - Flood Prediction\n"
+        f"{multiplier_label} | Nodes: {n_nodes} | "
+        f"Actual: {n_actual} | Predicted: {n_predicted}"
     )
 
     out = plot_prediction_map(
@@ -750,7 +751,7 @@ def main() -> None:
         output_path=args.output,
         title=title,
     )
-    print(f"\nMapa guardado en: {out}")
+    print(f"\nMap saved to: {out}")
 
 
 if __name__ == "__main__":

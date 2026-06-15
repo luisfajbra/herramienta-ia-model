@@ -10,12 +10,17 @@ from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from ..config import Config
 
+# Feature contract v2: factor_mult is intentionally NOT a model input. It is a
+# global scenario attribute with no valid definition for arbitrary hydrographs;
+# it remains in the dataset CSV only as metadata (LOSO grouping, stratified
+# evaluation). The per-node dynamic signal enters via q_pico_nodo and
+# q_pico_acum_escalado.
 FEATURE_COLS = [
     "elev_fondo", "prof_max", "n_tuberias_in", "n_tuberias_out",
     "diam_max_in", "diam_max_out", "pendiente_max_in", "pendiente_out",
     "base_inflow_lps", "dist_outfall_m", "n_nodos_aguas_arriba",
     "q_pico_acum_base", "upstream_capacity_lps",
-    "factor_mult", "q_pico_nodo", "q_pico_acum_escalado",
+    "q_pico_nodo", "q_pico_acum_escalado",
 ]
 
 

@@ -1,20 +1,26 @@
 """
 Scenario predictor: given a HydrographScenario, predict per-node flood results
 using pre-trained classifier and regressor artifacts (joblib format).
+
+ScenarioPredictor loads the models and computes static + topology features
+once at construction; predict() only computes dynamic features and runs
+inference, so per-scenario timing reflects true surrogate cost.
 """
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 import joblib
 import numpy as np
 import pandas as pd
 
-from ..extraction.dynamic_features import compute_dynamic_features
+from ..extraction.dynamic_features import compute_scenario_dynamic_features
 from ..extraction.static_features import extract_static_features
-from ..extraction.topology import compute_topology_features
+from ..extraction.topology import build_network_graph, compute_topology_features
 from ..ml.trainer import FEATURE_COLS
+from ..simulation.swmm_api_io import load_inp
 from ..validation.hydrograph_csv import HydrographScenario
 
 
@@ -25,17 +31,121 @@ def _peak_inflow_lps(series: list[tuple[float, float]]) -> float:
     return max(v for _, v in series)
 
 
-def _effective_factor(
-    base_inflow_lps: float,
-    peak_lps: float,
-) -> float:
-    """Compute the effective multiplier for this node's scenario peak vs base.
+class ScenarioPredictor:
+    """Reusable predictor: load models and static features once, then call
+    predict()/predict_timed() per scenario.
 
-    Falls back to 1.0 when base_inflow_lps is zero to avoid division by zero.
+    Predictions cover every junction in the .inp network, not only the nodes
+    present in the scenario CSV: junctions without a direct inflow get
+    q_pico_nodo = 0 and accumulate upstream scenario peaks, consistent with
+    how the training dataset was built.
     """
-    if base_inflow_lps <= 0.0:
-        return 1.0
-    return peak_lps / base_inflow_lps
+
+    def __init__(
+        self,
+        clf_path: Path,
+        reg_path: Path,
+        inp_path: Path,
+        factor_range: tuple[float, float] | None = None,
+    ) -> None:
+        t0 = time.perf_counter()
+        self.clf = joblib.load(clf_path)
+        self.reg = joblib.load(reg_path)
+        self.model_load_s = time.perf_counter() - t0
+
+        t0 = time.perf_counter()
+        static_df = extract_static_features(inp_path)
+        self.full_df = compute_topology_features(static_df, inp_path)
+        self.graph, _ = build_network_graph(load_inp(inp_path))
+        self.static_features_s = time.perf_counter() - t0
+
+        self.inp_path = Path(inp_path)
+        self.factor_range = factor_range
+        self.node_ids: list[str] = self.full_df["node_id"].astype(str).tolist()
+
+    # -- helpers -----------------------------------------------------------
+
+    def _extrapolation_flags(self, peak_map: dict[str, float]) -> pd.Series:
+        """True where the node's scenario peak falls outside the per-node
+        range seen in training (base_inflow x [factor_min, factor_max]).
+
+        Nodes with base inflow 0 are flagged only if they receive a direct
+        scenario peak > 0 (training never saw q_pico_nodo > 0 for them).
+        """
+        if self.factor_range is None:
+            return pd.Series(False, index=self.full_df.index)
+
+        fmin, fmax = self.factor_range
+        flags = []
+        for _, row in self.full_df.iterrows():
+            base = float(row.get("base_inflow_lps", 0.0) or 0.0)
+            peak = float(peak_map.get(str(row["node_id"]), 0.0))
+            if base > 0.0:
+                ratio = peak / base
+                flags.append(ratio < fmin or ratio > fmax)
+            else:
+                flags.append(peak > 0.0)
+        return pd.Series(flags, index=self.full_df.index)
+
+    def _probabilities(self, X: pd.DataFrame) -> np.ndarray:
+        if hasattr(self.clf, "predict_proba"):
+            return np.asarray(self.clf.predict_proba(X))[:, 1]
+        return np.asarray(self.clf.predict(X), dtype=float)
+
+    # -- public API --------------------------------------------------------
+
+    def predict_timed(
+        self, scenario: HydrographScenario
+    ) -> tuple[pd.DataFrame, dict[str, float]]:
+        """Predict and return (result_df, timings).
+
+        result_df columns: node_id, inunda_pred, prob_inunda, vol_pred_m3,
+        extrapolated. timings keys: t_features_s, t_inference_s.
+        """
+        t0 = time.perf_counter()
+        peak_map = {
+            str(nid): _peak_inflow_lps(series)
+            for nid, series in scenario.node_series.items()
+        }
+        dynamic_df = compute_scenario_dynamic_features(
+            self.full_df, peak_map, self.graph
+        )
+        static_base = self.full_df.drop(
+            columns=[
+                c
+                for c in ("factor_mult", "q_pico_nodo", "q_pico_acum_escalado")
+                if c in self.full_df.columns
+            ]
+        )
+        merged = static_base.merge(dynamic_df, on="node_id", how="left")
+        X = merged[FEATURE_COLS]
+        t_features = time.perf_counter() - t0
+
+        t0 = time.perf_counter()
+        inunda_pred = np.asarray(self.clf.predict(X)).astype(int)
+        prob = self._probabilities(X)
+        vol_pred = np.zeros(len(X))
+        flood_mask = inunda_pred == 1
+        if flood_mask.sum() > 0:
+            vol_pred[flood_mask] = np.expm1(self.reg.predict(X.loc[flood_mask]))
+        vol_pred = np.clip(vol_pred, a_min=0.0, a_max=None)
+        t_inference = time.perf_counter() - t0
+
+        result = pd.DataFrame(
+            {
+                "node_id": merged["node_id"].astype(str),
+                "inunda_pred": pd.Series(inunda_pred, dtype=int),
+                "prob_inunda": prob,
+                "vol_pred_m3": vol_pred,
+                "extrapolated": self._extrapolation_flags(peak_map).to_numpy(),
+            }
+        ).reset_index(drop=True)
+
+        return result, {"t_features_s": t_features, "t_inference_s": t_inference}
+
+    def predict(self, scenario: HydrographScenario) -> pd.DataFrame:
+        result, _ = self.predict_timed(scenario)
+        return result
 
 
 def predict_scenario(
@@ -44,101 +154,18 @@ def predict_scenario(
     reg_path: Path,
     flood_threshold_m3: float,
     inp_path: Path,
+    factor_range: tuple[float, float] | None = None,
 ) -> pd.DataFrame:
-    """Predict per-node flooding for a HydrographScenario without running SWMM.
+    """One-shot convenience wrapper around ScenarioPredictor.
 
-    Parameters
-    ----------
-    scenario:
-        Loaded hydrograph scenario with per-node time-series data.
-    clf_path:
-        Path to the joblib-serialised classifier (predicts inunda 0/1).
-    reg_path:
-        Path to the joblib-serialised regressor (predicts log1p flood volume).
-    flood_threshold_m3:
-        Minimum flood volume to consider a node flooded (informational; not
-        used to override the classifier output in this function).
-    inp_path:
-        Path to the SWMM .inp network file used to extract static topology.
-
-    Returns
-    -------
-    pd.DataFrame with columns:
-        node_id (str), inunda_pred (int 0/1), vol_pred_m3 (float >= 0)
+    flood_threshold_m3 is informational: inunda_pred is decided by the
+    classifier and vol_pred_m3 is reported as-is (documented reconciliation
+    rule). Prefer ScenarioPredictor for batch use so models load once.
     """
-    clf = joblib.load(clf_path)
-    reg = joblib.load(reg_path)
-
-    # --- Build static + topology features from the .inp file ---
-    static_df = extract_static_features(inp_path)
-    full_df = compute_topology_features(static_df, inp_path)
-
-    # --- Restrict to nodes present in the scenario ---
-    scenario_nodes = list(scenario.node_series.keys())
-    mask = full_df["node_id"].astype(str).isin(set(scenario_nodes))
-    full_df = full_df[mask].copy().reset_index(drop=True)
-
-    if full_df.empty:
-        return pd.DataFrame(columns=["node_id", "inunda_pred", "vol_pred_m3"])
-
-    # --- Derive a per-node "effective factor" from scenario peak flows ---
-    # Use the mean factor across all scenario nodes as the representative
-    # multiplier for the dynamic feature computation, then override per-node
-    # q_pico_nodo with the actual scenario peak for each node.
-    peak_map: dict[str, float] = {
-        nid: _peak_inflow_lps(series)
-        for nid, series in scenario.node_series.items()
-    }
-
-    # Compute mean factor to use for q_pico_acum_escalado scaling
-    factors = []
-    for _, row in full_df.iterrows():
-        nid = str(row["node_id"])
-        factor = _effective_factor(
-            float(row.get("base_inflow_lps", 0.0) or 0.0),
-            peak_map.get(nid, 0.0),
-        )
-        factors.append(factor)
-    mean_factor = float(np.mean(factors)) if factors else 1.0
-
-    # Use the mean factor for dynamic features (topology-wide scaling)
-    dynamic_df = compute_dynamic_features(full_df, mean_factor)
-
-    # Override q_pico_nodo with actual scenario peak per node
-    node_to_peak = full_df[["node_id"]].copy()
-    node_to_peak["q_pico_nodo"] = node_to_peak["node_id"].astype(str).map(
-        lambda nid: peak_map.get(nid, 0.0)
+    predictor = ScenarioPredictor(
+        clf_path=clf_path,
+        reg_path=reg_path,
+        inp_path=inp_path,
+        factor_range=factor_range,
     )
-    dynamic_df = dynamic_df.merge(
-        node_to_peak.rename(columns={"q_pico_nodo": "_q_pico_override"}),
-        on="node_id",
-        how="left",
-    )
-    dynamic_df["q_pico_nodo"] = dynamic_df["_q_pico_override"].fillna(0.0)
-    dynamic_df = dynamic_df.drop(columns=["_q_pico_override"])
-
-    # Drop any pre-existing dynamic columns from full_df before merging, to
-    # avoid pandas adding _x / _y suffixes when column names collide.
-    dynamic_cols = ["factor_mult", "q_pico_nodo", "q_pico_acum_escalado"]
-    static_base = full_df.drop(
-        columns=[c for c in dynamic_cols if c in full_df.columns]
-    )
-    merged = static_base.merge(dynamic_df, on="node_id", how="left")
-
-    X = merged[FEATURE_COLS]
-
-    inunda_pred = clf.predict(X)
-    vol_pred = np.zeros(len(X))
-    flood_mask = np.asarray(inunda_pred) == 1
-    if flood_mask.sum() > 0:
-        vol_pred[flood_mask] = np.expm1(reg.predict(X.loc[flood_mask]))
-    vol_pred = np.clip(vol_pred, a_min=0.0, a_max=None)
-
-    result = pd.DataFrame(
-        {
-            "node_id": merged["node_id"].astype(str),
-            "inunda_pred": pd.Series(inunda_pred, dtype=int),
-            "vol_pred_m3": vol_pred,
-        }
-    )
-    return result.reset_index(drop=True)
+    return predictor.predict(scenario)
