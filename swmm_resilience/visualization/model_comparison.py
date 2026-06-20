@@ -141,10 +141,23 @@ def plot_node_profiles(df: pd.DataFrame, out_dir: Path, scenario_id: str) -> lis
     w = max(8, min(24, len(nodes) * 0.35))
     paths = []
 
+    bar_w = 0.4
     for scale, suffix in [("linear", "linear"), ("symlog", "symlog")]:
         fig, ax = plt.subplots(figsize=(w, 5))
-        ax.plot(x, visible["vol_swmm_m3"].tolist(), "b-o", label="SWMM", markersize=4)
-        ax.plot(x, visible["vol_pred_m3"].tolist(), "o-", color="orange", label="XGBoost", markersize=4)
+        ax.bar(
+            x - bar_w / 2,
+            visible["vol_swmm_m3"].tolist(),
+            width=bar_w,
+            color="#2176ae",
+            label="SWMM",
+        )
+        ax.bar(
+            x + bar_w / 2,
+            visible["vol_pred_m3"].tolist(),
+            width=bar_w,
+            color="#f28e2b",
+            label="XGBoost",
+        )
         if scale == "symlog":
             ax.set_yscale("symlog", linthresh=_SYMLOG_THRESH)
         ax.set_xticks(x)
@@ -225,19 +238,20 @@ def plot_factor_comparison(
     x = np.arange(len(ordered))
     width = max(10, min(28, len(ordered) * 0.18))
 
+    bar_w = 0.4
     fig, ax = plt.subplots(figsize=(width, 6))
-    ax.plot(
-        x,
+    ax.bar(
+        x - bar_w / 2,
         ordered["vol_swmm_m3"],
+        width=bar_w,
         color="#2176ae",
-        linewidth=1.8,
         label="SWMM",
     )
-    ax.plot(
-        x,
+    ax.bar(
+        x + bar_w / 2,
         ordered["vol_pred_m3"],
+        width=bar_w,
         color="#f28e2b",
-        linewidth=1.8,
         label="XGBoost",
     )
     ax.set_xticks(x)
@@ -292,23 +306,20 @@ def plot_flooded_swmm_node_profile(
     x = np.arange(len(visible))
     width = max(10, min(28, len(visible) * 0.28))
 
+    bar_w = 0.4
     fig, ax = plt.subplots(figsize=(width, 6))
-    ax.plot(
-        x,
+    ax.bar(
+        x - bar_w / 2,
         visible["vol_swmm_m3"],
+        width=bar_w,
         color="#2176ae",
-        linewidth=1.8,
-        marker="o",
-        markersize=3,
         label="SWMM",
     )
-    ax.plot(
-        x,
+    ax.bar(
+        x + bar_w / 2,
         visible["vol_pred_m3"],
+        width=bar_w,
         color="#f28e2b",
-        linewidth=1.8,
-        marker="o",
-        markersize=3,
         label="XGBoost",
     )
     ax.set_xticks(x)
