@@ -11,6 +11,7 @@ import pandas as pd
 from ..analysis.model_comparison import compute_volume_metrics
 from .flood_map import plot_flood_map
 from .labels import format_node_label
+from .runtime_caption import format_runtime_text
 
 _SYMLOG_THRESH = 1.0  # m³
 
@@ -180,8 +181,14 @@ def plot_scenario_flood_maps(
     inp_path: Path,
     output_dir: Path,
     scenario_id: str,
+    t_swmm_s: float | None = None,
+    t_ml_s: float | None = None,
 ) -> tuple[Path, Path]:
-    """Create comparable SWMM and ML flood maps for one scenario."""
+    """Create comparable SWMM and ML flood maps for one scenario.
+
+    When ``t_swmm_s`` / ``t_ml_s`` are given, each map is annotated with its
+    compute time (in seconds) in the bottom-right corner.
+    """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -214,6 +221,7 @@ def plot_scenario_flood_maps(
         output_path=swmm_path,
         title=f"Flood Map - {scenario_id}\nSWMM Simulation",
         vmax_global=vmax_global,
+        runtime_text=format_runtime_text(t_swmm_s),
     )
     plot_flood_map(
         node_data=ml_data,
@@ -221,6 +229,7 @@ def plot_scenario_flood_maps(
         output_path=ml_path,
         title=f"Flood Map - {scenario_id}\nML Prediction",
         vmax_global=vmax_global,
+        runtime_text=format_runtime_text(t_ml_s),
     )
     return swmm_path, ml_path
 

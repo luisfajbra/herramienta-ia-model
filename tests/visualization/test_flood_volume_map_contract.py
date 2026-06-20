@@ -1,3 +1,4 @@
+import matplotlib
 import pandas as pd
 
 from swmm_resilience.visualization import flood_map
@@ -76,3 +77,40 @@ def test_metric_choice_respects_preferred_volume_even_when_zero(monkeypatch, tmp
     )
 
     assert labels[-1] == "Total Flood Volume (m3)"
+
+
+def test_plot_flood_map_draws_runtime_annotation(monkeypatch, tmp_path):
+    node_data = pd.DataFrame(
+        {
+            "node_id": ["J1"],
+            "total_flood_volume_m3": [2.5],
+            "peak_flooding_lps": [0.0],
+            "flooded": [1],
+        }
+    )
+    node_data.attrs["preferred_flood_metric"] = "total_flood_volume_m3"
+
+    monkeypatch.setattr(flood_map, "parse_coordinates", lambda path: {"J1": (0.0, 0.0)})
+    monkeypatch.setattr(flood_map, "parse_conduits", lambda path: [])
+
+    texts = []
+    original_text = matplotlib.axes.Axes.text
+
+    def spy_text(self, *args, **kwargs):
+        if len(args) >= 3:
+            texts.append(args[2])
+        return original_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "text", spy_text)
+
+    out = tmp_path / "map.png"
+    flood_map.plot_flood_map(
+        node_data=node_data,
+        inp_path=tmp_path / "network.inp",
+        output_path=out,
+        title="Mapa",
+        runtime_text="Tiempo de cómputo: 1.85 s",
+    )
+
+    assert "Tiempo de cómputo: 1.85 s" in texts
+    assert out.exists() and out.stat().st_size > 0

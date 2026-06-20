@@ -151,7 +151,7 @@ def _patch_all(monkeypatch, tmp_path: Path):
     monkeypatch.setattr(
         hydrograph_batch,
         "plot_scenario_flood_maps",
-        lambda df, inp_path, out_dir, scenario_id: (),
+        lambda df, inp_path, out_dir, scenario_id, **kwargs: (),
         raising=False,
     )
     monkeypatch.setattr(
@@ -456,6 +456,56 @@ def test_plot_scenario_flood_maps_uses_shared_scale_and_root_output(
     assert calls[1]["title"] == "Flood Map - storm_a\nML Prediction"
 
 
+def _capture_scenario_flood_map_calls(monkeypatch):
+    comp_df = pd.DataFrame(
+        {
+            "scenario_id": ["storm_a", "storm_a"],
+            "node_id": ["1I", "2C"],
+            "inunda_swmm": [1, 0],
+            "inunda_pred": [0, 1],
+            "vol_swmm_m3": [12.0, 0.0],
+            "vol_pred_m3": [0.0, 5.0],
+        }
+    )
+    calls = []
+
+    def capture_plot_flood_map(**kwargs):
+        calls.append(kwargs)
+        return kwargs["output_path"]
+
+    monkeypatch.setattr(
+        model_comparison, "plot_flood_map", capture_plot_flood_map, raising=False
+    )
+    return comp_df, calls
+
+
+def test_plot_scenario_flood_maps_stamps_runtime_when_times_given(
+    monkeypatch, tmp_path
+):
+    comp_df, calls = _capture_scenario_flood_map_calls(monkeypatch)
+
+    model_comparison.plot_scenario_flood_maps(
+        comp_df, tmp_path / "network.inp", tmp_path, "storm_a",
+        t_swmm_s=1.85, t_ml_s=0.024,
+    )
+
+    assert calls[0]["runtime_text"] == "Tiempo de cómputo: 1.85 s"
+    assert calls[1]["runtime_text"] == "Tiempo de cómputo: 0.0240 s"
+
+
+def test_plot_scenario_flood_maps_no_runtime_when_times_absent(
+    monkeypatch, tmp_path
+):
+    comp_df, calls = _capture_scenario_flood_map_calls(monkeypatch)
+
+    model_comparison.plot_scenario_flood_maps(
+        comp_df, tmp_path / "network.inp", tmp_path, "storm_a",
+    )
+
+    assert calls[0]["runtime_text"] is None
+    assert calls[1]["runtime_text"] is None
+
+
 def test_run_batch_validation_generates_flood_maps_in_output_root(
     monkeypatch, tmp_path
 ):
@@ -465,8 +515,8 @@ def test_run_batch_validation_generates_flood_maps_in_output_root(
     fake_inp, _ = _patch_all(monkeypatch, tmp_path)
     calls = []
 
-    def capture_maps(df, inp_path, out_dir, scenario_id):
-        calls.append((df, inp_path, out_dir, scenario_id))
+    def capture_maps(df, inp_path, out_dir, scenario_id, **kwargs):
+        calls.append((df, inp_path, out_dir, scenario_id, kwargs))
         return ()
 
     monkeypatch.setattr(
@@ -480,10 +530,13 @@ def test_run_batch_validation_generates_flood_maps_in_output_root(
     _run(tmp_path, csv_dir)
 
     assert len(calls) == 1
-    _, inp_path, map_out_dir, scenario_id = calls[0]
+    _, inp_path, map_out_dir, scenario_id, kwargs = calls[0]
     assert inp_path == fake_inp
     assert map_out_dir == out_dir
     assert scenario_id == "sc001"
+    # Compute-time annotations: measured SWMM and ML times are forwarded
+    assert isinstance(kwargs["t_swmm_s"], float)
+    assert isinstance(kwargs["t_ml_s"], float)
 
 
 def test_run_batch_validation_generates_critical_hydrograph_in_output_root(

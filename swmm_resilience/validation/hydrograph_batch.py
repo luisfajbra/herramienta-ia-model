@@ -339,6 +339,8 @@ def run_batch_validation(
             scenario_inp_path,
             out_dir,
             scenario.scenario_id,
+            t_swmm_s=t_swmm,
+            t_ml_s=pred_timings["t_features_s"] + pred_timings["t_inference_s"],
         )
         plot_scenario_hydrograph(
             scenario,

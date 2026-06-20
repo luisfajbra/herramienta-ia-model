@@ -12,6 +12,8 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
@@ -51,6 +53,7 @@ def plot_flood_map(
     output_path: Path | str,
     title: str,
     vmax_global: float | None = None,
+    runtime_text: str | None = None,
 ) -> Path:
     """Generate and save a flood map (experiment branch interface).
 
@@ -174,6 +177,19 @@ def plot_flood_map(
 
     ax.set_aspect("equal")
     ax.grid(True, linestyle="--", alpha=0.25)
+
+    if runtime_text:
+        ax.text(
+            0.98,
+            0.02,
+            runtime_text,
+            transform=ax.transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=9,
+            bbox=ANNOTATION_BBOX,
+            zorder=6,
+        )
 
     fig.tight_layout()
     fig.savefig(output_path, dpi=DPI, bbox_inches="tight")
