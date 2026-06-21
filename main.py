@@ -9,7 +9,9 @@ Uso:
   python main.py --predict --factor 3.5              # Inferencia sin SWMM
 """
 import argparse
+import shutil
 import tempfile
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -25,7 +27,9 @@ from swmm_resilience.ml.evaluator import evaluate_models
 from swmm_resilience.ml.feature_importance import generate_feature_importance_plots
 from swmm_resilience.ml.predict import predict_network
 from swmm_resilience.ml.trainer import train_models
+from swmm_resilience.simulation.runner import run_simulation_simple
 from swmm_resilience.visualization.flood_map import generate_flood_map
+from swmm_resilience.visualization.runtime_caption import format_runtime_text
 from swmm_resilience.visualization.hydrograph import plot_hydrograph
 from swmm_resilience.visualization.network_map import generate_network_map
 from swmm_resilience.analysis.resilience import compute_resilience_curve
@@ -95,13 +99,16 @@ def main():
         if args.factor is None:
             parser.error("--predict requiere --factor VALUE")
         print(f"\nPrediciendo para factor={args.factor}...")
+        t0 = time.perf_counter()
         result = predict_network(args.factor, config, MODELS_DIR)
+        t_ml = time.perf_counter() - t0
         map_out = config.visualization.output_path / f"flood_map_pred_{args.factor:.2f}.png"
         generate_flood_map(
             config.network.inp_path,
             result.rename(columns={"vol_pred_m3": "vol_inundacion_m3"}),
             args.factor, map_out, config.network.name,
             config.visualization.colormap, config.visualization.show_labels_top_n,
+            runtime_text=format_runtime_text(t_ml),
         )
         flooded = result[result["inunda_pred"] == 1]
         print(f"\n{len(flooded)} nodos predichos como inundados:")
@@ -261,10 +268,20 @@ def main():
         for factor in factors_in_dataset:
             df_f = df[abs(df["factor_mult"] - factor) < 1e-6]
             out = config.visualization.output_path / f"flood_map_factor_{factor:.2f}.png"
+            # Volúmenes salen del dataset; se corre SWMM solo para medir el
+            # tiempo de cómputo que se estampa en el mapa.
+            run_dir = Path(tempfile.mkdtemp(prefix="swmm_timing_"))
+            try:
+                t0 = time.perf_counter()
+                run_simulation_simple(config.network.inp_path, factor, run_dir)
+                t_swmm = time.perf_counter() - t0
+            finally:
+                shutil.rmtree(run_dir, ignore_errors=True)
             generate_flood_map(
                 config.network.inp_path, df_f, factor, out,
                 config.network.name, config.visualization.colormap,
                 config.visualization.show_labels_top_n,
+                runtime_text=format_runtime_text(t_swmm),
             )
         print(f"  Mapas guardados en {config.visualization.output_path}")
         return

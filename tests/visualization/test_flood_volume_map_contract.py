@@ -114,3 +114,33 @@ def test_plot_flood_map_draws_runtime_annotation(monkeypatch, tmp_path):
 
     assert "Tiempo de cómputo: 1.85 s" in texts
     assert out.exists() and out.stat().st_size > 0
+
+
+def test_generate_flood_map_draws_runtime_annotation(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    fake_inp = {"COORDINATES": {"J1": SimpleNamespace(x=0.0, y=0.0)}}
+    monkeypatch.setattr(flood_map, "load_inp", lambda p: fake_inp)
+    vol_data = pd.DataFrame({"node_id": ["J1"], "vol_inundacion_m3": [2.5]})
+
+    texts = []
+    original_text = matplotlib.axes.Axes.text
+
+    def spy_text(self, *args, **kwargs):
+        if len(args) >= 3:
+            texts.append(args[2])
+        return original_text(self, *args, **kwargs)
+
+    monkeypatch.setattr(matplotlib.axes.Axes, "text", spy_text)
+
+    out = tmp_path / "factor_map.png"
+    flood_map.generate_flood_map(
+        tmp_path / "net.inp",
+        vol_data,
+        3.0,
+        out,
+        runtime_text="Tiempo de cómputo: 1.85 s",
+    )
+
+    assert "Tiempo de cómputo: 1.85 s" in texts
+    assert out.exists() and out.stat().st_size > 0

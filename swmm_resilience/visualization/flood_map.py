@@ -205,6 +205,7 @@ def generate_flood_map(
     network_name: str = "Network",
     colormap: str = "RdYlBu_r",
     show_labels_top_n: int = 5,
+    runtime_text: str | None = None,
 ):
     """Render a network map with flood-volume gradient (origin/main interface).
 
@@ -275,6 +276,19 @@ def generate_flood_map(
     ax.set_title(f"{network_name} - Scale Factor: {factor:.2f}", fontsize=13)
     ax.set_aspect("equal")
     ax.axis("off")
+
+    if runtime_text:
+        ax.text(
+            0.98,
+            0.02,
+            runtime_text,
+            transform=ax.transAxes,
+            ha="right",
+            va="bottom",
+            fontsize=9,
+            bbox=ANNOTATION_BBOX,
+            zorder=6,
+        )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(output_path, dpi=150, bbox_inches="tight")
