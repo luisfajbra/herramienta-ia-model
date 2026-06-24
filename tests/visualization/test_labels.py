@@ -34,8 +34,6 @@ def test_format_node_label_removes_alphabetic_suffix_from_numeric_id(
     [
         ("elev_fondo", "Invert Elevation"),
         ("prof_max", "Maximum Depth"),
-        ("n_tuberias_in", "Inlet Pipe Count"),
-        ("n_tuberias_out", "Outlet Pipe Count"),
         ("diam_max_in", "Maximum Inlet Diameter"),
         ("diam_max_out", "Maximum Outlet Diameter"),
         ("pendiente_max_in", "Maximum Inlet Slope"),

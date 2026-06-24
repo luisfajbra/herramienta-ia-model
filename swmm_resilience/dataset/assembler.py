@@ -2,7 +2,7 @@ import pandas as pd
 from pathlib import Path
 
 _STATIC_COLS = [
-    "node_id", "elev_fondo", "prof_max", "n_tuberias_in", "n_tuberias_out",
+    "node_id", "elev_fondo", "prof_max",
     "diam_max_in", "diam_max_out", "pendiente_max_in", "pendiente_out",
     "base_inflow_lps", "dist_outfall_m", "n_nodos_aguas_arriba",
     "q_pico_acum_base", "upstream_capacity_lps", "coord_x", "coord_y",

@@ -489,8 +489,8 @@ def test_plot_scenario_flood_maps_stamps_runtime_when_times_given(
         t_swmm_s=1.85, t_ml_s=0.024,
     )
 
-    assert calls[0]["runtime_text"] == "Tiempo de cómputo: 1.85 s"
-    assert calls[1]["runtime_text"] == "Tiempo de cómputo: 0.0240 s"
+    assert calls[0]["runtime_text"] == "Compute time: 1.85 s"
+    assert calls[1]["runtime_text"] == "Compute time: 0.0240 s"
 
 
 def test_plot_scenario_flood_maps_no_runtime_when_times_absent(

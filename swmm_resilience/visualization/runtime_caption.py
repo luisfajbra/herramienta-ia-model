@@ -13,4 +13,4 @@ def format_runtime_text(seconds: float | None) -> str | None:
     if seconds is None:
         return None
     value = f"{seconds:.2f}" if seconds >= 1 else f"{seconds:.4f}"
-    return f"Tiempo de cómputo: {value} s"
+    return f"Compute time: {value} s"

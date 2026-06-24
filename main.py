@@ -57,7 +57,9 @@ def main():
                         help="Solo generar mapas desde CSV existente")
     parser.add_argument("--predict", action="store_true",
                         help="Inferencia sin SWMM para el factor dado")
-    parser.add_argument("--factor", type=float, help="Factor para --predict")
+    parser.add_argument("--simulate", action="store_true",
+                        help="Correr SWMM + ML para un factor arbitrario y generar ambos mapas")
+    parser.add_argument("--factor", type=float, help="Factor para --predict o --simulate")
     parser.add_argument("--hydrograph", action="store_true",
                         help="Graficar hidrograma del nodo con mayor caudal pico")
     parser.add_argument("--network-map", action="store_true",
@@ -113,6 +115,54 @@ def main():
         flooded = result[result["inunda_pred"] == 1]
         print(f"\n{len(flooded)} nodos predichos como inundados:")
         print(flooded.to_string(index=False))
+        return
+
+    # ── Modo: simulación + inferencia para un factor arbitrario ──────────────
+    if args.simulate:
+        if args.factor is None:
+            parser.error("--simulate requiere --factor VALUE")
+        factor = args.factor
+        print(f"\nSimulando factor={factor} con SWMM y ML...")
+
+        # ── SWMM ─────────────────────────────────────────────────────────────
+        all_node_ids = extract_static_features(config.network.inp_path)["node_id"].tolist()
+        run_dir = Path(tempfile.mkdtemp(prefix="swmm_simulate_"))
+        try:
+            t0 = time.perf_counter()
+            rpt_path = run_simulation_simple(config.network.inp_path, factor, run_dir)
+            t_swmm = time.perf_counter() - t0
+        finally:
+            # keep rpt long enough to extract labels, then clean up
+            pass
+
+        try:
+            labels_df = extract_labels(rpt_path, all_node_ids, config.dataset.flood_threshold_m3)
+        finally:
+            shutil.rmtree(run_dir, ignore_errors=True)
+
+        swmm_out = config.visualization.output_path / f"flood_map_factor_{factor:.2f}.png"
+        generate_flood_map(
+            config.network.inp_path, labels_df, factor, swmm_out,
+            config.network.name, config.visualization.colormap,
+            config.visualization.show_labels_top_n,
+            runtime_text=format_runtime_text(t_swmm),
+        )
+        print(f"  SWMM  ({t_swmm:.2f} s) → {swmm_out}")
+
+        # ── ML ────────────────────────────────────────────────────────────────
+        t0 = time.perf_counter()
+        result = predict_network(factor, config, MODELS_DIR)
+        t_ml = time.perf_counter() - t0
+
+        pred_out = config.visualization.output_path / f"flood_map_pred_{factor:.2f}.png"
+        generate_flood_map(
+            config.network.inp_path,
+            result.rename(columns={"vol_pred_m3": "vol_inundacion_m3"}),
+            factor, pred_out, config.network.name,
+            config.visualization.colormap, config.visualization.show_labels_top_n,
+            runtime_text=format_runtime_text(t_ml),
+        )
+        print(f"  ML    ({t_ml:.4f} s) → {pred_out}")
         return
 
     # ── Modo: hidrograma ──────────────────────────────────────────────────────

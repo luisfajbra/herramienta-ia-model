@@ -109,10 +109,10 @@ def test_plot_flood_map_draws_runtime_annotation(monkeypatch, tmp_path):
         inp_path=tmp_path / "network.inp",
         output_path=out,
         title="Mapa",
-        runtime_text="Tiempo de cómputo: 1.85 s",
+        runtime_text="Compute time: 1.85 s",
     )
 
-    assert "Tiempo de cómputo: 1.85 s" in texts
+    assert "Compute time: 1.85 s" in texts
     assert out.exists() and out.stat().st_size > 0
 
 
@@ -139,8 +139,8 @@ def test_generate_flood_map_draws_runtime_annotation(monkeypatch, tmp_path):
         vol_data,
         3.0,
         out,
-        runtime_text="Tiempo de cómputo: 1.85 s",
+        runtime_text="Compute time: 1.85 s",
     )
 
-    assert "Tiempo de cómputo: 1.85 s" in texts
+    assert "Compute time: 1.85 s" in texts
     assert out.exists() and out.stat().st_size > 0

@@ -1,17 +1,33 @@
-# Pipeline completo desde cero (corre SWMM ~25 min)
+# ============================================================
+# COMANDOS PRINCIPALES — Pipeline Chico Sur
+# ============================================================
+
+# Pipeline completo desde cero (extrae features, corre SWMM ~25 min, entrena, evalúa)
 python main.py
 
-# Re-entrena y evalúa desde el CSV existente (~30 s)
-python main.py --only-ml
-
-# Salta simulaciones SWMM, re-entrena desde CSV existente
+# Re-entrena y evalúa desde el CSV existente, sin correr SWMM (~30 s)
 python main.py --skip-extraction
 
-# Genera los 25 mapas de inundación reales (SWMM) uno por factor
+# Solo entrena y evalúa desde CSV existente (no genera mapas)
+python main.py --only-ml
+
+# ============================================================
+# MAPAS DE INUNDACIÓN
+# ============================================================
+
+# Genera los mapas SWMM para todos los factores del dataset (+ tiempo de cómputo)
 python main.py --only-maps
 
-# Predice nodos inundados para un factor específico y genera mapa
+# Predicción ML para un factor específico → mapa flood_map_pred_X.XX.png
 python main.py --predict --factor 2.0
+
+# Corre SWMM + ML para un factor ARBITRARIO y genera ambos mapas con tiempos
+# (útil para factores que no están en el dataset)
+python main.py --simulate --factor 0.35
+
+# ============================================================
+# ANÁLISIS Y GRÁFICAS
+# ============================================================
 
 # Grafica el hidrograma de entrada del nodo con mayor caudal pico
 python main.py --hydrograph
@@ -24,3 +40,34 @@ python main.py --resilience-curve
 
 # Calcula y grafica curva de volumen total inundado por factor SWMM vs ML
 python main.py --flood-volume-curve
+
+# Grafica volumen SWMM vs XGBoost por nodo + paridad para cada factor
+# (también genera tabla PNG de volumen total por factor)
+python main.py --factor-comparison
+
+# ============================================================
+# VALIDACIÓN BATCH CON HIDROGRAMAS EXTERNOS
+# ============================================================
+
+# Valida escenarios CSV contra SWMM y ML, genera mapas + métricas + tablas
+python main.py --evaluate-hydrographs outputs/new_csv_comparison \
+    --base-inp data/Chico_Sur_calibrado.inp \
+    --clf-path outputs/models/classifier.joblib \
+    --reg-path outputs/models/regressor.joblib \
+    --out-dir validation_output
+
+# Ídem con directorio de salida personalizado y umbral de inundación distinto
+python main.py --evaluate-hydrographs outputs/new_csv_comparison \
+    --base-inp data/Chico_Sur_calibrado.inp \
+    --clf-path outputs/models/classifier.joblib \
+    --reg-path outputs/models/regressor.joblib \
+    --flood-threshold 0.5 \
+    --out-dir validation_output_custom
+
+# Permitir .inp distinto al usado en entrenamiento (continúa con warning)
+python main.py --evaluate-hydrographs outputs/new_csv_comparison \
+    --base-inp data/Chico_Sur_calibrado.inp \
+    --clf-path outputs/models/classifier.joblib \
+    --reg-path outputs/models/regressor.joblib \
+    --allow-inp-mismatch \
+    --out-dir validation_output

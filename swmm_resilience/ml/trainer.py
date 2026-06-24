@@ -16,7 +16,7 @@ from ..config import Config
 # evaluation). The per-node dynamic signal enters via q_pico_nodo and
 # q_pico_acum_escalado.
 FEATURE_COLS = [
-    "elev_fondo", "prof_max", "n_tuberias_in", "n_tuberias_out",
+    "elev_fondo", "prof_max",
     "diam_max_in", "diam_max_out", "pendiente_max_in", "pendiente_out",
     "base_inflow_lps", "dist_outfall_m", "n_nodos_aguas_arriba",
     "q_pico_acum_base", "upstream_capacity_lps",

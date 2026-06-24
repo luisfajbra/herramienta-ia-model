@@ -12,8 +12,6 @@ def static_topology_df():
             "node_id": ["J1", "J2"],
             "elev_fondo": [10.0, 9.5],
             "prof_max": [1.5, 1.4],
-            "n_tuberias_in": [0, 1],
-            "n_tuberias_out": [1, 1],
             "diam_max_in": [None, 0.6],
             "diam_max_out": [0.6, 0.7],
             "pendiente_max_in": [None, 0.01],
