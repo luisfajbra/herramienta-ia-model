@@ -24,6 +24,7 @@ from swmm_resilience.extraction.topology import compute_topology_features
 from swmm_resilience.ml.evaluator import evaluate_models
 from swmm_resilience.ml.feature_importance import generate_feature_importance_plots
 from swmm_resilience.ml.predict import predict_network
+from swmm_resilience.simulation.runner import run_simulation_simple
 from swmm_resilience.ml.trainer import train_models
 from swmm_resilience.visualization.flood_map import generate_flood_map
 from swmm_resilience.visualization.hydrograph import plot_hydrograph
@@ -106,6 +107,23 @@ def main():
         flooded = result[result["inunda_pred"] == 1]
         print(f"\n{len(flooded)} nodos predichos como inundados:")
         print(flooded.to_string(index=False))
+
+        print(f"\nCorriendo SWMM para verificación (factor={args.factor})...")
+        swmm_run_dir = Path(tempfile.mkdtemp(prefix="swmm_verify_"))
+        rpt_path = run_simulation_simple(config.network.inp_path, args.factor, swmm_run_dir)
+        node_ids = result["node_id"].tolist()
+        swmm_df = extract_labels(rpt_path, node_ids, config.dataset.flood_threshold_m3)
+        swmm_map_out = config.visualization.output_path / f"flood_map_swmm_{args.factor:.2f}.png"
+        generate_flood_map(
+            config.network.inp_path,
+            swmm_df,
+            args.factor, swmm_map_out, config.network.name,
+            config.visualization.colormap, config.visualization.show_labels_top_n,
+        )
+        swmm_flooded = swmm_df[swmm_df["inunda"] == 1]
+        print(f"{len(swmm_flooded)} nodos inundados según SWMM")
+        print(f"  Mapa ML  : {map_out}")
+        print(f"  Mapa SWMM: {swmm_map_out}")
         return
 
     # ── Modo: hidrograma ──────────────────────────────────────────────────────
@@ -291,22 +309,74 @@ def main():
         print(f"  Red: {n_nodes} nodos, {n_factors} factores ({factors[0]:.2f}–{factors[-1]:.2f})")
 
     if not use_existing_dataset:
-        from swmm_resilience.simulation.batch import run_batch
+        from swmm_resilience.simulation.batch import run_batch, run_batch_shapes
+        from swmm_resilience.simulation.hydrograph_shapes import (
+            get_shape_stats, load_all_shapes,
+        )
+        from swmm_resilience.simulation.swmm_api_io import load_inp as _load_inp
         run_dir = Path(tempfile.mkdtemp(prefix="swmm_runs_"))
-        print(f"\nCorriendo {n_factors} simulaciones SWMM en {run_dir}...")
+
+        # ── Base shape: derive duracion_horas / tiempo_al_pico_h from .inp ──
+        _base_inp = _load_inp(config.network.inp_path)
+        _base_ts_data = (
+            next(
+                (list(ts.data) for ts in _base_inp["TIMESERIES"].values() if ts.data),
+                [],
+            )
+            if "TIMESERIES" in _base_inp
+            else []
+        )
+        base_dur, base_t_pico = get_shape_stats(_base_ts_data)
+
+        print(
+            f"\nCorriendo {n_factors} simulaciones SWMM (forma base, "
+            f"dur={base_dur:.2f}h, t_pico={base_t_pico:.2f}h)..."
+        )
         sim_results = run_batch(config, run_dir)
 
         print("\nExtrayendo labels y features dinámicas...")
         simulation_results = []
         for factor, rpt_path in sim_results:
-            dynamic_df = compute_dynamic_features(static_topo_df, factor)
+            dynamic_df = compute_dynamic_features(
+                static_topo_df, factor,
+                duracion_horas=base_dur,
+                tiempo_al_pico_h=base_t_pico,
+            )
             labels_df = extract_labels(rpt_path, all_node_ids, config.dataset.flood_threshold_m3)
             simulation_results.append((factor, dynamic_df, labels_df))
 
-        print("Ensamblando dataset...")
+        # ── Additional shapes ─────────────────────────────────────────────
+        if config.simulation.hydrograph_shapes_dir is not None:
+            shapes = load_all_shapes(config.simulation.hydrograph_shapes_dir)
+            base_inflows = dict(
+                zip(
+                    static_topo_df["node_id"].astype(str),
+                    static_topo_df["base_inflow_lps"],
+                )
+            )
+            n_extra = len(shapes) * n_factors
+            print(
+                f"\nCorriendo {len(shapes)} formas × {n_factors} factores "
+                f"= {n_extra} simulaciones SWMM adicionales..."
+            )
+            shape_results = run_batch_shapes(config, shapes, base_inflows, run_dir)
+            for shape_id, factor, rpt_path in shape_results:
+                dur_h, t_pico_h = get_shape_stats(shapes[shape_id])
+                dynamic_df = compute_dynamic_features(
+                    static_topo_df, factor,
+                    duracion_horas=dur_h,
+                    tiempo_al_pico_h=t_pico_h,
+                )
+                labels_df = extract_labels(
+                    rpt_path, all_node_ids, config.dataset.flood_threshold_m3
+                )
+                simulation_results.append((factor, dynamic_df, labels_df))
+
+        n_simulations = len(simulation_results)
+        print("\nEnsamblando dataset...")
         df = assemble_dataset(static_topo_df, simulation_results, config.dataset.output_path)
         print("Validando dataset...")
-        validate_dataset(df, n_nodes, n_factors)
+        validate_dataset(df, n_nodes, n_simulations)
         print(f"  Dataset validado: {df.shape}")
     else:
         print(f"\nLeyendo dataset desde {config.dataset.output_path}...")
