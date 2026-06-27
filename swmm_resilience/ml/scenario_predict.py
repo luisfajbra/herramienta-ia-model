@@ -31,6 +31,13 @@ def _peak_inflow_lps(series: list[tuple[float, float]]) -> float:
     return max(v for _, v in series)
 
 
+def _time_to_peak_h(series: list[tuple[float, float]]) -> float:
+    """Return the time (hours) at which the series reaches its maximum. 0.0 if empty."""
+    if not series:
+        return 0.0
+    return max(series, key=lambda x: x[1])[0]
+
+
 class ScenarioPredictor:
     """Reusable predictor: load models and static features once, then call
     predict()/predict_timed() per scenario.
@@ -107,13 +114,21 @@ class ScenarioPredictor:
             str(nid): _peak_inflow_lps(series)
             for nid, series in scenario.node_series.items()
         }
+        duracion_horas = scenario.last_time_hours
+        _rep = next((s for s in scenario.node_series.values() if s), [])
+        tiempo_al_pico_h = _time_to_peak_h(_rep)
         dynamic_df = compute_scenario_dynamic_features(
-            self.full_df, peak_map, self.graph
+            self.full_df, peak_map, self.graph,
+            duracion_horas=duracion_horas,
+            tiempo_al_pico_h=tiempo_al_pico_h,
         )
         static_base = self.full_df.drop(
             columns=[
                 c
-                for c in ("factor_mult", "q_pico_nodo", "q_pico_acum_escalado")
+                for c in (
+                    "factor_mult", "q_pico_nodo", "q_pico_acum_escalado",
+                    "duracion_horas", "tiempo_al_pico_h",
+                )
                 if c in self.full_df.columns
             ]
         )

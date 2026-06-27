@@ -7,7 +7,7 @@ import re
 
 FEATURE_DISPLAY_NAMES = {
     "elev_fondo": "Invert Elevation",
-    "prof_max": "Maximum Depth",
+    "prof_max": "Maximum Depth in Manhole shaft",
     "n_tuberias_in": "Inlet Pipe Count",
     "n_tuberias_out": "Outlet Pipe Count",
     "diam_max_in": "Maximum Inlet Diameter",
@@ -22,6 +22,8 @@ FEATURE_DISPLAY_NAMES = {
     "factor_mult": "Flow Multiplier",
     "q_pico_nodo": "Node Peak Inflow",
     "q_pico_acum_escalado": "Scaled Accumulated Peak Flow",
+    "duracion_horas": "Event Duration (h)",
+    "tiempo_al_pico_h": "Time to Peak (h)",
 }
 
 _NUMERIC_WITH_ALPHA_SUFFIX = re.compile(r"^(\d+)[A-Z]+$", re.IGNORECASE)

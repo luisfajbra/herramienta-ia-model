@@ -218,3 +218,120 @@ def test_predict_scenario_wrapper_compatible(monkeypatch, two_node_scenario, tmp
         inp_path=tmp_path / "network.inp",
     )
     assert set(result.columns) >= {"node_id", "inunda_pred", "vol_pred_m3"}
+
+
+# ---------------------------------------------------------------------------
+# Tests: _time_to_peak_h
+# ---------------------------------------------------------------------------
+
+def test_time_to_peak_h_basic():
+    from swmm_resilience.ml.scenario_predict import _time_to_peak_h
+    series = [(0.0, 0.0), (1.0, 50.0), (2.0, 30.0)]
+    assert _time_to_peak_h(series) == 1.0
+
+
+def test_time_to_peak_h_tie_returns_first():
+    from swmm_resilience.ml.scenario_predict import _time_to_peak_h
+    series = [(0.0, 80.0), (1.0, 80.0), (2.0, 10.0)]
+    assert _time_to_peak_h(series) == 0.0
+
+
+def test_time_to_peak_h_empty():
+    from swmm_resilience.ml.scenario_predict import _time_to_peak_h
+    assert _time_to_peak_h([]) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Tests: new shape-feature columns in dynamic feature builders
+# ---------------------------------------------------------------------------
+
+def test_compute_dynamic_features_has_shape_cols():
+    from swmm_resilience.extraction.dynamic_features import compute_dynamic_features
+    df = pd.DataFrame({
+        "node_id": ["A", "B"],
+        "base_inflow_lps": [10.0, 5.0],
+        "q_pico_acum_base": [10.0, 15.0],
+    })
+    result = compute_dynamic_features(df, factor=2.0, duracion_horas=3.5, tiempo_al_pico_h=0.5)
+    assert "duracion_horas" in result.columns
+    assert "tiempo_al_pico_h" in result.columns
+    assert (result["duracion_horas"] == 3.5).all()
+    assert (result["tiempo_al_pico_h"] == 0.5).all()
+
+
+def test_compute_scenario_dynamic_features_has_shape_cols():
+    from swmm_resilience.extraction.dynamic_features import compute_scenario_dynamic_features
+    static_df = pd.DataFrame({"node_id": ["J1", "J2"]})
+    peak_map = {"J1": 40.0, "J2": 20.0}
+    graph = _make_graph()
+    result = compute_scenario_dynamic_features(
+        static_df, peak_map, graph,
+        duracion_horas=5.0, tiempo_al_pico_h=1.0,
+    )
+    assert "duracion_horas" in result.columns
+    assert "tiempo_al_pico_h" in result.columns
+    assert (result["duracion_horas"] == 5.0).all()
+    assert (result["tiempo_al_pico_h"] == 1.0).all()
+
+
+def test_feature_cols_count():
+    from swmm_resilience.ml.trainer import FEATURE_COLS
+    assert len(FEATURE_COLS) == 17
+    assert "duracion_horas" in FEATURE_COLS
+    assert "tiempo_al_pico_h" in FEATURE_COLS
+
+
+def test_predict_timed_shape_features_vary_with_duration(monkeypatch, tmp_path):
+    """Two scenarios with identical peaks but different durations must produce
+    different duracion_horas in the feature matrix passed to the model."""
+    full_df = _make_full_df(_NETWORK_NODES)
+    captured_Xs: list = []
+
+    class _CapturingClassifier:
+        def predict(self, X):
+            captured_Xs.append(X.copy())
+            return np.zeros(len(X), dtype=int)
+
+        def predict_proba(self, X):
+            return np.zeros((len(X), 2))
+
+    # Build predictor directly to avoid monkeypatching complexity
+    p2h = object.__new__(scenario_predict.ScenarioPredictor)
+    p2h.clf = _CapturingClassifier()
+    p2h.reg = _FakeRegressor()
+    p2h.full_df = full_df
+    p2h.graph = _make_graph()
+    p2h.factor_range = None
+    p2h.node_ids = full_df["node_id"].astype(str).tolist()
+
+    p5h = object.__new__(scenario_predict.ScenarioPredictor)
+    p5h.clf = _CapturingClassifier()
+    p5h.reg = _FakeRegressor()
+    p5h.full_df = full_df
+    p5h.graph = _make_graph()
+    p5h.factor_range = None
+    p5h.node_ids = full_df["node_id"].astype(str).tolist()
+
+    scen_2h = HydrographScenario(
+        scenario_id="s2h",
+        node_series={"J1": [(0.0, 0.0), (1.0, 50.0), (2.0, 0.0)],
+                     "J2": [(0.0, 0.0), (1.0, 50.0), (2.0, 0.0)]},
+        time_grid_hours=[0.0, 1.0, 2.0],
+        last_time_hours=2.0,
+    )
+    scen_5h = HydrographScenario(
+        scenario_id="s5h",
+        node_series={"J1": [(0.0, 0.0), (2.5, 50.0), (5.0, 0.0)],
+                     "J2": [(0.0, 0.0), (2.5, 50.0), (5.0, 0.0)]},
+        time_grid_hours=[0.0, 2.5, 5.0],
+        last_time_hours=5.0,
+    )
+
+    p2h.predict(scen_2h)
+    p5h.predict(scen_5h)
+
+    assert len(captured_Xs) == 2
+    dur_2h = captured_Xs[0]["duracion_horas"].iloc[0]
+    dur_5h = captured_Xs[1]["duracion_horas"].iloc[0]
+    assert dur_2h == pytest.approx(2.0)
+    assert dur_5h == pytest.approx(5.0)
