@@ -67,6 +67,7 @@ ml_outputs/
 !outputs/models/training_inp_hash.txt
 *.csv
 !data/hydrographs/*.csv
+!data/hydrograph_shapes/*.csv
 *.xlsx
 *.png
 
