@@ -243,6 +243,11 @@ def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> No
 
     # ── Regressor (flooded rows only — model trained on log1p(vol)) ──────────
     df_flooded = df[df["inunda"] == 1].reset_index(drop=True)
+    if df_flooded.empty:
+        raise RuntimeError(
+            "plot_shap: no flooded rows in dataset (inunda==1) — "
+            "regressor SHAP requires at least one flooded sample"
+        )
     X_reg = reg_pipeline.named_steps["imputer"].transform(df_flooded[FEATURE_COLS])
     reg_explainer = shap.TreeExplainer(reg_pipeline.named_steps["model"])
     reg_shap_values = reg_explainer.shap_values(X_reg)

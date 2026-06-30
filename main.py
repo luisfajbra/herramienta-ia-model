@@ -196,9 +196,8 @@ def main():
                 "ejecuta el pipeline completo primero"
             )
 
-        models_dir = Path("outputs/models")
-        clf_path = models_dir / "classifier.joblib"
-        reg_path = models_dir / "regressor.joblib"
+        clf_path = MODELS_DIR / "classifier.joblib"
+        reg_path = MODELS_DIR / "regressor.joblib"
         if not clf_path.exists() or not reg_path.exists():
             parser.error(
                 "--analyze-features requiere modelos entrenados en outputs/models/; "
