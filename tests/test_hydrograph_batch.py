@@ -482,7 +482,7 @@ def test_run_batch_validation_generates_flood_maps_in_output_root(
     assert len(calls) == 1
     _, inp_path, map_out_dir, scenario_id = calls[0]
     assert inp_path == fake_inp
-    assert map_out_dir == out_dir
+    assert map_out_dir == out_dir / "sc001" / "flood_maps"
     assert scenario_id == "sc001"
 
 
@@ -510,7 +510,7 @@ def test_run_batch_validation_generates_critical_hydrograph_in_output_root(
     _run(tmp_path, csv_dir)
 
     assert calls == [
-        (_FAKE_SCENARIO, out_dir / "hydrograph_sc001.png"),
+        (_FAKE_SCENARIO, out_dir / "sc001" / "hydrograph_sc001.png"),
     ]
 
 

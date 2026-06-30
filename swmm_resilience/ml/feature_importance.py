@@ -15,9 +15,10 @@ def _plot_importance(pipeline, title: str, output_path: Path):
             "importance": importances,
         }
     )
+    df = df[df["importance"] > 0.0]
     df = df.sort_values("importance", ascending=True)
 
-    fig, ax = plt.subplots(figsize=(10, max(4, 0.45 * len(FEATURE_COLS))))
+    fig, ax = plt.subplots(figsize=(10, max(4, 0.45 * len(df))))
     ax.barh(df["feature"], df["importance"], color="steelblue")
     ax.set_xlabel("Importance")
     ax.set_title(title)

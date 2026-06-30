@@ -39,6 +39,6 @@ evaluation:
 
 visualization:
   factors_to_plot: [1.4, 1.6, 2.0, 3.0, 5.0]
-  colormap: "RdYlBu_r"
+  colormap: "RdBu_r"
   output_path: "outputs/maps/"
   show_labels_top_n: 5

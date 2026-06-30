@@ -72,6 +72,8 @@ def main():
     )
     parser.add_argument("--evaluate-hydrographs", metavar="DIR",
                         help="Directorio de archivos CSV de hidrogramas para validación batch")
+    parser.add_argument("--evaluate-shapes", action="store_true",
+                        help="Evaluar SWMM vs ML para cada forma de hidrograma en hydrograph_shapes_dir")
     parser.add_argument("--base-inp", metavar="PATH",
                         help="Ruta al archivo .inp base de SWMM (requerido con --evaluate-hydrographs)")
     parser.add_argument("--clf-path", metavar="PATH",
@@ -176,6 +178,86 @@ def main():
             print(f"  {path}")
         return
 
+    # ── Modo: evaluación de formas de hidrograma ─────────────────────────────
+    if args.evaluate_shapes:
+        if config.simulation.hydrograph_shapes_dir is None:
+            parser.error("--evaluate-shapes requiere hydrograph_shapes_dir en config.yaml")
+        if not config.dataset.output_path.exists():
+            parser.error(
+                f"--evaluate-shapes requiere el dataset entrenado en "
+                f"{config.dataset.output_path}; ejecuta el pipeline completo primero"
+            )
+
+        from swmm_resilience.simulation.hydrograph_shapes import load_all_shapes
+        from swmm_resilience.validation.hydrograph_csv import write_shape_validation_csv
+        from swmm_resilience.validation.hydrograph_batch import run_batch_validation
+        import tempfile
+
+        shapes = load_all_shapes(config.simulation.hydrograph_shapes_dir)
+
+        # Add the original .inp base timeseries as a shape called "base"
+        from swmm_resilience.simulation.swmm_api_io import load_inp as _load_inp
+        _base_inp = _load_inp(config.network.inp_path)
+        _base_ts_raw = (
+            next(
+                (list(ts.data) for ts in _base_inp["TIMESERIES"].values() if ts.data),
+                [],
+            )
+            if "TIMESERIES" in _base_inp
+            else []
+        )
+        if _base_ts_raw:
+            _peak = max(v for _, v in _base_ts_raw)
+            if _peak > 0:
+                shapes = {"base": [(t, v / _peak) for t, v in _base_ts_raw], **shapes}
+
+        _df = pd.read_csv(config.dataset.output_path)
+        base_inflows = _df.groupby("node_id")["base_inflow_lps"].first().to_dict()
+        # Only nodes with non-zero inflow are written to validation CSVs
+        expected_nodes = {nid for nid, v in base_inflows.items() if v > 0}
+        factors_to_eval = config.factors()          # all 25 factors (0.2 → 5.0)
+        tmp_val_root = Path(tempfile.mkdtemp(prefix="shape_val_"))
+
+        print(
+            f"\nEvaluando {len(shapes)} formas × {len(factors_to_eval)} factores "
+            f"({factors_to_eval}) ..."
+        )
+        for shape_id, shape in shapes.items():
+            shape_csv_dir = tmp_val_root / shape_id
+            for factor in factors_to_eval:
+                write_shape_validation_csv(shape_id, shape, base_inflows, factor, shape_csv_dir)
+
+            out_dir = config.visualization.output_path / shape_id
+            print(f"\n  [{shape_id}]  → {out_dir}")
+            summary = run_batch_validation(
+                csv_dir=shape_csv_dir,
+                base_inp_path=config.network.inp_path,
+                clf_path=MODELS_DIR / "classifier.joblib",
+                reg_path=MODELS_DIR / "regressor.joblib",
+                flood_threshold_m3=config.dataset.flood_threshold_m3,
+                out_dir=out_dir,
+                expected_nodes=expected_nodes,
+                drain_down_hours=config.validation.drain_down_hours,
+                factor_range=(config.simulation.factor_min, config.simulation.factor_max),
+            )
+            cls = summary["classification"]
+            vol = summary["volume"]
+            print(
+                f"    Escenarios: {summary['n_scenarios']}  "
+                f"F1={cls.get('f1', 0):.3f}  "
+                f"NSE={vol.get('nse', float('nan')):.3f}  "
+                f"Vol_error={vol.get('error_pct_total', float('nan')):.1f}%"
+            )
+            if summary.get("timings"):
+                t_sw = sum(t["t_swmm_s"] for t in summary["timings"])
+                t_ml = sum(t["t_features_s"] + t["t_inference_s"] for t in summary["timings"])
+                speedups = [t["speedup"] for t in summary["timings"] if t.get("speedup")]
+                print(
+                    f"    SWMM: {t_sw:.2f} s  ML: {t_ml:.4f} s"
+                    + (f"  x{sum(speedups)/len(speedups):.0f}" if speedups else "")
+                )
+        return
+
     # ── Modo: validación batch de hidrogramas ────────────────────────────────
     if args.evaluate_hydrographs:
         if args.base_inp is None:
@@ -259,9 +341,16 @@ def main():
             t_ml_total = sum(
                 t["t_features_s"] + t["t_inference_s"] for t in summary["timings"]
             )
-            print("\n  Tiempos de cómputo:")
-            print(f"    SWMM total      : {t_swmm_total:.2f} s")
-            print(f"    ML total        : {t_ml_total:.4f} s (features + inferencia)")
+            print("\n  Tiempos de cómputo por escenario:")
+            for t in summary["timings"]:
+                t_ml = t["t_features_s"] + t["t_inference_s"]
+                sp = t.get("speedup")
+                sp_txt = f"  x{sp:.0f}" if sp else ""
+                print(
+                    f"    {t['scenario_id']:<30}  SWMM: {t['t_swmm_s']:.3f} s  "
+                    f"ML: {t_ml:.4f} s{sp_txt}"
+                )
+            print(f"    {'TOTAL':<30}  SWMM: {t_swmm_total:.3f} s  ML: {t_ml_total:.4f} s")
             if speedups:
                 print(f"    Speed-up medio  : x{sum(speedups) / len(speedups):.0f}")
 

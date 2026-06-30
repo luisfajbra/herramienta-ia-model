@@ -30,7 +30,7 @@ NODE_DRY_SIZE = 15
 NODE_DRY_EDGE = "#90A4AE"
 NODE_FLOOD_SIZE_MIN = 40
 NODE_FLOOD_SIZE_MAX = 500
-COLORMAP = "plasma"
+COLORMAP = "RdBu_r"
 ANNOTATION_BBOX = dict(boxstyle="round,pad=0.3", fc="#FFFF99", ec="#AAAAAA", alpha=0.9)
 TOP_N_LABELS = 5
 FIG_SIZE = (13, 10)

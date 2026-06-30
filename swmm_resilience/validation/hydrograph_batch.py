@@ -272,9 +272,7 @@ def run_batch_validation(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     inp_dir = out_dir / "inp"
-    plots_dir = out_dir / "plots"
     inp_dir.mkdir(parents=True, exist_ok=True)
-    plots_dir.mkdir(parents=True, exist_ok=True)
 
     _validate_base_inp(base_inp_path, clf_path, allow_inp_mismatch)
 
@@ -330,19 +328,24 @@ def run_batch_validation(
         comp_df = build_comparison_df(swmm_df, pred_df, scenario.scenario_id)
         all_comp_dfs.append(comp_df)
 
-        # Step g: plots
-        plot_parity_nodes(comp_df, plots_dir, scenario.scenario_id)
-        plot_parity_aggregated(comp_df, plots_dir, scenario.scenario_id)
-        plot_node_profiles(comp_df, plots_dir, scenario.scenario_id)
+        # Step g: plots — each scenario gets its own subdirectory
+        scenario_dir = out_dir / scenario.scenario_id
+        flood_maps_dir = scenario_dir / "flood_maps"
+        scenario_dir.mkdir(parents=True, exist_ok=True)
+        flood_maps_dir.mkdir(parents=True, exist_ok=True)
+
+        plot_parity_nodes(comp_df, scenario_dir, scenario.scenario_id)
+        plot_parity_aggregated(comp_df, scenario_dir, scenario.scenario_id)
+        plot_node_profiles(comp_df, scenario_dir, scenario.scenario_id)
         plot_scenario_flood_maps(
             comp_df,
             scenario_inp_path,
-            out_dir,
+            flood_maps_dir,
             scenario.scenario_id,
         )
         plot_scenario_hydrograph(
             scenario,
-            out_dir / f"hydrograph_{scenario.scenario_id}.png",
+            scenario_dir / f"hydrograph_{scenario.scenario_id}.png",
         )
 
         # Step h: per-scenario metrics, totals, timings, pooled PR-AUC inputs
@@ -462,7 +465,7 @@ def run_batch_validation(
     )
     scenario_totals_csv_path = out_dir / "scenario_totals.csv"
     totals_df.to_csv(scenario_totals_csv_path, index=False)
-    plot_totals_comparison(totals_df, plots_dir / "totals_comparison.png")
+    plot_totals_comparison(totals_df, out_dir / "totals_comparison.png")
 
     timings_df = pd.DataFrame(timing_rows)
     timings_csv_path = out_dir / "timings.csv"
