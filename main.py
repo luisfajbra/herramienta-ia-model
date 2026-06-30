@@ -74,6 +74,8 @@ def main():
                         help="Directorio de archivos CSV de hidrogramas para validación batch")
     parser.add_argument("--evaluate-shapes", action="store_true",
                         help="Evaluar SWMM vs ML para cada forma de hidrograma en hydrograph_shapes_dir")
+    parser.add_argument("--analyze-features", action="store_true",
+                        help="Correlación, ablación y SHAP para los features del modelo")
     parser.add_argument("--base-inp", metavar="PATH",
                         help="Ruta al archivo .inp base de SWMM (requerido con --evaluate-hydrographs)")
     parser.add_argument("--clf-path", metavar="PATH",
@@ -176,6 +178,56 @@ def main():
         print(f"\nGraficas generadas ({len(paths)}):")
         for path in paths:
             print(f"  {path}")
+        return
+
+    # ── Modo: análisis de features ───────────────────────────────────────────
+    if args.analyze_features:
+        import joblib
+        from swmm_resilience.ml.feature_analysis import (
+            plot_correlation,
+            run_ablation,
+            plot_shap,
+        )
+
+        dataset_path = Path(config.dataset.output_path)
+        if not dataset_path.exists():
+            parser.error(
+                f"--analyze-features requiere el dataset en {dataset_path}; "
+                "ejecuta el pipeline completo primero"
+            )
+
+        models_dir = Path("outputs/models")
+        clf_path = models_dir / "classifier.joblib"
+        reg_path = models_dir / "regressor.joblib"
+        if not clf_path.exists() or not reg_path.exists():
+            parser.error(
+                "--analyze-features requiere modelos entrenados en outputs/models/; "
+                "ejecuta python main.py --only-ml primero"
+            )
+
+        df_analysis = pd.read_csv(dataset_path)
+        # joblib/pickle is safe here: files are written by this pipeline's own
+        # train_models() call and never loaded from an external or untrusted source.
+        clf_pipeline = joblib.load(clf_path)
+        reg_pipeline = joblib.load(reg_path)
+        out_dir = Path("outputs/feature_analysis")
+
+        print("\nAnálisis de features...")
+        print("  1/3  Correlación...")
+        plot_correlation(df_analysis, out_dir)
+        print("  2/3  Ablación (LOSO × 2 runs) — puede tardar ~2 min...")
+        ablation_result = run_ablation(df_analysis, config, out_dir)
+        print(
+            f"        Full  → F1={ablation_result['full']['classifier']['f1']:.3f}  "
+            f"NSE={ablation_result['full']['regressor_oracle']['nse']:.3f}"
+        )
+        print(
+            f"        Reduced → F1={ablation_result['reduced']['classifier']['f1']:.3f}  "
+            f"NSE={ablation_result['reduced']['regressor_oracle']['nse']:.3f}"
+        )
+        print("  3/3  SHAP...")
+        plot_shap(clf_pipeline, reg_pipeline, df_analysis, out_dir)
+        print(f"\nResultados guardados en {out_dir}/")
         return
 
     # ── Modo: evaluación de formas de hidrograma ─────────────────────────────
