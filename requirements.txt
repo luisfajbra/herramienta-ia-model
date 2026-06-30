@@ -11,3 +11,4 @@ swmm-api>=0.4
 ydata-profiling>=4.17,<5
 Pillow>=10.0.0
 pytest>=8.0
+shap>=0.44.0
