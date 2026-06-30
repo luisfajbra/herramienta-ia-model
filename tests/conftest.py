@@ -1,3 +1,6 @@
+import matplotlib
+matplotlib.use('Agg')
+
 from pathlib import Path
 from types import SimpleNamespace
 
