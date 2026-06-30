@@ -58,3 +58,39 @@ def test_plot_correlation_creates_files(analysis_df, tmp_path):
     assert (tmp_path / "correlation_pearson.png").exists()
     assert (tmp_path / "correlation_spearman.png").exists()
     assert (tmp_path / "feature_target_correlation.png").exists()
+
+
+def test_run_ablation_returns_both_runs(analysis_df, analysis_config, tmp_path):
+    from swmm_resilience.ml.feature_analysis import run_ablation
+
+    result = run_ablation(analysis_df, analysis_config, tmp_path)
+
+    assert "full" in result
+    assert "reduced" in result
+    for run_key in ("full", "reduced"):
+        assert "classifier" in result[run_key]
+        assert "regressor_oracle" in result[run_key]
+        assert "f1" in result[run_key]["classifier"]
+        assert "auc_roc" in result[run_key]["classifier"]
+        assert "nse" in result[run_key]["regressor_oracle"]
+        assert "r2" in result[run_key]["regressor_oracle"]
+
+
+def test_run_ablation_writes_json(analysis_df, analysis_config, tmp_path):
+    from swmm_resilience.ml.feature_analysis import run_ablation
+    import json
+
+    run_ablation(analysis_df, analysis_config, tmp_path)
+
+    json_path = tmp_path / "ablation_results.json"
+    assert json_path.exists()
+    data = json.loads(json_path.read_text())
+    assert "full" in data and "reduced" in data
+
+
+def test_run_ablation_writes_chart(analysis_df, analysis_config, tmp_path):
+    from swmm_resilience.ml.feature_analysis import run_ablation
+
+    run_ablation(analysis_df, analysis_config, tmp_path)
+
+    assert (tmp_path / "ablation_comparison.png").exists()

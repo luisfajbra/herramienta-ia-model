@@ -82,3 +82,121 @@ def plot_correlation(df: pd.DataFrame, out_dir: Path) -> None:
     fig.tight_layout()
     fig.savefig(out_dir / "feature_target_correlation.png", dpi=150, bbox_inches="tight")
     plt.close(fig)
+
+
+def run_ablation(df: pd.DataFrame, config, out_dir: Path) -> dict:
+    """LOSO ablation: full 17 features vs. 15 features (no duracion/tiempo_al_pico).
+
+    Returns the results dict and writes ablation_results.json + ablation_comparison.png.
+    """
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    reduced_cols = [f for f in FEATURE_COLS if f not in ("duracion_horas", "tiempo_al_pico_h")]
+
+    def _loso_metrics(feature_cols: list) -> dict:
+        X = df[feature_cols].values
+        y_clf = df["inunda"].values
+        y_reg = df["vol_inundacion_m3"].values
+        groups = df["factor_mult"].values
+
+        loso = LeaveOneGroupOut()
+        f1_scores: list[float] = []
+        auc_scores: list[float] = []
+        reg_true_parts: list[np.ndarray] = []
+        reg_pred_parts: list[np.ndarray] = []
+
+        for train_idx, test_idx in loso.split(X, y_clf, groups):
+            X_tr, X_te = X[train_idx], X[test_idx]
+            yc_tr, yc_te = y_clf[train_idx], y_clf[test_idx]
+            yr_tr, yr_te = y_reg[train_idx], y_reg[test_idx]
+
+            n_neg, n_pos = (yc_tr == 0).sum(), (yc_tr == 1).sum()
+            spw = n_neg / n_pos if n_pos > 0 else 1.0
+
+            clf = make_classifier(config, spw)
+            clf.fit(X_tr, yc_tr)
+
+            reg = make_regressor(config)
+            flooded_tr = yc_tr == 1
+            if flooded_tr.sum() > 0:
+                reg.fit(X_tr[flooded_tr], np.log1p(yr_tr[flooded_tr]))
+
+            yc_pred = clf.predict(X_te)
+            yc_prob = clf.predict_proba(X_te)[:, 1]
+
+            f1_scores.append(float(f1_score(yc_te, yc_pred, zero_division=0)))
+            has_both = yc_te.sum() > 0 and (1 - yc_te).sum() > 0
+            auc_scores.append(
+                float(roc_auc_score(yc_te, yc_prob)) if has_both else float("nan")
+            )
+
+            flooded_te = yc_te == 1
+            if flooded_te.sum() > 0:
+                yr_pred = np.expm1(reg.predict(X_te[flooded_te]))
+                yr_pred = np.clip(yr_pred, 0.0, None)
+                reg_true_parts.append(yr_te[flooded_te])
+                reg_pred_parts.append(yr_pred)
+
+        f1_mean = float(np.nanmean(f1_scores))
+        auc_mean = float(np.nanmean(auc_scores))
+
+        if reg_true_parts:
+            y_true_all = np.concatenate(reg_true_parts)
+            y_pred_all = np.concatenate(reg_pred_parts)
+            ss_res = float(np.sum((y_true_all - y_pred_all) ** 2))
+            ss_tot = float(np.sum((y_true_all - np.mean(y_true_all)) ** 2))
+            nse = float(1.0 - ss_res / ss_tot) if ss_tot > 0 else 1.0
+            r2 = float(r2_score(y_true_all, y_pred_all))
+        else:
+            nse = r2 = float("nan")
+
+        return {
+            "classifier": {"f1": f1_mean, "auc_roc": auc_mean},
+            "regressor_oracle": {"nse": nse, "r2": r2},
+        }
+
+    results = {
+        "full": _loso_metrics(FEATURE_COLS),
+        "reduced": _loso_metrics(reduced_cols),
+    }
+
+    with open(out_dir / "ablation_results.json", "w", encoding="utf-8") as f:
+        json.dump(results, f, indent=2)
+
+    metric_labels = ["F1", "AUC-ROC", "NSE", "R²"]
+    full_vals = [
+        results["full"]["classifier"]["f1"],
+        results["full"]["classifier"]["auc_roc"],
+        results["full"]["regressor_oracle"]["nse"],
+        results["full"]["regressor_oracle"]["r2"],
+    ]
+    reduced_vals = [
+        results["reduced"]["classifier"]["f1"],
+        results["reduced"]["classifier"]["auc_roc"],
+        results["reduced"]["regressor_oracle"]["nse"],
+        results["reduced"]["regressor_oracle"]["r2"],
+    ]
+
+    x = np.arange(len(metric_labels))
+    width = 0.35
+    fig, ax = plt.subplots(figsize=(9, 5))
+    bars_full = ax.bar(x - width / 2, full_vals, width, label="Full (17 features)", color="steelblue")
+    bars_red = ax.bar(x + width / 2, reduced_vals, width, label="Reduced (15 features)", color="darkorange")
+    for bar in list(bars_full) + list(bars_red):
+        h = bar.get_height()
+        ax.text(
+            bar.get_x() + bar.get_width() / 2, h + 0.01,
+            f"{h:.2f}", ha="center", va="bottom", fontsize=8,
+        )
+    ax.set_xticks(x)
+    ax.set_xticklabels(metric_labels)
+    ax.set_ylim(0, 1.15)
+    ax.set_ylabel("Score")
+    ax.set_title("Ablation Study: Full vs. Reduced Feature Set (LOSO)")
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(out_dir / "ablation_comparison.png", dpi=150, bbox_inches="tight")
+    plt.close(fig)
+
+    return results
