@@ -233,7 +233,7 @@ def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> No
         feat_idx = FEATURE_COLS.index(feat)
         shap.dependence_plot(
             feat_idx, clf_shap_values, X_clf,
-            feature_names=FEATURE_COLS, show=False,
+            feature_names=display_names, show=False,
         )
         plt.savefig(
             out_dir / f"shap_dependence_classifier_{feat}.png",
@@ -260,7 +260,7 @@ def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> No
         feat_idx = FEATURE_COLS.index(feat)
         shap.dependence_plot(
             feat_idx, reg_shap_values, X_reg,
-            feature_names=FEATURE_COLS, show=False,
+            feature_names=display_names, show=False,
         )
         plt.savefig(
             out_dir / f"shap_dependence_regressor_{feat}.png",

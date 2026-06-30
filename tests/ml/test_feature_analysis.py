@@ -104,7 +104,6 @@ def test_plot_shap_creates_summary_files(analysis_df, tmp_path):
     from swmm_resilience.ml.feature_analysis import plot_shap
     from swmm_resilience.ml.trainer import FEATURE_COLS
 
-    rng = np.random.default_rng(0)
     X = analysis_df[FEATURE_COLS].values
     y_clf = analysis_df["inunda"].values
     y_reg = np.log1p(analysis_df.loc[analysis_df["inunda"] == 1, "vol_inundacion_m3"].values)
