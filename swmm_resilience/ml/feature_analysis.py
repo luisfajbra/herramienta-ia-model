@@ -200,3 +200,70 @@ def run_ablation(df: pd.DataFrame, config, out_dir: Path) -> dict:
     plt.close(fig)
 
     return results
+
+
+def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> None:
+    """Save SHAP beeswarm summaries and dependence plots for both models.
+
+    Regressor SHAP values are in log1p(vol m³) space — axis labels note this.
+    clf_pipeline and reg_pipeline are trusted local artifacts (written by train_models).
+    """
+    import shap  # lazy import — only needed when this function is called
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    display_names = [feature_display_name(f) for f in FEATURE_COLS]
+
+    # ── Classifier ───────────────────────────────────────────────────────────
+    X_clf = clf_pipeline.named_steps["imputer"].transform(df[FEATURE_COLS])
+    clf_explainer = shap.TreeExplainer(clf_pipeline.named_steps["model"])
+    clf_shap_values = clf_explainer.shap_values(X_clf)
+    # XGBoost binary classifier: shap_values is either a 2D array or a list
+    # [neg_class, pos_class] depending on shap version — normalise to pos_class
+    if isinstance(clf_shap_values, list):
+        clf_shap_values = clf_shap_values[1]
+
+    shap.summary_plot(clf_shap_values, X_clf, feature_names=display_names, show=False)
+    plt.title("SHAP Summary — Classifier", fontsize=12)
+    plt.savefig(out_dir / "shap_classifier_summary.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    for feat in ("duracion_horas", "tiempo_al_pico_h"):
+        feat_idx = FEATURE_COLS.index(feat)
+        shap.dependence_plot(
+            feat_idx, clf_shap_values, X_clf,
+            feature_names=FEATURE_COLS, show=False,
+        )
+        plt.savefig(
+            out_dir / f"shap_dependence_classifier_{feat}.png",
+            dpi=150, bbox_inches="tight",
+        )
+        plt.close()
+
+    # ── Regressor (flooded rows only — model trained on log1p(vol)) ──────────
+    df_flooded = df[df["inunda"] == 1].reset_index(drop=True)
+    X_reg = reg_pipeline.named_steps["imputer"].transform(df_flooded[FEATURE_COLS])
+    reg_explainer = shap.TreeExplainer(reg_pipeline.named_steps["model"])
+    reg_shap_values = reg_explainer.shap_values(X_reg)
+    if isinstance(reg_shap_values, list):
+        reg_shap_values = reg_shap_values[1]
+
+    shap.summary_plot(reg_shap_values, X_reg, feature_names=display_names, show=False)
+    plt.title(
+        "SHAP Summary — Regressor (values in log1p(vol m³) space)", fontsize=12
+    )
+    plt.savefig(out_dir / "shap_regressor_summary.png", dpi=150, bbox_inches="tight")
+    plt.close()
+
+    for feat in ("duracion_horas", "tiempo_al_pico_h"):
+        feat_idx = FEATURE_COLS.index(feat)
+        shap.dependence_plot(
+            feat_idx, reg_shap_values, X_reg,
+            feature_names=FEATURE_COLS, show=False,
+        )
+        plt.savefig(
+            out_dir / f"shap_dependence_regressor_{feat}.png",
+            dpi=150, bbox_inches="tight",
+        )
+        plt.close()

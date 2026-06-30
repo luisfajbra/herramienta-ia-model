@@ -94,3 +94,40 @@ def test_run_ablation_writes_chart(analysis_df, analysis_config, tmp_path):
     run_ablation(analysis_df, analysis_config, tmp_path)
 
     assert (tmp_path / "ablation_comparison.png").exists()
+
+
+def test_plot_shap_creates_summary_files(analysis_df, tmp_path):
+    import numpy as np
+    from sklearn.impute import SimpleImputer
+    from sklearn.pipeline import Pipeline
+    from xgboost import XGBClassifier, XGBRegressor
+    from swmm_resilience.ml.feature_analysis import plot_shap
+    from swmm_resilience.ml.trainer import FEATURE_COLS
+
+    rng = np.random.default_rng(0)
+    X = analysis_df[FEATURE_COLS].values
+    y_clf = analysis_df["inunda"].values
+    y_reg = np.log1p(analysis_df.loc[analysis_df["inunda"] == 1, "vol_inundacion_m3"].values)
+    X_reg = analysis_df.loc[analysis_df["inunda"] == 1, FEATURE_COLS].values
+
+    clf_pipeline = Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("model", XGBClassifier(n_estimators=3, max_depth=2, random_state=42,
+                                eval_metric="logloss")),
+    ])
+    clf_pipeline.fit(X, y_clf)
+
+    reg_pipeline = Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("model", XGBRegressor(n_estimators=3, max_depth=2, random_state=42)),
+    ])
+    reg_pipeline.fit(X_reg, y_reg)
+
+    plot_shap(clf_pipeline, reg_pipeline, analysis_df, tmp_path)
+
+    assert (tmp_path / "shap_classifier_summary.png").exists()
+    assert (tmp_path / "shap_regressor_summary.png").exists()
+    assert (tmp_path / "shap_dependence_classifier_duracion_horas.png").exists()
+    assert (tmp_path / "shap_dependence_classifier_tiempo_al_pico_h.png").exists()
+    assert (tmp_path / "shap_dependence_regressor_duracion_horas.png").exists()
+    assert (tmp_path / "shap_dependence_regressor_tiempo_al_pico_h.png").exists()
