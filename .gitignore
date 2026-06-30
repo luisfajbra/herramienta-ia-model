@@ -76,5 +76,4 @@ data/networks/**/*.ini
 *.rpt
 *.out
 
-docs/
 .superpowers/obsidian/
