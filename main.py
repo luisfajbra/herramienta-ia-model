@@ -242,7 +242,6 @@ def main():
         from swmm_resilience.simulation.hydrograph_shapes import load_all_shapes
         from swmm_resilience.validation.hydrograph_csv import write_shape_validation_csv
         from swmm_resilience.validation.hydrograph_batch import run_batch_validation
-        import tempfile
 
         shapes = load_all_shapes(config.simulation.hydrograph_shapes_dir)
 
