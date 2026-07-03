@@ -167,10 +167,7 @@ def plot_flood_map(
     ax.set_xlabel("X Coordinate (m)", fontsize=10)
     ax.set_ylabel("Y Coordinate (m)", fontsize=10)
 
-    lines = title.split("\n", 1)
-    fig.suptitle(lines[0], fontsize=12, fontweight="bold", y=1.02)
-    if len(lines) > 1:
-        ax.set_title(lines[1], fontsize=10, style="italic", pad=6)
+    ax.set_title(title, fontsize=11, fontweight="bold", pad=8)
 
     ax.set_aspect("equal")
     ax.grid(True, linestyle="--", alpha=0.25)
