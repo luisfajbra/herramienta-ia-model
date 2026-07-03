@@ -231,8 +231,6 @@ def main():
 
     # ── Modo: evaluación de formas de hidrograma ─────────────────────────────
     if args.evaluate_shapes:
-        if config.simulation.hydrograph_shapes_dir is None:
-            parser.error("--evaluate-shapes requiere hydrograph_shapes_dir en config.yaml")
         if not config.dataset.output_path.exists():
             parser.error(
                 f"--evaluate-shapes requiere el dataset entrenado en "
@@ -243,7 +241,7 @@ def main():
         from swmm_resilience.validation.hydrograph_csv import write_shape_validation_csv
         from swmm_resilience.validation.hydrograph_batch import run_batch_validation
 
-        shapes = load_all_shapes(config.simulation.hydrograph_shapes_dir)
+        shapes = load_all_shapes(config.simulation.hydrograph_shapes_dir) if config.simulation.hydrograph_shapes_dir else {}
 
         # Add the original .inp base timeseries as a shape called "base"
         from swmm_resilience.simulation.swmm_api_io import load_inp as _load_inp
