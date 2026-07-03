@@ -1,3 +1,8 @@
+# 7-shape training config (base + 6 hydrograph shapes × 25 factors = 28,000 rows)
+# To regenerate: swap this file for config.yaml and run:
+#   python main.py                  (simulate + train + evaluate)
+#   python main.py --evaluate-shapes (SWMM vs ML figures for all 7 shapes)
+#   python main.py --analyze-features (correlation, ablation, SHAP)
 network:
   inp_path: "data/networks/chico_hydro-qx1/SWMM - Chico (PVC) Prueba 1 - Qx1.00.inp"
   name: "Chico Sur"
@@ -6,7 +11,7 @@ simulation:
   factor_min: 0.2
   factor_max: 5.0
   factor_step: 0.2
-  hydrograph_shapes_dir: ~  # set to "data/hydrograph_shapes" to include 6 extra shapes (see config_7shapes.yaml)
+  hydrograph_shapes_dir: "data/hydrograph_shapes"
 
 dataset:
   output_path: "data/training/dataset_final.csv"
