@@ -74,6 +74,8 @@ def main():
                         help="Directorio de archivos CSV de hidrogramas para validación batch")
     parser.add_argument("--evaluate-shapes", action="store_true",
                         help="Evaluar SWMM vs ML para cada forma de hidrograma en hydrograph_shapes_dir")
+    parser.add_argument("--evaluate-generalization", action="store_true",
+                        help="Evaluar generalización: SWMM vs ML en factores no vistos (puntos medios entre factores de entrenamiento)")
     parser.add_argument("--analyze-features", action="store_true",
                         help="Correlación, ablación y SHAP para los features del modelo")
     parser.add_argument("--base-inp", metavar="PATH",
@@ -292,6 +294,90 @@ def main():
             vol = summary["volume"]
             print(
                 f"    Escenarios: {summary['n_scenarios']}  "
+                f"F1={cls.get('f1', 0):.3f}  "
+                f"NSE={vol.get('nse', float('nan')):.3f}  "
+                f"Vol_error={vol.get('error_pct_total', float('nan')):.1f}%"
+            )
+            if summary.get("timings"):
+                t_sw = sum(t["t_swmm_s"] for t in summary["timings"])
+                t_ml = sum(t["t_features_s"] + t["t_inference_s"] for t in summary["timings"])
+                speedups = [t["speedup"] for t in summary["timings"] if t.get("speedup")]
+                print(
+                    f"    SWMM: {t_sw:.2f} s  ML: {t_ml:.4f} s"
+                    + (f"  x{sum(speedups)/len(speedups):.0f}" if speedups else "")
+                )
+        return
+
+    # ── Modo: evaluación de generalización (factores no vistos) ──────────────
+    if args.evaluate_generalization:
+        if not config.dataset.output_path.exists():
+            parser.error(
+                f"--evaluate-generalization requiere el dataset en "
+                f"{config.dataset.output_path}; ejecuta el pipeline completo primero"
+            )
+
+        from swmm_resilience.simulation.hydrograph_shapes import load_all_shapes
+        from swmm_resilience.validation.hydrograph_csv import write_shape_validation_csv
+        from swmm_resilience.validation.hydrograph_batch import run_batch_validation
+
+        shapes = load_all_shapes(config.simulation.hydrograph_shapes_dir) if config.simulation.hydrograph_shapes_dir else {}
+
+        from swmm_resilience.simulation.swmm_api_io import load_inp as _load_inp
+        _base_inp = _load_inp(config.network.inp_path)
+        _base_ts_raw = (
+            next(
+                (list(ts.data) for ts in _base_inp["TIMESERIES"].values() if ts.data),
+                [],
+            )
+            if "TIMESERIES" in _base_inp
+            else []
+        )
+        if _base_ts_raw:
+            _peak = max(v for _, v in _base_ts_raw)
+            if _peak > 0:
+                shapes = {"base": [(t, v / _peak) for t, v in _base_ts_raw], **shapes}
+
+        _df = pd.read_csv(config.dataset.output_path)
+        base_inflows = _df.groupby("node_id")["base_inflow_lps"].first().to_dict()
+        expected_nodes = {nid for nid, v in base_inflows.items() if v > 0}
+
+        training_factors = config.factors()
+        unseen_factors = [
+            round((training_factors[i] + training_factors[i + 1]) / 2, 3)
+            for i in range(len(training_factors) - 1)
+        ]
+
+        tmp_gen_root = Path(tempfile.mkdtemp(prefix="gen_eval_"))
+        out_root = Path("outputs/generalization")
+
+        print(
+            f"\nGeneralization evaluation: {len(shapes)} shapes × "
+            f"{len(unseen_factors)} unseen factors (midpoints between training steps)"
+        )
+        print(f"Unseen factors: {unseen_factors}")
+
+        for shape_id, shape in shapes.items():
+            shape_csv_dir = tmp_gen_root / shape_id
+            for factor in unseen_factors:
+                write_shape_validation_csv(shape_id, shape, base_inflows, factor, shape_csv_dir)
+
+            out_dir = out_root / shape_id
+            print(f"\n  [{shape_id}]  → {out_dir}")
+            summary = run_batch_validation(
+                csv_dir=shape_csv_dir,
+                base_inp_path=config.network.inp_path,
+                clf_path=MODELS_DIR / "classifier.joblib",
+                reg_path=MODELS_DIR / "regressor.joblib",
+                flood_threshold_m3=config.dataset.flood_threshold_m3,
+                out_dir=out_dir,
+                expected_nodes=expected_nodes,
+                drain_down_hours=config.validation.drain_down_hours,
+                factor_range=(config.simulation.factor_min, config.simulation.factor_max),
+            )
+            cls = summary["classification"]
+            vol = summary["volume"]
+            print(
+                f"    Scenarios: {summary['n_scenarios']}  "
                 f"F1={cls.get('f1', 0):.3f}  "
                 f"NSE={vol.get('nse', float('nan')):.3f}  "
                 f"Vol_error={vol.get('error_pct_total', float('nan')):.1f}%"
