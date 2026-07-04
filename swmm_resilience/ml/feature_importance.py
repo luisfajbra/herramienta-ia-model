@@ -5,17 +5,20 @@ from pathlib import Path
 from .trainer import FEATURE_COLS
 from ..visualization.labels import feature_display_name
 
+REPORT_EXCLUDED_FEATURES = {"n_tuberias_in", "n_tuberias_out"}
+
 
 def _plot_importance(pipeline, title: str, output_path: Path):
     model = pipeline.named_steps["model"]
     importances = model.feature_importances_
     df = pd.DataFrame(
         {
+            "raw_feature": FEATURE_COLS,
             "feature": [feature_display_name(feature) for feature in FEATURE_COLS],
             "importance": importances,
         }
     )
-    df = df[df["importance"] > 0.0]
+    df = df[~df["raw_feature"].isin(REPORT_EXCLUDED_FEATURES)]
     df = df.sort_values("importance", ascending=True)
 
     fig, ax = plt.subplots(figsize=(10, max(4, 0.45 * len(df))))

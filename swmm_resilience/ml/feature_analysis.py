@@ -12,15 +12,23 @@ from sklearn.model_selection import LeaveOneGroupOut
 from .trainer import FEATURE_COLS, make_classifier, make_regressor
 from ..visualization.labels import feature_display_name
 
+REPORT_EXCLUDED_FEATURES = {"n_tuberias_in", "n_tuberias_out"}
+REPORT_FEATURE_COLS = [
+    feature for feature in FEATURE_COLS if feature not in REPORT_EXCLUDED_FEATURES
+]
+REPORT_FEATURE_INDICES = [
+    i for i, feature in enumerate(FEATURE_COLS) if feature not in REPORT_EXCLUDED_FEATURES
+]
+
 
 def plot_correlation(df: pd.DataFrame, out_dir: Path) -> None:
     """Save Pearson heatmap, Spearman heatmap, and feature-target bar chart."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    feat_df = df[FEATURE_COLS]
-    display_names = [feature_display_name(f) for f in FEATURE_COLS]
-    n = len(FEATURE_COLS)
+    feat_df = df[REPORT_FEATURE_COLS]
+    display_names = [feature_display_name(f) for f in REPORT_FEATURE_COLS]
+    n = len(REPORT_FEATURE_COLS)
 
     def _save_heatmap(mat: np.ndarray, title: str, filename: str) -> None:
         mask = np.triu(np.ones((n, n), dtype=bool), k=1)
@@ -47,11 +55,11 @@ def plot_correlation(df: pd.DataFrame, out_dir: Path) -> None:
     _save_heatmap(pearson, "Pearson Correlation — Features", "correlation_pearson.png")
     _save_heatmap(spearman, "Spearman Correlation — Features", "correlation_spearman.png")
 
-    rho_inunda = [df[f].corr(df["inunda"], method="spearman") for f in FEATURE_COLS]
+    rho_inunda = [df[f].corr(df["inunda"], method="spearman") for f in REPORT_FEATURE_COLS]
     flooded = df[df["inunda"] == 1]
     rho_vol = [
         flooded[f].corr(flooded["vol_inundacion_m3"], method="spearman")
-        for f in FEATURE_COLS
+        for f in REPORT_FEATURE_COLS
     ]
 
     order = np.argsort(np.abs(rho_inunda))
@@ -213,7 +221,7 @@ def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> No
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    display_names = [feature_display_name(f) for f in FEATURE_COLS]
+    display_names = [feature_display_name(f) for f in REPORT_FEATURE_COLS]
 
     # ── Classifier ───────────────────────────────────────────────────────────
     X_clf = clf_pipeline.named_steps["imputer"].transform(df[FEATURE_COLS])
@@ -224,16 +232,27 @@ def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> No
     if isinstance(clf_shap_values, list):
         clf_shap_values = clf_shap_values[1]
 
-    shap.summary_plot(clf_shap_values, X_clf, feature_names=display_names, show=False)
+    clf_shap_report = clf_shap_values[:, REPORT_FEATURE_INDICES]
+    X_clf_report = X_clf[:, REPORT_FEATURE_INDICES]
+    shap.summary_plot(
+        clf_shap_report,
+        X_clf_report,
+        feature_names=display_names,
+        show=False,
+    )
     plt.title("SHAP Summary — Classifier", fontsize=12)
     plt.savefig(out_dir / "shap_classifier_summary.png", dpi=150, bbox_inches="tight")
     plt.close()
 
     for feat in ("duracion_horas", "tiempo_al_pico_h"):
-        feat_idx = FEATURE_COLS.index(feat)
+        feat_idx = REPORT_FEATURE_COLS.index(feat)
         shap.dependence_plot(
-            feat_idx, clf_shap_values, X_clf,
-            feature_names=display_names, show=False,
+            feat_idx,
+            clf_shap_report,
+            X_clf_report,
+            feature_names=display_names,
+            interaction_index=None,
+            show=False,
         )
         plt.savefig(
             out_dir / f"shap_dependence_classifier_{feat}.png",
@@ -254,7 +273,14 @@ def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> No
     if isinstance(reg_shap_values, list):
         reg_shap_values = reg_shap_values[1]
 
-    shap.summary_plot(reg_shap_values, X_reg, feature_names=display_names, show=False)
+    reg_shap_report = reg_shap_values[:, REPORT_FEATURE_INDICES]
+    X_reg_report = X_reg[:, REPORT_FEATURE_INDICES]
+    shap.summary_plot(
+        reg_shap_report,
+        X_reg_report,
+        feature_names=display_names,
+        show=False,
+    )
     plt.title(
         "SHAP Summary — Regressor (values in log1p(vol m³) space)", fontsize=12
     )
@@ -262,10 +288,14 @@ def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> No
     plt.close()
 
     for feat in ("duracion_horas", "tiempo_al_pico_h"):
-        feat_idx = FEATURE_COLS.index(feat)
+        feat_idx = REPORT_FEATURE_COLS.index(feat)
         shap.dependence_plot(
-            feat_idx, reg_shap_values, X_reg,
-            feature_names=display_names, show=False,
+            feat_idx,
+            reg_shap_report,
+            X_reg_report,
+            feature_names=display_names,
+            interaction_index=None,
+            show=False,
         )
         plt.savefig(
             out_dir / f"shap_dependence_regressor_{feat}.png",

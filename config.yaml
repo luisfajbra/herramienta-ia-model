@@ -6,7 +6,7 @@ simulation:
   factor_min: 0.2
   factor_max: 5.0
   factor_step: 0.2
-  hydrograph_shapes_dir: ~  # set to "data/hydrograph_shapes" to include 6 extra shapes (see config_7shapes.yaml)
+  hydrograph_shapes_dir: "data/hydrograph_shapes"
 
 dataset:
   output_path: "data/training/dataset_final.csv"
