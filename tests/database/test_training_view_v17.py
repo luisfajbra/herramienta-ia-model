@@ -280,13 +280,28 @@ def test_loader_rejects_empty_run_id_selection(migrated_conn):
         load_training_samples(migrated_conn, run_ids=[])
 
 
-@pytest.mark.parametrize("invalid_run_id", [True, "1", 1.0, 0, -1])
+@pytest.mark.parametrize(
+    "invalid_run_id",
+    [True, "1", 1.0, 0, -1, -(2**63) - 1],
+)
 def test_loader_rejects_invalid_explicit_run_ids(
     migrated_conn,
     invalid_run_id,
 ):
     with pytest.raises(ValueError, match="positive Python int"):
         load_training_samples(migrated_conn, run_ids=[invalid_run_id])
+
+
+def test_loader_rejects_run_id_above_sqlite_integer_range(migrated_conn):
+    with pytest.raises(ValueError, match="SQLite INTEGER range"):
+        load_training_samples(migrated_conn, run_ids=[2**63])
+
+
+def test_loader_accepts_sqlite_max_integer_before_database_selection(
+    migrated_conn,
+):
+    with pytest.raises(ValueError, match="missing run_ids"):
+        load_training_samples(migrated_conn, run_ids=[2**63 - 1])
 
 
 @pytest.mark.parametrize(
@@ -431,11 +446,35 @@ def test_loader_rejects_invalid_persisted_node_count(
     assert "run 1" in str(error.value)
 
 
-def test_loader_reads_key_check_and_view_from_one_wal_snapshot(tmp_path):
+def _matches_snapshot_boundary(statement, boundary):
+    sql = " ".join(statement.lower().split())
+    if boundary == "cardinality":
+        return (
+            "run.node_count" in sql
+            and "as feature_count" in sql
+            and "as result_count" in sql
+        )
+    if boundary == "key_symmetry":
+        return "with selected_runs as" in sql and "mismatches as" in sql
+    if boundary == "final_view":
+        return "from training_samples_v17" in sql
+    raise AssertionError(f"Unknown snapshot boundary: {boundary}")
+
+
+@pytest.mark.parametrize(
+    "mutation_boundary",
+    ["cardinality", "key_symmetry", "final_view"],
+)
+def test_loader_reads_every_validation_boundary_from_one_wal_snapshot(
+    tmp_path,
+    mutation_boundary,
+):
     database_path = tmp_path / "snapshot.sqlite3"
     reader = connect_database(database_path)
     writer = None
     mutated = False
+    mutation_inside_loader_savepoint = False
+    loader_savepoint_open = False
     try:
         apply_migrations(reader)
         _insert_network(reader)
@@ -449,28 +488,65 @@ def test_loader_reads_key_check_and_view_from_one_wal_snapshot(tmp_path):
         reader.commit()
         writer = connect_database(database_path)
 
-        def delete_result_between_reads(statement):
+        def delete_symmetric_rows_at_boundary(statement):
+            nonlocal loader_savepoint_open
             nonlocal mutated
-            if mutated or "FROM training_samples_v17" not in statement:
+            nonlocal mutation_inside_loader_savepoint
+            sql = " ".join(statement.lower().split())
+            if sql.startswith("savepoint training_samples_"):
+                loader_savepoint_open = True
+                return
+            if sql.startswith("release savepoint training_samples_"):
+                loader_savepoint_open = False
+                return
+            if mutated or not _matches_snapshot_boundary(
+                statement,
+                mutation_boundary,
+            ):
                 return
             mutated = True
+            mutation_inside_loader_savepoint = loader_savepoint_open
+            writer.execute(
+                "DELETE FROM node_features WHERE run_id = 1 AND node_pk = 20"
+            )
             writer.execute(
                 "DELETE FROM node_results WHERE run_id = 1 AND node_pk = 20"
             )
             writer.commit()
 
-        reader.set_trace_callback(delete_result_between_reads)
+        reader.set_trace_callback(delete_symmetric_rows_at_boundary)
+        reader.execute("BEGIN")
         frame = load_training_samples(reader)
         reader.set_trace_callback(None)
 
         assert mutated
+        assert mutation_inside_loader_savepoint
         assert frame["node_id"].tolist() == ["node-10", "node-20"]
+        assert reader.in_transaction
+        assert reader.execute(
+            "SELECT COUNT(*) FROM node_features WHERE run_id = 1"
+        ).fetchone()[0] == 2
+        assert reader.execute(
+            "SELECT COUNT(*) FROM node_results WHERE run_id = 1"
+        ).fetchone()[0] == 2
+        assert writer.execute(
+            "SELECT COUNT(*) FROM node_features WHERE run_id = 1"
+        ).fetchone()[0] == 1
         assert writer.execute(
             "SELECT COUNT(*) FROM node_results WHERE run_id = 1"
         ).fetchone()[0] == 1
+        reader.rollback()
         assert not reader.in_transaction
+        assert reader.execute(
+            "SELECT COUNT(*) FROM node_features WHERE run_id = 1"
+        ).fetchone()[0] == 1
+        assert reader.execute(
+            "SELECT COUNT(*) FROM node_results WHERE run_id = 1"
+        ).fetchone()[0] == 1
     finally:
         reader.set_trace_callback(None)
+        if reader.in_transaction:
+            reader.rollback()
         if writer is not None:
             writer.close()
         reader.close()

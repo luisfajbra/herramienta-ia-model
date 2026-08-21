@@ -91,6 +91,12 @@ def _normalize_run_ids(
             "run_ids must contain only positive Python int values: "
             f"{invalid!r}"
         )
+    out_of_range = [value for value in values if value > 2**63 - 1]
+    if out_of_range:
+        raise ValueError(
+            "run_ids must fit the positive SQLite INTEGER range "
+            f"1..{2**63 - 1}: {out_of_range!r}"
+        )
     return tuple(dict.fromkeys(values))
 
 
