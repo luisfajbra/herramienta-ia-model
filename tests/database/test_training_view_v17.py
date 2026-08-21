@@ -1,5 +1,9 @@
+import sqlite3
+from pathlib import Path
+
 import pandas as pd
 import pytest
+from pandas.api.types import is_float_dtype, is_integer_dtype
 
 from swmm_resilience.database.connection import connect_database
 from swmm_resilience.database.migrations import apply_migrations
@@ -7,7 +11,11 @@ from swmm_resilience.database.training_queries import (
     export_training_samples_csv,
     load_training_samples,
 )
-from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17, FeatureContractError
+from swmm_resilience.ml.contracts import (
+    FEATURE_COLUMNS_V17,
+    NULLABLE_FEATURE_COLUMNS_V17,
+    FeatureContractError,
+)
 
 
 IDENTITY_COLUMNS = [
@@ -156,6 +164,42 @@ def _insert_result(conn, run_id, node_pk, *, network_id=1, inunda=0):
     )
 
 
+def _target_validation_connection(*, inunda=1, vol_inundacion_m3=12.5):
+    conn = sqlite3.connect(":memory:")
+    conn.executescript(
+        """
+        CREATE TABLE runs (run_id INTEGER PRIMARY KEY, status TEXT NOT NULL);
+        CREATE TABLE node_features (run_id INTEGER, node_pk INTEGER);
+        CREATE TABLE node_results (run_id INTEGER, node_pk INTEGER);
+        INSERT INTO runs VALUES (1, 'COMPLETE');
+        INSERT INTO node_features VALUES (1, 10);
+        INSERT INTO node_results VALUES (1, 10);
+        """
+    )
+    row = {
+        "run_id": 1,
+        "network_id": 1,
+        "scenario_id": 1,
+        "scenario_key": "scenario-1",
+        "scenario_kind": "factor",
+        "factor_mult": 1.0,
+        "shape_id": "shape-1",
+        "node_id": "node-10",
+        **{
+            column: float(index + 1)
+            for index, column in enumerate(FEATURE_COLUMNS_V17)
+        },
+        "inunda": inunda,
+        "vol_inundacion_m3": vol_inundacion_m3,
+    }
+    pd.DataFrame([row]).to_sql(
+        "training_samples_v17",
+        conn,
+        index=False,
+    )
+    return conn
+
+
 def test_training_view_is_flat_canonical_and_deterministic(migrated_conn):
     _insert_network(migrated_conn)
     _insert_node(migrated_conn, 20, "B-node")
@@ -268,6 +312,98 @@ def test_loader_rejects_equal_counts_with_different_node_keys(migrated_conn):
     assert "missing feature (1, 30)" in str(error.value)
 
 
+def test_loader_reads_key_check_and_view_from_one_wal_snapshot(tmp_path):
+    database_path = tmp_path / "snapshot.sqlite3"
+    reader = connect_database(database_path)
+    writer = None
+    mutated = False
+    try:
+        apply_migrations(reader)
+        _insert_network(reader)
+        _insert_node(reader, 10, "node-10")
+        _insert_node(reader, 20, "node-20")
+        _insert_scenario_and_run(reader, run_id=1)
+        _insert_feature(reader, 1, 10)
+        _insert_feature(reader, 1, 20)
+        _insert_result(reader, 1, 10)
+        _insert_result(reader, 1, 20)
+        reader.commit()
+        writer = connect_database(database_path)
+
+        def delete_result_between_reads(statement):
+            nonlocal mutated
+            if mutated or "FROM training_samples_v17" not in statement:
+                return
+            mutated = True
+            writer.execute(
+                "DELETE FROM node_results WHERE run_id = 1 AND node_pk = 20"
+            )
+            writer.commit()
+
+        reader.set_trace_callback(delete_result_between_reads)
+        frame = load_training_samples(reader)
+        reader.set_trace_callback(None)
+
+        assert mutated
+        assert frame["node_id"].tolist() == ["node-10", "node-20"]
+        assert writer.execute(
+            "SELECT COUNT(*) FROM node_results WHERE run_id = 1"
+        ).fetchone()[0] == 1
+        assert not reader.in_transaction
+    finally:
+        reader.set_trace_callback(None)
+        if writer is not None:
+            writer.close()
+        reader.close()
+
+
+def test_loader_snapshot_preserves_callers_transaction_on_success(migrated_conn):
+    _insert_network(migrated_conn)
+    _insert_node(migrated_conn, 10, "node-10")
+    _insert_scenario_and_run(migrated_conn, run_id=1)
+    _insert_feature(migrated_conn, 1, 10)
+    _insert_result(migrated_conn, 1, 10)
+    migrated_conn.commit()
+    migrated_conn.execute(
+        "UPDATE networks SET name = 'caller-pending' WHERE network_id = 1"
+    )
+
+    frame = load_training_samples(migrated_conn)
+
+    assert frame["node_id"].tolist() == ["node-10"]
+    assert migrated_conn.in_transaction
+    assert migrated_conn.execute(
+        "SELECT name FROM networks WHERE network_id = 1"
+    ).fetchone()[0] == "caller-pending"
+    migrated_conn.rollback()
+    assert migrated_conn.execute(
+        "SELECT name FROM networks WHERE network_id = 1"
+    ).fetchone()[0] == "network-1"
+
+
+def test_loader_snapshot_preserves_callers_transaction_on_failure(migrated_conn):
+    _insert_network(migrated_conn)
+    _insert_node(migrated_conn, 10, "node-10")
+    _insert_scenario_and_run(migrated_conn, run_id=1)
+    _insert_feature(migrated_conn, 1, 10)
+    migrated_conn.commit()
+    migrated_conn.execute(
+        "UPDATE networks SET name = 'caller-pending' WHERE network_id = 1"
+    )
+
+    with pytest.raises(ValueError, match="feature/result row count"):
+        load_training_samples(migrated_conn)
+
+    assert migrated_conn.in_transaction
+    assert migrated_conn.execute(
+        "SELECT name FROM networks WHERE network_id = 1"
+    ).fetchone()[0] == "caller-pending"
+    migrated_conn.rollback()
+    assert migrated_conn.execute(
+        "SELECT name FROM networks WHERE network_id = 1"
+    ).fetchone()[0] == "network-1"
+
+
 def test_loader_validates_feature_contract_before_returning(migrated_conn):
     _insert_network(migrated_conn)
     _insert_node(migrated_conn, 10, "node-10")
@@ -278,6 +414,93 @@ def test_loader_validates_feature_contract_before_returning(migrated_conn):
 
     with pytest.raises(FeatureContractError, match="elev_fondo"):
         load_training_samples(migrated_conn)
+
+
+def test_loader_returns_nullable_features_as_normalized_floats(migrated_conn):
+    _insert_network(migrated_conn)
+    _insert_node(migrated_conn, 10, "node-10")
+    _insert_scenario_and_run(migrated_conn, run_id=1)
+    _insert_feature(migrated_conn, 1, 10)
+    migrated_conn.execute(
+        """
+        UPDATE node_features
+        SET diam_max_in = NULL,
+            diam_max_out = NULL,
+            pendiente_max_in = NULL,
+            pendiente_out = NULL,
+            dist_outfall_m = NULL,
+            upstream_capacity_lps = NULL
+        """
+    )
+    _insert_result(migrated_conn, 1, 10)
+    migrated_conn.commit()
+
+    frame = load_training_samples(migrated_conn)
+
+    for column in NULLABLE_FEATURE_COLUMNS_V17:
+        assert frame[column].isna().all()
+        assert is_float_dtype(frame[column].dtype), (
+            column,
+            frame[column].dtype,
+        )
+
+
+def test_loader_normalizes_valid_targets_to_canonical_dtypes():
+    conn = _target_validation_connection(
+        inunda="1",
+        vol_inundacion_m3="12.5",
+    )
+    try:
+        frame = load_training_samples(conn)
+    finally:
+        conn.close()
+
+    assert frame["inunda"].tolist() == [1]
+    assert is_integer_dtype(frame["inunda"].dtype)
+    assert frame["vol_inundacion_m3"].tolist() == [12.5]
+    assert is_float_dtype(frame["vol_inundacion_m3"].dtype)
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        (None, "inunda must not contain nulls"),
+        (float("nan"), "inunda must not contain nulls"),
+        (float("inf"), "inunda must contain only finite values"),
+        (float("-inf"), "inunda must contain only finite values"),
+        ("not-a-number", "inunda must be numeric"),
+        (-1, "inunda must contain only 0 or 1"),
+        (2, "inunda must contain only 0 or 1"),
+        (0.5, "inunda must contain only 0 or 1"),
+    ],
+)
+def test_loader_rejects_invalid_classification_targets(value, message):
+    conn = _target_validation_connection(inunda=value)
+    try:
+        with pytest.raises(ValueError, match=message):
+            load_training_samples(conn)
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    ("value", "message"),
+    [
+        (None, "vol_inundacion_m3 must not contain nulls"),
+        (float("nan"), "vol_inundacion_m3 must not contain nulls"),
+        (float("inf"), "vol_inundacion_m3 must contain only finite values"),
+        (float("-inf"), "vol_inundacion_m3 must contain only finite values"),
+        ("not-a-number", "vol_inundacion_m3 must be numeric"),
+        (-0.01, "vol_inundacion_m3 must be non-negative"),
+    ],
+)
+def test_loader_rejects_invalid_regression_targets(value, message):
+    conn = _target_validation_connection(vol_inundacion_m3=value)
+    try:
+        with pytest.raises(ValueError, match=message):
+            load_training_samples(conn)
+    finally:
+        conn.close()
 
 
 def test_csv_exists_only_after_explicit_export(migrated_conn, tmp_path):
@@ -320,3 +543,33 @@ def test_export_propagates_incomplete_data_error_without_creating_csv(
         export_training_samples_csv(migrated_conn, output)
 
     assert not output.exists()
+    assert not migrated_conn.in_transaction
+
+
+def test_export_write_failure_preserves_existing_csv_and_removes_temporary(
+    migrated_conn,
+    tmp_path,
+    monkeypatch,
+):
+    _insert_network(migrated_conn)
+    _insert_node(migrated_conn, 10, "node-10")
+    _insert_scenario_and_run(migrated_conn, run_id=1)
+    _insert_feature(migrated_conn, 1, 10)
+    _insert_result(migrated_conn, 1, 10)
+    migrated_conn.commit()
+    output = tmp_path / "training.csv"
+    original = b"existing,content\n1,kept\n"
+    output.write_bytes(original)
+
+    def write_partial_then_fail(_frame, destination, *, index):
+        assert index is False
+        Path(destination).write_text("partial", encoding="utf-8")
+        raise OSError("simulated CSV write failure")
+
+    monkeypatch.setattr(pd.DataFrame, "to_csv", write_partial_then_fail)
+
+    with pytest.raises(OSError, match="simulated CSV write failure"):
+        export_training_samples_csv(migrated_conn, output)
+
+    assert output.read_bytes() == original
+    assert list(tmp_path.glob(".training.csv.*.tmp")) == []
