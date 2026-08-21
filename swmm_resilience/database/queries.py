@@ -34,7 +34,7 @@ def register_temporal_artifact(
             artifact_id,
             run_id,
             network_hash,
-            str(parquet_path),
+            Path(parquet_path).as_posix(),
             node_count,
             step_count,
             created_at,
