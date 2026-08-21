@@ -7,7 +7,9 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from swmm_resilience.ml.trainer import FEATURE_COLS
+from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
+
+FEATURE_COLS = list(FEATURE_COLUMNS_V17)
 
 
 @pytest.fixture
