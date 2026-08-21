@@ -7,6 +7,7 @@ import pytest
 
 from swmm_resilience.ml import predict
 from swmm_resilience.ml import trainer
+from swmm_resilience.ml.contracts import FeatureContractError
 
 
 def test_train_models_rejects_dataset_without_flooded_rows(tmp_path, tiny_config_factory, trainer_training_df):
@@ -16,6 +17,33 @@ def test_train_models_rejects_dataset_without_flooded_rows(tmp_path, tiny_config
 
     with pytest.raises(ValueError, match="No hay filas inundadas"):
         trainer.train_models(df, tiny_config_factory(), tmp_path / "models")
+
+
+def test_train_models_validates_contract_before_model_fit(
+    monkeypatch, tmp_path, tiny_config_factory, trainer_training_df
+):
+    class FailOnFit:
+        def __init__(self, model_name):
+            self.model_name = model_name
+
+        def fit(self, X, y):
+            raise AssertionError(f"{self.model_name} fit ran before contract validation")
+
+    monkeypatch.setattr(
+        trainer,
+        "make_classifier",
+        lambda config, scale_pos_weight: FailOnFit("classifier"),
+    )
+    monkeypatch.setattr(
+        trainer,
+        "make_regressor",
+        lambda config: FailOnFit("regressor"),
+    )
+    invalid = trainer_training_df.copy()
+    invalid.loc[0, "duracion_horas"] = float("nan")
+
+    with pytest.raises(FeatureContractError, match="duracion_horas"):
+        trainer.train_models(invalid, tiny_config_factory(), tmp_path / "models")
 
 
 def test_train_models_writes_artifacts(tmp_path, tiny_config_factory, trainer_training_df):

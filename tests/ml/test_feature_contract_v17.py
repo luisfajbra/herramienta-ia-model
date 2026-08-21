@@ -55,10 +55,25 @@ def test_contract_rejects_wrong_feature_sets(columns):
         TABULAR_V3_17.validate_frame(frame)
 
 
-def test_contract_rejects_non_finite_and_null_values():
+def test_contract_rejects_null_required_values():
     frame = valid_frame()
     frame.loc[0, "duracion_horas"] = float("nan")
     with pytest.raises(FeatureContractError, match="duracion_horas"):
+        TABULAR_V3_17.validate_frame(frame)
+
+
+@pytest.mark.parametrize("value", [float("inf"), float("-inf")])
+def test_contract_rejects_positive_and_negative_infinity(value):
+    frame = valid_frame()
+    frame.loc[0, "duracion_horas"] = value
+    with pytest.raises(FeatureContractError, match="duracion_horas"):
+        TABULAR_V3_17.validate_frame(frame)
+
+
+def test_contract_rejects_boolean_feature_columns():
+    frame = valid_frame()
+    frame["prof_max"] = True
+    with pytest.raises(FeatureContractError, match="prof_max"):
         TABULAR_V3_17.validate_frame(frame)
 
 
@@ -85,6 +100,7 @@ def test_contract_allows_all_null_nullable_column_for_storage_validation():
 
 def test_contract_rejects_text_even_in_nullable_feature():
     frame = valid_frame()
+    frame["diam_max_in"] = frame["diam_max_in"].astype(object)
     frame.loc[0, "diam_max_in"] = "unknown"
     with pytest.raises(FeatureContractError, match="Non-numeric"):
         TABULAR_V3_17.validate_frame(frame)
