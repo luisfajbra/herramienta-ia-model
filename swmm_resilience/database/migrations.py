@@ -36,6 +36,10 @@ def _migration_entries(migration_dir: Path | None):
     if invalid_sql_names:
         names = ", ".join(sorted(invalid_sql_names))
         raise MigrationOrderError(f"Invalid migration filename(s): {names}")
+    if not entries:
+        raise MigrationOrderError(
+            "Migration catalog is empty; expected a contiguous catalog from 001"
+        )
     entries.sort(key=lambda item: (item[0], item[1]))
     versions = [item[0] for item in entries]
     if versions != list(range(1, len(entries) + 1)):

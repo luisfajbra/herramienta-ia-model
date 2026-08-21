@@ -4,7 +4,7 @@
 
 **Goal:** Train, evaluate, select, store, and load every approved tabular model through one SQLite-backed, exact-v17 implementation.
 
-**Architecture:** A model registry builds leakage-safe sklearn pipelines; a metric registry computes and ranks OOF results; `training.py` persists folds, OOF predictions, metrics, and final selected models; `artifacts.py` verifies model BLOBs before deserialization; prediction reads models and source data by database ID.
+**Architecture:** A model registry builds leakage-safe sklearn pipelines; a metric registry computes and ranks OOF results; `training.py` persists folds, OOF predictions, metrics, immutable model artifacts, append-only promotion events, and append-only active-selection changes; `artifacts.py` verifies model BLOBs before deserialization; prediction resolves selected models by database ID.
 
 **Tech Stack:** Python 3.11, sqlite3, pandas, NumPy, scikit-learn, XGBoost, joblib, pytest.
 
@@ -18,6 +18,13 @@
 - OOF metrics never use final full-data fit predictions.
 - Metric direction and tie-breaking are registry data, not conditional CLI code.
 - Model BLOB is hashed before storage and before deserialization.
+- `trained_models` contains only immutable artifact/manifest data. Ranking
+  metrics live in `model_metrics`; promotion decisions live in
+  `model_promotions`; the current choice is the unsuperseded event in
+  `model_selections`/`active_model_selections`.
+- New metric writes set exactly one concrete owner FK: `training_run_id`,
+  `evaluation_id`, or `model_id`. `owner_kind` and `owner_id` are generated
+  read columns and must never be supplied by writers.
 - No filesystem fallback, compatibility fill, or 15-feature load path.
 
 ---
@@ -280,7 +287,7 @@ git commit -m "feat: add configurable ML metric registry"
 - Reuse: `swmm_resilience/database/repositories.py`
 
 **Interfaces:**
-- Produces: `TrainingRequest`, `TrainingResult`, `train_and_select(conn, config, request) -> TrainingResult`, `rank_stored_candidates(conn, training_run_id, selection) -> CandidateRanking`
+- Produces: `TrainingRequest`, `TrainingResult`, `train_and_select(conn, config, request) -> TrainingResult`, `rank_stored_candidates(conn, training_run_id, selection) -> CandidateRanking`, `promote_ranked_models(...) -> int`, `activate_promotion(...) -> int`
 - Consumes: `training_samples_v17`, model registry, metric registry
 
 - [ ] **Step 1: Write grouped-split and OOF persistence tests**
@@ -293,6 +300,8 @@ assert result.contract_id == "tabular_v3_17"
 assert set(result.fold_train_run_ids[0]).isdisjoint(result.fold_validation_run_ids[0])
 assert scalar(conn, "SELECT COUNT(*) FROM oof_predictions") == expected_models * expected_samples
 assert scalar(conn, "SELECT COUNT(*) FROM trained_models") == 1
+assert scalar(conn, "SELECT COUNT(*) FROM model_promotions") == 1
+assert scalar(conn, "SELECT COUNT(*) FROM active_model_selections WHERE target='inunda'") == 1
 ```
 
 Repeat for `vol_inundacion_m3`, verifying only flooded training rows enter the
@@ -304,12 +313,16 @@ current end-to-end rule.
 
 Run `target="system"` and assert every classifier/regressor pairing is ranked
 from aligned OOF rows, `total_volume_error_pct` uses classifier-gated volume,
-the selected pair creates exactly two `trained_models` rows, and the two model
-IDs share one training run. Add tests that changing the reporting/ranking
-metric calls `rank_stored_candidates()` without adding model evaluations or
-fitting estimators. Promoting a newly ranked winner is a separate final full-
-data fit; it does not rerun folds. Changing any fitting parameter creates a new
-`training_run_id` and new evaluations.
+the selected pair creates exactly two `trained_models` rows and one `system`
+promotion that references both model IDs from the same training run. Add tests
+that changing the reporting/ranking metric calls `rank_stored_candidates()`
+without adding model evaluations or fitting estimators. Promoting a newly
+ranked winner is a separate final full-data fit and append-only promotion; it
+does not rerun folds or overwrite an artifact. Activating it appends a
+selection that supersedes the prior active selection. Multiple artifacts and
+promotions may share `(training_run_id, target)`/the same OOF evidence, but
+there is exactly one active selection per target. Changing any fitting
+parameter creates a new `training_run_id` and new evaluations.
 
 - [ ] **Step 2: Define request/result types**
 
@@ -348,7 +361,9 @@ For each target, algorithm, and fold:
 3. fit fold-local preprocessing;
 4. predict values and probabilities/scores;
 5. insert one `model_evaluations` row and all OOF rows;
-6. compute and insert metric rows;
+6. compute and insert metric rows using the concrete `evaluation_id` FK (or
+   `training_run_id`/`model_id` for those scopes), never generated
+   `owner_kind`/`owner_id`;
 7. mark that evaluation `COMPLETE`, or persist `FAILED` details and fail the
    enclosing training run.
 
@@ -364,9 +379,11 @@ rows. Do not fit another fold or overwrite target-specific OOF predictions.
 Pool OOF predictions by algorithm, calculate configured primary/tie metrics,
 and select deterministically. A target-specific request selects one algorithm;
 a system request selects one classifier/regressor pair. Create fresh winning
-candidates and fit all eligible data only after selection. Mark training status
-`COMPLETE` only after Task 5 stores one target-specific artifact or both system
-artifacts.
+candidates and fit all eligible data only after selection. Task 5 stores one
+target-specific artifact or both system artifacts without
+`selected_metric`/`selected_value`, then appends the promotion (including
+primary metric/value and complete ranking provenance) and active-selection
+event. Mark training status `COMPLETE` only after that transaction succeeds.
 
 `rank_stored_candidates()` reads existing OOF rows and computes a ranking only;
 it never calls `fit`. If the user explicitly promotes a different ranking
@@ -391,7 +408,7 @@ git commit -m "feat: persist grouped OOF model evaluation"
 - Modify: `swmm_resilience/ml/training.py`
 
 **Interfaces:**
-- Produces: `store_model() -> int`, `load_verified_model() -> VerifiedModel`
+- Produces: `store_model() -> int`, `load_verified_model() -> VerifiedModel`, `store_promotion() -> int`, `activate_promotion() -> int`
 - Consumes: fitted sklearn-compatible estimator and manifest metadata
 
 - [ ] **Step 1: Write BLOB safety tests**
@@ -438,11 +455,14 @@ class VerifiedModel:
 
 - [ ] **Step 4: Integrate final storage transaction**
 
-Store the selected model (or both selected system models) and mark
-`training_runs.status='COMPLETE'` in one transaction. On
-serialization/storage failure, roll back every artifact, then mark the
-training run failed in a separate recovery transaction; do not leave a
-selectable partial pair.
+Insert immutable artifact rows without `selected_metric` or `selected_value`.
+Store the selected model (or both selected system models), append the
+target-specific or `system` promotion, append its active-selection event, and
+mark `training_runs.status='COMPLETE'` in one transaction. Promotion rows own
+the selected metric/value and ranking JSON and use real composite FKs to
+enforce model target/training-run coherence. On serialization/storage failure,
+roll back every artifact and event, then mark the training run failed in a
+separate recovery transaction; do not leave a selectable partial pair.
 
 - [ ] **Step 5: Verify and commit**
 
@@ -482,11 +502,12 @@ assert result.columns.tolist() == [
 
 For end-to-end prediction, require either both explicit IDs or neither. An
 explicit classifier/regressor pair must belong to the same `COMPLETE`
-`target='system'` training run and contract. If IDs are omitted, query complete
-system training runs for the contract and configured system primary metric,
-rank using registry direction/tie rules, break a remaining tie by ascending
-`training_run_id`, and retrieve both target rows from the winner. Log/return
-the resolved IDs; never select by filename or modification time.
+`target='system'` training run and contract and match one persisted `system`
+promotion. If IDs are omitted, resolve the sole unsuperseded `system`
+selection through `active_model_selections`, then load both model IDs from its
+promotion. Do not rank artifact rows: `trained_models` has no selected
+metric/value columns. Log/return the resolved IDs; never select by filename or
+modification time.
 
 Compare the inference network SHA-256 with the sorted hashes in each model
 manifest. Default behavior rejects an unseen network. When the validated
@@ -511,7 +532,8 @@ Replace `--clf-path`/`--reg-path` with `--classifier-id`/`--regressor-id` and
 default verified selection. Update hydrograph batch factory/tests to inject a
 database connection or path and model IDs. Each validation scenario is a
 persisted Plan B run; validation metrics are inserted into `model_metrics`
-with `owner_kind='model'` and a scenario-specific `scope`. Plots consume the
+with the concrete `model_id` FK and a scenario-specific `scope` (generated
+`owner_kind`/`owner_id` remain read-only). Plots consume the
 returned/query DataFrames. Remove mandatory validation summary CSV writes;
 `--export-csv PATH` remains the only explicit flat-file export boundary.
 

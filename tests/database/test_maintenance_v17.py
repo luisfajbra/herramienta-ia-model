@@ -49,7 +49,7 @@ def test_checkpoint_and_backup_creates_standalone_database(tmp_path):
             )
             assert backup_conn.execute(
                 "SELECT COUNT(*) FROM schema_migrations"
-            ).fetchone()[0] == 1
+            ).fetchone()[0] == 2
             assert backup_conn.execute(
                 "SELECT COUNT(*) FROM networks"
             ).fetchone()[0] == 1

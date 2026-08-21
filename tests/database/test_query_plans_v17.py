@@ -43,15 +43,6 @@ def _assert_named_index(details: tuple[str, ...], index_name: str) -> None:
         ),
         (
             """
-            SELECT * FROM node_timeseries
-            WHERE run_id=? AND node_pk=?
-            ORDER BY step_index
-            """,
-            (1, 10),
-            "idx_timeseries_run_node_step",
-        ),
-        (
-            """
             SELECT * FROM scenarios
             WHERE network_id=? AND scenario_kind=?
             """,
@@ -61,20 +52,19 @@ def _assert_named_index(details: tuple[str, ...], index_name: str) -> None:
         (
             """
             SELECT * FROM model_metrics
-            WHERE owner_kind=? AND owner_id=? AND metric_name=?
+            WHERE evaluation_id=? AND metric_name=?
             """,
-            ("evaluation", 1, "roc_auc"),
-            "idx_metrics_owner",
+            (1, "roc_auc"),
+            "idx_metrics_evaluation",
         ),
         (
             """
-            SELECT model_id, selected_value FROM trained_models
-            WHERE target=?
-              AND feature_contract_id=?
-              AND selected_metric=?
+            SELECT promotion_id, primary_value FROM model_promotions
+            WHERE training_run_id=? AND target=?
+            ORDER BY promoted_at_utc, promotion_id
             """,
-            ("inunda", "tabular_v3_17", "roc_auc"),
-            "idx_models_target_contract_metric",
+            (1, "inunda"),
+            "idx_promotions_training_target",
         ),
     ],
 )
@@ -87,6 +77,22 @@ def test_critical_queries_use_named_indexes(
     details = _query_plan_details(migrated_connection, sql, params)
 
     _assert_named_index(details, expected_index)
+
+
+def test_timeseries_node_window_uses_primary_key_autoindex(migrated_connection):
+    details = _query_plan_details(
+        migrated_connection,
+        """
+        SELECT * FROM node_timeseries
+        WHERE run_id=? AND node_pk=?
+        ORDER BY step_index
+        """,
+        (1, 10),
+    )
+
+    searches = _relation_operations(details, "SEARCH", "node_timeseries")
+    _assert_search_uses_keys(searches, "run_id", "node_pk")
+    assert any("sqlite_autoindex_node_timeseries_1" in row for row in details), details
 
 
 def _relation_operations(

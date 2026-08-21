@@ -1,0 +1,389 @@
+from pathlib import Path
+import shutil
+import sqlite3
+
+import pytest
+
+from swmm_resilience.database.connection import connect_database
+from swmm_resilience.database.migrations import apply_migrations
+
+
+SQL_DIR = Path(__file__).parents[2] / "swmm_resilience" / "database" / "sql"
+
+
+def _migration_catalog(tmp_path, *, include_v2):
+    catalog = tmp_path / "migrations"
+    catalog.mkdir()
+    shutil.copyfile(SQL_DIR / "001_v17_initial.sql", catalog / "001_v17_initial.sql")
+    if include_v2:
+        shutil.copyfile(
+            SQL_DIR / "002_model_integrity.sql",
+            catalog / "002_model_integrity.sql",
+        )
+    return catalog
+
+
+def _insert_training_run(conn, training_run_id=1, target="system"):
+    conn.execute(
+        """
+        INSERT INTO training_runs (
+            training_run_id, target, feature_contract_id,
+            feature_contract_sha256, query_sql, query_params_json,
+            included_run_ids_json, grouping_strategy, fold_count, random_seed,
+            primary_metric, tie_breakers_json, python_version,
+            library_versions_json, status, completed_at_utc
+        ) VALUES (?, ?, 'tabular_v3_17', ?, 'SELECT 1', '{}', '[]',
+                  'group_kfold', 2, 42, 'roc_auc', '[]', '3.13', '{}',
+                  'COMPLETE', '2026-08-21T00:00:00+00:00')
+        """,
+        (training_run_id, target, "a" * 64),
+    )
+
+
+def _insert_legacy_model(
+    conn,
+    model_id=10,
+    training_run_id=1,
+    target="inunda",
+    selected_metric="roc_auc",
+    selected_value=0.91,
+):
+    conn.execute(
+        """
+        INSERT INTO trained_models (
+            model_id, training_run_id, target, algorithm,
+            hyperparameters_json, preprocessing_json, feature_contract_id,
+            feature_contract_sha256, ordered_features_json,
+            target_transform_json, query_params_json, included_run_ids_json,
+            random_seed, grouping_strategy, python_version,
+            library_versions_json, selected_metric, selected_value,
+            model_sha256, model_blob, created_at_utc
+        ) VALUES (?, ?, ?, 'linear', '{}', '{}', 'tabular_v3_17', ?, '[]',
+                  '{}', '{}', '[]', 42, 'group_kfold', '3.13', '{}', ?, ?, ?,
+                  ?, '2026-08-21T01:00:00+00:00')
+        """,
+        (
+            model_id,
+            training_run_id,
+            target,
+            "b" * 64,
+            selected_metric,
+            selected_value,
+            f"{model_id:064d}",
+            f"model-{model_id}".encode(),
+        ),
+    )
+
+
+def _insert_model(conn, model_id, training_run_id, target):
+    conn.execute(
+        """
+        INSERT INTO trained_models (
+            model_id, training_run_id, target, algorithm,
+            hyperparameters_json, preprocessing_json, feature_contract_id,
+            feature_contract_sha256, ordered_features_json,
+            target_transform_json, query_params_json, included_run_ids_json,
+            random_seed, grouping_strategy, python_version,
+            library_versions_json, model_sha256, model_blob, created_at_utc
+        ) VALUES (?, ?, ?, 'linear', '{}', '{}', 'tabular_v3_17', ?, '[]',
+                  '{}', '{}', '[]', 42, 'group_kfold', '3.13', '{}', ?, ?,
+                  '2026-08-21T01:00:00+00:00')
+        """,
+        (
+            model_id,
+            training_run_id,
+            target,
+            "b" * 64,
+            f"{model_id:064d}",
+            f"model-{model_id}".encode(),
+        ),
+    )
+
+
+def _insert_promotion(
+    conn,
+    promotion_id,
+    training_run_id,
+    target,
+    classifier_model_id=None,
+    regressor_model_id=None,
+):
+    conn.execute(
+        """
+        INSERT INTO model_promotions (
+            promotion_id, training_run_id, target, classifier_model_id,
+            regressor_model_id, primary_metric, primary_value,
+            tie_breakers_json, ranking_json, promoted_at_utc
+        ) VALUES (?, ?, ?, ?, ?, 'roc_auc', 0.91, '[]', '{}', ?)
+        """,
+        (
+            promotion_id,
+            training_run_id,
+            target,
+            classifier_model_id,
+            regressor_model_id,
+            f"2026-08-21T02:00:{promotion_id:02d}+00:00",
+        ),
+    )
+
+
+def test_fresh_database_applies_two_migrations_idempotently(tmp_path):
+    conn = connect_database(tmp_path / "fresh.sqlite3")
+    try:
+        apply_migrations(conn)
+        apply_migrations(conn)
+
+        assert [tuple(row) for row in conn.execute(
+            "SELECT version, name FROM schema_migrations ORDER BY version"
+        ).fetchall()] == [(1, "v17_initial"), (2, "model_integrity")]
+        checksums = conn.execute(
+            "SELECT checksum_sha256 FROM schema_migrations ORDER BY version"
+        ).fetchall()
+        assert all(len(row[0]) == 64 for row in checksums)
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    finally:
+        conn.close()
+
+
+def test_upgrade_preserves_legacy_ids_metrics_and_creates_promotion(tmp_path):
+    catalog_v1 = _migration_catalog(tmp_path, include_v2=False)
+    conn = connect_database(tmp_path / "upgrade.sqlite3")
+    try:
+        apply_migrations(conn, migration_dir=catalog_v1)
+        _insert_training_run(conn)
+        _insert_legacy_model(conn)
+        _insert_legacy_model(
+            conn,
+            model_id=11,
+            target="vol_inundacion_m3",
+            selected_metric="rmse",
+            selected_value=2.5,
+        )
+        conn.executemany(
+            """
+            INSERT INTO model_metrics (
+                metric_id, owner_kind, owner_id, scope, metric_name, value,
+                valid
+            ) VALUES (?, ?, ?, 'overall', ?, ?, 1)
+            """,
+            [
+                (20, "training_run", 1, "duration_seconds", 3.0),
+                (21, "model", 10, "roc_auc", 0.91),
+                (22, "model", 11, "rmse", 2.5),
+            ],
+        )
+        conn.commit()
+        shutil.copyfile(
+            SQL_DIR / "002_model_integrity.sql",
+            catalog_v1 / "002_model_integrity.sql",
+        )
+
+        apply_migrations(conn, migration_dir=catalog_v1)
+
+        assert [tuple(row) for row in conn.execute(
+            "SELECT version FROM schema_migrations ORDER BY version"
+        ).fetchall()] == [(1,), (2,)]
+        assert [tuple(row) for row in conn.execute(
+            "SELECT model_id, model_blob FROM trained_models ORDER BY model_id"
+        ).fetchall()] == [(10, b"model-10"), (11, b"model-11")]
+        assert [tuple(row) for row in conn.execute(
+            """
+            SELECT metric_id, owner_kind, owner_id
+            FROM model_metrics ORDER BY metric_id
+            """
+        ).fetchall()] == [
+            (20, "training_run", 1),
+            (21, "model", 10),
+            (22, "model", 11),
+        ]
+        assert tuple(conn.execute(
+            """
+            SELECT target, classifier_model_id, regressor_model_id,
+                   primary_metric, primary_value
+            FROM model_promotions
+            WHERE target='inunda'
+            """
+        ).fetchone()) == ("inunda", 10, None, "roc_auc", 0.91)
+        assert tuple(conn.execute(
+            """
+            SELECT classifier_model_id, regressor_model_id
+            FROM model_promotions WHERE target='system'
+            """
+        ).fetchone()) == (10, 11)
+        assert [tuple(row) for row in conn.execute(
+            """
+            SELECT target, classifier_model_id, regressor_model_id
+            FROM active_model_selections ORDER BY target
+            """
+        ).fetchall()] == [
+            ("inunda", 10, None),
+            ("system", 10, 11),
+            ("vol_inundacion_m3", None, 11),
+        ]
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+    finally:
+        conn.close()
+
+
+def test_orphan_legacy_metric_aborts_entire_upgrade(tmp_path):
+    catalog_v1 = _migration_catalog(tmp_path, include_v2=False)
+    conn = connect_database(tmp_path / "orphan.sqlite3")
+    try:
+        apply_migrations(conn, migration_dir=catalog_v1)
+        conn.execute(
+            """
+            INSERT INTO model_metrics (
+                metric_id, owner_kind, owner_id, scope, metric_name, valid
+            ) VALUES (99, 'model', 999, 'overall', 'roc_auc', 0)
+            """
+        )
+        conn.commit()
+        shutil.copyfile(
+            SQL_DIR / "002_model_integrity.sql",
+            catalog_v1 / "002_model_integrity.sql",
+        )
+
+        with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+            apply_migrations(conn, migration_dir=catalog_v1)
+
+        assert [tuple(row) for row in conn.execute(
+            "SELECT version FROM schema_migrations"
+        ).fetchall()] == [(1,)]
+        assert tuple(conn.execute(
+            "SELECT owner_kind, owner_id FROM model_metrics WHERE metric_id=99"
+        ).fetchone()) == ("model", 999)
+        assert conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='model_promotions'"
+        ).fetchone() is None
+        assert tuple(conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='idx_timeseries_run_node_step'"
+        ).fetchone()) == (1,)
+    finally:
+        conn.close()
+
+
+def test_artifacts_promotions_and_selections_enforce_integrity(tmp_path):
+    conn = connect_database(tmp_path / "integrity.sqlite3")
+    try:
+        apply_migrations(conn)
+        _insert_training_run(conn, 1)
+        _insert_training_run(conn, 2)
+        _insert_model(conn, 10, 1, "inunda")
+        _insert_model(conn, 11, 1, "inunda")
+        _insert_model(conn, 12, 1, "vol_inundacion_m3")
+        _insert_model(conn, 20, 2, "inunda")
+
+        # Multiple immutable artifacts and promotions can share run/target/OOF.
+        assert conn.execute(
+            "SELECT COUNT(*) FROM trained_models WHERE training_run_id=1 AND target='inunda'"
+        ).fetchone()[0] == 2
+        _insert_promotion(conn, 1, 1, "system", 10, 12)
+        _insert_promotion(conn, 2, 1, "system", 10, 12)
+
+        with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+            _insert_promotion(conn, 3, 1, "inunda", 20, None)
+        with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+            _insert_promotion(conn, 3, 1, "inunda", 12, None)
+        with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+            _insert_promotion(conn, 3, 1, "system", 10, None)
+
+        conn.execute(
+            """
+            INSERT INTO model_selections (
+                selection_id, target, promotion_id, supersedes_selection_id,
+                selected_at_utc
+            ) VALUES (1, 'system', 1, NULL, '2026-08-21T03:00:00+00:00')
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO model_selections (
+                selection_id, target, promotion_id, supersedes_selection_id,
+                selected_at_utc
+            ) VALUES (2, 'system', 2, 1, '2026-08-21T04:00:00+00:00')
+            """
+        )
+        assert tuple(conn.execute(
+            "SELECT selection_id, promotion_id FROM active_model_selections WHERE target='system'"
+        ).fetchone()) == (2, 2)
+        with pytest.raises(sqlite3.IntegrityError, match="active selection"):
+            conn.execute(
+                """
+                INSERT INTO model_selections (
+                    selection_id, target, promotion_id, selected_at_utc
+                ) VALUES (3, 'system', 2, '2026-08-21T05:00:00+00:00')
+                """
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            conn.execute("UPDATE trained_models SET algorithm='svm' WHERE model_id=10")
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            conn.execute("DELETE FROM model_promotions WHERE promotion_id=2")
+        with pytest.raises(sqlite3.IntegrityError, match="immutable"):
+            conn.execute("UPDATE model_selections SET selected_at_utc='x' WHERE selection_id=2")
+    finally:
+        conn.close()
+
+
+def test_model_metrics_require_exactly_one_real_owner_and_cascade(tmp_path):
+    conn = connect_database(tmp_path / "metrics.sqlite3")
+    try:
+        apply_migrations(conn)
+        _insert_training_run(conn, 1, "inunda")
+        conn.execute(
+            """
+            INSERT INTO model_evaluations (
+                evaluation_id, training_run_id, task, algorithm,
+                hyperparameters_json, fold_id, train_run_ids_json,
+                validation_run_ids_json, status, fit_seconds, predict_seconds
+            ) VALUES (2, 1, 'classification', 'linear', '{}', 0, '[]', '[]',
+                      'COMPLETE', 1, 1)
+            """
+        )
+        _insert_model(conn, 3, 1, "inunda")
+
+        with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+            conn.execute(
+                "INSERT INTO model_metrics(scope, metric_name, valid) VALUES ('x','m',1)"
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="CHECK"):
+            conn.execute(
+                """
+                INSERT INTO model_metrics (
+                    training_run_id, evaluation_id, scope, metric_name, valid
+                ) VALUES (1, 2, 'x', 'm', 1)
+                """
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+            conn.execute(
+                """
+                INSERT INTO model_metrics (
+                    model_id, scope, metric_name, valid
+                ) VALUES (999, 'x', 'm', 1)
+                """
+            )
+
+        conn.executemany(
+            """
+            INSERT INTO model_metrics (
+                training_run_id, evaluation_id, model_id, scope,
+                metric_name, valid
+            ) VALUES (?, ?, ?, 'overall', 'score', 1)
+            """,
+            [(1, None, None), (None, 2, None), (None, None, 3)],
+        )
+        assert [tuple(row) for row in conn.execute(
+            "SELECT owner_kind, owner_id FROM model_metrics ORDER BY metric_id"
+        ).fetchall()] == [
+            ("training_run", 1),
+            ("evaluation", 2),
+            ("model", 3),
+        ]
+        conn.execute("DELETE FROM model_evaluations WHERE evaluation_id=2")
+        conn.execute("DELETE FROM trained_models WHERE model_id=3")
+        assert [tuple(row) for row in conn.execute(
+            "SELECT owner_kind FROM model_metrics"
+        ).fetchall()] == [("training_run",)]
+        conn.execute("DELETE FROM training_runs WHERE training_run_id=1")
+        assert conn.execute("SELECT COUNT(*) FROM model_metrics").fetchone()[0] == 0
+    finally:
+        conn.close()

@@ -3,6 +3,7 @@ import sqlite3
 
 import pytest
 
+import swmm_resilience.database.migrations as migrations_module
 from swmm_resilience.database.connection import connect_database
 from swmm_resilience.database.migrations import (
     MigrationChecksumError,
@@ -27,16 +28,26 @@ EXPECTED_TABLES = {
     "oof_predictions",
     "model_metrics",
     "trained_models",
+    "model_promotions",
+    "model_selections",
 }
 
 EXPECTED_INDEXES = {
     "idx_runs_status_scenario",
     "idx_scenarios_network_kind",
     "idx_timeseries_run_time",
-    "idx_timeseries_run_node_step",
     "idx_oof_evaluation",
     "idx_metrics_owner",
-    "idx_models_target_contract_metric",
+    "idx_metrics_training_run",
+    "idx_metrics_evaluation",
+    "idx_metrics_model",
+    "idx_models_training_target",
+    "idx_models_target_contract",
+    "idx_promotions_training_target",
+    "idx_promotions_classifier",
+    "idx_promotions_regressor",
+    "idx_promotions_target_metric",
+    "idx_selections_target_history",
 }
 
 SCHEMA_MIGRATIONS_SQL = """
@@ -107,7 +118,7 @@ def test_initial_migration_creates_expected_schema(tmp_path):
         assert indexes == EXPECTED_INDEXES
         assert conn.execute(
             "SELECT COUNT(*) FROM schema_migrations"
-        ).fetchone()[0] == 1
+        ).fetchone()[0] == 2
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     finally:
         conn.close()
@@ -283,7 +294,7 @@ def test_migrations_are_idempotent(tmp_path):
         apply_migrations(conn)
         assert conn.execute(
             "SELECT COUNT(*) FROM schema_migrations"
-        ).fetchone()[0] == 1
+        ).fetchone()[0] == 2
     finally:
         conn.close()
 
@@ -335,6 +346,40 @@ def test_migration_versions_must_be_contiguous(tmp_path):
     try:
         with pytest.raises(MigrationOrderError, match="contiguous from 001"):
             apply_migrations(conn, migration_dir=migration_dir)
+    finally:
+        conn.close()
+
+
+def test_explicit_empty_migration_catalog_is_rejected_without_mutation(tmp_path):
+    migration_dir = tmp_path / "migrations"
+    migration_dir.mkdir()
+    conn = connect_database(tmp_path / "empty.sqlite3")
+    try:
+        with pytest.raises(MigrationOrderError, match="empty|001"):
+            apply_migrations(conn, migration_dir=migration_dir)
+
+        assert conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
+        ).fetchone()[0] == 0
+    finally:
+        conn.close()
+
+
+def test_empty_packaged_migration_catalog_is_rejected_without_mutation(
+    tmp_path,
+    monkeypatch,
+):
+    package_root = tmp_path / "package"
+    (package_root / "sql").mkdir(parents=True)
+    monkeypatch.setattr(migrations_module, "files", lambda _package: package_root)
+    conn = connect_database(tmp_path / "packaged-empty.sqlite3")
+    try:
+        with pytest.raises(MigrationOrderError, match="empty|001"):
+            apply_migrations(conn)
+
+        assert conn.execute(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
+        ).fetchone()[0] == 0
     finally:
         conn.close()
 

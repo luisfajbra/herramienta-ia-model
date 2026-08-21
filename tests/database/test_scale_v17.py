@@ -167,12 +167,6 @@ def _replace_timeseries_with_without_rowid(
         ON node_timeseries(run_id, time_sec)
         """
     )
-    target_conn.execute(
-        """
-        CREATE INDEX idx_timeseries_run_node_step
-        ON node_timeseries(run_id, node_pk, step_index)
-        """
-    )
     target_conn.commit()
 
 
@@ -246,10 +240,7 @@ def test_rowid_and_without_rowid_temporal_layout_benchmark(tmp_path):
         apply_migrations(without_rowid_conn)
         _replace_timeseries_with_without_rowid(rowid_conn, without_rowid_conn)
 
-        expected_indexes = {
-            "idx_timeseries_run_node_step",
-            "idx_timeseries_run_time",
-        }
+        expected_indexes = {"idx_timeseries_run_time"}
         rowid_indexes = _secondary_index_definitions(rowid_conn)
         without_rowid_indexes = _secondary_index_definitions(
             without_rowid_conn
