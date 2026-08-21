@@ -80,6 +80,7 @@ def _insert_scenario_and_run(
     status="COMPLETE",
     network_id=1,
     scenario_id=None,
+    node_count=1,
 ):
     scenario_id = scenario_id if scenario_id is not None else 100 + run_id
     conn.execute(
@@ -104,10 +105,18 @@ def _insert_scenario_and_run(
     conn.execute(
         """
         INSERT INTO runs (
-            run_id, scenario_id, network_id, status, config_sha256
-        ) VALUES (?, ?, ?, ?, ?)
+            run_id, scenario_id, network_id, status, config_sha256,
+            node_count
+        ) VALUES (?, ?, ?, ?, ?, ?)
         """,
-        (run_id, scenario_id, network_id, status, f"{run_id:064x}"),
+        (
+            run_id,
+            scenario_id,
+            network_id,
+            status,
+            f"{run_id:064x}",
+            node_count,
+        ),
     )
 
 
@@ -168,10 +177,14 @@ def _target_validation_connection(*, inunda=1, vol_inundacion_m3=12.5):
     conn = sqlite3.connect(":memory:")
     conn.executescript(
         """
-        CREATE TABLE runs (run_id INTEGER PRIMARY KEY, status TEXT NOT NULL);
+        CREATE TABLE runs (
+            run_id INTEGER PRIMARY KEY,
+            status TEXT NOT NULL,
+            node_count INTEGER
+        );
         CREATE TABLE node_features (run_id INTEGER, node_pk INTEGER);
         CREATE TABLE node_results (run_id INTEGER, node_pk INTEGER);
-        INSERT INTO runs VALUES (1, 'COMPLETE');
+        INSERT INTO runs VALUES (1, 'COMPLETE', 1);
         INSERT INTO node_features VALUES (1, 10);
         INSERT INTO node_results VALUES (1, 10);
         """
@@ -204,7 +217,7 @@ def test_training_view_is_flat_canonical_and_deterministic(migrated_conn):
     _insert_network(migrated_conn)
     _insert_node(migrated_conn, 20, "B-node")
     _insert_node(migrated_conn, 10, "A-node")
-    _insert_scenario_and_run(migrated_conn, run_id=1)
+    _insert_scenario_and_run(migrated_conn, run_id=1, node_count=2)
     _insert_feature(migrated_conn, 1, 20)
     _insert_feature(migrated_conn, 1, 10)
     _insert_result(migrated_conn, 1, 20, inunda=1)
@@ -246,7 +259,7 @@ def test_real_view_and_loader_exclude_non_complete_runs(migrated_conn):
     assert frame["run_id"].tolist() == [1]
 
 
-def test_loader_filters_run_ids_with_bound_parameters(migrated_conn):
+def test_loader_rejects_non_integer_run_ids_before_query(migrated_conn):
     _insert_network(migrated_conn)
     _insert_node(migrated_conn, 10, "node-10")
     for run_id in (1, 2):
@@ -255,17 +268,66 @@ def test_loader_filters_run_ids_with_bound_parameters(migrated_conn):
     _insert_result(migrated_conn, 1, 10)
     migrated_conn.commit()
 
-    frame = load_training_samples(
-        migrated_conn,
-        run_ids=[1, "2) OR 1=1 --"],
-    )
-
-    assert frame["run_id"].tolist() == [1]
+    with pytest.raises(ValueError, match="positive Python int"):
+        load_training_samples(
+            migrated_conn,
+            run_ids=[1, "2) OR 1=1 --"],
+        )
 
 
 def test_loader_rejects_empty_run_id_selection(migrated_conn):
     with pytest.raises(ValueError, match="run_ids cannot be empty"):
         load_training_samples(migrated_conn, run_ids=[])
+
+
+@pytest.mark.parametrize("invalid_run_id", [True, "1", 1.0, 0, -1])
+def test_loader_rejects_invalid_explicit_run_ids(
+    migrated_conn,
+    invalid_run_id,
+):
+    with pytest.raises(ValueError, match="positive Python int"):
+        load_training_samples(migrated_conn, run_ids=[invalid_run_id])
+
+
+@pytest.mark.parametrize(
+    ("requested", "expected_detail"),
+    [
+        ([999], "missing run_ids: [999]"),
+        ([2], "non-COMPLETE run_ids: [2]"),
+        ([1, 999], "missing run_ids: [999]"),
+        ([1, 2], "non-COMPLETE run_ids: [2]"),
+    ],
+)
+def test_loader_rejects_missing_or_non_complete_explicit_run_ids(
+    migrated_conn,
+    requested,
+    expected_detail,
+):
+    _insert_network(migrated_conn)
+    _insert_node(migrated_conn, 10, "node-10")
+    _insert_scenario_and_run(migrated_conn, run_id=1)
+    _insert_feature(migrated_conn, 1, 10)
+    _insert_result(migrated_conn, 1, 10)
+    _insert_scenario_and_run(migrated_conn, run_id=2, status="FAILED")
+    migrated_conn.commit()
+
+    with pytest.raises(ValueError) as error:
+        load_training_samples(migrated_conn, run_ids=requested)
+
+    assert expected_detail in str(error.value)
+
+
+def test_loader_deduplicates_valid_explicit_run_ids(migrated_conn):
+    _insert_network(migrated_conn)
+    _insert_node(migrated_conn, 10, "node-10")
+    _insert_scenario_and_run(migrated_conn, run_id=1)
+    _insert_feature(migrated_conn, 1, 10)
+    _insert_result(migrated_conn, 1, 10)
+    migrated_conn.commit()
+
+    frame = load_training_samples(migrated_conn, run_ids=[1, 1, 1])
+
+    assert frame[["run_id", "node_id"]].values.tolist() == [[1, "node-10"]]
 
 
 def test_loader_rejects_absence_of_complete_samples(migrated_conn):
@@ -284,7 +346,7 @@ def test_loader_rejects_missing_result_keys(migrated_conn):
     _insert_network(migrated_conn)
     _insert_node(migrated_conn, 10, "node-10")
     _insert_node(migrated_conn, 20, "node-20")
-    _insert_scenario_and_run(migrated_conn, run_id=1)
+    _insert_scenario_and_run(migrated_conn, run_id=1, node_count=2)
     _insert_feature(migrated_conn, 1, 10)
     _insert_feature(migrated_conn, 1, 20)
     _insert_result(migrated_conn, 1, 10)
@@ -298,7 +360,7 @@ def test_loader_rejects_equal_counts_with_different_node_keys(migrated_conn):
     _insert_network(migrated_conn)
     for node_pk in (10, 20, 30):
         _insert_node(migrated_conn, node_pk, f"node-{node_pk}")
-    _insert_scenario_and_run(migrated_conn, run_id=1)
+    _insert_scenario_and_run(migrated_conn, run_id=1, node_count=2)
     _insert_feature(migrated_conn, 1, 10)
     _insert_feature(migrated_conn, 1, 20)
     _insert_result(migrated_conn, 1, 10)
@@ -312,6 +374,63 @@ def test_loader_rejects_equal_counts_with_different_node_keys(migrated_conn):
     assert "missing feature (1, 30)" in str(error.value)
 
 
+def test_loader_rejects_symmetric_child_deletion_against_node_count(
+    migrated_conn,
+):
+    _insert_network(migrated_conn)
+    _insert_node(migrated_conn, 10, "node-10")
+    _insert_node(migrated_conn, 20, "node-20")
+    _insert_scenario_and_run(migrated_conn, run_id=1, node_count=2)
+    for node_pk in (10, 20):
+        _insert_feature(migrated_conn, 1, node_pk)
+        _insert_result(migrated_conn, 1, node_pk)
+    migrated_conn.execute(
+        "DELETE FROM node_features WHERE run_id = 1 AND node_pk = 20"
+    )
+    migrated_conn.execute(
+        "DELETE FROM node_results WHERE run_id = 1 AND node_pk = 20"
+    )
+    migrated_conn.commit()
+
+    with pytest.raises(ValueError, match="cardinality mismatch") as error:
+        load_training_samples(migrated_conn)
+
+    assert "node_count=2, feature_count=1, result_count=1" in str(error.value)
+
+
+def test_loader_rejects_complete_run_with_no_child_rows(migrated_conn):
+    _insert_network(migrated_conn)
+    _insert_scenario_and_run(migrated_conn, run_id=1, node_count=1)
+    migrated_conn.commit()
+
+    with pytest.raises(ValueError, match="cardinality mismatch") as error:
+        load_training_samples(migrated_conn)
+
+    assert "node_count=1, feature_count=0, result_count=0" in str(error.value)
+
+
+@pytest.mark.parametrize("node_count", [None, 0, -1, 1.5])
+def test_loader_rejects_invalid_persisted_node_count(
+    migrated_conn,
+    node_count,
+):
+    _insert_network(migrated_conn)
+    _insert_node(migrated_conn, 10, "node-10")
+    _insert_scenario_and_run(
+        migrated_conn,
+        run_id=1,
+        node_count=node_count,
+    )
+    _insert_feature(migrated_conn, 1, 10)
+    _insert_result(migrated_conn, 1, 10)
+    migrated_conn.commit()
+
+    with pytest.raises(ValueError, match="positive integer") as error:
+        load_training_samples(migrated_conn)
+
+    assert "run 1" in str(error.value)
+
+
 def test_loader_reads_key_check_and_view_from_one_wal_snapshot(tmp_path):
     database_path = tmp_path / "snapshot.sqlite3"
     reader = connect_database(database_path)
@@ -322,7 +441,7 @@ def test_loader_reads_key_check_and_view_from_one_wal_snapshot(tmp_path):
         _insert_network(reader)
         _insert_node(reader, 10, "node-10")
         _insert_node(reader, 20, "node-20")
-        _insert_scenario_and_run(reader, run_id=1)
+        _insert_scenario_and_run(reader, run_id=1, node_count=2)
         _insert_feature(reader, 1, 10)
         _insert_feature(reader, 1, 20)
         _insert_result(reader, 1, 10)
