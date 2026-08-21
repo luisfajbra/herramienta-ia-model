@@ -62,6 +62,38 @@ def test_checkpoint_and_backup_creates_standalone_database(tmp_path):
         conn.close()
 
 
+def test_backup_enables_foreign_keys_on_destination_connection(
+    tmp_path,
+    monkeypatch,
+):
+    source = tmp_path / "source.sqlite3"
+    destination = tmp_path / "snapshot.sqlite3"
+    conn = connect_database(source)
+    statements = []
+    real_connect = sqlite3.connect
+
+    def connect_with_trace(*args, **kwargs):
+        traced_conn = real_connect(*args, **kwargs)
+        traced_conn.set_trace_callback(statements.append)
+        return traced_conn
+
+    try:
+        apply_migrations(conn)
+        monkeypatch.setattr(
+            "swmm_resilience.database.maintenance.sqlite3.connect",
+            connect_with_trace,
+        )
+
+        checkpoint_and_backup(conn, destination)
+
+        assert any(
+            statement.strip().lower() == "pragma foreign_keys = on"
+            for statement in statements
+        )
+    finally:
+        conn.close()
+
+
 def test_checkpoint_and_backup_rejects_busy_wal(tmp_path):
     source = tmp_path / "source.sqlite3"
     destination = tmp_path / "snapshot.sqlite3"

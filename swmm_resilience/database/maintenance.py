@@ -21,6 +21,7 @@ def checkpoint_and_backup(
         )
     backup_conn = sqlite3.connect(target)
     try:
+        backup_conn.execute("PRAGMA foreign_keys = ON")
         conn.backup(backup_conn)
     finally:
         backup_conn.close()
