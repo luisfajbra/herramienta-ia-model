@@ -2,39 +2,48 @@ import networkx as nx
 import pandas as pd
 
 
-def compute_dynamic_features(static_topo_df: pd.DataFrame, factor: float) -> pd.DataFrame:
+def compute_dynamic_features(
+    static_topo_df: pd.DataFrame,
+    factor: float,
+    duracion_horas: float = 0.0,
+    tiempo_al_pico_h: float = 0.0,
+) -> pd.DataFrame:
     """Compute per-simulation dynamic features for a given factor multiplier.
 
-    Used by the training pipeline, where every scenario is a uniform scaling of
-    the base hydrographs, so accumulated peaks scale linearly with the factor.
+    Used by the training pipeline. duracion_horas and tiempo_al_pico_h are
+    scenario-level scalars (same value for every node in the same simulation).
 
     Returns DataFrame with columns: node_id, factor_mult, q_pico_nodo,
-    q_pico_acum_escalado. factor_mult is dataset metadata, not a model input
-    (see trainer.FEATURE_COLS).
+    q_pico_acum_escalado, duracion_horas, tiempo_al_pico_h. factor_mult is
+    dataset metadata, not a model input (see trainer.FEATURE_COLS).
     """
     df = static_topo_df[["node_id", "base_inflow_lps", "q_pico_acum_base"]].copy()
     df["factor_mult"] = round(factor, 6)
     df["q_pico_nodo"] = df["base_inflow_lps"] * factor
     df["q_pico_acum_escalado"] = df["q_pico_acum_base"] * factor
-    return df[["node_id", "factor_mult", "q_pico_nodo", "q_pico_acum_escalado"]]
+    df["duracion_horas"] = duracion_horas
+    df["tiempo_al_pico_h"] = tiempo_al_pico_h
+    return df[
+        ["node_id", "factor_mult", "q_pico_nodo", "q_pico_acum_escalado",
+         "duracion_horas", "tiempo_al_pico_h"]
+    ]
 
 
 def compute_scenario_dynamic_features(
     static_topo_df: pd.DataFrame,
     peak_map: dict[str, float],
     graph: "nx.DiGraph",
+    duracion_horas: float = 0.0,
+    tiempo_al_pico_h: float = 0.0,
 ) -> pd.DataFrame:
     """Compute dynamic features from real per-node scenario peaks (lps).
 
     Used at inference time for arbitrary hydrographs, where no global factor
-    exists:
+    exists. duracion_horas and tiempo_al_pico_h are scenario-level scalars
+    computed by the caller from the hydrograph series.
 
-    - q_pico_nodo: the node's own scenario peak (0.0 for junctions without a
-      direct inflow, consistent with training where base_inflow=0 x factor=0).
-    - q_pico_acum_escalado: sum of real scenario peaks over the node's graph
-      ancestors plus itself (same aggregation rule as q_pico_acum_base).
-
-    Returns DataFrame with columns: node_id, q_pico_nodo, q_pico_acum_escalado.
+    Returns DataFrame with columns: node_id, q_pico_nodo, q_pico_acum_escalado,
+    duracion_horas, tiempo_al_pico_h.
     """
     rows = []
     for nid in static_topo_df["node_id"].astype(str):
@@ -48,6 +57,8 @@ def compute_scenario_dynamic_features(
                 "node_id": nid,
                 "q_pico_nodo": own_peak,
                 "q_pico_acum_escalado": accumulated,
+                "duracion_horas": duracion_horas,
+                "tiempo_al_pico_h": tiempo_al_pico_h,
             }
         )
     return pd.DataFrame(rows)

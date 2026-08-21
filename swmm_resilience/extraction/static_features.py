@@ -30,7 +30,7 @@ def extract_static_features(inp_path: Path) -> pd.DataFrame:
     """Extract per-junction static features from a SWMM .inp file.
 
     Returns 1 row per junction (outfalls excluded). Columns:
-        node_id, elev_fondo, prof_max, n_tuberias_in,
+        node_id, elev_fondo, prof_max, n_tuberias_in, n_tuberias_out,
         diam_max_in, diam_max_out, pendiente_max_in, pendiente_out,
         base_inflow_lps, coord_x, coord_y
 
@@ -101,6 +101,8 @@ def extract_static_features(inp_path: Path) -> pd.DataFrame:
             "node_id": nid,
             "elev_fondo": nd["elev_fondo"],
             "prof_max": nd["prof_max"],
+            "n_tuberias_in": len(ins),
+            "n_tuberias_out": len(outs),
             "diam_max_in": max(d_in) if d_in else None,
             "diam_max_out": max(d_out) if d_out else None,
             "pendiente_max_in": max(s_in) if s_in else None,

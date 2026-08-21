@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import yaml
 
@@ -189,6 +189,7 @@ class SimulationConfig:
     factor_min: float
     factor_max: float
     factor_step: float
+    hydrograph_shapes_dir: Optional[Path] = None
 
 
 @dataclass
@@ -292,6 +293,11 @@ def load_config(config_path: str = "config.yaml") -> Config:
             factor_min=float(sim["factor_min"]),
             factor_max=float(sim["factor_max"]),
             factor_step=float(sim["factor_step"]),
+            hydrograph_shapes_dir=(
+                base_dir / sim["hydrograph_shapes_dir"]
+                if sim.get("hydrograph_shapes_dir")
+                else None
+            ),
         ),
         dataset=DatasetConfig(
             output_path=base_dir / ds["output_path"],

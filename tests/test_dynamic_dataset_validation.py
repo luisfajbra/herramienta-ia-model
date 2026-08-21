@@ -31,8 +31,10 @@ def test_dynamic_features_scale_peak_and_accumulated_flow():
     df = compute_dynamic_features(static_topology_df(), 1.5)
 
     assert df.to_dict("records") == [
-        {"node_id": "J1", "factor_mult": 1.5, "q_pico_nodo": 3.0, "q_pico_acum_escalado": 3.0},
-        {"node_id": "J2", "factor_mult": 1.5, "q_pico_nodo": 4.5, "q_pico_acum_escalado": 7.5},
+        {"node_id": "J1", "factor_mult": 1.5, "q_pico_nodo": 3.0, "q_pico_acum_escalado": 3.0,
+         "duracion_horas": 0.0, "tiempo_al_pico_h": 0.0},
+        {"node_id": "J2", "factor_mult": 1.5, "q_pico_nodo": 4.5, "q_pico_acum_escalado": 7.5,
+         "duracion_horas": 0.0, "tiempo_al_pico_h": 0.0},
     ]
 
 

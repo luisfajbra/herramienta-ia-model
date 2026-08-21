@@ -122,3 +122,42 @@ def load_scenario(csv_path: Path, expected_nodes: set[str]) -> HydrographScenari
         time_grid_hours=ref_grid,
         last_time_hours=ref_grid[-1],
     )
+
+
+def _hours_to_hhmm(h: float) -> str:
+    total_min = round(h * 60)
+    return f"{total_min // 60}:{total_min % 60:02d}"
+
+
+def write_shape_validation_csv(
+    shape_id: str,
+    shape: list[tuple[float, float]],
+    base_inflows: dict[str, float],
+    factor: float,
+    out_dir: Path,
+) -> Path:
+    """Write a validation CSV for (shape_id, factor) in the expected format.
+
+    Only nodes with base_inflow > 0 are written (same set as expected_nodes
+    from the base .inp).  Decimal-hour time values are rounded to the nearest
+    minute and serialised as H:MM so load_scenario can read them back.
+
+    Returns the path of the written CSV.
+    """
+    from swmm_resilience.simulation.hydrograph_shapes import apply_shape
+
+    node_series = apply_shape(shape, base_inflows, factor)
+    if not node_series:
+        raise ValueError(f"No nodes with positive base inflow for shape '{shape_id}'")
+
+    rows = [
+        {"node_id": nid, "time": _hours_to_hhmm(t_h), "value_lps": round(v, 6)}
+        for nid, series in sorted(node_series.items())
+        for t_h, v in series
+    ]
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    csv_path = out_dir / f"{shape_id}_f{factor:.3f}.csv"
+    pd.DataFrame(rows).to_csv(csv_path, index=False)
+    return csv_path

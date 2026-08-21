@@ -140,6 +140,24 @@ Salidas en `--out-dir`:
 pip install -r requirements.txt
 ```
 
+Para regenerar desde cero el dataset, los modelos, las metricas y los mapas
+con las versiones validadas del proyecto:
+
+```bash
+./scripts/reproduce_results.sh
+```
+
+En Windows PowerShell:
+
+```powershell
+.\scripts\reproduce_results.ps1
+```
+
+El script requiere Python 3.13, crea un entorno virtual local en `.venv`,
+instala las dependencias fijadas en `requirements.txt`, ejecuta las pruebas y
+corre el pipeline completo definido por `config.yaml`. Los resultados se
+generan localmente y no se versionan.
+
 Dependencias principales:
 
 - `pyswmm` y `swmm-api` para SWMM
