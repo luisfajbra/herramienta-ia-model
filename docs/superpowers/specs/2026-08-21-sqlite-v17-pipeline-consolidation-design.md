@@ -1,9 +1,9 @@
 # SQLite V17 Pipeline Consolidation Design
 
-**Status:** Approved in conversation; ready for implementation planning  
-**Date:** 2026-08-21  
-**Branch:** `cleanup/sqlite-v17-pipeline-consolidation`  
-**Base:** `main` at `af9873a`  
+**Status:** Approved in conversation; ready for implementation planning
+**Date:** 2026-08-21
+**Branch:** `cleanup/sqlite-v17-pipeline-consolidation`
+**Base:** `main` at `af9873a`
 
 ## 1. Purpose
 
