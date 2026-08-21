@@ -231,7 +231,9 @@ Only `COMPLETE` runs are eligible for training or model evaluation.
 
 - `run_id INTEGER NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE`
 - `node_pk INTEGER NOT NULL REFERENCES nodes(node_pk) ON DELETE CASCADE`
-- the 17 non-null numeric feature columns defined in Section 8
+- the 17 numeric feature columns defined in Section 8; physically undefined
+  static/topology values use SQL `NULL` only for the contract-approved
+  nullable features
 - `feature_contract_id TEXT NOT NULL CHECK(feature_contract_id = 'tabular_v3_17')`
 - `PRIMARY KEY(run_id, node_pk)`
 
@@ -334,6 +336,9 @@ The contract module owns:
 - immutable ordered feature names;
 - feature count;
 - units and semantic descriptions;
+- the exact nullable set: `diam_max_in`, `diam_max_out`,
+  `pendiente_max_in`, `pendiente_out`, `dist_outfall_m`, and
+  `upstream_capacity_lps`;
 - contract ID;
 - SHA-256 of a canonical JSON descriptor;
 - classification and regression target definitions;
@@ -344,6 +349,12 @@ The contract module owns:
 post-SWMM result columns may not be inputs. A model or dataset with 15, 16, 18,
 reordered, missing, duplicated, or renamed features must fail before fitting or
 prediction.
+
+SQL `NULL` preserves a physically undefined hydraulic quantity and is not the
+same as zero. Required features, including `duracion_horas` and
+`tiempo_al_pico_h`, may not be null. Contract-approved nullable values are
+imputed by the model pipeline inside each training fold; non-numeric values and
+positive/negative infinity are always rejected.
 
 Default values may not manufacture the two shape features during training.
 They must be derived from persisted scenario data. A deliberate zero is valid
@@ -627,4 +638,3 @@ The consolidation is complete only when:
 - scale and query-plan checks pass;
 - the full surviving test suite passes from a clean checkout;
 - the original checkout and untracked user documents remain untouched.
-
