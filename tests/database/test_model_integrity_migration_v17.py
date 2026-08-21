@@ -137,7 +137,7 @@ def _insert_promotion(
     )
 
 
-def test_fresh_database_applies_three_migrations_idempotently(tmp_path):
+def test_fresh_database_applies_four_migrations_idempotently(tmp_path):
     conn = connect_database(tmp_path / "fresh.sqlite3")
     try:
         apply_migrations(conn)
@@ -149,6 +149,7 @@ def test_fresh_database_applies_three_migrations_idempotently(tmp_path):
             (1, "v17_initial"),
             (2, "model_integrity"),
             (3, "model_integrity_guards"),
+            (4, "training_run_identity"),
         ]
         checksums = conn.execute(
             "SELECT checksum_sha256 FROM schema_migrations ORDER BY version"
@@ -195,12 +196,16 @@ def test_upgrade_preserves_legacy_ids_metrics_and_creates_promotion(tmp_path):
             SQL_DIR / "003_model_integrity_guards.sql",
             catalog_v1 / "003_model_integrity_guards.sql",
         )
+        shutil.copyfile(
+            SQL_DIR / "004_training_run_identity.sql",
+            catalog_v1 / "004_training_run_identity.sql",
+        )
 
         apply_migrations(conn, migration_dir=catalog_v1)
 
         assert [tuple(row) for row in conn.execute(
             "SELECT version FROM schema_migrations ORDER BY version"
-        ).fetchall()] == [(1,), (2,), (3,)]
+        ).fetchall()] == [(1,), (2,), (3,), (4,)]
         assert [tuple(row) for row in conn.execute(
             "SELECT model_id, model_blob FROM trained_models ORDER BY model_id"
         ).fetchall()] == [(10, b"model-10"), (11, b"model-11")]
@@ -570,5 +575,33 @@ def test_incoherent_v2_data_aborts_v3_and_rolls_back(tmp_path):
             WHERE type='trigger' AND name='trained_models_immutable_delete'
             """
         ).fetchone() is None
+    finally:
+        conn.close()
+
+
+def test_training_run_primary_key_is_immutable_with_or_without_children(tmp_path):
+    conn = connect_database(tmp_path / "training-id.sqlite3")
+    try:
+        apply_migrations(conn)
+        _insert_training_run(conn, 1, "inunda", "PENDING")
+        _insert_training_run(conn, 2, "system", "RUNNING")
+        _insert_model(conn, 20, 2, "inunda")
+
+        with pytest.raises(sqlite3.IntegrityError, match="identity is immutable"):
+            conn.execute(
+                "UPDATE training_runs SET training_run_id=101 WHERE training_run_id=1"
+            )
+        with pytest.raises(sqlite3.IntegrityError, match="identity is immutable"):
+            conn.execute(
+                "UPDATE training_runs SET training_run_id=202 WHERE training_run_id=2"
+            )
+
+        assert [row[0] for row in conn.execute(
+            "SELECT training_run_id FROM training_runs ORDER BY training_run_id"
+        )] == [1, 2]
+        assert conn.execute(
+            "SELECT training_run_id FROM trained_models WHERE model_id=20"
+        ).fetchone()[0] == 2
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     finally:
         conn.close()

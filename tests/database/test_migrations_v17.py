@@ -118,7 +118,7 @@ def test_initial_migration_creates_expected_schema(tmp_path):
         assert indexes == EXPECTED_INDEXES
         assert conn.execute(
             "SELECT COUNT(*) FROM schema_migrations"
-        ).fetchone()[0] == 3
+        ).fetchone()[0] == 4
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     finally:
         conn.close()
@@ -294,7 +294,7 @@ def test_migrations_are_idempotent(tmp_path):
         apply_migrations(conn)
         assert conn.execute(
             "SELECT COUNT(*) FROM schema_migrations"
-        ).fetchone()[0] == 3
+        ).fetchone()[0] == 4
     finally:
         conn.close()
 

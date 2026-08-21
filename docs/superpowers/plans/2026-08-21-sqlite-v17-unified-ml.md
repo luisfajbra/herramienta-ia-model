@@ -29,6 +29,8 @@
   `foreign_keys=ON` and `recursive_triggers=ON`. Registry writers use plain
   `INSERT`, never `INSERT OR REPLACE`: artifact, metric, promotion, selection,
   and training-run identities are immutable.
+- `training_run_id` is assigned once and is never updated, whether or not the
+  run has descendants; changed fitting inputs create a new training run.
 - Model metrics are append-only and their owner FKs use `ON DELETE RESTRICT`.
   Model artifacts reject direct deletes and cascaded deletes; promotions and
   selections are immutable history. Raw simulation relations retain their
