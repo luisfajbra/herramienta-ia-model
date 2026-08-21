@@ -25,6 +25,17 @@
 - New metric writes set exactly one concrete owner FK: `training_run_id`,
   `evaluation_id`, or `model_id`. `owner_kind` and `owner_id` are generated
   read columns and must never be supplied by writers.
+- All application and maintenance connections require
+  `foreign_keys=ON` and `recursive_triggers=ON`. Registry writers use plain
+  `INSERT`, never `INSERT OR REPLACE`: artifact, metric, promotion, selection,
+  and training-run identities are immutable.
+- Model metrics are append-only and their owner FKs use `ON DELETE RESTRICT`.
+  Model artifacts reject direct deletes and cascaded deletes; promotions and
+  selections are immutable history. Raw simulation relations retain their
+  documented cascades.
+- An artifact may be written only for a compatible `RUNNING` or `COMPLETE`
+  training run. A promotion/selection requires a compatible `COMPLETE` run;
+  later target/status changes may not invalidate existing provenance.
 - No filesystem fallback, compatibility fill, or 15-feature load path.
 
 ---
@@ -383,7 +394,12 @@ candidates and fit all eligible data only after selection. Task 5 stores one
 target-specific artifact or both system artifacts without
 `selected_metric`/`selected_value`, then appends the promotion (including
 primary metric/value and complete ranking provenance) and active-selection
-event. Mark training status `COMPLETE` only after that transaction succeeds.
+event. The run becomes observably `COMPLETE` only when that transaction
+commits successfully.
+Within the final transaction the exact database order is: insert artifacts
+while the run is `RUNNING`, update the run to `COMPLETE`, insert the promotion,
+then insert the selection that supersedes the prior active selection. A
+promotion attempted before the status update must fail.
 
 `rank_stored_candidates()` reads existing OOF rows and computes a ranking only;
 it never calls `fit`. If the user explicitly promotes a different ranking
@@ -456,9 +472,12 @@ class VerifiedModel:
 - [ ] **Step 4: Integrate final storage transaction**
 
 Insert immutable artifact rows without `selected_metric` or `selected_value`.
-Store the selected model (or both selected system models), append the
-target-specific or `system` promotion, append its active-selection event, and
-mark `training_runs.status='COMPLETE'` in one transaction. Promotion rows own
+Use plain `INSERT`; an identity collision is an error and must not be retried
+as `INSERT OR REPLACE`. Apply the same rule to metric, promotion, selection,
+and training-run repositories. In one transaction, store the selected model
+(or both selected system models) while the run is `RUNNING`, set
+`training_runs.status='COMPLETE'`, append the target-specific or `system`
+promotion, and then append its active-selection event. Promotion rows own
 the selected metric/value and ranking JSON and use real composite FKs to
 enforce model target/training-run coherence. On serialization/storage failure,
 roll back every artifact and event, then mark the training run failed in a

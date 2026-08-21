@@ -49,7 +49,7 @@ def test_checkpoint_and_backup_creates_standalone_database(tmp_path):
             )
             assert backup_conn.execute(
                 "SELECT COUNT(*) FROM schema_migrations"
-            ).fetchone()[0] == 2
+            ).fetchone()[0] == 3
             assert backup_conn.execute(
                 "SELECT COUNT(*) FROM networks"
             ).fetchone()[0] == 1
@@ -62,7 +62,7 @@ def test_checkpoint_and_backup_creates_standalone_database(tmp_path):
         conn.close()
 
 
-def test_backup_enables_foreign_keys_on_destination_connection(
+def test_backup_enables_safety_pragmas_on_destination_connection(
     tmp_path,
     monkeypatch,
 ):
@@ -88,6 +88,10 @@ def test_backup_enables_foreign_keys_on_destination_connection(
 
         assert any(
             statement.strip().lower() == "pragma foreign_keys = on"
+            for statement in statements
+        )
+        assert any(
+            statement.strip().lower() == "pragma recursive_triggers = on"
             for statement in statements
         )
     finally:

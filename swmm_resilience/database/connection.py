@@ -8,6 +8,10 @@ def connect_database(path: str | Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path, timeout=5.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA recursive_triggers = ON")
+    if conn.execute("PRAGMA recursive_triggers").fetchone()[0] != 1:
+        conn.close()
+        raise RuntimeError("SQLite recursive triggers could not be enabled")
     mode = conn.execute("PRAGMA journal_mode = WAL").fetchone()[0]
     if str(mode).lower() != "wal":
         conn.close()

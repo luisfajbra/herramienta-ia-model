@@ -22,6 +22,11 @@ def checkpoint_and_backup(
     backup_conn = sqlite3.connect(target)
     try:
         backup_conn.execute("PRAGMA foreign_keys = ON")
+        backup_conn.execute("PRAGMA recursive_triggers = ON")
+        if backup_conn.execute("PRAGMA recursive_triggers").fetchone()[0] != 1:
+            raise RuntimeError(
+                "SQLite recursive triggers could not be enabled for backup"
+            )
         conn.backup(backup_conn)
     finally:
         backup_conn.close()
