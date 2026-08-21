@@ -448,6 +448,12 @@ def test_loader_rejects_invalid_persisted_node_count(
 
 def _matches_snapshot_boundary(statement, boundary):
     sql = " ".join(statement.lower().split())
+    if boundary == "selection":
+        return (
+            "select run_id, status" in sql
+            and "from runs" in sql
+            and "where status = 'complete'" in sql
+        )
     if boundary == "cardinality":
         return (
             "run.node_count" in sql
@@ -459,6 +465,14 @@ def _matches_snapshot_boundary(statement, boundary):
     if boundary == "final_view":
         return "from training_samples_v17" in sql
     raise AssertionError(f"Unknown snapshot boundary: {boundary}")
+
+
+CRITICAL_SNAPSHOT_READS = (
+    "selection",
+    "cardinality",
+    "key_symmetry",
+    "final_view",
+)
 
 
 @pytest.mark.parametrize(
@@ -475,6 +489,7 @@ def test_loader_reads_every_validation_boundary_from_one_wal_snapshot(
     mutated = False
     mutation_inside_loader_savepoint = False
     loader_savepoint_open = False
+    critical_read_states = {}
     try:
         apply_migrations(reader)
         _insert_network(reader)
@@ -499,6 +514,11 @@ def test_loader_reads_every_validation_boundary_from_one_wal_snapshot(
             if sql.startswith("release savepoint training_samples_"):
                 loader_savepoint_open = False
                 return
+            for critical_read in CRITICAL_SNAPSHOT_READS:
+                if _matches_snapshot_boundary(statement, critical_read):
+                    critical_read_states.setdefault(critical_read, []).append(
+                        loader_savepoint_open
+                    )
             if mutated or not _matches_snapshot_boundary(
                 statement,
                 mutation_boundary,
@@ -521,6 +541,10 @@ def test_loader_reads_every_validation_boundary_from_one_wal_snapshot(
 
         assert mutated
         assert mutation_inside_loader_savepoint
+        assert set(critical_read_states) == set(CRITICAL_SNAPSHOT_READS)
+        assert all(
+            all(states) for states in critical_read_states.values()
+        )
         assert frame["node_id"].tolist() == ["node-10", "node-20"]
         assert reader.in_transaction
         assert reader.execute(
