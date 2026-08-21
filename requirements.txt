@@ -7,7 +7,7 @@ scikit-learn==1.8.0
 joblib==1.5.3
 torch==2.6.0
 xgboost==3.2.0
-shap==0.52.0
+shap==0.51.0
 swmm-api==0.4.73
 ydata-profiling==4.18.4
 Pillow==12.2.0
