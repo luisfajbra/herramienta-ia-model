@@ -725,6 +725,56 @@ BEGIN
     SELECT RAISE(ABORT, 'ranking finalizations are immutable');
 END;
 
+-- NOTE: this enforces that the declared winner holds the best valid primary
+-- score among entries with complete scoring, and that every entry has a
+-- primary score row. It does NOT implement arbitrary tie-breaker resolution
+-- or a configurable invalid-score policy (model_rankings.tie_breakers_json
+-- and invalid_score_policy are recorded for audit/reporting but their full
+-- semantics are not yet pinned down anywhere in this schema) — a genuine
+-- tie between the winner and another entry on the primary metric is
+-- currently accepted without consulting tie_breakers_json. Closing that
+-- remaining gap requires first specifying concrete tie-breaker JSON
+-- structure and invalid-score-policy semantics, which is deferred.
+CREATE TRIGGER model_ranking_finalizations_validate_insert
+BEFORE INSERT ON model_ranking_finalizations
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM model_ranking_scores AS winner_score
+    JOIN model_rankings AS ranking ON ranking.ranking_id = NEW.ranking_id
+    WHERE winner_score.ranking_id = NEW.ranking_id
+      AND winner_score.entry_id = NEW.winner_entry_id
+      AND winner_score.metric_ordinal = 0
+      AND winner_score.valid = 1
+      AND NOT EXISTS (
+          SELECT 1
+          FROM model_ranking_scores AS other_score
+          WHERE other_score.ranking_id = NEW.ranking_id
+            AND other_score.metric_ordinal = 0
+            AND other_score.valid = 1
+            AND other_score.entry_id <> NEW.winner_entry_id
+            AND (
+                (ranking.primary_direction = 'maximize' AND other_score.value > winner_score.value)
+                OR (ranking.primary_direction = 'minimize' AND other_score.value < winner_score.value)
+            )
+      )
+      AND NOT EXISTS (
+          SELECT 1 FROM model_ranking_entries AS entry
+          WHERE entry.ranking_id = NEW.ranking_id
+            AND NOT EXISTS (
+                SELECT 1 FROM model_ranking_scores AS s
+                WHERE s.ranking_id = entry.ranking_id
+                  AND s.entry_id = entry.entry_id
+                  AND s.metric_ordinal = 0
+            )
+      )
+)
+BEGIN
+    SELECT RAISE(
+        ABORT,
+        'ranking finalization requires the declared winner to hold the best valid primary score among complete entries'
+    );
+END;
+
 CREATE TABLE model_promotion_rankings (
     promotion_id INTEGER PRIMARY KEY
         REFERENCES model_promotions(promotion_id) ON DELETE RESTRICT,
