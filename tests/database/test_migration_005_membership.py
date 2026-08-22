@@ -144,7 +144,10 @@ def test_evaluation_running_rejected_when_train_role_is_empty(tmp_path):
     conn = connect_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _seed_training_run_with_full_membership(conn)
-    _insert_model_evaluation(conn, 1, 1, fold_id=0, train_run_ids=[1], validation_run_ids=[2])
+    # train_run_ids_json is empty so the row-count-vs-JSON-count check for
+    # the 'train' role is also 0=0 (satisfied); only the empty-role
+    # NOT EXISTS branch can reject this.
+    _insert_model_evaluation(conn, 1, 1, fold_id=0, train_run_ids=[], validation_run_ids=[2])
     conn.execute(
         "INSERT INTO model_evaluation_runs (evaluation_id, role, run_id) VALUES (1, 'validation', 2)"
     )
@@ -160,7 +163,10 @@ def test_evaluation_running_rejected_when_validation_role_is_empty(tmp_path):
     conn = connect_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _seed_training_run_with_full_membership(conn)
-    _insert_model_evaluation(conn, 1, 1, fold_id=0, train_run_ids=[1], validation_run_ids=[2])
+    # validation_run_ids_json is empty so the row-count-vs-JSON-count check
+    # for the 'validation' role is also 0=0 (satisfied); only the
+    # empty-role NOT EXISTS branch can reject this.
+    _insert_model_evaluation(conn, 1, 1, fold_id=0, train_run_ids=[1], validation_run_ids=[])
     conn.execute(
         "INSERT INTO model_evaluation_runs (evaluation_id, role, run_id) VALUES (1, 'train', 1)"
     )
