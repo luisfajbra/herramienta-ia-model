@@ -276,7 +276,11 @@ CREATE TRIGGER training_runs_running_requires_complete_membership
 BEFORE UPDATE OF status ON training_runs
 WHEN NEW.status='RUNNING' AND OLD.status='PENDING'
   AND (
-    (
+    NOT EXISTS (
+        SELECT 1 FROM training_run_inputs
+        WHERE training_run_id=OLD.training_run_id
+    )
+    OR (
         SELECT COUNT(*) FROM training_run_inputs
         WHERE training_run_id=OLD.training_run_id
     ) <> (SELECT COUNT(*) FROM json_each(OLD.included_run_ids_json))
@@ -291,7 +295,7 @@ WHEN NEW.status='RUNNING' AND OLD.status='PENDING'
 BEGIN
     SELECT RAISE(
         ABORT,
-        'training run membership must equal included_run_ids_json before RUNNING'
+        'training run membership must be non-empty and equal to included_run_ids_json before RUNNING'
     );
 END;
 
@@ -299,7 +303,15 @@ CREATE TRIGGER model_evaluations_running_requires_complete_membership
 BEFORE UPDATE OF status ON model_evaluations
 WHEN NEW.status='RUNNING' AND OLD.status='PENDING'
   AND (
-    EXISTS (
+    NOT EXISTS (
+        SELECT 1 FROM model_evaluation_runs
+        WHERE evaluation_id=OLD.evaluation_id AND role='train'
+    )
+    OR NOT EXISTS (
+        SELECT 1 FROM model_evaluation_runs
+        WHERE evaluation_id=OLD.evaluation_id AND role='validation'
+    )
+    OR EXISTS (
         SELECT run_id FROM model_evaluation_runs
         WHERE evaluation_id=OLD.evaluation_id AND role='train'
         INTERSECT

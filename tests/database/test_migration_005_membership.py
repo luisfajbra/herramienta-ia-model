@@ -142,3 +142,15 @@ def test_running_requires_complete_and_equal_membership(tmp_path):
     )
     conn.execute("UPDATE training_runs SET status = 'RUNNING' WHERE training_run_id = 1")
     conn.commit()
+
+
+def test_running_is_rejected_when_membership_is_completely_empty(tmp_path):
+    catalog = _catalog_through_005(tmp_path)
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn, migration_dir=catalog)
+    _insert_training_run(conn, 1, [], status="PENDING")
+    conn.commit()
+
+    with pytest.raises(Exception):
+        conn.execute("UPDATE training_runs SET status = 'RUNNING' WHERE training_run_id = 1")
+    conn.rollback()
