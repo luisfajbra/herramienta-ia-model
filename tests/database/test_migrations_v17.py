@@ -45,6 +45,7 @@ EXPECTED_TABLES = {
     "model_ranking_finalizations",
     "model_promotion_rankings",
     "model_promotion_finalizations",
+    "model_promotion_invalidations",
 }
 
 EXPECTED_INDEXES = {

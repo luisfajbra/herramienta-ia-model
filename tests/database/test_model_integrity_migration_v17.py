@@ -328,9 +328,23 @@ def test_artifacts_promotions_and_selections_enforce_integrity(tmp_path):
             ) VALUES (2, 'system', 2, 1, '2026-08-21T04:00:00+00:00')
             """
         )
+        # NOTE: these promotions are never finalized (no model_promotion_finalizations
+        # row), so as of migration 005 Part F, active_model_selections correctly
+        # excludes them (valid_model_promotions requires finalization). The
+        # selection-chain superseding logic itself is still exercised directly
+        # against model_selections, which is unaffected by promotion validity.
         assert tuple(conn.execute(
-            "SELECT selection_id, promotion_id FROM active_model_selections WHERE target='system'"
+            """
+            SELECT selection_id, promotion_id FROM model_selections
+            WHERE target='system' AND NOT EXISTS (
+                SELECT 1 FROM model_selections AS successor
+                WHERE successor.supersedes_selection_id = model_selections.selection_id
+            )
+            """
         ).fetchone()) == (2, 2)
+        assert conn.execute(
+            "SELECT COUNT(*) FROM active_model_selections WHERE target='system'"
+        ).fetchone()[0] == 0
         with pytest.raises(sqlite3.IntegrityError, match="active selection"):
             conn.execute(
                 """
@@ -386,9 +400,10 @@ def test_artifacts_promotions_and_selections_enforce_integrity(tmp_path):
                 ) VALUES (3, 'system', 2, 3, '2026-08-21T06:00:00+00:00')
                 """
             )
+        # Still unfinalized: active_model_selections stays empty (see NOTE above).
         assert conn.execute(
             "SELECT COUNT(*) FROM active_model_selections WHERE target='system'"
-        ).fetchone()[0] == 1
+        ).fetchone()[0] == 0
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     finally:
         conn.close()
@@ -544,9 +559,22 @@ def test_training_run_target_and_status_guard_artifacts_and_promotions(tmp_path)
             sqlite3.IntegrityError, match="invalid training run status transition"
         ):
             conn.execute("UPDATE training_runs SET status='RUNNING' WHERE training_run_id=3")
+        # NOTE: promotion 40 is never finalized (no model_promotion_finalizations
+        # row), so as of migration 005 Part F, active_model_selections correctly
+        # excludes it. The selection-chain leaf logic is still exercised directly
+        # against model_selections, which is unaffected by promotion validity.
+        assert conn.execute(
+            """
+            SELECT COUNT(*) FROM model_selections
+            WHERE target='system' AND NOT EXISTS (
+                SELECT 1 FROM model_selections AS successor
+                WHERE successor.supersedes_selection_id = model_selections.selection_id
+            )
+            """
+        ).fetchone()[0] == 1
         assert conn.execute(
             "SELECT COUNT(*) FROM active_model_selections WHERE target='system'"
-        ).fetchone()[0] == 1
+        ).fetchone()[0] == 0
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     finally:
         conn.close()

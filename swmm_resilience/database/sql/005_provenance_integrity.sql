@@ -882,3 +882,88 @@ BEGIN
         'promotion finalization requires its artifacts and metric to match the finalized ranking winner'
     );
 END;
+
+CREATE TABLE model_promotion_invalidations (
+    promotion_id INTEGER PRIMARY KEY
+        REFERENCES model_promotions(promotion_id) ON DELETE RESTRICT,
+    reason TEXT NOT NULL,
+    invalidated_at_utc TEXT NOT NULL
+);
+
+CREATE TRIGGER model_promotion_invalidations_identity_conflict
+BEFORE INSERT ON model_promotion_invalidations
+WHEN EXISTS (
+    SELECT 1 FROM model_promotion_invalidations WHERE promotion_id=NEW.promotion_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'model promotion invalidation identity is immutable');
+END;
+
+CREATE TRIGGER model_promotion_invalidations_immutable_update
+BEFORE UPDATE ON model_promotion_invalidations
+BEGIN
+    SELECT RAISE(ABORT, 'model promotion invalidations are immutable');
+END;
+
+CREATE TRIGGER model_promotion_invalidations_immutable_delete
+BEFORE DELETE ON model_promotion_invalidations
+BEGIN
+    SELECT RAISE(ABORT, 'model promotion invalidations are immutable');
+END;
+
+CREATE VIEW valid_model_promotions AS
+SELECT model_promotions.*
+FROM model_promotions
+JOIN model_promotion_finalizations
+    ON model_promotion_finalizations.promotion_id = model_promotions.promotion_id
+LEFT JOIN model_promotion_invalidations AS invalidation
+    ON invalidation.promotion_id = model_promotions.promotion_id
+WHERE invalidation.promotion_id IS NULL;
+
+-- Rebuild active_model_selections: determine the unique leaf over the
+-- complete immutable selection chain FIRST, then join validity. Filtering
+-- promotions before leaf selection would silently reactivate an older model.
+DROP VIEW active_model_selections;
+
+CREATE VIEW active_model_selections AS
+WITH leaf_selections AS (
+    SELECT selection.*
+    FROM model_selections AS selection
+    WHERE NOT EXISTS (
+        SELECT 1 FROM model_selections AS successor
+        WHERE successor.supersedes_selection_id = selection.selection_id
+    )
+)
+SELECT
+    leaf_selections.selection_id,
+    leaf_selections.target,
+    leaf_selections.promotion_id,
+    leaf_selections.selected_at_utc,
+    valid_model_promotions.training_run_id,
+    valid_model_promotions.classifier_model_id,
+    valid_model_promotions.regressor_model_id,
+    valid_model_promotions.primary_metric,
+    valid_model_promotions.primary_value,
+    valid_model_promotions.tie_breakers_json,
+    valid_model_promotions.ranking_json,
+    valid_model_promotions.promoted_at_utc
+FROM leaf_selections
+JOIN valid_model_promotions
+    ON valid_model_promotions.promotion_id = leaf_selections.promotion_id
+   AND valid_model_promotions.target = leaf_selections.target;
+
+-- Invalidate every promotion that existed before 005: none can prove a
+-- complete frozen ranking universe under the new schema.
+INSERT INTO model_promotion_invalidations (promotion_id, reason, invalidated_at_utc)
+SELECT
+    promotion_id,
+    CASE
+        WHEN ranking_json LIKE '%"source":"001_v17_initial"%'
+             AND target = 'system'
+        THEN 'fabricated_system_value'
+        WHEN ranking_json LIKE '%"source":"001_v17_initial"%'
+        THEN 'missing_target_evidence'
+        ELSE 'missing_normalized_ranking_evidence'
+    END,
+    datetime('now')
+FROM model_promotions;
