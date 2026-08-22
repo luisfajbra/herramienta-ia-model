@@ -1,4 +1,5 @@
 # tests/database/test_migration_005_membership.py
+import json
 from pathlib import Path
 import shutil
 
@@ -69,6 +70,151 @@ def _insert_training_run(conn, training_run_id, included_run_ids, status="PENDIN
         """,
         (training_run_id, "a" * 64, json.dumps(sorted(included_run_ids)), status),
     )
+
+
+def _insert_model_evaluation(
+    conn,
+    evaluation_id,
+    training_run_id,
+    fold_id,
+    train_run_ids,
+    validation_run_ids,
+    status="PENDING",
+):
+    conn.execute(
+        """
+        INSERT INTO model_evaluations (
+            evaluation_id, training_run_id, task, algorithm,
+            hyperparameters_json, fold_id, train_run_ids_json,
+            validation_run_ids_json, status, fit_seconds, predict_seconds
+        ) VALUES (?, ?, 'classification', 'algo', '{}', ?, ?, ?, ?, 0, 0)
+        """,
+        (
+            evaluation_id,
+            training_run_id,
+            fold_id,
+            json.dumps(train_run_ids),
+            json.dumps(validation_run_ids),
+            status,
+        ),
+    )
+
+
+def _seed_training_run_with_full_membership(conn, training_run_id=1, fold_count=None):
+    """Seeds 2 runs + a PENDING training run whose full [1, 2] membership
+    is already normalized into training_run_inputs."""
+    _seed_network_and_runs(conn, n=2)
+    _insert_training_run(conn, training_run_id, [1, 2], status="PENDING")
+    conn.execute(
+        "INSERT INTO training_run_inputs (training_run_id, run_id) VALUES (?, 1)",
+        (training_run_id,),
+    )
+    conn.execute(
+        "INSERT INTO training_run_inputs (training_run_id, run_id) VALUES (?, 2)",
+        (training_run_id,),
+    )
+    conn.commit()
+
+
+def test_evaluation_running_succeeds_with_complete_disjoint_membership(tmp_path):
+    catalog = _catalog_through_005(tmp_path)
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn, migration_dir=catalog)
+    _seed_training_run_with_full_membership(conn)
+    _insert_model_evaluation(conn, 1, 1, fold_id=0, train_run_ids=[1], validation_run_ids=[2])
+    conn.execute(
+        "INSERT INTO model_evaluation_runs (evaluation_id, role, run_id) VALUES (1, 'train', 1)"
+    )
+    conn.execute(
+        "INSERT INTO model_evaluation_runs (evaluation_id, role, run_id) VALUES (1, 'validation', 2)"
+    )
+    conn.commit()
+
+    conn.execute("UPDATE model_evaluations SET status = 'RUNNING' WHERE evaluation_id = 1")
+    conn.commit()
+
+    row = conn.execute(
+        "SELECT status FROM model_evaluations WHERE evaluation_id = 1"
+    ).fetchone()
+    assert row[0] == "RUNNING"
+
+
+def test_evaluation_running_rejected_when_train_role_is_empty(tmp_path):
+    catalog = _catalog_through_005(tmp_path)
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn, migration_dir=catalog)
+    _seed_training_run_with_full_membership(conn)
+    _insert_model_evaluation(conn, 1, 1, fold_id=0, train_run_ids=[1], validation_run_ids=[2])
+    conn.execute(
+        "INSERT INTO model_evaluation_runs (evaluation_id, role, run_id) VALUES (1, 'validation', 2)"
+    )
+    conn.commit()
+
+    with pytest.raises(Exception):
+        conn.execute("UPDATE model_evaluations SET status = 'RUNNING' WHERE evaluation_id = 1")
+    conn.rollback()
+
+
+def test_evaluation_running_rejected_when_validation_role_is_empty(tmp_path):
+    catalog = _catalog_through_005(tmp_path)
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn, migration_dir=catalog)
+    _seed_training_run_with_full_membership(conn)
+    _insert_model_evaluation(conn, 1, 1, fold_id=0, train_run_ids=[1], validation_run_ids=[2])
+    conn.execute(
+        "INSERT INTO model_evaluation_runs (evaluation_id, role, run_id) VALUES (1, 'train', 1)"
+    )
+    conn.commit()
+
+    with pytest.raises(Exception):
+        conn.execute("UPDATE model_evaluations SET status = 'RUNNING' WHERE evaluation_id = 1")
+    conn.rollback()
+
+
+def test_evaluation_running_rejected_when_train_and_validation_overlap(tmp_path):
+    catalog = _catalog_through_005(tmp_path)
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn, migration_dir=catalog)
+    _seed_training_run_with_full_membership(conn)
+    # run_id 1 is listed in BOTH canonical JSON arrays so the per-role
+    # insert-time containment/JSON-membership guards both pass; only the
+    # RUNNING-transition disjointness check should reject this.
+    _insert_model_evaluation(conn, 1, 1, fold_id=0, train_run_ids=[1], validation_run_ids=[1])
+    conn.execute(
+        "INSERT INTO model_evaluation_runs (evaluation_id, role, run_id) VALUES (1, 'train', 1)"
+    )
+    conn.execute(
+        "INSERT INTO model_evaluation_runs (evaluation_id, role, run_id) VALUES (1, 'validation', 1)"
+    )
+    conn.commit()
+
+    with pytest.raises(Exception):
+        conn.execute("UPDATE model_evaluations SET status = 'RUNNING' WHERE evaluation_id = 1")
+    conn.rollback()
+
+
+def test_evaluation_running_rejected_when_fold_id_is_out_of_range(tmp_path):
+    catalog = _catalog_through_005(tmp_path)
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn, migration_dir=catalog)
+    # fold_count=2 on the training run (see _insert_training_run), so
+    # fold_id=2 is individually valid per model_evaluations' own
+    # `CHECK(fold_id >= 0)` constraint at INSERT time, but it is out of
+    # range relative to this training run's declared fold_count and must
+    # be rejected specifically by the 005 RUNNING-transition trigger.
+    _seed_training_run_with_full_membership(conn)
+    _insert_model_evaluation(conn, 1, 1, fold_id=2, train_run_ids=[1], validation_run_ids=[2])
+    conn.execute(
+        "INSERT INTO model_evaluation_runs (evaluation_id, role, run_id) VALUES (1, 'train', 1)"
+    )
+    conn.execute(
+        "INSERT INTO model_evaluation_runs (evaluation_id, role, run_id) VALUES (1, 'validation', 2)"
+    )
+    conn.commit()
+
+    with pytest.raises(Exception):
+        conn.execute("UPDATE model_evaluations SET status = 'RUNNING' WHERE evaluation_id = 1")
+    conn.rollback()
 
 
 def test_membership_insert_requires_pending_owner(tmp_path):
