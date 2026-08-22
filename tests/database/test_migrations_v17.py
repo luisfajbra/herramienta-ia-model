@@ -12,6 +12,7 @@ from swmm_resilience.database.migrations import (
 )
 
 
+# Keep in sync with 005_provenance_integrity.sql as it grows across increments.
 EXPECTED_TABLES = {
     "schema_migrations",
     "networks",
@@ -30,6 +31,8 @@ EXPECTED_TABLES = {
     "trained_models",
     "model_promotions",
     "model_selections",
+    "schema_migration_validators",
+    "training_run_provenance_invalidations",
 }
 
 EXPECTED_INDEXES = {
@@ -118,7 +121,7 @@ def test_initial_migration_creates_expected_schema(tmp_path):
         assert indexes == EXPECTED_INDEXES
         assert conn.execute(
             "SELECT COUNT(*) FROM schema_migrations"
-        ).fetchone()[0] == 4
+        ).fetchone()[0] == 5
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     finally:
         conn.close()
@@ -294,7 +297,7 @@ def test_migrations_are_idempotent(tmp_path):
         apply_migrations(conn)
         assert conn.execute(
             "SELECT COUNT(*) FROM schema_migrations"
-        ).fetchone()[0] == 4
+        ).fetchone()[0] == 5
     finally:
         conn.close()
 
