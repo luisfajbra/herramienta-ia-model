@@ -267,6 +267,44 @@ def test_oof_accepts_large_but_finite_predicted_for_regression(tmp_path):
     conn.commit()
 
 
+def test_oof_rejects_negative_observed_for_regression(tmp_path):
+    catalog = _catalog_through_005(tmp_path)
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn, migration_dir=catalog)
+    _seed(conn)
+    _seed_regression_evaluation(conn)
+
+    with pytest.raises(Exception):
+        conn.execute(
+            """
+            INSERT INTO oof_predictions (
+                evaluation_id, run_id, node_pk, target, observed, predicted,
+                probability, fold_id
+            ) VALUES (2, 1, 1, 'vol_inundacion_m3', -0.001, 1.0, NULL, 0)
+            """
+        )
+    conn.rollback()
+
+
+def test_oof_rejects_non_null_probability_for_regression(tmp_path):
+    catalog = _catalog_through_005(tmp_path)
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn, migration_dir=catalog)
+    _seed(conn)
+    _seed_regression_evaluation(conn)
+
+    with pytest.raises(Exception):
+        conn.execute(
+            """
+            INSERT INTO oof_predictions (
+                evaluation_id, run_id, node_pk, target, observed, predicted,
+                probability, fold_id
+            ) VALUES (2, 1, 1, 'vol_inundacion_m3', 3.5, 1.0, 0.5, 0)
+            """
+        )
+    conn.rollback()
+
+
 def test_oof_rejects_out_of_domain_classification_values(tmp_path):
     catalog = _catalog_through_005(tmp_path)
     conn = connect_database(tmp_path / "db.sqlite3")
