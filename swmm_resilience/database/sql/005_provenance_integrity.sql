@@ -704,6 +704,22 @@ BEGIN
     SELECT RAISE(ABORT, 'no score is added after ranking finalization');
 END;
 
+-- Mirrors oof_predictions_validate_insert's verified NaN/Infinity rejection
+-- pattern. When valid=0, `value` may legitimately be NULL per this table's
+-- own CHECK constraint, so finiteness is only enforced when valid=1.
+CREATE TRIGGER model_ranking_scores_validate_finite_value
+BEFORE INSERT ON model_ranking_scores
+WHEN NEW.valid = 1
+  AND (
+      NEW.value IS NULL
+      OR NEW.value <> NEW.value  -- rejects NaN (NaN <> NaN is true)
+      OR NEW.value > 1.7976931348623157e308
+      OR NEW.value < -1.7976931348623157e308  -- rejects +/-Infinity (DBL_MAX bound, see oof_predictions_validate_insert for the same verified pattern)
+  )
+BEGIN
+    SELECT RAISE(ABORT, 'valid ranking scores must be finite');
+END;
+
 CREATE TABLE model_ranking_finalizations (
     ranking_id INTEGER PRIMARY KEY
         REFERENCES model_rankings(ranking_id) ON DELETE RESTRICT,
