@@ -1,3 +1,4 @@
+import hashlib
 from pathlib import Path
 import sqlite3
 
@@ -17,4 +18,17 @@ def connect_database(path: str | Path) -> sqlite3.Connection:
         conn.close()
         raise RuntimeError(f"SQLite WAL mode unavailable: {mode}")
     conn.execute("PRAGMA busy_timeout = 5000")
+    return conn
+
+
+def _sha256_sql_function(value) -> str:
+    if value is None:
+        raise ValueError("sha256() requires a non-NULL argument")
+    payload = value if isinstance(value, (bytes, bytearray)) else str(value).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def connect_managed_database(path: str | Path) -> sqlite3.Connection:
+    conn = connect_database(path)
+    conn.create_function("sha256", 1, _sha256_sql_function, deterministic=True)
     return conn

@@ -11,3 +11,32 @@ def test_connection_enables_safety_pragmas(tmp_path):
         assert conn.execute("SELECT 7 AS value").fetchone()["value"] == 7
     finally:
         conn.close()
+
+
+import hashlib
+
+import pytest
+
+from swmm_resilience.database.connection import connect_managed_database
+
+
+def test_managed_connection_registers_sha256_function(tmp_path):
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
+    try:
+        digest = conn.execute("SELECT sha256(?)", (b"hello",)).fetchone()[0]
+        assert digest == hashlib.sha256(b"hello").hexdigest()
+        text_digest = conn.execute("SELECT sha256(?)", ("hello",)).fetchone()[0]
+        assert text_digest == hashlib.sha256(b"hello").hexdigest()
+    finally:
+        conn.close()
+
+
+def test_raw_connection_has_no_sha256_function(tmp_path):
+    from swmm_resilience.database.connection import connect_database
+
+    conn = connect_database(tmp_path / "db.sqlite3")
+    try:
+        with pytest.raises(Exception):
+            conn.execute("SELECT sha256(?)", (b"hello",))
+    finally:
+        conn.close()
