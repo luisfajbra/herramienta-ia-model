@@ -4,6 +4,7 @@ from importlib.resources import files
 from pathlib import Path
 import re
 import sqlite3
+from typing import Callable
 
 
 class MigrationChecksumError(RuntimeError):
@@ -11,6 +12,10 @@ class MigrationChecksumError(RuntimeError):
 
 
 class MigrationOrderError(RuntimeError):
+    pass
+
+
+class MigrationPreflightError(RuntimeError):
     pass
 
 
@@ -155,11 +160,14 @@ def _execute_migration_sql(conn: sqlite3.Connection, sql: str) -> None:
 def apply_migrations(
     conn: sqlite3.Connection,
     migration_dir: Path | None = None,
+    preflight_hooks: dict[int, Callable[[sqlite3.Connection], None]] | None = None,
 ) -> None:
     if conn.in_transaction:
         raise RuntimeError(
             "Cannot apply migrations while the connection has an active transaction"
         )
+
+    hooks = preflight_hooks if preflight_hooks is not None else {}
 
     catalog = _migration_catalog(migration_dir)
     applied = _applied_history(conn)
@@ -170,6 +178,9 @@ def apply_migrations(
         stamp = datetime.now(timezone.utc).isoformat()
         try:
             conn.execute("BEGIN IMMEDIATE")
+            hook = hooks.get(version)
+            if hook is not None:
+                hook(conn)
             _execute_migration_sql(conn, sql)
             conn.execute(
                 """
