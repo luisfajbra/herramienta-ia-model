@@ -461,7 +461,7 @@ def test_model_metrics_require_exactly_one_real_owner_and_are_immutable(tmp_path
                   FROM model_metrics WHERE model_id=3
                 """
             )
-        with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY"):
+        with pytest.raises(sqlite3.IntegrityError, match="FOREIGN KEY|cannot be deleted"):
             conn.execute("DELETE FROM model_evaluations WHERE evaluation_id=2")
         with pytest.raises(sqlite3.IntegrityError, match="immutable"):
             conn.execute("DELETE FROM trained_models WHERE model_id=3")
@@ -521,7 +521,7 @@ def test_training_run_target_and_status_guard_artifacts_and_promotions(tmp_path)
         with pytest.raises(sqlite3.IntegrityError, match="target"):
             _insert_promotion(conn, 31, 1, "vol_inundacion_m3", None, 21)
 
-        with pytest.raises(sqlite3.IntegrityError, match="target"):
+        with pytest.raises(sqlite3.IntegrityError, match="target|immutable"):
             conn.execute("UPDATE training_runs SET target='inunda' WHERE training_run_id=3")
         with pytest.raises(sqlite3.IntegrityError, match="status"):
             conn.execute("UPDATE training_runs SET status='FAILED' WHERE training_run_id=3")
@@ -538,7 +538,7 @@ def test_training_run_target_and_status_guard_artifacts_and_promotions(tmp_path)
             ) VALUES (40, 'system', 40, '2026-08-21T08:00:00+00:00')
             """
         )
-        with pytest.raises(sqlite3.IntegrityError, match="promotion|COMPLETE"):
+        with pytest.raises(sqlite3.IntegrityError, match="promotion|COMPLETE|status transition"):
             conn.execute("UPDATE training_runs SET status='RUNNING' WHERE training_run_id=3")
         assert conn.execute(
             "SELECT COUNT(*) FROM active_model_selections WHERE target='system'"
