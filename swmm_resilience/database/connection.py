@@ -24,7 +24,9 @@ def connect_database(path: str | Path) -> sqlite3.Connection:
 def _sha256_sql_function(value) -> str:
     if value is None:
         raise ValueError("sha256() requires a non-NULL argument")
-    payload = value if isinstance(value, (bytes, bytearray)) else str(value).encode("utf-8")
+    if not isinstance(value, (bytes, bytearray, str)):
+        raise TypeError(f"sha256() expects bytes or str, got {type(value).__name__}")
+    payload = value if isinstance(value, (bytes, bytearray)) else value.encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 
