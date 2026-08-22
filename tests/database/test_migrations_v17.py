@@ -33,6 +33,8 @@ EXPECTED_TABLES = {
     "model_selections",
     "schema_migration_validators",
     "training_run_provenance_invalidations",
+    "training_run_inputs",
+    "model_evaluation_runs",
 }
 
 EXPECTED_INDEXES = {
@@ -51,6 +53,8 @@ EXPECTED_INDEXES = {
     "idx_promotions_regressor",
     "idx_promotions_target_metric",
     "idx_selections_target_history",
+    "idx_training_run_inputs_reverse",
+    "idx_model_evaluation_runs_reverse",
 }
 
 SCHEMA_MIGRATIONS_SQL = """

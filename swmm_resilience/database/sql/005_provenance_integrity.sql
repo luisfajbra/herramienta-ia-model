@@ -155,3 +155,173 @@ BEFORE DELETE ON model_evaluations
 BEGIN
     SELECT RAISE(ABORT, 'model evaluations cannot be deleted');
 END;
+
+CREATE TABLE training_run_inputs (
+    training_run_id INTEGER NOT NULL,
+    run_id INTEGER NOT NULL,
+    PRIMARY KEY (training_run_id, run_id),
+    FOREIGN KEY (training_run_id)
+        REFERENCES training_runs(training_run_id) ON DELETE RESTRICT,
+    FOREIGN KEY (run_id)
+        REFERENCES runs(run_id) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_training_run_inputs_reverse
+    ON training_run_inputs(run_id, training_run_id);
+
+CREATE TABLE model_evaluation_runs (
+    evaluation_id INTEGER NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('train','validation')),
+    run_id INTEGER NOT NULL,
+    PRIMARY KEY (evaluation_id, role, run_id),
+    FOREIGN KEY (evaluation_id)
+        REFERENCES model_evaluations(evaluation_id) ON DELETE RESTRICT,
+    FOREIGN KEY (run_id)
+        REFERENCES runs(run_id) ON DELETE RESTRICT
+);
+
+CREATE INDEX idx_model_evaluation_runs_reverse
+    ON model_evaluation_runs(run_id, evaluation_id, role);
+
+CREATE TRIGGER training_run_inputs_immutable_update
+BEFORE UPDATE ON training_run_inputs
+BEGIN
+    SELECT RAISE(ABORT, 'training run membership is immutable');
+END;
+
+CREATE TRIGGER training_run_inputs_immutable_delete
+BEFORE DELETE ON training_run_inputs
+BEGIN
+    SELECT RAISE(ABORT, 'training run membership is immutable');
+END;
+
+CREATE TRIGGER training_run_inputs_owner_pending
+BEFORE INSERT ON training_run_inputs
+WHEN NOT EXISTS (
+    SELECT 1 FROM training_runs
+    WHERE training_run_id=NEW.training_run_id AND status='PENDING'
+)
+BEGIN
+    SELECT RAISE(ABORT, 'training run membership requires a PENDING owner');
+END;
+
+CREATE TRIGGER training_run_inputs_within_canonical_json
+BEFORE INSERT ON training_run_inputs
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM training_runs, json_each(training_runs.included_run_ids_json)
+    WHERE training_runs.training_run_id=NEW.training_run_id
+      AND json_each.value=NEW.run_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'training run membership must be listed in included_run_ids_json');
+END;
+
+CREATE TRIGGER model_evaluation_runs_immutable_update
+BEFORE UPDATE ON model_evaluation_runs
+BEGIN
+    SELECT RAISE(ABORT, 'evaluation membership is immutable');
+END;
+
+CREATE TRIGGER model_evaluation_runs_immutable_delete
+BEFORE DELETE ON model_evaluation_runs
+BEGIN
+    SELECT RAISE(ABORT, 'evaluation membership is immutable');
+END;
+
+CREATE TRIGGER model_evaluation_runs_owner_pending
+BEFORE INSERT ON model_evaluation_runs
+WHEN NOT EXISTS (
+    SELECT 1 FROM model_evaluations
+    WHERE evaluation_id=NEW.evaluation_id AND status='PENDING'
+)
+BEGIN
+    SELECT RAISE(ABORT, 'evaluation membership requires a PENDING owner');
+END;
+
+CREATE TRIGGER model_evaluation_runs_within_canonical_json
+BEFORE INSERT ON model_evaluation_runs
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM model_evaluations, json_each(
+        CASE NEW.role
+            WHEN 'train' THEN model_evaluations.train_run_ids_json
+            ELSE model_evaluations.validation_run_ids_json
+        END
+    )
+    WHERE model_evaluations.evaluation_id=NEW.evaluation_id
+      AND json_each.value=NEW.run_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'evaluation membership must be listed in its canonical JSON array');
+END;
+
+CREATE TRIGGER model_evaluation_runs_within_training_run
+BEFORE INSERT ON model_evaluation_runs
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM model_evaluations
+    JOIN training_run_inputs
+        ON training_run_inputs.training_run_id = model_evaluations.training_run_id
+       AND training_run_inputs.run_id = NEW.run_id
+    WHERE model_evaluations.evaluation_id = NEW.evaluation_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'evaluation membership must be contained in the training run membership');
+END;
+
+-- Consistency boundary: PENDING -> RUNNING requires normalized membership
+-- to be exactly equal (as a set) to the canonical JSON array.
+CREATE TRIGGER training_runs_running_requires_complete_membership
+BEFORE UPDATE OF status ON training_runs
+WHEN NEW.status='RUNNING' AND OLD.status='PENDING'
+  AND (
+    (
+        SELECT COUNT(*) FROM training_run_inputs
+        WHERE training_run_id=OLD.training_run_id
+    ) <> (SELECT COUNT(*) FROM json_each(OLD.included_run_ids_json))
+    OR EXISTS (
+        SELECT value FROM json_each(OLD.included_run_ids_json)
+        WHERE value NOT IN (
+            SELECT run_id FROM training_run_inputs
+            WHERE training_run_id=OLD.training_run_id
+        )
+    )
+  )
+BEGIN
+    SELECT RAISE(
+        ABORT,
+        'training run membership must equal included_run_ids_json before RUNNING'
+    );
+END;
+
+CREATE TRIGGER model_evaluations_running_requires_complete_membership
+BEFORE UPDATE OF status ON model_evaluations
+WHEN NEW.status='RUNNING' AND OLD.status='PENDING'
+  AND (
+    EXISTS (
+        SELECT run_id FROM model_evaluation_runs
+        WHERE evaluation_id=OLD.evaluation_id AND role='train'
+        INTERSECT
+        SELECT run_id FROM model_evaluation_runs
+        WHERE evaluation_id=OLD.evaluation_id AND role='validation'
+    )
+    OR (
+        SELECT COUNT(*) FROM model_evaluation_runs
+        WHERE evaluation_id=OLD.evaluation_id AND role='train'
+    ) <> (SELECT COUNT(*) FROM json_each(OLD.train_run_ids_json))
+    OR (
+        SELECT COUNT(*) FROM model_evaluation_runs
+        WHERE evaluation_id=OLD.evaluation_id AND role='validation'
+    ) <> (SELECT COUNT(*) FROM json_each(OLD.validation_run_ids_json))
+    OR OLD.fold_id >= (
+        SELECT fold_count FROM training_runs
+        WHERE training_run_id=OLD.training_run_id
+    )
+  )
+BEGIN
+    SELECT RAISE(
+        ABORT,
+        'evaluation membership must be complete, disjoint, and equal to its JSON arrays before RUNNING'
+    );
+END;
