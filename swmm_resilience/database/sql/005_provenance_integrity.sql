@@ -337,3 +337,78 @@ BEGIN
         'evaluation membership must be complete, disjoint, and equal to its JSON arrays before RUNNING'
     );
 END;
+
+CREATE TRIGGER oof_predictions_immutable_update
+BEFORE UPDATE ON oof_predictions
+BEGIN
+    SELECT RAISE(ABORT, 'OOF predictions are append-only');
+END;
+
+CREATE TRIGGER oof_predictions_immutable_delete
+BEFORE DELETE ON oof_predictions
+BEGIN
+    SELECT RAISE(ABORT, 'OOF predictions are append-only');
+END;
+
+CREATE TRIGGER oof_predictions_identity_conflict
+BEFORE INSERT ON oof_predictions
+WHEN EXISTS (
+    SELECT 1 FROM oof_predictions
+    WHERE evaluation_id=NEW.evaluation_id AND run_id=NEW.run_id AND node_pk=NEW.node_pk
+)
+BEGIN
+    SELECT RAISE(ABORT, 'OOF prediction identity is immutable');
+END;
+
+CREATE TRIGGER oof_predictions_validate_insert
+BEFORE INSERT ON oof_predictions
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM model_evaluations
+    JOIN training_runs
+        ON training_runs.training_run_id = model_evaluations.training_run_id
+    WHERE model_evaluations.evaluation_id = NEW.evaluation_id
+      AND model_evaluations.status = 'RUNNING'
+      AND training_runs.status = 'RUNNING'
+      AND model_evaluations.fold_id = NEW.fold_id
+      AND (
+          (NEW.target = 'inunda' AND model_evaluations.task = 'classification')
+          OR (NEW.target = 'vol_inundacion_m3' AND model_evaluations.task = 'regression')
+      )
+)
+   OR NOT EXISTS (
+       SELECT 1 FROM model_evaluation_runs
+       WHERE evaluation_id = NEW.evaluation_id
+         AND role = 'validation'
+         AND run_id = NEW.run_id
+   )
+   OR NOT EXISTS (
+       SELECT 1 FROM node_results
+       WHERE run_id = NEW.run_id AND node_pk = NEW.node_pk
+   )
+   OR NEW.observed <> (
+       SELECT CASE NEW.target
+           WHEN 'inunda' THEN node_results.inunda
+           ELSE node_results.vol_inundacion_m3
+       END
+       FROM node_results
+       WHERE node_results.run_id = NEW.run_id AND node_results.node_pk = NEW.node_pk
+   )
+   OR NEW.predicted IS NULL OR NEW.predicted <> NEW.predicted  -- rejects NaN (NaN <> NaN is true)
+   OR (
+       NEW.target = 'inunda' AND (
+           NEW.observed NOT IN (0, 1)
+           OR NEW.predicted NOT IN (0, 1)
+           OR NEW.probability IS NULL
+           OR NEW.probability < 0 OR NEW.probability > 1
+       )
+   )
+   OR (
+       NEW.target = 'vol_inundacion_m3' AND (
+           NEW.observed < 0
+           OR NEW.probability IS NOT NULL
+       )
+   )
+BEGIN
+    SELECT RAISE(ABORT, 'OOF prediction fails provenance/domain validation');
+END;
