@@ -35,6 +35,16 @@ EXPECTED_TABLES = {
     "training_run_provenance_invalidations",
     "training_run_inputs",
     "model_evaluation_runs",
+    "model_candidates",
+    "model_candidate_evaluations",
+    "model_candidate_finalizations",
+    "model_artifact_candidates",
+    "model_rankings",
+    "model_ranking_entries",
+    "model_ranking_scores",
+    "model_ranking_finalizations",
+    "model_promotion_rankings",
+    "model_promotion_finalizations",
 }
 
 EXPECTED_INDEXES = {
@@ -55,6 +65,7 @@ EXPECTED_INDEXES = {
     "idx_selections_target_history",
     "idx_training_run_inputs_reverse",
     "idx_model_evaluation_runs_reverse",
+    "idx_model_candidates_training_run",
 }
 
 SCHEMA_MIGRATIONS_SQL = """

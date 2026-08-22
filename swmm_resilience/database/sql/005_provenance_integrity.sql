@@ -417,3 +417,402 @@ WHEN NOT EXISTS (
 BEGIN
     SELECT RAISE(ABORT, 'OOF prediction fails provenance/domain validation');
 END;
+
+CREATE TABLE model_candidates (
+    candidate_id INTEGER PRIMARY KEY,
+    training_run_id INTEGER NOT NULL
+        REFERENCES training_runs(training_run_id) ON DELETE RESTRICT,
+    task TEXT NOT NULL CHECK(task IN ('classification','regression')),
+    algorithm TEXT NOT NULL,
+    hyperparameters_json TEXT NOT NULL,
+    preprocessing_json TEXT NOT NULL,
+    feature_contract_id TEXT NOT NULL CHECK(feature_contract_id='tabular_v3_17'),
+    feature_contract_sha256 TEXT NOT NULL CHECK(length(feature_contract_sha256)=64),
+    ordered_features_json TEXT NOT NULL,
+    target_transform_json TEXT NOT NULL,
+    pipeline_version TEXT NOT NULL,
+    candidate_definition_sha256 TEXT NOT NULL CHECK(length(candidate_definition_sha256)=64)
+);
+
+CREATE INDEX idx_model_candidates_training_run
+    ON model_candidates(training_run_id, task, algorithm);
+
+CREATE TRIGGER model_candidates_immutable_update
+BEFORE UPDATE ON model_candidates
+BEGIN
+    SELECT RAISE(ABORT, 'model candidates are immutable');
+END;
+
+CREATE TRIGGER model_candidates_immutable_delete
+BEFORE DELETE ON model_candidates
+BEGIN
+    SELECT RAISE(ABORT, 'model candidates are immutable');
+END;
+
+CREATE TRIGGER model_candidates_owner_running
+BEFORE INSERT ON model_candidates
+WHEN NOT EXISTS (
+    SELECT 1 FROM training_runs
+    WHERE training_run_id=NEW.training_run_id AND status='RUNNING'
+)
+BEGIN
+    SELECT RAISE(ABORT, 'candidates are inserted only while the training run is RUNNING');
+END;
+
+CREATE TABLE model_candidate_evaluations (
+    candidate_id INTEGER NOT NULL
+        REFERENCES model_candidates(candidate_id) ON DELETE RESTRICT,
+    evaluation_id INTEGER NOT NULL UNIQUE
+        REFERENCES model_evaluations(evaluation_id) ON DELETE RESTRICT,
+    PRIMARY KEY (candidate_id, evaluation_id)
+);
+
+CREATE TRIGGER model_candidate_evaluations_immutable_update
+BEFORE UPDATE ON model_candidate_evaluations
+BEGIN
+    SELECT RAISE(ABORT, 'candidate/evaluation links are immutable');
+END;
+
+CREATE TRIGGER model_candidate_evaluations_immutable_delete
+BEFORE DELETE ON model_candidate_evaluations
+BEGIN
+    SELECT RAISE(ABORT, 'candidate/evaluation links are immutable');
+END;
+
+CREATE TRIGGER model_candidate_evaluations_matches_candidate
+BEFORE INSERT ON model_candidate_evaluations
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM model_candidates
+    JOIN model_evaluations
+        ON model_evaluations.training_run_id = model_candidates.training_run_id
+       AND model_evaluations.task = model_candidates.task
+       AND model_evaluations.algorithm = model_candidates.algorithm
+       AND model_evaluations.hyperparameters_json = model_candidates.hyperparameters_json
+    WHERE model_candidates.candidate_id = NEW.candidate_id
+      AND model_evaluations.evaluation_id = NEW.evaluation_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'evaluation does not match its candidate task/algorithm/hyperparameters');
+END;
+
+CREATE TRIGGER model_candidate_evaluations_not_after_finalization
+BEFORE INSERT ON model_candidate_evaluations
+WHEN EXISTS (
+    SELECT 1 FROM model_candidate_finalizations WHERE candidate_id=NEW.candidate_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'no evaluation link is added after candidate finalization');
+END;
+
+CREATE TABLE model_candidate_finalizations (
+    candidate_id INTEGER PRIMARY KEY
+        REFERENCES model_candidates(candidate_id) ON DELETE RESTRICT,
+    finalized_at_utc TEXT NOT NULL
+);
+
+CREATE TRIGGER model_candidate_finalizations_immutable_update
+BEFORE UPDATE ON model_candidate_finalizations
+BEGIN
+    SELECT RAISE(ABORT, 'candidate finalizations are immutable');
+END;
+
+CREATE TRIGGER model_candidate_finalizations_immutable_delete
+BEFORE DELETE ON model_candidate_finalizations
+BEGIN
+    SELECT RAISE(ABORT, 'candidate finalizations are immutable');
+END;
+
+CREATE TRIGGER model_candidate_finalizations_validate_insert
+BEFORE INSERT ON model_candidate_finalizations
+WHEN (
+    SELECT COUNT(*)
+    FROM model_candidate_evaluations AS link
+    JOIN model_evaluations AS evaluation
+        ON evaluation.evaluation_id = link.evaluation_id
+    WHERE link.candidate_id = NEW.candidate_id AND evaluation.status = 'COMPLETE'
+) <> (
+    SELECT fold_count FROM training_runs
+    WHERE training_run_id = (
+        SELECT training_run_id FROM model_candidates WHERE candidate_id = NEW.candidate_id
+    )
+)
+   OR EXISTS (
+       SELECT 1
+       FROM model_candidate_evaluations AS link
+       JOIN model_evaluations AS evaluation
+           ON evaluation.evaluation_id = link.evaluation_id
+       WHERE link.candidate_id = NEW.candidate_id AND evaluation.status <> 'COMPLETE'
+   )
+   OR EXISTS (
+       SELECT link.evaluation_id
+       FROM model_candidate_evaluations AS link
+       JOIN model_evaluation_runs AS membership
+           ON membership.evaluation_id = link.evaluation_id AND membership.role = 'validation'
+       JOIN node_results AS result
+           ON result.run_id = membership.run_id
+       LEFT JOIN oof_predictions AS oof
+           ON oof.evaluation_id = link.evaluation_id
+          AND oof.run_id = result.run_id
+          AND oof.node_pk = result.node_pk
+       WHERE link.candidate_id = NEW.candidate_id
+         AND oof.evaluation_id IS NULL
+   )
+BEGIN
+    SELECT RAISE(
+        ABORT,
+        'candidate finalization requires one COMPLETE evaluation per fold with full OOF coverage'
+    );
+END;
+
+CREATE TABLE model_artifact_candidates (
+    model_id INTEGER PRIMARY KEY
+        REFERENCES trained_models(model_id) ON DELETE RESTRICT,
+    candidate_id INTEGER NOT NULL
+        REFERENCES model_candidates(candidate_id) ON DELETE RESTRICT
+);
+
+CREATE TRIGGER model_artifact_candidates_immutable_update
+BEFORE UPDATE ON model_artifact_candidates
+BEGIN
+    SELECT RAISE(ABORT, 'artifact/candidate links are immutable');
+END;
+
+CREATE TRIGGER model_artifact_candidates_immutable_delete
+BEFORE DELETE ON model_artifact_candidates
+BEGIN
+    SELECT RAISE(ABORT, 'artifact/candidate links are immutable');
+END;
+
+CREATE TRIGGER model_artifact_candidates_requires_finalized_matching_candidate
+BEFORE INSERT ON model_artifact_candidates
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM model_candidates AS candidate
+    JOIN model_candidate_finalizations AS finalization
+        ON finalization.candidate_id = candidate.candidate_id
+    JOIN trained_models AS artifact
+        ON artifact.training_run_id = candidate.training_run_id
+       AND artifact.feature_contract_id = candidate.feature_contract_id
+       AND artifact.feature_contract_sha256 = candidate.feature_contract_sha256
+       AND artifact.ordered_features_json = candidate.ordered_features_json
+       AND artifact.preprocessing_json = candidate.preprocessing_json
+       AND artifact.target_transform_json = candidate.target_transform_json
+       AND artifact.hyperparameters_json = candidate.hyperparameters_json
+       AND artifact.algorithm = candidate.algorithm
+    WHERE candidate.candidate_id = NEW.candidate_id
+      AND artifact.model_id = NEW.model_id
+)
+BEGIN
+    SELECT RAISE(
+        ABORT,
+        'artifact link requires a finalized candidate whose recipe matches the artifact'
+    );
+END;
+
+CREATE TABLE model_rankings (
+    ranking_id INTEGER PRIMARY KEY,
+    training_run_id INTEGER NOT NULL
+        REFERENCES training_runs(training_run_id) ON DELETE RESTRICT,
+    target TEXT NOT NULL CHECK(target IN ('inunda','vol_inundacion_m3','system')),
+    primary_metric TEXT NOT NULL,
+    primary_direction TEXT NOT NULL CHECK(primary_direction IN ('maximize','minimize')),
+    metric_registry_id TEXT NOT NULL,
+    metric_registry_sha256 TEXT NOT NULL CHECK(length(metric_registry_sha256)=64),
+    tie_breakers_json TEXT NOT NULL,
+    invalid_score_policy TEXT NOT NULL,
+    created_at_utc TEXT NOT NULL
+);
+
+CREATE TRIGGER model_rankings_immutable_update
+BEFORE UPDATE ON model_rankings
+BEGIN
+    SELECT RAISE(ABORT, 'model rankings are immutable');
+END;
+
+CREATE TRIGGER model_rankings_immutable_delete
+BEFORE DELETE ON model_rankings
+BEGIN
+    SELECT RAISE(ABORT, 'model rankings are immutable');
+END;
+
+CREATE TABLE model_ranking_entries (
+    ranking_id INTEGER NOT NULL
+        REFERENCES model_rankings(ranking_id) ON DELETE RESTRICT,
+    entry_id INTEGER NOT NULL,
+    classifier_candidate_id INTEGER
+        REFERENCES model_candidates(candidate_id) ON DELETE RESTRICT,
+    regressor_candidate_id INTEGER
+        REFERENCES model_candidates(candidate_id) ON DELETE RESTRICT,
+    PRIMARY KEY (ranking_id, entry_id),
+    CHECK (classifier_candidate_id IS NOT NULL OR regressor_candidate_id IS NOT NULL)
+);
+
+CREATE TRIGGER model_ranking_entries_immutable_update
+BEFORE UPDATE ON model_ranking_entries
+BEGIN
+    SELECT RAISE(ABORT, 'ranking entries are immutable');
+END;
+
+CREATE TRIGGER model_ranking_entries_immutable_delete
+BEFORE DELETE ON model_ranking_entries
+BEGIN
+    SELECT RAISE(ABORT, 'ranking entries are immutable');
+END;
+
+CREATE TRIGGER model_ranking_entries_not_after_finalization
+BEFORE INSERT ON model_ranking_entries
+WHEN EXISTS (
+    SELECT 1 FROM model_ranking_finalizations WHERE ranking_id=NEW.ranking_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'no entry is added after ranking finalization');
+END;
+
+CREATE TABLE model_ranking_scores (
+    ranking_id INTEGER NOT NULL,
+    entry_id INTEGER NOT NULL,
+    metric_ordinal INTEGER NOT NULL,
+    metric_name TEXT NOT NULL,
+    value REAL,
+    valid INTEGER NOT NULL CHECK(valid IN (0,1)),
+    invalid_reason TEXT,
+    PRIMARY KEY (ranking_id, entry_id, metric_ordinal),
+    FOREIGN KEY (ranking_id, entry_id)
+        REFERENCES model_ranking_entries(ranking_id, entry_id) ON DELETE RESTRICT,
+    CHECK ((valid=1 AND value IS NOT NULL) OR (valid=0 AND invalid_reason IS NOT NULL))
+);
+
+CREATE TRIGGER model_ranking_scores_immutable_update
+BEFORE UPDATE ON model_ranking_scores
+BEGIN
+    SELECT RAISE(ABORT, 'ranking scores are immutable');
+END;
+
+CREATE TRIGGER model_ranking_scores_immutable_delete
+BEFORE DELETE ON model_ranking_scores
+BEGIN
+    SELECT RAISE(ABORT, 'ranking scores are immutable');
+END;
+
+CREATE TRIGGER model_ranking_scores_not_after_finalization
+BEFORE INSERT ON model_ranking_scores
+WHEN EXISTS (
+    SELECT 1 FROM model_ranking_finalizations WHERE ranking_id=NEW.ranking_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'no score is added after ranking finalization');
+END;
+
+CREATE TABLE model_ranking_finalizations (
+    ranking_id INTEGER PRIMARY KEY
+        REFERENCES model_rankings(ranking_id) ON DELETE RESTRICT,
+    winner_entry_id INTEGER NOT NULL,
+    finalized_at_utc TEXT NOT NULL,
+    FOREIGN KEY (ranking_id, winner_entry_id)
+        REFERENCES model_ranking_entries(ranking_id, entry_id) ON DELETE RESTRICT
+);
+
+CREATE TRIGGER model_ranking_finalizations_immutable_update
+BEFORE UPDATE ON model_ranking_finalizations
+BEGIN
+    SELECT RAISE(ABORT, 'ranking finalizations are immutable');
+END;
+
+CREATE TRIGGER model_ranking_finalizations_immutable_delete
+BEFORE DELETE ON model_ranking_finalizations
+BEGIN
+    SELECT RAISE(ABORT, 'ranking finalizations are immutable');
+END;
+
+CREATE TABLE model_promotion_rankings (
+    promotion_id INTEGER PRIMARY KEY
+        REFERENCES model_promotions(promotion_id) ON DELETE RESTRICT,
+    ranking_id INTEGER NOT NULL
+        REFERENCES model_rankings(ranking_id) ON DELETE RESTRICT
+);
+
+CREATE TRIGGER model_promotion_rankings_immutable_update
+BEFORE UPDATE ON model_promotion_rankings
+BEGIN
+    SELECT RAISE(ABORT, 'promotion/ranking links are immutable');
+END;
+
+CREATE TRIGGER model_promotion_rankings_immutable_delete
+BEFORE DELETE ON model_promotion_rankings
+BEGIN
+    SELECT RAISE(ABORT, 'promotion/ranking links are immutable');
+END;
+
+CREATE TRIGGER model_promotion_rankings_requires_finalized_ranking
+BEFORE INSERT ON model_promotion_rankings
+WHEN NOT EXISTS (
+    SELECT 1 FROM model_ranking_finalizations WHERE ranking_id=NEW.ranking_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'promotion must link a finalized ranking');
+END;
+
+CREATE TABLE model_promotion_finalizations (
+    promotion_id INTEGER PRIMARY KEY
+        REFERENCES model_promotions(promotion_id) ON DELETE RESTRICT,
+    finalized_at_utc TEXT NOT NULL
+);
+
+CREATE TRIGGER model_promotion_finalizations_immutable_update
+BEFORE UPDATE ON model_promotion_finalizations
+BEGIN
+    SELECT RAISE(ABORT, 'promotion finalizations are immutable');
+END;
+
+CREATE TRIGGER model_promotion_finalizations_immutable_delete
+BEFORE DELETE ON model_promotion_finalizations
+BEGIN
+    SELECT RAISE(ABORT, 'promotion finalizations are immutable');
+END;
+
+CREATE TRIGGER model_promotion_finalizations_validate_insert
+BEFORE INSERT ON model_promotion_finalizations
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM model_promotion_rankings AS link
+    JOIN model_ranking_finalizations AS finalization
+        ON finalization.ranking_id = link.ranking_id
+    JOIN model_ranking_scores AS score
+        ON score.ranking_id = finalization.ranking_id
+       AND score.entry_id = finalization.winner_entry_id
+       AND score.metric_ordinal = 0
+       AND score.valid = 1
+    JOIN model_promotions AS promotion
+        ON promotion.promotion_id = link.promotion_id
+       AND promotion.primary_metric = (
+           SELECT primary_metric FROM model_rankings WHERE ranking_id = finalization.ranking_id
+       )
+       AND promotion.primary_value = score.value
+    JOIN model_ranking_entries AS entry
+        ON entry.ranking_id = finalization.ranking_id
+       AND entry.entry_id = finalization.winner_entry_id
+    WHERE link.promotion_id = NEW.promotion_id
+      AND (
+          entry.classifier_candidate_id IS NULL
+          OR EXISTS (
+              SELECT 1 FROM model_artifact_candidates
+              WHERE candidate_id = entry.classifier_candidate_id
+                AND model_id = promotion.classifier_model_id
+          )
+      )
+      AND (
+          entry.regressor_candidate_id IS NULL
+          OR EXISTS (
+              SELECT 1 FROM model_artifact_candidates
+              WHERE candidate_id = entry.regressor_candidate_id
+                AND model_id = promotion.regressor_model_id
+          )
+      )
+)
+BEGIN
+    SELECT RAISE(
+        ABORT,
+        'promotion finalization requires its artifacts and metric to match the finalized ranking winner'
+    );
+END;
