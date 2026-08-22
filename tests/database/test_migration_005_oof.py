@@ -173,6 +173,100 @@ def test_oof_rows_are_append_only(tmp_path):
     conn.rollback()
 
 
+def _seed_regression_evaluation(conn):
+    """Add a second, regression-task training run/evaluation on top of
+    `_seed`'s network/runs/nodes, reusing run_id=1 (validation, has
+    node_results) and run_id=2 (train)."""
+    conn.execute(
+        """
+        INSERT INTO training_runs (
+            training_run_id, target, feature_contract_id,
+            feature_contract_sha256, query_sql, query_params_json,
+            included_run_ids_json, grouping_strategy, fold_count, random_seed,
+            primary_metric, tie_breakers_json, python_version,
+            library_versions_json, status
+        ) VALUES (2, 'vol_inundacion_m3', 'tabular_v3_17', ?, 'SELECT 1', '{}',
+                  '[1, 2]', 'group_kfold', 2, 42, 'rmse', '[]', '3.11', '{}',
+                  'PENDING')
+        """,
+        ("b" * 64,),
+    )
+    conn.execute(
+        "INSERT INTO training_run_inputs (training_run_id, run_id) VALUES (2, 1)"
+    )
+    conn.execute(
+        "INSERT INTO training_run_inputs (training_run_id, run_id) VALUES (2, 2)"
+    )
+    conn.execute("UPDATE training_runs SET status='RUNNING' WHERE training_run_id=2")
+    conn.execute(
+        """
+        INSERT INTO model_evaluations (
+            evaluation_id, training_run_id, task, algorithm, hyperparameters_json,
+            fold_id, train_run_ids_json, validation_run_ids_json, status,
+            fit_seconds, predict_seconds
+        ) VALUES (2, 2, 'regression', 'xgboost', '{}', 0, '[2]', '[1]',
+                  'PENDING', 0, 0)
+        """
+    )
+    conn.execute(
+        "INSERT INTO model_evaluation_runs (evaluation_id, role, run_id) VALUES (2, 'train', 2)"
+    )
+    conn.execute(
+        "INSERT INTO model_evaluation_runs (evaluation_id, role, run_id) VALUES (2, 'validation', 1)"
+    )
+    conn.execute("UPDATE model_evaluations SET status='RUNNING' WHERE evaluation_id=2")
+    conn.commit()
+
+
+def _insert_regression_oof(conn, predicted):
+    conn.execute(
+        """
+        INSERT INTO oof_predictions (
+            evaluation_id, run_id, node_pk, target, observed, predicted,
+            probability, fold_id
+        ) VALUES (2, 1, 1, 'vol_inundacion_m3', 3.5, ?, NULL, 0)
+        """,
+        (predicted,),
+    )
+
+
+def test_oof_rejects_positive_infinite_predicted_for_regression(tmp_path):
+    catalog = _catalog_through_005(tmp_path)
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn, migration_dir=catalog)
+    _seed(conn)
+    _seed_regression_evaluation(conn)
+
+    with pytest.raises(Exception):
+        _insert_regression_oof(conn, float("inf"))
+    conn.rollback()
+
+
+def test_oof_rejects_negative_infinite_predicted_for_regression(tmp_path):
+    catalog = _catalog_through_005(tmp_path)
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn, migration_dir=catalog)
+    _seed(conn)
+    _seed_regression_evaluation(conn)
+
+    with pytest.raises(Exception):
+        _insert_regression_oof(conn, float("-inf"))
+    conn.rollback()
+
+
+def test_oof_accepts_large_but_finite_predicted_for_regression(tmp_path):
+    catalog = _catalog_through_005(tmp_path)
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn, migration_dir=catalog)
+    _seed(conn)
+    _seed_regression_evaluation(conn)
+
+    # A large-but-finite prediction (e.g. a poorly calibrated regressor)
+    # must not be mistaken for infinity by the finiteness guard.
+    _insert_regression_oof(conn, 1e6)
+    conn.commit()
+
+
 def test_oof_rejects_out_of_domain_classification_values(tmp_path):
     catalog = _catalog_through_005(tmp_path)
     conn = connect_database(tmp_path / "db.sqlite3")

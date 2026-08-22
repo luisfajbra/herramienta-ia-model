@@ -395,6 +395,11 @@ WHEN NOT EXISTS (
        WHERE node_results.run_id = NEW.run_id AND node_results.node_pk = NEW.node_pk
    )
    OR NEW.predicted IS NULL OR NEW.predicted <> NEW.predicted  -- rejects NaN (NaN <> NaN is true)
+   -- rejects +/-Infinity: any value exceeding the largest finite IEEE-754
+   -- double (DBL_MAX = 1.7976931348623157e308 in magnitude) can only be
+   -- +/-Infinity in SQLite's REAL storage class; empirically verified this
+   -- does not false-positive on large-but-finite doubles (e.g. 1e300, 9.22e18).
+   OR NEW.predicted > 1.7976931348623157e308 OR NEW.predicted < -1.7976931348623157e308
    OR (
        NEW.target = 'inunda' AND (
            NEW.observed NOT IN (0, 1)
