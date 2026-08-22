@@ -84,6 +84,13 @@ INSERT INTO training_run_provenance_invalidations (
 SELECT training_run_id, 'pre005_mutable_provenance', datetime('now')
 FROM training_runs;
 
+-- NOTE: this fires before migration 003's training_runs_preserve_model_integrity
+-- and training_runs_preserve_promotion_integrity (SQLite fires same-table BEFORE
+-- triggers in reverse creation order, and this one was created later in 005).
+-- Any change to `target` is now blocked here unconditionally, which is a strict
+-- superset of what those older, narrower triggers checked for `target` — their
+-- target-related branches are effectively superseded, not removed. Their
+-- status-related branches still apply on their own terms.
 CREATE TRIGGER training_runs_immutable_configuration
 BEFORE UPDATE ON training_runs
 WHEN NEW.target IS NOT OLD.target
@@ -113,7 +120,7 @@ BEGIN
     SELECT RAISE(ABORT, 'invalid training run status transition');
 END;
 
-CREATE TRIGGER training_runs_no_delete
+CREATE TRIGGER training_runs_immutable_delete
 BEFORE DELETE ON training_runs
 BEGIN
     SELECT RAISE(ABORT, 'training runs cannot be deleted');
@@ -143,7 +150,7 @@ BEGIN
     SELECT RAISE(ABORT, 'invalid model evaluation status transition');
 END;
 
-CREATE TRIGGER model_evaluations_no_delete
+CREATE TRIGGER model_evaluations_immutable_delete
 BEFORE DELETE ON model_evaluations
 BEGIN
     SELECT RAISE(ABORT, 'model evaluations cannot be deleted');
