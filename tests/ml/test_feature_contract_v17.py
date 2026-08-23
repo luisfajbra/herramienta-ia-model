@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -103,4 +104,26 @@ def test_contract_rejects_text_even_in_nullable_feature():
     frame["diam_max_in"] = frame["diam_max_in"].astype(object)
     frame.loc[0, "diam_max_in"] = "unknown"
     with pytest.raises(FeatureContractError, match="Non-numeric"):
+        TABULAR_V3_17.validate_frame(frame)
+
+
+def _valid_frame():
+    return pd.DataFrame(
+        {name: [1.0, 2.0] for name in TABULAR_V3_17.feature_names}
+    )
+
+
+def test_rejects_complex_dtype_even_with_zero_imaginary_component():
+    frame = _valid_frame()
+    frame["elev_fondo"] = pd.array(
+        [1 + 0j, 2 + 0j], dtype=complex
+    )
+    with pytest.raises(FeatureContractError, match="complex"):
+        TABULAR_V3_17.validate_frame(frame)
+
+
+def test_rejects_complex_dtype_with_nonzero_imaginary_component():
+    frame = _valid_frame()
+    frame["elev_fondo"] = pd.array([1 + 1j, 2 + 0j], dtype=complex)
+    with pytest.raises(FeatureContractError, match="complex"):
         TABULAR_V3_17.validate_frame(frame)

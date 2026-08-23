@@ -6,7 +6,7 @@ import json
 
 import numpy as np
 import pandas as pd
-from pandas.api.types import is_bool_dtype, is_numeric_dtype
+from pandas.api.types import is_bool_dtype, is_complex_dtype, is_numeric_dtype
 
 
 class FeatureContractError(ValueError):
@@ -100,6 +100,13 @@ class FeatureContract:
             )
         if frame.empty:
             raise FeatureContractError("Feature frame is empty")
+        complex_columns = [
+            name for name in self.feature_names if is_complex_dtype(frame[name])
+        ]
+        if complex_columns:
+            raise FeatureContractError(
+                f"complex-valued feature columns are not permitted: {complex_columns}"
+            )
         bad_types = []
         for name in self.feature_names:
             series = frame[name]
