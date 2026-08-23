@@ -26,7 +26,7 @@ class UpgradeReceipt:
     logical_fingerprint: str | None
 
 
-def _current_schema_version(conn: sqlite3.Connection) -> int:
+def _schema_migrations_table_exists(conn: sqlite3.Connection) -> bool:
     exists = conn.execute(
         """
         SELECT 1
@@ -34,7 +34,11 @@ def _current_schema_version(conn: sqlite3.Connection) -> int:
         WHERE type='table' AND name='schema_migrations'
         """
     ).fetchone()
-    if not exists:
+    return exists is not None
+
+
+def _current_schema_version(conn: sqlite3.Connection) -> int:
+    if not _schema_migrations_table_exists(conn):
         return 0
     row = conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()
     return row[0] or 0
@@ -48,9 +52,12 @@ def _latest_catalog_version() -> int:
 
 def _logical_fingerprint(conn: sqlite3.Connection) -> str:
     schema_version = conn.execute("PRAGMA schema_version").fetchone()[0]
-    checksums = conn.execute(
-        "SELECT checksum_sha256 FROM schema_migrations ORDER BY version"
-    ).fetchall()
+    if _schema_migrations_table_exists(conn):
+        checksums = conn.execute(
+            "SELECT checksum_sha256 FROM schema_migrations ORDER BY version"
+        ).fetchall()
+    else:
+        checksums = []
     payload = f"{schema_version}:{[row[0] for row in checksums]}".encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 

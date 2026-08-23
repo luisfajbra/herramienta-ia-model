@@ -52,6 +52,19 @@ def test_upgrade_is_a_noop_when_already_current(tmp_path):
     assert receipt.backup_path is None
 
 
+def test_upgrade_applies_all_migrations_from_a_fresh_database(tmp_path):
+    db_path = tmp_path / "fresh.sqlite3"
+    receipt = upgrade_database_with_backup(db_path, tmp_path / "backups")
+    assert receipt.schema_version_before == 0
+
+    verify = connect_database(db_path)
+    applied = [row[0] for row in verify.execute(
+        "SELECT version FROM schema_migrations ORDER BY version"
+    ).fetchall()]
+    assert applied == [1, 2, 3, 4, 5]
+    verify.close()
+
+
 def test_upgrade_fails_when_workflow_lock_already_held(tmp_path):
     db_path = tmp_path / "db.sqlite3"
     conn = connect_database(db_path)
