@@ -92,6 +92,34 @@ def test_pinned_node_results_row_cannot_be_updated_or_deleted(tmp_path):
     conn.rollback()
 
 
+def test_pinned_scenario_row_cannot_be_updated_or_deleted(tmp_path):
+    catalog = tmp_path / "migrations"
+    catalog.mkdir()
+    for name in (
+        "001_v17_initial.sql", "002_model_integrity.sql",
+        "003_model_integrity_guards.sql", "004_training_run_identity.sql",
+        "005_provenance_integrity.sql",
+    ):
+        shutil.copyfile(SQL_DIR / name, catalog / name)
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn, migration_dir=catalog)
+    _seed_pinnable_run(conn)
+    conn.execute("INSERT INTO training_run_inputs (training_run_id, run_id) VALUES (1, 1)")
+    conn.commit()
+
+    # Reproduces the reported bug scenario exactly: updating config_json and
+    # factor_mult together on a scenario referenced by a pinned run.
+    with pytest.raises(Exception):
+        conn.execute(
+            "UPDATE scenarios SET config_json = '{\"changed\": true}', "
+            "factor_mult = 2.0 WHERE scenario_id = 1"
+        )
+    conn.rollback()
+    with pytest.raises(Exception):
+        conn.execute("DELETE FROM scenarios WHERE scenario_id = 1")
+    conn.rollback()
+
+
 def test_training_run_requires_allowlisted_query_contract(tmp_path):
     catalog = tmp_path / "migrations"
     catalog.mkdir()

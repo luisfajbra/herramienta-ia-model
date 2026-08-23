@@ -1090,6 +1090,28 @@ BEGIN
     SELECT RAISE(ABORT, 'pinned by training provenance');
 END;
 
+CREATE TRIGGER scenarios_pinned_no_write
+BEFORE UPDATE ON scenarios
+WHEN EXISTS (
+    SELECT 1 FROM training_run_inputs
+    JOIN runs ON runs.run_id = training_run_inputs.run_id
+    WHERE runs.scenario_id = OLD.scenario_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
+CREATE TRIGGER scenarios_pinned_no_delete
+BEFORE DELETE ON scenarios
+WHEN EXISTS (
+    SELECT 1 FROM training_run_inputs
+    JOIN runs ON runs.run_id = training_run_inputs.run_id
+    WHERE runs.scenario_id = OLD.scenario_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
 -- training_run_inputs insertion requires the network's SHA-256 to match its
 -- stored bytes (managed connections only: sha256() must be registered).
 CREATE TRIGGER training_run_inputs_verifies_network_hash
