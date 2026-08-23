@@ -1,13 +1,17 @@
 # tests/database/test_migration_005_candidates.py
+import hashlib
 from pathlib import Path
 import shutil
 
 import pytest
 
-from swmm_resilience.database.connection import connect_database
+from swmm_resilience.database.connection import connect_managed_database
 from swmm_resilience.database.migrations import apply_migrations
 
 SQL_DIR = Path(__file__).parents[2] / "swmm_resilience" / "database" / "sql"
+
+_INP_BYTES = b"inp-bytes"
+_NETWORK_SHA256 = hashlib.sha256(_INP_BYTES).hexdigest()
 
 
 def _catalog_through_005(tmp_path):
@@ -26,7 +30,7 @@ def _catalog_through_005(tmp_path):
 
 def test_candidate_tables_exist_and_are_append_only(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     for table in (
@@ -46,7 +50,7 @@ def test_candidate_tables_exist_and_are_append_only(tmp_path):
 
 def test_candidate_evaluation_link_requires_matching_task_and_algorithm(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     conn.execute(
@@ -218,7 +222,7 @@ def _build_two_entry_ranking(conn, primary_direction, better_value, worse_value)
 
 def test_ranking_finalization_rejects_a_non_winning_entry_maximize(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     # entry 1 = roc_auc 0.95 (best), entry 2 = roc_auc 0.80 (worse), maximize
@@ -237,7 +241,7 @@ def test_ranking_finalization_rejects_a_non_winning_entry_maximize(tmp_path):
 
 def test_ranking_finalization_accepts_the_true_winning_entry(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     _build_two_entry_ranking(conn, "maximize", better_value=0.95, worse_value=0.80)
@@ -259,7 +263,7 @@ def test_ranking_finalization_accepts_the_true_winning_entry(tmp_path):
 
 def test_ranking_finalization_rejects_a_non_winning_entry_minimize(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     # under minimize, entry 1 (0.10) is best, entry 2 (0.50) is worse
@@ -278,7 +282,7 @@ def test_ranking_finalization_rejects_a_non_winning_entry_minimize(tmp_path):
 
 def test_ranking_finalization_rejects_winner_missing_primary_score(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     _insert_training_run(conn)
@@ -304,7 +308,7 @@ def test_ranking_finalization_rejects_winner_missing_primary_score(tmp_path):
 
 def test_ranking_finalization_rejects_when_any_entry_lacks_a_primary_score(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     _insert_training_run(conn)
@@ -331,7 +335,7 @@ def test_ranking_finalization_rejects_when_any_entry_lacks_a_primary_score(tmp_p
 
 def test_evaluation_id_is_unique_across_candidate_links(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     conn.execute(
@@ -398,7 +402,7 @@ def _build_single_entry_ranking_ready_for_score(conn):
 
 def test_ranking_score_rejects_nan_value_when_valid(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _build_single_entry_ranking_ready_for_score(conn)
 
@@ -409,7 +413,7 @@ def test_ranking_score_rejects_nan_value_when_valid(tmp_path):
 
 def test_ranking_score_rejects_infinite_value_when_valid(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _build_single_entry_ranking_ready_for_score(conn)
 
@@ -420,7 +424,7 @@ def test_ranking_score_rejects_infinite_value_when_valid(tmp_path):
 
 def test_ranking_score_accepts_large_but_finite_value_when_valid(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _build_single_entry_ranking_ready_for_score(conn)
 
@@ -448,7 +452,7 @@ def _seed_network_and_two_runs(conn):
                                inp_bytes, flow_units, created_at_utc)
         VALUES (1, ?, 'net', 'net.inp', ?, 'LPS', '2026-08-22T00:00:00+00:00')
         """,
-        ("f" * 64, b"inp-bytes"),
+        (_NETWORK_SHA256, _INP_BYTES),
     )
     conn.execute(
         """
@@ -650,7 +654,7 @@ def _finalize_candidate(conn, candidate_id):
 
 def test_candidate_finalization_accepts_complete_two_fold_coverage(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     candidate_id, *_ = _build_two_fold_candidate(conn)
@@ -667,7 +671,7 @@ def test_candidate_finalization_accepts_complete_two_fold_coverage(tmp_path):
 
 def test_candidate_finalization_rejects_missing_oof_row_in_one_fold(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     # Both folds COMPLETE and linked, but fold 1's validation node has no
@@ -681,7 +685,7 @@ def test_candidate_finalization_rejects_missing_oof_row_in_one_fold(tmp_path):
 
 def test_candidate_finalization_rejects_when_an_evaluation_is_not_complete(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     # Fold 1 is linked with full OOF coverage but left RUNNING (never
@@ -695,7 +699,7 @@ def test_candidate_finalization_rejects_when_an_evaluation_is_not_complete(tmp_p
 
 def test_candidate_finalization_rejects_when_a_fold_is_entirely_omitted(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     # Fold 1's evaluation is COMPLETE with full OOF coverage, but it is
@@ -714,7 +718,7 @@ def test_candidate_finalization_rejects_when_a_fold_is_entirely_omitted(tmp_path
 
 def test_artifact_candidate_link_accepts_matching_finalized_candidate(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     candidate_id, training_run_id, *_ = _build_two_fold_candidate(conn)
@@ -738,7 +742,7 @@ def test_artifact_candidate_link_accepts_matching_finalized_candidate(tmp_path):
 
 def test_artifact_candidate_link_rejects_algorithm_mismatch(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     candidate_id, training_run_id, *_ = _build_two_fold_candidate(conn)
@@ -766,7 +770,7 @@ def test_artifact_candidate_link_rejects_algorithm_mismatch(tmp_path):
 
 def test_candidate_insert_rejects_pending_training_run(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     _insert_training_run(conn, status="PENDING")
@@ -779,7 +783,7 @@ def test_candidate_insert_rejects_pending_training_run(tmp_path):
 
 def test_candidate_insert_accepts_running_training_run(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     _insert_training_run(conn, status="RUNNING")
@@ -801,7 +805,7 @@ def test_candidate_insert_accepts_running_training_run(tmp_path):
 
 def test_candidate_evaluation_link_rejected_after_finalization(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     candidate_id, training_run_id, *_ = _build_two_fold_candidate(conn)
@@ -840,7 +844,7 @@ def test_candidate_evaluation_link_rejected_after_finalization(tmp_path):
 
 def test_ranking_entry_and_score_inserts_rejected_after_finalization(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     _build_two_entry_ranking(conn, "maximize", better_value=0.95, worse_value=0.80)
@@ -871,7 +875,7 @@ def test_ranking_entry_and_score_inserts_rejected_after_finalization(tmp_path):
 
 def test_promotion_ranking_link_rejects_non_finalized_ranking(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     _insert_training_run(conn, training_run_id=1, status="RUNNING")
@@ -965,7 +969,7 @@ def _build_finalized_promotion(conn, *, mismatched_primary_value=False):
 
 def test_promotion_finalization_accepts_full_matching_chain(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     _build_finalized_promotion(conn)
@@ -984,7 +988,7 @@ def test_promotion_finalization_accepts_full_matching_chain(tmp_path):
 
 def test_promotion_finalization_rejects_primary_value_mismatch(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
 
     _build_finalized_promotion(conn, mismatched_primary_value=True)

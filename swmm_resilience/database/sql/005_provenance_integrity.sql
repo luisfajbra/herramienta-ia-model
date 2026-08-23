@@ -967,3 +967,141 @@ SELECT
     END,
     datetime('now')
 FROM model_promotions;
+
+-- Part G: pin source simulation rows referenced by a training run's
+-- membership, and allowlist the training query contract.
+
+ALTER TABLE training_runs
+    ADD COLUMN training_query_contract_id TEXT NOT NULL DEFAULT 'training_samples_v17'
+        CHECK(training_query_contract_id='training_samples_v17');
+-- The DEFAULT must itself satisfy the CHECK below: SQLite validates CHECK
+-- constraints against the backfilled default for pre-existing rows at
+-- ALTER TABLE time (not just for future inserts), so an empty-string
+-- default would make this migration fail on any database that already has
+-- training_runs rows. Every pre-005 row is deterministically invalidated a
+-- few statements below regardless of this placeholder's value.
+ALTER TABLE training_runs
+    ADD COLUMN training_query_contract_sha256 TEXT NOT NULL
+        DEFAULT '0000000000000000000000000000000000000000000000000000000000000000'
+        CHECK(length(training_query_contract_sha256)=64);
+
+-- Pin every row training_run_inputs references: the run itself, its scenario
+-- and network, its nodes, and its node_features/node_results. Cleanup must
+-- report "pinned by training provenance" instead of silently deleting.
+CREATE TRIGGER runs_pinned_no_update
+BEFORE UPDATE ON runs
+WHEN EXISTS (
+    SELECT 1 FROM training_run_inputs WHERE run_id=OLD.run_id
+) AND (NEW.status IS NOT OLD.status OR NEW.network_id IS NOT OLD.network_id)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
+CREATE TRIGGER runs_pinned_no_delete
+BEFORE DELETE ON runs
+WHEN EXISTS (SELECT 1 FROM training_run_inputs WHERE run_id=OLD.run_id)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
+CREATE TRIGGER node_features_pinned_no_write
+BEFORE UPDATE ON node_features
+WHEN EXISTS (SELECT 1 FROM training_run_inputs WHERE run_id=OLD.run_id)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
+CREATE TRIGGER node_features_pinned_no_delete
+BEFORE DELETE ON node_features
+WHEN EXISTS (SELECT 1 FROM training_run_inputs WHERE run_id=OLD.run_id)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
+CREATE TRIGGER node_features_pinned_no_insert
+BEFORE INSERT ON node_features
+WHEN EXISTS (SELECT 1 FROM training_run_inputs WHERE run_id=NEW.run_id)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
+CREATE TRIGGER node_results_pinned_no_write
+BEFORE UPDATE ON node_results
+WHEN EXISTS (SELECT 1 FROM training_run_inputs WHERE run_id=OLD.run_id)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
+CREATE TRIGGER node_results_pinned_no_delete
+BEFORE DELETE ON node_results
+WHEN EXISTS (SELECT 1 FROM training_run_inputs WHERE run_id=OLD.run_id)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
+CREATE TRIGGER node_results_pinned_no_insert
+BEFORE INSERT ON node_results
+WHEN EXISTS (SELECT 1 FROM training_run_inputs WHERE run_id=NEW.run_id)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
+CREATE TRIGGER nodes_pinned_no_write
+BEFORE UPDATE ON nodes
+WHEN EXISTS (
+    SELECT 1 FROM training_run_inputs
+    JOIN node_features ON node_features.run_id = training_run_inputs.run_id
+    WHERE node_features.node_pk = OLD.node_pk
+)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
+CREATE TRIGGER nodes_pinned_no_delete
+BEFORE DELETE ON nodes
+WHEN EXISTS (
+    SELECT 1 FROM training_run_inputs
+    JOIN node_features ON node_features.run_id = training_run_inputs.run_id
+    WHERE node_features.node_pk = OLD.node_pk
+)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
+CREATE TRIGGER networks_pinned_no_write
+BEFORE UPDATE ON networks
+WHEN EXISTS (
+    SELECT 1 FROM training_run_inputs
+    JOIN runs ON runs.run_id = training_run_inputs.run_id
+    WHERE runs.network_id = OLD.network_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
+CREATE TRIGGER networks_pinned_no_delete
+BEFORE DELETE ON networks
+WHEN EXISTS (
+    SELECT 1 FROM training_run_inputs
+    JOIN runs ON runs.run_id = training_run_inputs.run_id
+    WHERE runs.network_id = OLD.network_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned by training provenance');
+END;
+
+-- training_run_inputs insertion requires the network's SHA-256 to match its
+-- stored bytes (managed connections only: sha256() must be registered).
+CREATE TRIGGER training_run_inputs_verifies_network_hash
+BEFORE INSERT ON training_run_inputs
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM runs
+    JOIN networks ON networks.network_id = runs.network_id
+    WHERE runs.run_id = NEW.run_id
+      AND runs.status = 'COMPLETE'
+      AND networks.network_sha256 = sha256(networks.inp_bytes)
+)
+BEGIN
+    SELECT RAISE(ABORT, 'pinned run must be COMPLETE with a verified network hash');
+END;

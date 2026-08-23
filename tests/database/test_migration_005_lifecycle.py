@@ -1,13 +1,17 @@
 # tests/database/test_migration_005_lifecycle.py
+import hashlib
 from pathlib import Path
 import shutil
 
 import pytest
 
-from swmm_resilience.database.connection import connect_database
+from swmm_resilience.database.connection import connect_managed_database
 from swmm_resilience.database.migrations import apply_migrations
 
 SQL_DIR = Path(__file__).parents[2] / "swmm_resilience" / "database" / "sql"
+
+_INP_BYTES = b"inp-bytes"
+_NETWORK_SHA256 = hashlib.sha256(_INP_BYTES).hexdigest()
 
 
 def _catalog_through_005(tmp_path):
@@ -47,7 +51,7 @@ def _seed_network_and_run(conn, run_id=1):
                                inp_bytes, flow_units, created_at_utc)
         VALUES (1, ?, 'net', 'net.inp', ?, 'LPS', '2026-08-22T00:00:00+00:00')
         """,
-        ("f" * 64, b"inp-bytes"),
+        (_NETWORK_SHA256, _INP_BYTES),
     )
     conn.execute(
         """
@@ -70,7 +74,7 @@ def _seed_network_and_run(conn, run_id=1):
 
 def test_training_run_config_is_immutable(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _insert_training_run(conn)
     conn.commit()
@@ -82,7 +86,7 @@ def test_training_run_config_is_immutable(tmp_path):
 
 def test_training_run_status_transitions(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _seed_network_and_run(conn, run_id=1)
     _insert_training_run(conn, status="PENDING", included_run_ids_json="[1]")
@@ -106,7 +110,7 @@ def test_training_run_status_transitions(tmp_path):
 
 def test_training_run_cannot_be_deleted(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _insert_training_run(conn)
     conn.commit()

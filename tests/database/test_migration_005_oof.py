@@ -1,13 +1,17 @@
 # tests/database/test_migration_005_oof.py
+import hashlib
 from pathlib import Path
 import shutil
 
 import pytest
 
-from swmm_resilience.database.connection import connect_database
+from swmm_resilience.database.connection import connect_managed_database
 from swmm_resilience.database.migrations import apply_migrations
 
 SQL_DIR = Path(__file__).parents[2] / "swmm_resilience" / "database" / "sql"
+
+_INP_BYTES = b"inp-bytes"
+_NETWORK_SHA256 = hashlib.sha256(_INP_BYTES).hexdigest()
 
 
 def _catalog_through_005(tmp_path):
@@ -31,7 +35,7 @@ def _seed(conn):
                                inp_bytes, flow_units, created_at_utc)
         VALUES (1, ?, 'net', 'net.inp', ?, 'LPS', '2026-08-22T00:00:00+00:00')
         """,
-        ("f" * 64, b"inp-bytes"),
+        (_NETWORK_SHA256, _INP_BYTES),
     )
     conn.execute(
         """
@@ -110,7 +114,7 @@ def _seed(conn):
 
 def test_oof_insert_requires_running_owner_and_matches_persisted_target(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _seed(conn)
 
@@ -138,7 +142,7 @@ def test_oof_insert_requires_running_owner_and_matches_persisted_target(tmp_path
 
 def test_oof_rows_are_append_only(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _seed(conn)
     conn.execute(
@@ -232,7 +236,7 @@ def _insert_regression_oof(conn, predicted):
 
 def test_oof_rejects_positive_infinite_predicted_for_regression(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _seed(conn)
     _seed_regression_evaluation(conn)
@@ -244,7 +248,7 @@ def test_oof_rejects_positive_infinite_predicted_for_regression(tmp_path):
 
 def test_oof_rejects_negative_infinite_predicted_for_regression(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _seed(conn)
     _seed_regression_evaluation(conn)
@@ -256,7 +260,7 @@ def test_oof_rejects_negative_infinite_predicted_for_regression(tmp_path):
 
 def test_oof_accepts_large_but_finite_predicted_for_regression(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _seed(conn)
     _seed_regression_evaluation(conn)
@@ -269,7 +273,7 @@ def test_oof_accepts_large_but_finite_predicted_for_regression(tmp_path):
 
 def test_oof_rejects_negative_observed_for_regression(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _seed(conn)
     _seed_regression_evaluation(conn)
@@ -288,7 +292,7 @@ def test_oof_rejects_negative_observed_for_regression(tmp_path):
 
 def test_oof_rejects_non_null_probability_for_regression(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _seed(conn)
     _seed_regression_evaluation(conn)
@@ -307,7 +311,7 @@ def test_oof_rejects_non_null_probability_for_regression(tmp_path):
 
 def test_oof_rejects_out_of_domain_classification_values(tmp_path):
     catalog = _catalog_through_005(tmp_path)
-    conn = connect_database(tmp_path / "db.sqlite3")
+    conn = connect_managed_database(tmp_path / "db.sqlite3")
     apply_migrations(conn, migration_dir=catalog)
     _seed(conn)
 
