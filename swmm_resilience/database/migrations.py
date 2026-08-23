@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import hashlib
+import inspect
 from importlib.resources import files
 from pathlib import Path
 import re
@@ -157,6 +158,12 @@ def _execute_migration_sql(conn: sqlite3.Connection, sql: str) -> None:
         conn.set_authorizer(None)
 
 
+def _default_preflight_hooks():
+    from . import migration_005_validator
+
+    return {5: migration_005_validator.validate_before_005}
+
+
 def apply_migrations(
     conn: sqlite3.Connection,
     migration_dir: Path | None = None,
@@ -167,7 +174,7 @@ def apply_migrations(
             "Cannot apply migrations while the connection has an active transaction"
         )
 
-    hooks = preflight_hooks if preflight_hooks is not None else {}
+    hooks = preflight_hooks if preflight_hooks is not None else _default_preflight_hooks()
 
     catalog = _migration_catalog(migration_dir)
     applied = _applied_history(conn)
@@ -190,6 +197,25 @@ def apply_migrations(
                 """,
                 (version, name, checksum, stamp),
             )
+            if hook is not None and conn.execute(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type='table' AND name='schema_migration_validators'
+                """
+            ).fetchone():
+                validator_source = inspect.getsource(hook)
+                validator_checksum = hashlib.sha256(
+                    validator_source.encode("utf-8")
+                ).hexdigest()
+                conn.execute(
+                    """
+                    INSERT INTO schema_migration_validators (
+                        version, validator_name, validator_sha256
+                    ) VALUES (?, ?, ?)
+                    """,
+                    (version, hook.__name__, validator_checksum),
+                )
             conn.commit()
             applied_any = True
         except Exception:
