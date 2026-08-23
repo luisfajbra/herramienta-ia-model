@@ -15,6 +15,7 @@ SIDECAR_NAMES = [
     "outputs/models.sqlite-journal",
     "outputs/models.db-wal",
     "outputs/models.db-shm",
+    "outputs/models.db-journal",
     "outputs/models.workflow.lock",
 ]
 
@@ -33,6 +34,7 @@ SIDECAR_NAMES_OUTSIDE_BROAD_RULES = [
     "dataset.sqlite-journal",
     "dataset.db-wal",
     "dataset.db-shm",
+    "dataset.db-journal",
     "dataset.workflow.lock",
 ]
 
