@@ -61,6 +61,36 @@ def test_recovery_marks_running_run_and_pending_evaluations_failed(tmp_path):
     assert eval_statuses[2] == "COMPLETE"  # already-complete evidence is untouched
 
 
+def test_recovery_sets_completed_at_utc_timestamp(tmp_path):
+    # model_evaluations has no completed_at_utc column in the v17 schema
+    # (only training_runs does), so only the training run's timestamp is
+    # asserted here.
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn)
+    _running_training_run_with_evaluations(conn)
+
+    recover_abandoned_training_run(conn, training_run_id=1)
+
+    run_completed_at = conn.execute(
+        "SELECT completed_at_utc FROM training_runs WHERE training_run_id = 1"
+    ).fetchone()[0]
+
+    assert run_completed_at is not None
+
+
+def test_recovery_leaves_no_dangling_transaction_on_invalid_run(tmp_path):
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn)
+
+    with pytest.raises(ValueError):
+        recover_abandoned_training_run(conn, training_run_id=999)
+
+    # A subsequent statement on the same connection must succeed immediately
+    # (no stuck open transaction / lock from the failed call).
+    result = conn.execute("SELECT 1").fetchone()
+    assert tuple(result) == (1,)
+
+
 def test_recovery_rejects_non_running_training_run(tmp_path):
     conn = connect_database(tmp_path / "db.sqlite3")
     apply_migrations(conn)

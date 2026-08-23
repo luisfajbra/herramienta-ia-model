@@ -11,6 +11,7 @@ are ever deleted.
 from __future__ import annotations
 
 import sqlite3
+from datetime import datetime, timezone
 
 RECOVERY_REASON = "interrupted_run_recovery"
 RECOVERY_MESSAGE = "Marked failed by interrupted-run recovery"
@@ -39,20 +40,28 @@ def recover_abandoned_training_run(conn: sqlite3.Connection, training_run_id: in
             "run can be recovered"
         )
 
-    conn.execute(
-        """
-        UPDATE model_evaluations
-        SET status = 'FAILED', failure_type = ?, failure_message = ?
-        WHERE training_run_id = ? AND status IN ('PENDING', 'RUNNING')
-        """,
-        (RECOVERY_REASON, RECOVERY_MESSAGE, training_run_id),
-    )
-    conn.execute(
-        """
-        UPDATE training_runs
-        SET status = 'FAILED', failure_type = ?, failure_message = ?
-        WHERE training_run_id = ?
-        """,
-        (RECOVERY_REASON, RECOVERY_MESSAGE, training_run_id),
-    )
+    completed_at_utc = datetime.now(timezone.utc).isoformat()
+
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute(
+            """
+            UPDATE model_evaluations
+            SET status = 'FAILED', failure_type = ?, failure_message = ?
+            WHERE training_run_id = ? AND status IN ('PENDING', 'RUNNING')
+            """,
+            (RECOVERY_REASON, RECOVERY_MESSAGE, training_run_id),
+        )
+        conn.execute(
+            """
+            UPDATE training_runs
+            SET status = 'FAILED', failure_type = ?, failure_message = ?,
+                completed_at_utc = ?
+            WHERE training_run_id = ?
+            """,
+            (RECOVERY_REASON, RECOVERY_MESSAGE, completed_at_utc, training_run_id),
+        )
+    except BaseException:
+        conn.rollback()
+        raise
     conn.commit()
