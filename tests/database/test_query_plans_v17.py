@@ -160,3 +160,22 @@ def test_training_view_uses_keyed_searches_for_high_volume_children(
         "o",
         "node_results",
     ), details
+
+
+def test_active_model_selections_query_plan_has_no_full_table_scan(tmp_path):
+    from swmm_resilience.database.connection import connect_database
+    from swmm_resilience.database.migrations import apply_migrations
+
+    conn = connect_database(tmp_path / "db.sqlite3")
+    apply_migrations(conn)
+    plan_rows = conn.execute(
+        "EXPLAIN QUERY PLAN SELECT * FROM active_model_selections"
+    ).fetchall()
+    full_scans = [
+        row for row in plan_rows
+        if "SCAN" in row[3] and "USING INDEX" not in row[3] and "SCAN TABLE model_selections" not in row[3]
+    ]
+    # model_selections itself is expected to be scanned (it's small and has
+    # no covering index for "no successor" — the join targets must use one).
+    assert not any("SCAN oof_predictions" in row[3] for row in plan_rows)
+    assert not any("SCAN model_promotions" in row[3] and "USING INDEX" not in row[3] for row in plan_rows)
