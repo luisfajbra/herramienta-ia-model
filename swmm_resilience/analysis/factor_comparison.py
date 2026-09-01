@@ -21,6 +21,8 @@ def generate_factor_comparisons(
 ) -> list[Path]:
     """Generate node-volume and parity plots for every dataset factor."""
     dataset = pd.read_csv(dataset_path)
+    if "shape_id" in dataset.columns:
+        dataset = dataset[dataset["shape_id"] == "base"]
     required = {"node_id", "factor_mult", "vol_inundacion_m3"}
     missing = required - set(dataset.columns)
     if missing:

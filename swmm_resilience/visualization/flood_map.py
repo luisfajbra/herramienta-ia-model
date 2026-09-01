@@ -292,3 +292,56 @@ def generate_flood_map(
     plt.close()
     print(f"Map saved: {output_path}")
     return output_path
+
+
+def generate_flood_maps_by_shape(
+    inp_path: Path,
+    dataset: pd.DataFrame,
+    output_root: Path,
+    network_name: str = "Network",
+    colormap: str = "RdYlBu_r",
+    show_labels_top_n: int = 5,
+    factors: list[float] | None = None,
+) -> dict[str, list[Path]]:
+    """Generate one flood-map subfolder per hydrograph shape.
+
+    Writes ``output_root/<shape_id>/flood_map_factor_X.XX.png`` for every
+    ``shape_id`` present in ``dataset["shape_id"]`` (discovered dynamically —
+    adding a new hydrograph shape CSV under data/hydrograph_shapes/ and
+    re-running the pipeline makes its folder appear automatically, no code
+    change needed) and every factor present for that shape (or the given
+    ``factors`` subset, if provided).
+
+    dataset must contain node_id, factor_mult, shape_id, and
+    vol_inundacion_m3 (or vol_pred_m3). Returns {shape_id: [output paths]}.
+    """
+    if "shape_id" not in dataset.columns:
+        raise ValueError(
+            "dataset has no 'shape_id' column — re-run the pipeline to "
+            "regenerate a dataset that tracks hydrograph shape identity"
+        )
+
+    output_root = Path(output_root)
+    written: dict[str, list[Path]] = {}
+
+    for shape_id in sorted(dataset["shape_id"].unique()):
+        df_shape = dataset[dataset["shape_id"] == shape_id]
+        shape_factors = sorted(df_shape["factor_mult"].unique())
+        if factors is not None:
+            shape_factors = [f for f in shape_factors if any(abs(f - wanted) < 1e-6 for wanted in factors)]
+
+        shape_dir = output_root / shape_id
+        paths = []
+        for factor in shape_factors:
+            df_f = df_shape[abs(df_shape["factor_mult"] - factor) < 1e-6]
+            if df_f.empty:
+                continue
+            out = shape_dir / f"flood_map_factor_{factor:.2f}.png"
+            generate_flood_map(
+                inp_path, df_f, factor, out,
+                network_name, colormap, show_labels_top_n,
+            )
+            paths.append(out)
+        written[shape_id] = paths
+
+    return written
