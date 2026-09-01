@@ -301,7 +301,6 @@ def generate_flood_maps_by_shape(
     network_name: str = "Network",
     colormap: str = "RdYlBu_r",
     show_labels_top_n: int = 5,
-    factors: list[float] | None = None,
 ) -> dict[str, list[Path]]:
     """Generate one flood-map subfolder per hydrograph shape.
 
@@ -309,8 +308,7 @@ def generate_flood_maps_by_shape(
     ``shape_id`` present in ``dataset["shape_id"]`` (discovered dynamically —
     adding a new hydrograph shape CSV under data/hydrograph_shapes/ and
     re-running the pipeline makes its folder appear automatically, no code
-    change needed) and every factor present for that shape (or the given
-    ``factors`` subset, if provided).
+    change needed) and every factor present for that shape.
 
     dataset must contain node_id, factor_mult, shape_id, and
     vol_inundacion_m3 (or vol_pred_m3). Returns {shape_id: [output paths]}.
@@ -327,8 +325,6 @@ def generate_flood_maps_by_shape(
     for shape_id in sorted(dataset["shape_id"].unique()):
         df_shape = dataset[dataset["shape_id"] == shape_id]
         shape_factors = sorted(df_shape["factor_mult"].unique())
-        if factors is not None:
-            shape_factors = [f for f in shape_factors if any(abs(f - wanted) < 1e-6 for wanted in factors)]
 
         shape_dir = output_root / shape_id
         paths = []
