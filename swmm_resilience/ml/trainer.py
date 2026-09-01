@@ -8,7 +8,7 @@ from sklearn.pipeline import Pipeline
 from xgboost import XGBClassifier, XGBRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
-from ..config import Config
+from ..config import Config, ML_RANDOM_STATE
 from .contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
 
 FEATURE_COLS = list(FEATURE_COLUMNS_V17)  # removed in Plan D after consumers migrate
@@ -21,11 +21,11 @@ def make_classifier(config: Config, scale_pos_weight: float) -> Pipeline:
         model = XGBClassifier(
             n_estimators=clf_cfg.n_estimators, max_depth=clf_cfg.max_depth,
             learning_rate=clf_cfg.learning_rate, subsample=clf_cfg.subsample,
-            scale_pos_weight=spw, eval_metric="logloss", random_state=42,
+            scale_pos_weight=spw, eval_metric="logloss", random_state=ML_RANDOM_STATE,
         )
     else:
         model = RandomForestClassifier(
-            n_estimators=clf_cfg.n_estimators, max_depth=clf_cfg.max_depth, random_state=42,
+            n_estimators=clf_cfg.n_estimators, max_depth=clf_cfg.max_depth, random_state=ML_RANDOM_STATE,
         )
     return Pipeline([("imputer", SimpleImputer(strategy="median")), ("model", model)])
 
@@ -36,11 +36,11 @@ def make_regressor(config: Config) -> Pipeline:
         model = XGBRegressor(
             n_estimators=reg_cfg.n_estimators, max_depth=reg_cfg.max_depth,
             learning_rate=reg_cfg.learning_rate, subsample=reg_cfg.subsample,
-            random_state=42,
+            random_state=ML_RANDOM_STATE,
         )
     else:
         model = RandomForestRegressor(
-            n_estimators=reg_cfg.n_estimators, max_depth=reg_cfg.max_depth, random_state=42,
+            n_estimators=reg_cfg.n_estimators, max_depth=reg_cfg.max_depth, random_state=ML_RANDOM_STATE,
         )
     return Pipeline([("imputer", SimpleImputer(strategy="median")), ("model", model)])
 
@@ -73,7 +73,7 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
     if df_flooded.empty:
         raise ValueError("No hay filas inundadas para entrenar el regresor.")
     reg = make_regressor(config)
-    reg.fit(df_flooded[FEATURE_COLS], np.log1p(df_flooded["vol_inundacion_m3"]))
+    reg.fit(X.loc[df_flooded.index], np.log1p(df_flooded["vol_inundacion_m3"]))
 
     joblib.dump(clf, output_dir / "classifier.joblib")
     joblib.dump(reg, output_dir / "regressor.joblib")

@@ -7,7 +7,7 @@ import pytest
 
 from swmm_resilience.ml import predict
 from swmm_resilience.ml import trainer
-from swmm_resilience.ml.contracts import FeatureContractError
+from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17, FeatureContractError
 
 
 def test_train_models_rejects_dataset_without_flooded_rows(tmp_path, tiny_config_factory, trainer_training_df):
@@ -57,8 +57,10 @@ def test_train_models_writes_artifacts(tmp_path, tiny_config_factory, trainer_tr
 class RecordingRegressor:
     def __init__(self):
         self.fit_y = None
+        self.fit_X = None
 
     def fit(self, X, y):
+        self.fit_X = X
         self.fit_y = np.asarray(y, dtype=float)
         return self
 
@@ -74,6 +76,25 @@ def test_train_models_fits_regressor_in_log_space(monkeypatch, tmp_path, tiny_co
 
     flooded = trainer_training_df[trainer_training_df["inunda"] == 1]
     np.testing.assert_allclose(recorded.fit_y, np.log1p(flooded["vol_inundacion_m3"].to_numpy()))
+
+
+def test_train_models_fits_regressor_on_contract_validated_frame(
+    monkeypatch, tmp_path, tiny_config_factory, trainer_training_df
+):
+    """The regressor must see the same contract-validated, ordered, float64
+    feature frame as the classifier — not a raw column slice."""
+    recorded = RecordingRegressor()
+    monkeypatch.setattr(trainer, "make_regressor", lambda config: recorded)
+
+    df = trainer_training_df.copy()
+    # A feature column arrives as integer dtype; the contract coerces to float.
+    df["n_nodos_aguas_arriba"] = df["n_nodos_aguas_arriba"].astype(int)
+
+    trainer.train_models(df, tiny_config_factory(), tmp_path / "models")
+
+    X = recorded.fit_X
+    assert list(X.columns) == list(FEATURE_COLUMNS_V17)
+    assert (X.dtypes == float).all()
 
 
 class FakeClassifier:
