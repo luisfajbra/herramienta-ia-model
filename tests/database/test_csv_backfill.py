@@ -166,6 +166,32 @@ def test_persist_training_run_rejects_zero_flood_dataset(migrated_managed_conn, 
     ).fetchone()[0] == 0
 
 
+def test_persist_training_run_records_configured_algorithm(
+    migrated_managed_conn, fake_inp, tiny_config_factory
+):
+    """The evidence chain must name the algorithm that was actually trained,
+    not a hardcoded 'xgboost'."""
+    df = _synthetic_dataset()
+    config = tiny_config_factory(algorithm="random_forest")
+    info = backfill_networks_and_runs(migrated_managed_conn, df, fake_inp, "Test Network")
+    persist_training_run(
+        migrated_managed_conn, df, info["run_id_by_key"], info["node_pk_by_id"], config
+    )
+
+    eval_algos = {
+        r[0] for r in migrated_managed_conn.execute(
+            "SELECT DISTINCT algorithm FROM model_evaluations"
+        )
+    }
+    model_algos = {
+        r[0] for r in migrated_managed_conn.execute(
+            "SELECT DISTINCT algorithm FROM trained_models"
+        )
+    }
+    assert eval_algos == {"random_forest"}
+    assert model_algos == {"random_forest"}
+
+
 def test_persist_training_run_uses_full_feature_contract(migrated_managed_conn, fake_inp):
     df = _synthetic_dataset()
     config = load_config("config.yaml")

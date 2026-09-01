@@ -574,6 +574,11 @@ def main():
                 "dataset_final.csv no tiene columna shape_id — vuelve a correr "
                 "el pipeline completo antes de --persist-sql"
             )
+        if (df["inunda"] == 1).sum() == 0:
+            parser.error(
+                "dataset_final.csv no tiene filas inundadas — no se puede entrenar "
+                "el regresor; nada que persistir"
+            )
         print(f"  {df.shape[0]} filas x {df.shape[1]} cols")
 
         SQL_DB_PATH.parent.mkdir(parents=True, exist_ok=True)

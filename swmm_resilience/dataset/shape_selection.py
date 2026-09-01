@@ -7,6 +7,9 @@ comparisons, the flat per-factor flood maps) only ever want the canonical
 These helpers centralise that filter — including the ``shape_id``-less
 fallback for datasets produced before shape tracking existed — so the
 ``if "shape_id" in df.columns`` dance is written once.
+
+Both helpers return a filtered view (or the input itself), not a copy —
+callers are expected to read from the result, not assign into it.
 """
 
 from __future__ import annotations

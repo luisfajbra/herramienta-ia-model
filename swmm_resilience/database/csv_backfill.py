@@ -221,6 +221,9 @@ def persist_training_run(
     if (dataset["inunda"] == 1).sum() == 0:
         raise ValueError("No hay filas inundadas para entrenar el regresor.")
 
+    clf_algorithm = config.ml.classifier.algorithm
+    reg_algorithm = config.ml.regressor.algorithm
+
     dataset = dataset.copy()
     dataset["run_id"] = [
         run_id_by_key[(row.shape_id, float(row.factor_mult))]
@@ -282,7 +285,7 @@ def persist_training_run(
         train_run_ids = sorted(int(v) for v in np.unique(run_ids[train_idx]))
         val_run_ids = sorted(int(v) for v in np.unique(run_ids[val_idx]))
 
-        for task, algorithm in (("classification", "xgboost"), ("regression", "xgboost")):
+        for task, algorithm in (("classification", clf_algorithm), ("regression", reg_algorithm)):
             conn.execute(
                 """
                 INSERT INTO model_evaluations (
@@ -402,9 +405,9 @@ def persist_training_run(
     flooded = dataset["inunda"] == 1
     reg_final.fit(dataset.loc[flooded, FEATURE_COLUMNS_V17], np.log1p(dataset.loc[flooded, "vol_inundacion_m3"]))
 
-    for target, model, metric_name, metric_value in (
-        ("inunda", clf_final, "f1", pooled_f1),
-        ("vol_inundacion_m3", reg_final, "rmse", pooled_rmse),
+    for target, model, algorithm, metric_name, metric_value in (
+        ("inunda", clf_final, clf_algorithm, "f1", pooled_f1),
+        ("vol_inundacion_m3", reg_final, reg_algorithm, "rmse", pooled_rmse),
     ):
         buf = io.BytesIO()
         joblib.dump(model, buf)
@@ -420,7 +423,7 @@ def persist_training_run(
             ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             (
-                training_run_id, target, "xgboost", "{}", "{}",
+                training_run_id, target, algorithm, "{}", "{}",
                 "tabular_v3_17", TABULAR_V3_17.descriptor_sha256,
                 json.dumps(list(FEATURE_COLUMNS_V17)),
                 json.dumps({"log1p": target == "vol_inundacion_m3"}), "{}",
