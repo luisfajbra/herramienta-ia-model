@@ -18,6 +18,7 @@ import pandas as pd
 
 from swmm_resilience.config import load_config
 from swmm_resilience.dataset.assembler import assemble_dataset
+from swmm_resilience.dataset.shape_selection import augmented_shape_rows, base_shape_rows
 from swmm_resilience.dataset.validator import validate_dataset
 from swmm_resilience.extraction.dynamic_features import compute_dynamic_features
 from swmm_resilience.extraction.labels import extract_labels
@@ -28,7 +29,6 @@ from swmm_resilience.ml.feature_importance import generate_feature_importance_pl
 from swmm_resilience.ml.predict import predict_network
 from swmm_resilience.simulation.runner import run_simulation_simple
 from swmm_resilience.ml.trainer import train_models
-from swmm_resilience.simulation.runner import run_simulation_simple
 from swmm_resilience.visualization.flood_map import (
     generate_flood_map,
     generate_flood_maps_by_shape,
@@ -211,9 +211,7 @@ def main():
     # ── Modo: curva de resiliencia ────────────────────────────────────────────
     if args.resilience_curve:
         print("\nCalculando curva de resiliencia...")
-        df = pd.read_csv(config.dataset.output_path)
-        if "shape_id" in df.columns:
-            df = df[df["shape_id"] == "base"]
+        df = base_shape_rows(pd.read_csv(config.dataset.output_path))
         factors = sorted(df["factor_mult"].unique())
         result = compute_resilience_curve(df, factors, config, MODELS_DIR)
         print("\nResiliencia por factor:")
@@ -224,9 +222,7 @@ def main():
     # ── Modo: curva de volumen de inundación ─────────────────────────────────
     if args.flood_volume_curve:
         print("\nCalculando curva de volumen de inundación...")
-        df = pd.read_csv(config.dataset.output_path)
-        if "shape_id" in df.columns:
-            df = df[df["shape_id"] == "base"]
+        df = base_shape_rows(pd.read_csv(config.dataset.output_path))
         factors = sorted(df["factor_mult"].unique())
         result = compute_flood_volume_curve(df, factors, config, MODELS_DIR)
         print("\nVolumen total por factor:")
@@ -610,9 +606,8 @@ def main():
 
     # ── Modo: solo mapas ─────────────────────────────────────────────────────
     if args.only_maps:
-        df = pd.read_csv(config.dataset.output_path)
-        if "shape_id" in df.columns:
-            df = df[df["shape_id"] == "base"]
+        df_all = pd.read_csv(config.dataset.output_path)
+        df = base_shape_rows(df_all)
         factors_in_dataset = sorted(df["factor_mult"].unique())
         print(f"Generando {len(factors_in_dataset)} mapas SWMM...")
         for factor in factors_in_dataset:
@@ -635,11 +630,11 @@ def main():
             )
         print(f"  Mapas guardados en {config.visualization.output_path}")
 
-        df_all = pd.read_csv(config.dataset.output_path)
-        if "shape_id" in df_all.columns:
+        augmented = augmented_shape_rows(df_all)
+        if not augmented.empty:
             print("\nGenerando mapas de inundación por forma de hidrograma...")
             written = generate_flood_maps_by_shape(
-                config.network.inp_path, df_all, config.visualization.output_path,
+                config.network.inp_path, augmented, config.visualization.output_path,
                 config.network.name, config.visualization.colormap,
                 config.visualization.show_labels_top_n,
             )
@@ -757,7 +752,7 @@ def main():
 
     if not args.only_ml:
         print("\nGenerando mapas de inundación (forma base)...")
-        df_base = df[df["shape_id"] == "base"] if "shape_id" in df.columns else df
+        df_base = base_shape_rows(df)
         for factor in config.visualization.factors_to_plot:
             df_f = df_base[abs(df_base["factor_mult"] - factor) < 1e-6]
             if df_f.empty:
@@ -769,10 +764,11 @@ def main():
                 config.visualization.show_labels_top_n,
             )
 
-        if "shape_id" in df.columns:
+        augmented = augmented_shape_rows(df)
+        if not augmented.empty:
             print("\nGenerando mapas de inundación por forma de hidrograma...")
             written = generate_flood_maps_by_shape(
-                config.network.inp_path, df, config.visualization.output_path,
+                config.network.inp_path, augmented, config.visualization.output_path,
                 config.network.name, config.visualization.colormap,
                 config.visualization.show_labels_top_n,
             )

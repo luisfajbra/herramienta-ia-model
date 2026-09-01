@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from ..dataset.shape_selection import base_shape_rows
 from ..ml.predict import predict_network
 from ..visualization.model_comparison import (
     plot_factor_comparison,
@@ -20,9 +21,7 @@ def generate_factor_comparisons(
     output_dir: Path,
 ) -> list[Path]:
     """Generate node-volume and parity plots for every dataset factor."""
-    dataset = pd.read_csv(dataset_path)
-    if "shape_id" in dataset.columns:
-        dataset = dataset[dataset["shape_id"] == "base"]
+    dataset = base_shape_rows(pd.read_csv(dataset_path))
     required = {"node_id", "factor_mult", "vol_inundacion_m3"}
     missing = required - set(dataset.columns)
     if missing:
