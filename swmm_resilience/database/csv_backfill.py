@@ -23,20 +23,21 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import hashlib
+import io
 import json
 import sqlite3
 import sys
 from pathlib import Path
 
+import joblib
 import numpy as np
 import pandas as pd
-from sklearn.impute import SimpleImputer
+from sklearn.metrics import f1_score, mean_squared_error
 from sklearn.model_selection import GroupKFold
-from sklearn.pipeline import Pipeline
-from xgboost import XGBClassifier, XGBRegressor
 
 from ..config import Config, ML_RANDOM_STATE
 from ..ml.contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
+from ..ml.trainer import make_classifier, make_regressor
 
 FOLD_COUNT = 5
 
@@ -206,27 +207,6 @@ def backfill_networks_and_runs(
     }
 
 
-def _make_classifier(config: Config, scale_pos_weight: float) -> Pipeline:
-    clf_cfg = config.ml.classifier
-    model = XGBClassifier(
-        n_estimators=clf_cfg.n_estimators, max_depth=clf_cfg.max_depth,
-        learning_rate=clf_cfg.learning_rate, subsample=clf_cfg.subsample,
-        scale_pos_weight=scale_pos_weight, eval_metric="logloss",
-        random_state=ML_RANDOM_STATE,
-    )
-    return Pipeline([("imputer", SimpleImputer(strategy="median")), ("model", model)])
-
-
-def _make_regressor(config: Config) -> Pipeline:
-    reg_cfg = config.ml.regressor
-    model = XGBRegressor(
-        n_estimators=reg_cfg.n_estimators, max_depth=reg_cfg.max_depth,
-        learning_rate=reg_cfg.learning_rate, subsample=reg_cfg.subsample,
-        random_state=ML_RANDOM_STATE,
-    )
-    return Pipeline([("imputer", SimpleImputer(strategy="median")), ("model", model)])
-
-
 def persist_training_run(
     conn: sqlite3.Connection,
     dataset: pd.DataFrame,
@@ -238,6 +218,9 @@ def persist_training_run(
     persist the full training_runs -> ... -> trained_models evidence chain
     (minimal path: no candidates/rankings/promotions/selections).
     """
+    if (dataset["inunda"] == 1).sum() == 0:
+        raise ValueError("No hay filas inundadas para entrenar el regresor.")
+
     dataset = dataset.copy()
     dataset["run_id"] = [
         run_id_by_key[(row.shape_id, float(row.factor_mult))]
@@ -342,12 +325,12 @@ def persist_training_run(
         n_neg, n_pos = (yc_tr == 0).sum(), (yc_tr == 1).sum()
         spw = n_neg / n_pos if n_pos > 0 else 1.0
 
-        clf = _make_classifier(config, spw)
+        clf = make_classifier(config, spw)
         clf.fit(X_tr, yc_tr)
         yc_pred = clf.predict(X_val)
         yc_prob = clf.predict_proba(X_val)[:, 1]
 
-        reg = _make_regressor(config)
+        reg = make_regressor(config)
         flooded_tr = yc_tr == 1
         if flooded_tr.sum() > 0:
             reg.fit(X_tr[flooded_tr], np.log1p(yr_tr[flooded_tr]))
@@ -399,8 +382,6 @@ def persist_training_run(
 
     conn.commit()
 
-    from sklearn.metrics import f1_score, mean_squared_error
-
     pooled_f1 = float(f1_score(
         np.concatenate(pooled_yc_true), np.concatenate(pooled_yc_pred), zero_division=0
     ))
@@ -415,14 +396,11 @@ def persist_training_run(
     n_neg, n_pos = (y_clf_all == 0).sum(), (y_clf_all == 1).sum()
     spw_all = n_neg / n_pos if n_pos > 0 else 1.0
 
-    clf_final = _make_classifier(config, spw_all)
+    clf_final = make_classifier(config, spw_all)
     clf_final.fit(X_all, y_clf_all)
-    reg_final = _make_regressor(config)
+    reg_final = make_regressor(config)
     flooded = dataset["inunda"] == 1
     reg_final.fit(dataset.loc[flooded, FEATURE_COLUMNS_V17], np.log1p(dataset.loc[flooded, "vol_inundacion_m3"]))
-
-    import joblib
-    import io
 
     for target, model, metric_name, metric_value in (
         ("inunda", clf_final, "f1", pooled_f1),

@@ -143,6 +143,29 @@ def test_persist_training_run_writes_full_lifecycle_evidence(migrated_managed_co
     assert conn.execute("SELECT * FROM active_model_selections").fetchall() == []
 
 
+def test_persist_training_run_rejects_zero_flood_dataset(migrated_managed_conn, fake_inp):
+    """A dataset with no flooded rows cannot train the regressor. Reject it
+    up front (like trainer.train_models) instead of committing a partial
+    RUNNING training run and then crashing on the final regressor fit."""
+    df = _synthetic_dataset()
+    df["inunda"] = 0
+    df["vol_inundacion_m3"] = 0.0
+    config = load_config("config.yaml")
+    info = backfill_networks_and_runs(migrated_managed_conn, df, fake_inp, "Test Network")
+
+    with pytest.raises(ValueError, match="No hay filas inundadas"):
+        persist_training_run(
+            migrated_managed_conn, df, info["run_id_by_key"], info["node_pk_by_id"], config
+        )
+
+    assert migrated_managed_conn.execute(
+        "SELECT COUNT(*) FROM training_runs"
+    ).fetchone()[0] == 0
+    assert migrated_managed_conn.execute(
+        "SELECT COUNT(*) FROM model_evaluations"
+    ).fetchone()[0] == 0
+
+
 def test_persist_training_run_uses_full_feature_contract(migrated_managed_conn, fake_inp):
     df = _synthetic_dataset()
     config = load_config("config.yaml")
