@@ -1,0 +1,578 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Chico Sur — Diagramas del pipeline</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<style>
+  :root {
+    --bg: #eef0ee;
+    --surface: #ffffff;
+    --surface-2: #e4e8e5;
+    --text: #1b2320;
+    --text-muted: #55605a;
+    --border: #c7cdc7;
+    --physical: #0f766e;
+    --physical-soft: #0f766e1a;
+    --learned: #b45309;
+    --learned-soft: #b453091a;
+    --font-display: ui-monospace, "Cascadia Code", "SF Mono", "JetBrains Mono", Consolas, monospace;
+    --font-body: Charter, "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121a1a;
+      --surface: #1a2323;
+      --surface-2: #223030;
+      --text: #e7ece9;
+      --text-muted: #9aa8a2;
+      --border: #33403e;
+      --physical: #5eead4;
+      --physical-soft: #5eead41f;
+      --learned: #fbbf24;
+      --learned-soft: #fbbf241f;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg); }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 17px;
+    line-height: 1.65;
+  }
+  .page {
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 56px 24px 96px;
+  }
+  header.intro {
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+  .eyebrow {
+    font-family: var(--font-display);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 28px;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+    margin: 0 0 16px;
+  }
+  .lede {
+    font-size: 18px;
+    color: var(--text);
+    max-width: 62ch;
+    margin: 0 0 20px;
+  }
+  .lede + .lede { margin-top: -8px; }
+
+  .legend {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    margin-top: 20px;
+    font-family: var(--font-display);
+    font-size: 13px;
+    color: var(--text-muted);
+  }
+  .legend-item { display: flex; align-items: center; gap: 8px; }
+  .swatch { width: 22px; height: 3px; border-radius: 1px; flex: none; }
+  .swatch.physical { background: var(--physical); }
+  .swatch.learned { background: var(--learned); }
+  .swatch.dashed {
+    background: none;
+    border-top: 2px dashed var(--text-muted);
+    height: 0;
+  }
+
+  section.diagram-section {
+    margin: 56px 0;
+  }
+  section.diagram-section h2 {
+    font-family: var(--font-display);
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin: 0 0 4px;
+  }
+  section.diagram-section h3 {
+    font-family: var(--font-body);
+    font-weight: 700;
+    font-size: 22px;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+  section.diagram-section p {
+    max-width: 68ch;
+    color: var(--text);
+  }
+  section.diagram-section p.note {
+    color: var(--text-muted);
+    font-size: 15px;
+  }
+
+  figure {
+    margin: 24px 0 8px;
+    padding: 0;
+  }
+  .svg-wrap {
+    overflow-x: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+  }
+  svg { display: block; max-width: 100%; height: auto; }
+  figcaption {
+    margin-top: 10px;
+    font-size: 14px;
+    color: var(--text-muted);
+    max-width: 68ch;
+  }
+
+  .box-fill { fill: var(--surface-2); }
+  .box-stroke { stroke: var(--text); }
+  .box-physical { stroke: var(--physical); fill: var(--physical-soft); }
+  .box-learned { stroke: var(--learned); fill: var(--learned-soft); }
+  .box-artifact { stroke: var(--learned); fill: var(--surface-2); stroke-width: 2; }
+  text { fill: var(--text); font-family: var(--font-display); }
+  text.label-muted { fill: var(--text-muted); }
+  .arrow-line { stroke: var(--text); stroke-width: 1.6; fill: none; }
+  .arrow-physical { stroke: var(--physical); stroke-width: 1.6; fill: none; }
+  .arrow-learned { stroke: var(--learned); stroke-width: 1.6; fill: none; }
+  .arrow-dashed { stroke: var(--text-muted); stroke-width: 1.4; fill: none; stroke-dasharray: 5 4; }
+
+  footer {
+    margin-top: 64px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-display);
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  @media (max-width: 640px) {
+    h1 { font-size: 23px; }
+    section.diagram-section h3 { font-size: 19px; }
+    body { font-size: 16px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="intro">
+    <p class="eyebrow">Chico Sur — Predicción hidráulica con aprendizaje automático</p>
+    <h1>De simular con SWMM a predecir con un modelo entrenado</h1>
+    <p class="lede">
+      El proyecto reemplaza corridas repetidas del modelo hidráulico SWMM
+      (lentas, una por escenario) por un modelo XGBoost entrenado una sola
+      vez sobre miles de escenarios simulados, capaz de predecir inundación
+      por nodo en milisegundos para cualquier factor de caudal nuevo.
+    </p>
+    <p class="lede">
+      Los cuatro diagramas que siguen muestran primero la idea completa y
+      luego cada etapa por separado: generación de datos, entrenamiento e
+      inferencia.
+    </p>
+    <div class="legend">
+      <span class="legend-item"><span class="swatch physical"></span>simulación física (SWMM) — se corre una vez</span>
+      <span class="legend-item"><span class="swatch learned"></span>modelo aprendido — se usa cada vez que se necesita</span>
+      <span class="legend-item"><span class="swatch dashed"></span>validación / comparación</span>
+    </div>
+  </header>
+
+  <!-- ================= DIAGRAM 1 — GENERAL ================= -->
+  <section class="diagram-section">
+    <h2>Diagrama 1 · Visión general</h2>
+    <h3>Todo el proyecto en un solo flujo</h3>
+    <p>
+      La mitad superior ocurre <strong>una sola vez</strong>: se simulan
+      cientos de escenarios en SWMM para generar datos de entrenamiento. La
+      mitad inferior ocurre <strong>cada vez</strong> que alguien quiere
+      predecir un factor nuevo, sin volver a tocar SWMM.
+    </p>
+    <figure>
+      <div class="svg-wrap">
+        <svg viewBox="0 0 760 960" role="img" aria-label="Diagrama general: la red SWMM y las formas de hidrograma alimentan una simulación batch que produce un dataset etiquetado; ese dataset entrena un modelo XGBoost una sola vez; el modelo entrenado se reutiliza para predecir instantáneamente cualquier factor nuevo, y esa predicción se valida contra los resultados reales de SWMM.">
+          <defs>
+            <marker id="arrow1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+            </marker>
+          </defs>
+
+          <!-- Row 1: two inputs -->
+          <g class="box-physical" style="color:var(--physical)">
+            <rect x="30" y="24" width="320" height="64" rx="3" class="box-physical" />
+            <text x="190" y="50" text-anchor="middle" font-size="13" font-weight="700">Red SWMM (.inp)</text>
+            <text x="190" y="68" text-anchor="middle" font-size="11.5" class="label-muted">Chico Sur — 160 nodos, topología</text>
+          </g>
+          <g style="color:var(--physical)">
+            <rect x="410" y="24" width="320" height="64" rx="3" class="box-physical" />
+            <text x="570" y="50" text-anchor="middle" font-size="13" font-weight="700">19 formas de hidrograma</text>
+            <text x="570" y="68" text-anchor="middle" font-size="11.5" class="label-muted">× 25 factores (0.2 – 5.0)</text>
+          </g>
+          <path class="arrow-physical" marker-end="url(#arrow1)" d="M190,88 L190,120 L380,120 L380,150" />
+          <path class="arrow-physical" marker-end="url(#arrow1)" d="M570,88 L570,120 L380,120 L380,150" />
+
+          <!-- Row 2 -->
+          <g style="color:var(--physical)">
+            <rect x="140" y="152" width="480" height="60" rx="3" class="box-physical" />
+            <text x="380" y="177" text-anchor="middle" font-size="13" font-weight="700">Simulación SWMM (batch)</text>
+            <text x="380" y="195" text-anchor="middle" font-size="11.5" class="label-muted">475 corridas — 19 formas × 25 factores</text>
+          </g>
+          <path class="arrow-physical" marker-end="url(#arrow1)" d="M380,212 L380,242" />
+
+          <!-- Row 3 -->
+          <g style="color:var(--physical)">
+            <rect x="140" y="244" width="480" height="60" rx="3" class="box-physical" />
+            <text x="380" y="269" text-anchor="middle" font-size="13" font-weight="700">Extracción de features + etiquetas</text>
+            <text x="380" y="287" text-anchor="middle" font-size="11.5" class="label-muted">17 variables · inunda · volumen real</text>
+          </g>
+          <path class="arrow-physical" marker-end="url(#arrow1)" d="M380,304 L380,334" />
+
+          <!-- Row 4: dataset -->
+          <g style="color:var(--text)">
+            <rect x="140" y="336" width="480" height="60" rx="3" fill="var(--surface-2)" class="box-stroke" stroke-width="1.6" />
+            <text x="380" y="361" text-anchor="middle" font-size="13" font-weight="700">Dataset de entrenamiento</text>
+            <text x="380" y="379" text-anchor="middle" font-size="11.5" class="label-muted">76,000 filas = 160 nodos × 25 factores × 19 formas</text>
+          </g>
+
+          <!-- divider -->
+          <line x1="30" y1="428" x2="730" y2="428" class="arrow-dashed" />
+          <text x="40" y="422" font-size="10.5" class="label-muted">◀ se corre una vez</text>
+          <text x="720" y="422" text-anchor="end" font-size="10.5" class="label-muted">se usa cada vez ▶</text>
+
+          <path class="arrow-line" marker-end="url(#arrow1)" d="M380,396 L380,458" />
+
+          <!-- Row 5: training -->
+          <g style="color:var(--text)">
+            <rect x="140" y="460" width="480" height="60" rx="3" fill="var(--surface-2)" class="box-stroke" stroke-width="1.6" />
+            <text x="380" y="485" text-anchor="middle" font-size="13" font-weight="700">Entrenamiento</text>
+            <text x="380" y="503" text-anchor="middle" font-size="11.5" class="label-muted">validación cruzada LOSO + GroupKFold5</text>
+          </g>
+          <path class="arrow-line" marker-end="url(#arrow1)" d="M380,520 L380,550" />
+
+          <!-- Row 6: model artifact -->
+          <g style="color:var(--learned)">
+            <rect x="140" y="552" width="480" height="64" rx="3" class="box-artifact" />
+            <text x="380" y="578" text-anchor="middle" font-size="13" font-weight="700">Modelo XGBoost entrenado</text>
+            <text x="380" y="596" text-anchor="middle" font-size="11.5" class="label-muted">clasificador (inunda) + regresor (volumen m³)</text>
+          </g>
+
+          <path class="arrow-learned" marker-end="url(#arrow1)" d="M380,616 L380,646" />
+
+          <!-- Row 7: new factor input (side) -->
+          <g style="color:var(--learned)">
+            <rect x="30" y="648" width="260" height="60" rx="3" class="box-learned" />
+            <text x="160" y="673" text-anchor="middle" font-size="13" font-weight="700">Factor nuevo</text>
+            <text x="160" y="691" text-anchor="middle" font-size="11.5" class="label-muted">ej. --predict --factor 3.5</text>
+          </g>
+          <path class="arrow-learned" marker-end="url(#arrow1)" d="M290,678 L340,678" />
+
+          <!-- Row 8: instant prediction -->
+          <g style="color:var(--learned)">
+            <rect x="340" y="648" width="380" height="60" rx="3" class="box-learned" />
+            <text x="530" y="673" text-anchor="middle" font-size="13" font-weight="700">Predicción instantánea</text>
+            <text x="530" y="691" text-anchor="middle" font-size="11.5" class="label-muted">sin volver a correr SWMM · &lt; 1 s</text>
+          </g>
+          <path class="arrow-learned" marker-end="url(#arrow1)" d="M530,708 L530,738" />
+
+          <!-- Row 9: map output -->
+          <g style="color:var(--learned)">
+            <rect x="340" y="740" width="380" height="60" rx="3" class="box-artifact" />
+            <text x="530" y="765" text-anchor="middle" font-size="13" font-weight="700">Mapa de inundación</text>
+            <text x="530" y="783" text-anchor="middle" font-size="11.5" class="label-muted">outputs/maps/&lt;forma&gt;/flood_map_factor_X.XX.png</text>
+          </g>
+
+          <!-- loop: reused model -->
+          <path class="arrow-dashed" marker-end="url(#arrow1)" d="M340,678 L200,678 L200,760 L280,780" />
+          <text x="150" y="730" font-size="10.5" class="label-muted" transform="rotate(-90 150 730)">se reutiliza — no se reentrena</text>
+
+          <!-- validation feedback -->
+          <path class="arrow-dashed" marker-end="url(#arrow1)" d="M720,770 L742,770 L742,366 L622,366" />
+          <text x="748" y="560" font-size="10.5" class="label-muted" transform="rotate(-90 748 560)">validación: F1=0.73 · AUC=0.995 · NSE=0.966 · R²=0.966</text>
+        </svg>
+      </div>
+      <figcaption>
+        La franja teal ocurre una sola vez (simulación + entrenamiento); la
+        franja ámbar se repite cada vez que alguien pide un factor nuevo,
+        reutilizando siempre el mismo modelo. La flecha punteada de la
+        derecha es la validación: cuánto se parece la predicción del modelo
+        a lo que SWMM habría calculado.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ================= DIAGRAM 2 — DATA GENERATION ================= -->
+  <section class="diagram-section">
+    <h2>Diagrama 2 · Generación de datos</h2>
+    <h3>De dónde salen las 76,000 filas</h3>
+    <p>
+      El dataset no viene de una sola simulación: viene de multiplicar tres
+      ejes — la topología fija de la red, 25 factores de escala, y 19
+      formas de hidrograma distintas — y correr SWMM una vez por cada
+      combinación de factor y forma.
+    </p>
+    <figure>
+      <div class="svg-wrap">
+        <svg viewBox="0 0 900 660" role="img" aria-label="Diagrama de generación de datos: tres ejes de variación (topología fija, 25 factores, 19 formas de hidrograma) convergen en 475 simulaciones SWMM, cuyos resultados se convierten en el dataset final de 76,000 filas.">
+          <defs>
+            <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+            </marker>
+          </defs>
+
+          <g style="color:var(--physical)">
+            <rect x="20" y="30" width="250" height="64" rx="3" class="box-physical" />
+            <text x="145" y="56" text-anchor="middle" font-size="13" font-weight="700">Topología de red</text>
+            <text x="145" y="74" text-anchor="middle" font-size="11.5" class="label-muted">160 nodos — fija</text>
+          </g>
+          <g style="color:var(--physical)">
+            <rect x="325" y="30" width="250" height="64" rx="3" class="box-physical" />
+            <text x="450" y="56" text-anchor="middle" font-size="13" font-weight="700">25 factores de escala</text>
+            <text x="450" y="74" text-anchor="middle" font-size="11.5" class="label-muted">0.2 → 5.0, paso 0.2</text>
+          </g>
+          <g style="color:var(--physical)">
+            <rect x="630" y="30" width="250" height="64" rx="3" class="box-physical" />
+            <text x="755" y="56" text-anchor="middle" font-size="13" font-weight="700">19 formas de hidrograma</text>
+            <text x="755" y="74" text-anchor="middle" font-size="11.5" class="label-muted">1–3 picos · 1h – 13h</text>
+          </g>
+
+          <path class="arrow-physical" marker-end="url(#arrow2)" d="M145,94 L145,120 L450,120 L450,150" />
+          <path class="arrow-physical" marker-end="url(#arrow2)" d="M450,94 L450,150" />
+          <path class="arrow-physical" marker-end="url(#arrow2)" d="M755,94 L755,120 L450,120 L450,150" />
+
+          <g style="color:var(--physical)">
+            <rect x="270" y="152" width="360" height="64" rx="3" class="box-physical" />
+            <text x="450" y="178" text-anchor="middle" font-size="13" font-weight="700">Simulación SWMM</text>
+            <text x="450" y="196" text-anchor="middle" font-size="11.5" class="label-muted">1 corrida por (factor × forma) = 475 en total</text>
+          </g>
+          <path class="arrow-physical" marker-end="url(#arrow2)" d="M450,216 L450,246" />
+
+          <g style="color:var(--physical)">
+            <rect x="270" y="248" width="360" height="64" rx="3" class="box-physical" />
+            <text x="450" y="274" text-anchor="middle" font-size="13" font-weight="700">Lectura de resultados (.rpt)</text>
+            <text x="450" y="292" text-anchor="middle" font-size="11.5" class="label-muted">etiquetas: inunda (0/1) · vol_inundacion_m3</text>
+          </g>
+          <path class="arrow-physical" marker-end="url(#arrow2)" d="M450,312 L450,342" />
+
+          <g style="color:var(--physical)">
+            <rect x="270" y="344" width="360" height="64" rx="3" class="box-physical" />
+            <text x="450" y="370" text-anchor="middle" font-size="13" font-weight="700">Features por nodo</text>
+            <text x="450" y="388" text-anchor="middle" font-size="11.5" class="label-muted">estáticos + topológicos + dinámicos (q_pico, duración, t_pico)</text>
+          </g>
+          <path class="arrow-line" marker-end="url(#arrow2)" d="M450,408 L450,438" />
+
+          <g style="color:var(--text)">
+            <rect x="190" y="440" width="520" height="76" rx="3" fill="var(--surface-2)" class="box-stroke" stroke-width="1.6" />
+            <text x="450" y="468" text-anchor="middle" font-size="14" font-weight="700">dataset_final.csv</text>
+            <text x="450" y="488" text-anchor="middle" font-size="12" class="label-muted">160 nodos × 25 factores × 19 formas = 76,000 filas</text>
+            <text x="450" y="504" text-anchor="middle" font-size="11" class="label-muted">24 columnas, incluye shape_id</text>
+          </g>
+
+          <text x="450" y="560" text-anchor="middle" font-size="12" class="label-muted">shape_id identifica de qué forma vino cada fila —</text>
+          <text x="450" y="578" text-anchor="middle" font-size="12" class="label-muted">necesario para no mezclar formas al graficar mapas por escenario.</text>
+        </svg>
+      </div>
+      <figcaption>
+        Cada fila del dataset queda etiquetada con <code>shape_id</code>
+        (de qué forma de hidrograma vino) y <code>factor_mult</code> (qué
+        tan grande era el caudal) — así el entrenamiento puede usar las 19
+        formas juntas como aumento de datos, y la visualización puede
+        aislar una forma a la vez cuando hace falta.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ================= DIAGRAM 3 — TRAINING ================= -->
+  <section class="diagram-section">
+    <h2>Diagrama 3 · Entrenamiento</h2>
+    <h3>Cómo se convierte el dataset en dos modelos</h3>
+    <p>
+      Se entrenan dos modelos por separado a partir de las mismas 17
+      variables: uno clasifica si un nodo se inunda, el otro estima cuánto
+      volumen. Ambos se validan con dos esquemas de partición distintos
+      antes de guardarse.
+    </p>
+    <figure>
+      <div class="svg-wrap">
+        <svg viewBox="0 0 900 650" role="img" aria-label="Diagrama de entrenamiento: el dataset se valida con LOSO y GroupKFold5, se seleccionan 17 columnas de features, y se entrenan en paralelo un clasificador y un regresor XGBoost, que se evalúan y se guardan como archivos joblib.">
+          <defs>
+            <marker id="arrow3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+            </marker>
+          </defs>
+
+          <g style="color:var(--text)">
+            <rect x="290" y="20" width="320" height="60" rx="3" fill="var(--surface-2)" class="box-stroke" stroke-width="1.6" />
+            <text x="450" y="45" text-anchor="middle" font-size="13" font-weight="700">dataset_final.csv</text>
+            <text x="450" y="63" text-anchor="middle" font-size="11.5" class="label-muted">76,000 filas</text>
+          </g>
+          <path class="arrow-line" marker-end="url(#arrow3)" d="M450,80 L450,102 L200,102 L200,130" />
+          <path class="arrow-line" marker-end="url(#arrow3)" d="M450,80 L450,102 L700,102 L700,130" />
+
+          <g style="color:var(--text)">
+            <rect x="40" y="132" width="320" height="60" rx="3" fill="var(--surface-2)" class="box-stroke" stroke-width="1.6" />
+            <text x="200" y="157" text-anchor="middle" font-size="13" font-weight="700">LOSO</text>
+            <text x="200" y="175" text-anchor="middle" font-size="11.5" class="label-muted">leave-one-scenario-out por factor_mult</text>
+          </g>
+          <g style="color:var(--text)">
+            <rect x="540" y="132" width="320" height="60" rx="3" fill="var(--surface-2)" class="box-stroke" stroke-width="1.6" />
+            <text x="700" y="157" text-anchor="middle" font-size="13" font-weight="700">GroupKFold5</text>
+            <text x="700" y="175" text-anchor="middle" font-size="11.5" class="label-muted">5 folds agrupados por factor_mult</text>
+          </g>
+          <path class="arrow-line" d="M200,192 L200,220 L450,220" />
+          <path class="arrow-line" marker-end="url(#arrow3)" d="M700,192 L700,220 L450,220 L450,242" />
+
+          <g style="color:var(--text)">
+            <rect x="270" y="244" width="360" height="60" rx="3" fill="var(--surface-2)" class="box-stroke" stroke-width="1.6" />
+            <text x="450" y="269" text-anchor="middle" font-size="13" font-weight="700">17 columnas de features</text>
+            <text x="450" y="287" text-anchor="middle" font-size="11.5" class="label-muted">FEATURE_COLS — excluye shape_id e identificadores</text>
+          </g>
+          <path class="arrow-line" marker-end="url(#arrow3)" d="M370,304 L370,330 L200,330 L200,352" />
+          <path class="arrow-line" marker-end="url(#arrow3)" d="M530,304 L530,330 L700,330 L700,352" />
+
+          <g style="color:var(--physical)">
+            <rect x="40" y="354" width="320" height="70" rx="3" class="box-physical" />
+            <text x="200" y="378" text-anchor="middle" font-size="13" font-weight="700">Clasificador XGBoost</text>
+            <text x="200" y="396" text-anchor="middle" font-size="11" class="label-muted">target: inunda (0/1)</text>
+            <text x="200" y="412" text-anchor="middle" font-size="11" class="label-muted">scale_pos_weight automático</text>
+          </g>
+          <g style="color:var(--learned)">
+            <rect x="540" y="354" width="320" height="70" rx="3" class="box-learned" />
+            <text x="700" y="378" text-anchor="middle" font-size="13" font-weight="700">Regresor XGBoost</text>
+            <text x="700" y="396" text-anchor="middle" font-size="11" class="label-muted">target: vol_inundacion_m3</text>
+            <text x="700" y="412" text-anchor="middle" font-size="11" class="label-muted">transformación log1p</text>
+          </g>
+          <path class="arrow-line" d="M200,424 L200,450 L450,450" />
+          <path class="arrow-line" marker-end="url(#arrow3)" d="M700,424 L700,450 L450,450 L450,472" />
+
+          <g style="color:var(--text)">
+            <rect x="220" y="474" width="460" height="70" rx="3" fill="var(--surface-2)" class="box-stroke" stroke-width="1.6" />
+            <text x="450" y="498" text-anchor="middle" font-size="13" font-weight="700">Métricas de validación (LOSO)</text>
+            <text x="450" y="516" text-anchor="middle" font-size="11.5" class="label-muted">F1=0.73 · AUC-ROC=0.995 · NSE=0.966 · R²=0.966</text>
+            <text x="450" y="532" text-anchor="middle" font-size="11.5" class="label-muted">97.8% de nodos correctos, extremo a extremo</text>
+          </g>
+          <path class="arrow-learned" marker-end="url(#arrow3)" d="M450,544 L450,570" />
+
+          <g style="color:var(--learned)">
+            <rect x="220" y="572" width="460" height="60" rx="3" class="box-artifact" />
+            <text x="450" y="597" text-anchor="middle" font-size="13" font-weight="700">outputs/models/</text>
+            <text x="450" y="615" text-anchor="middle" font-size="11.5" class="label-muted">classifier.joblib + regressor.joblib</text>
+          </g>
+        </svg>
+      </div>
+      <figcaption>
+        LOSO valida contra un factor de caudal completo que el modelo nunca
+        vio; GroupKFold5 promedia sobre cinco particiones más chicas. Se
+        reportan ambas porque miden cosas distintas: qué tan bien
+        generaliza a un escenario nuevo vs. qué tan estable es el
+        entrenamiento en general.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ================= DIAGRAM 4 — INFERENCE ================= -->
+  <section class="diagram-section">
+    <h2>Diagrama 4 · Predicción / inferencia</h2>
+    <h3>Qué pasa cuando alguien pide un factor nuevo</h3>
+    <p>
+      Con los modelos ya entrenados, predecir un factor nuevo no requiere
+      SWMM en absoluto — solo recombina features ya calculados con el
+      factor pedido. SWMM solo vuelve a correr si el usuario pide
+      explícitamente una verificación (<code>--simulate</code>).
+    </p>
+    <figure>
+      <div class="svg-wrap">
+        <svg viewBox="0 0 900 560" role="img" aria-label="Diagrama de inferencia: un factor nuevo se combina con features ya calculados y los modelos entrenados para producir una predicción de clasificación y volumen por nodo, generando un mapa de inundación en menos de un segundo; opcionalmente SWMM corre en paralelo solo para verificar.">
+          <defs>
+            <marker id="arrow4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0,0 L10,5 L0,10 z" fill="currentColor" />
+            </marker>
+          </defs>
+
+          <g style="color:var(--learned)">
+            <rect x="30" y="24" width="280" height="60" rx="3" class="box-learned" />
+            <text x="170" y="49" text-anchor="middle" font-size="13" font-weight="700">Factor pedido por el usuario</text>
+            <text x="170" y="67" text-anchor="middle" font-size="11.5" class="label-muted">--predict --factor 3.5</text>
+          </g>
+          <g style="color:var(--learned)">
+            <rect x="360" y="24" width="280" height="60" rx="3" class="box-artifact" />
+            <text x="500" y="49" text-anchor="middle" font-size="13" font-weight="700">Modelos entrenados</text>
+            <text x="500" y="67" text-anchor="middle" font-size="11.5" class="label-muted">classifier.joblib + regressor.joblib</text>
+          </g>
+
+          <path class="arrow-learned" marker-end="url(#arrow4)" d="M170,84 L170,110 L400,110 L400,140" />
+          <path class="arrow-learned" marker-end="url(#arrow4)" d="M500,84 L500,140" />
+
+          <g style="color:var(--learned)">
+            <rect x="220" y="142" width="360" height="60" rx="3" class="box-learned" />
+            <text x="400" y="167" text-anchor="middle" font-size="13" font-weight="700">Features recombinados</text>
+            <text x="400" y="185" text-anchor="middle" font-size="11.5" class="label-muted">topología ya calculada × nuevo factor — sin SWMM</text>
+          </g>
+          <path class="arrow-learned" marker-end="url(#arrow4)" d="M400,202 L400,232" />
+
+          <g style="color:var(--learned)">
+            <rect x="220" y="234" width="360" height="60" rx="3" class="box-learned" />
+            <text x="400" y="259" text-anchor="middle" font-size="13" font-weight="700">Clasificador: ¿inunda?</text>
+            <text x="400" y="277" text-anchor="middle" font-size="11.5" class="label-muted">0 / 1 por nodo</text>
+          </g>
+          <path class="arrow-learned" marker-end="url(#arrow4)" d="M400,294 L400,324" />
+
+          <g style="color:var(--learned)">
+            <rect x="220" y="326" width="360" height="60" rx="3" class="box-learned" />
+            <text x="400" y="351" text-anchor="middle" font-size="13" font-weight="700">Regresor: volumen (m³)</text>
+            <text x="400" y="369" text-anchor="middle" font-size="11.5" class="label-muted">solo en nodos donde inunda = 1</text>
+          </g>
+          <path class="arrow-learned" marker-end="url(#arrow4)" d="M400,386 L400,416" />
+
+          <g style="color:var(--learned)">
+            <rect x="180" y="418" width="440" height="66" rx="3" class="box-artifact" />
+            <text x="400" y="444" text-anchor="middle" font-size="13" font-weight="700">Mapa de inundación (PNG)</text>
+            <text x="400" y="462" text-anchor="middle" font-size="11.5" class="label-muted">outputs/maps/ — listo en menos de 1 segundo</text>
+          </g>
+
+          <!-- optional verification branch -->
+          <path class="arrow-dashed" marker-end="url(#arrow4)" d="M170,84 L170,110 L780,110 L780,142" />
+          <g style="color:var(--physical)">
+            <rect x="660" y="144" width="240" height="60" rx="3" class="box-physical" stroke-dasharray="4 3" />
+            <text x="780" y="169" text-anchor="middle" font-size="12.5" font-weight="700">SWMM (opcional)</text>
+            <text x="780" y="187" text-anchor="middle" font-size="11" class="label-muted">solo con --simulate</text>
+          </g>
+          <path class="arrow-dashed" marker-end="url(#arrow4)" d="M780,204 L780,300 L620,440" />
+          <text x="900" y="270" text-anchor="end" font-size="10.5" class="label-muted">verificación cruzada, no obligatoria</text>
+        </svg>
+      </div>
+      <figcaption>
+        El camino ámbar (predicción) nunca toca SWMM. El recuadro punteado
+        de la derecha solo se activa si el usuario pide explícitamente
+        <code>--simulate</code>, para comparar la predicción contra una
+        corrida real — es opcional, no parte del camino normal de
+        inferencia.
+      </figcaption>
+    </figure>
+  </section>
+
+  <footer>
+    Chico Sur · red de 160 nodos · pipeline CSV + XGBoost (17 features) ·
+    generado a partir del estado real del código, no de la documentación
+  </footer>
+
+</div>
+</body>
+</html>

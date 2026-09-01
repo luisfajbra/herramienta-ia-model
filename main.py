@@ -29,7 +29,10 @@ from swmm_resilience.ml.predict import predict_network
 from swmm_resilience.simulation.runner import run_simulation_simple
 from swmm_resilience.ml.trainer import train_models
 from swmm_resilience.simulation.runner import run_simulation_simple
-from swmm_resilience.visualization.flood_map import generate_flood_map
+from swmm_resilience.visualization.flood_map import (
+    generate_flood_map,
+    generate_flood_maps_by_shape,
+)
 from swmm_resilience.visualization.runtime_caption import format_runtime_text
 from swmm_resilience.visualization.hydrograph import plot_hydrograph
 from swmm_resilience.visualization.network_map import generate_network_map
@@ -44,6 +47,7 @@ from swmm_resilience.visualization.flood_volume_curve import (
 
 MODELS_DIR = Path("outputs/models")
 METRICS_DIR = Path("outputs/metrics")
+SQL_DB_PATH = Path("outputs/training_v17.sqlite3")
 
 
 def main():
@@ -56,6 +60,9 @@ def main():
                         help="Solo entrenar y evaluar desde CSV existente")
     parser.add_argument("--only-maps", action="store_true",
                         help="Solo generar mapas desde CSV existente")
+    parser.add_argument("--persist-sql", action="store_true",
+                        help="Persistir dataset_final.csv y un entrenamiento GroupKFold5 "
+                             "en outputs/training_v17.sqlite3 (esquema SQLite v17)")
     parser.add_argument("--predict", action="store_true",
                         help="Inferencia sin SWMM para el factor dado")
     parser.add_argument("--simulate", action="store_true",
@@ -205,6 +212,8 @@ def main():
     if args.resilience_curve:
         print("\nCalculando curva de resiliencia...")
         df = pd.read_csv(config.dataset.output_path)
+        if "shape_id" in df.columns:
+            df = df[df["shape_id"] == "base"]
         factors = sorted(df["factor_mult"].unique())
         result = compute_resilience_curve(df, factors, config, MODELS_DIR)
         print("\nResiliencia por factor:")
@@ -216,6 +225,8 @@ def main():
     if args.flood_volume_curve:
         print("\nCalculando curva de volumen de inundación...")
         df = pd.read_csv(config.dataset.output_path)
+        if "shape_id" in df.columns:
+            df = df[df["shape_id"] == "base"]
         factors = sorted(df["factor_mult"].unique())
         result = compute_flood_volume_curve(df, factors, config, MODELS_DIR)
         print("\nVolumen total por factor:")
@@ -551,9 +562,57 @@ def main():
         print(f"  Métricas/escenario : {summary['metrics_per_scenario_csv_path']}")
         return
 
+    # ── Modo: persistir en SQLite v17 ───────────────────────────────────────
+    if args.persist_sql:
+        from swmm_resilience.database.connection import connect_managed_database
+        from swmm_resilience.database.migrations import apply_migrations
+        from swmm_resilience.database.csv_backfill import (
+            backfill_networks_and_runs,
+            persist_training_run,
+        )
+
+        print(f"\nLeyendo dataset desde {config.dataset.output_path}...")
+        df = pd.read_csv(config.dataset.output_path)
+        if "shape_id" not in df.columns:
+            parser.error(
+                "dataset_final.csv no tiene columna shape_id — vuelve a correr "
+                "el pipeline completo antes de --persist-sql"
+            )
+        print(f"  {df.shape[0]} filas x {df.shape[1]} cols")
+
+        SQL_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+        conn = connect_managed_database(SQL_DB_PATH)
+        apply_migrations(conn)
+
+        print(f"\nPersistiendo redes/nodos/escenarios/corridas en {SQL_DB_PATH}...")
+        info = backfill_networks_and_runs(conn, df, config.network.inp_path, config.network.name)
+        print(f"  network_id={info['network_id']}  nodos={len(info['node_pk_by_id'])}  "
+              f"corridas={len(info['run_id_by_key'])}")
+
+        print("\nEntrenando (GroupKFold5 por factor_mult) y persistiendo evidencia...")
+        training_run_id = persist_training_run(
+            conn, df, info["run_id_by_key"], info["node_pk_by_id"], config
+        )
+        metrics = conn.execute(
+            "SELECT metric_name, value FROM model_metrics WHERE owner_kind = 'model'"
+        ).fetchall()
+        print(f"  training_run_id={training_run_id} (status=COMPLETE)")
+        for name, value in metrics:
+            print(f"  {name}: {value:.4f}" if value is not None else f"  {name}: NULL")
+        print(
+            "\n  Nota: esto guarda training_runs / model_evaluations / oof_predictions / "
+            "trained_models con evidencia real, pero NO construye el sistema opcional de "
+            "candidatos/rankings/promociones — los modelos quedan como artefactos "
+            "historicos validos, no como una 'seleccion activa'."
+        )
+        conn.close()
+        return
+
     # ── Modo: solo mapas ─────────────────────────────────────────────────────
     if args.only_maps:
         df = pd.read_csv(config.dataset.output_path)
+        if "shape_id" in df.columns:
+            df = df[df["shape_id"] == "base"]
         factors_in_dataset = sorted(df["factor_mult"].unique())
         print(f"Generando {len(factors_in_dataset)} mapas SWMM...")
         for factor in factors_in_dataset:
@@ -575,6 +634,18 @@ def main():
                 runtime_text=format_runtime_text(t_swmm),
             )
         print(f"  Mapas guardados en {config.visualization.output_path}")
+
+        df_all = pd.read_csv(config.dataset.output_path)
+        if "shape_id" in df_all.columns:
+            print("\nGenerando mapas de inundación por forma de hidrograma...")
+            written = generate_flood_maps_by_shape(
+                config.network.inp_path, df_all, config.visualization.output_path,
+                config.network.name, config.visualization.colormap,
+                config.visualization.show_labels_top_n,
+            )
+            n_maps = sum(len(paths) for paths in written.values())
+            print(f"  {n_maps} mapas en {len(written)} carpetas (una por forma) bajo "
+                  f"{config.visualization.output_path}")
         return
 
     # ── Pipeline completo (o parcial) ─────────────────────────────────────────
@@ -632,6 +703,7 @@ def main():
                 duracion_horas=base_dur,
                 tiempo_al_pico_h=base_t_pico,
             )
+            dynamic_df["shape_id"] = "base"
             labels_df = extract_labels(rpt_path, all_node_ids, config.dataset.flood_threshold_m3)
             simulation_results.append((factor, dynamic_df, labels_df))
 
@@ -657,6 +729,7 @@ def main():
                     duracion_horas=dur_h,
                     tiempo_al_pico_h=t_pico_h,
                 )
+                dynamic_df["shape_id"] = shape_id
                 labels_df = extract_labels(
                     rpt_path, all_node_ids, config.dataset.flood_threshold_m3
                 )
@@ -683,9 +756,10 @@ def main():
     generate_feature_importance_plots(clf, reg, METRICS_DIR)
 
     if not args.only_ml:
-        print("\nGenerando mapas de inundación...")
+        print("\nGenerando mapas de inundación (forma base)...")
+        df_base = df[df["shape_id"] == "base"] if "shape_id" in df.columns else df
         for factor in config.visualization.factors_to_plot:
-            df_f = df[abs(df["factor_mult"] - factor) < 1e-6]
+            df_f = df_base[abs(df_base["factor_mult"] - factor) < 1e-6]
             if df_f.empty:
                 continue
             out = config.visualization.output_path / f"flood_map_factor_{factor:.2f}.png"
@@ -694,6 +768,17 @@ def main():
                 config.network.name, config.visualization.colormap,
                 config.visualization.show_labels_top_n,
             )
+
+        if "shape_id" in df.columns:
+            print("\nGenerando mapas de inundación por forma de hidrograma...")
+            written = generate_flood_maps_by_shape(
+                config.network.inp_path, df, config.visualization.output_path,
+                config.network.name, config.visualization.colormap,
+                config.visualization.show_labels_top_n,
+            )
+            n_maps = sum(len(paths) for paths in written.values())
+            print(f"  {n_maps} mapas en {len(written)} carpetas (una por forma) bajo "
+                  f"{config.visualization.output_path}")
 
     print("\n" + "=" * 50)
     print("RESUMEN DE MÉTRICAS (LOSO)")

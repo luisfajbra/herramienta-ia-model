@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "swmm-resilience"
+version = "0.1.0"
+requires-python = ">=3.11"
+# NOTE: Runtime dependencies (pandas, pyarrow, numpy, matplotlib, pyswmm,
+# scikit-learn, joblib, torch, xgboost, shap, swmm-api, ydata-profiling,
+# Pillow, pytest, networkx, PyYAML, ...) are intentionally NOT declared here.
+# requirements.txt remains the source of truth for setting up a real working
+# environment. Declaring them as [project.dependencies] would make any tool
+# that builds/installs this wheel (including the packaging test's throwaway
+# venv) try to pull in heavy deps like torch and pyswmm, which is slow,
+# network-heavy, and unnecessary for proving the wheel is structurally
+# correct (package discovery + packaged SQL migration data files).
+dependencies = []
+
+[tool.setuptools.packages.find]
+include = ["swmm_resilience*"]
+
+[tool.setuptools.package-data]
+"swmm_resilience.database" = ["sql/*.sql"]

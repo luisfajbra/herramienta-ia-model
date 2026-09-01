@@ -9,22 +9,9 @@ from xgboost import XGBClassifier, XGBRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from ..config import Config
+from .contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
 
-# Feature contract v3: factor_mult is intentionally NOT a model input. It is a
-# global scenario attribute with no valid definition for arbitrary hydrographs;
-# it remains in the dataset CSV only as metadata (LOSO grouping, stratified
-# evaluation). The per-node dynamic signal enters via q_pico_nodo and
-# q_pico_acum_escalado. duracion_horas and tiempo_al_pico_h are scenario-level
-# scalars that capture hydrograph duration and shape aggressiveness.
-FEATURE_COLS = [
-    "elev_fondo", "prof_max", "n_tuberias_in", "n_tuberias_out",
-    "diam_max_in", "diam_max_out", "pendiente_max_in", "pendiente_out",
-    "base_inflow_lps", "dist_outfall_m", "n_nodos_aguas_arriba",
-    "q_pico_acum_base", "upstream_capacity_lps",
-    "q_pico_nodo", "q_pico_acum_escalado",
-    "duracion_horas",
-    "tiempo_al_pico_h",
-]
+FEATURE_COLS = list(FEATURE_COLUMNS_V17)  # removed in Plan D after consumers migrate
 
 
 def make_classifier(config: Config, scale_pos_weight: float) -> Pipeline:
@@ -74,7 +61,7 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    X = df[FEATURE_COLS]
+    X = TABULAR_V3_17.validate_frame(df.loc[:, FEATURE_COLUMNS_V17])
     y_clf = df["inunda"]
     n_neg, n_pos = (y_clf == 0).sum(), (y_clf == 1).sum()
     spw = n_neg / n_pos if n_pos > 0 else 1.0
