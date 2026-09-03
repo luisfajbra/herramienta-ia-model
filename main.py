@@ -48,7 +48,6 @@ from swmm_resilience.visualization.flood_volume_curve import (
 
 MODELS_DIR = Path("outputs/models")
 METRICS_DIR = Path("outputs/metrics")
-SQL_DB_PATH = Path("outputs/training_v17.sqlite3")
 
 
 def main():
@@ -212,7 +211,14 @@ def main():
     # ── Modo: curva de resiliencia ────────────────────────────────────────────
     if args.resilience_curve:
         print("\nCalculando curva de resiliencia...")
-        df = base_shape_rows(load_training_frame(config.dataset.db_path))
+        try:
+            df_curve = load_training_frame(config.dataset.db_path)
+        except ValueError as load_error:
+            parser.error(
+                f"--resilience-curve requiere datos en {config.dataset.db_path}; "
+                f"ejecuta --persist-sql primero para poblarla ({load_error})"
+            )
+        df = base_shape_rows(df_curve)
         factors = sorted(df["factor_mult"].unique())
         result = compute_resilience_curve(df, factors, config, MODELS_DIR)
         print("\nResiliencia por factor:")
@@ -223,7 +229,14 @@ def main():
     # ── Modo: curva de volumen de inundación ─────────────────────────────────
     if args.flood_volume_curve:
         print("\nCalculando curva de volumen de inundación...")
-        df = base_shape_rows(load_training_frame(config.dataset.db_path))
+        try:
+            df_curve = load_training_frame(config.dataset.db_path)
+        except ValueError as load_error:
+            parser.error(
+                f"--flood-volume-curve requiere datos en {config.dataset.db_path}; "
+                f"ejecuta --persist-sql primero para poblarla ({load_error})"
+            )
+        df = base_shape_rows(df_curve)
         factors = sorted(df["factor_mult"].unique())
         result = compute_flood_volume_curve(df, factors, config, MODELS_DIR)
         print("\nVolumen total por factor:")
@@ -236,8 +249,15 @@ def main():
     if args.factor_comparison:
         output_dir = METRICS_DIR / "factor_comparison"
         print("\nGenerando comparaciones SWMM vs XGBoost por factor...")
+        try:
+            factor_comparison_frame = load_training_frame(config.dataset.db_path)
+        except ValueError as load_error:
+            parser.error(
+                f"--factor-comparison requiere datos en {config.dataset.db_path}; "
+                f"ejecuta --persist-sql primero para poblarla ({load_error})"
+            )
         paths = generate_factor_comparisons(
-            frame=load_training_frame(config.dataset.db_path),
+            frame=factor_comparison_frame,
             config=config,
             models_dir=MODELS_DIR,
             output_dir=output_dir,
@@ -583,11 +603,14 @@ def main():
             )
         print(f"  {df.shape[0]} filas x {df.shape[1]} cols")
 
-        SQL_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-        conn = connect_managed_database(SQL_DB_PATH)
+        config.dataset.db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = connect_managed_database(config.dataset.db_path)
         apply_migrations(conn)
 
-        print(f"\nPersistiendo redes/nodos/escenarios/corridas en {SQL_DB_PATH}...")
+        print(
+            "\nPersistiendo redes/nodos/escenarios/corridas en "
+            f"{config.dataset.db_path}..."
+        )
         info = backfill_networks_and_runs(conn, df, config.network.inp_path, config.network.name)
         print(f"  network_id={info['network_id']}  nodos={len(info['node_pk_by_id'])}  "
               f"corridas={len(info['run_id_by_key'])}")
@@ -613,7 +636,13 @@ def main():
 
     # ── Modo: solo mapas ─────────────────────────────────────────────────────
     if args.only_maps:
-        df_all = load_training_frame(config.dataset.db_path)
+        try:
+            df_all = load_training_frame(config.dataset.db_path)
+        except ValueError as load_error:
+            parser.error(
+                f"--only-maps requiere datos en {config.dataset.db_path}; "
+                f"ejecuta --persist-sql primero para poblarla ({load_error})"
+            )
         df = base_shape_rows(df_all)
         factors_in_dataset = sorted(df["factor_mult"].unique())
         print(f"Generando {len(factors_in_dataset)} mapas SWMM...")
@@ -745,7 +774,14 @@ def main():
         print(f"  Dataset validado: {df.shape}")
     else:
         print(f"\nLeyendo dataset desde {config.dataset.db_path}...")
-        df = load_training_frame(config.dataset.db_path)
+        try:
+            df = load_training_frame(config.dataset.db_path)
+        except ValueError as load_error:
+            parser.error(
+                f"--only-ml/--skip-extraction requieren datos en "
+                f"{config.dataset.db_path}; ejecuta --persist-sql primero "
+                f"para poblarla ({load_error})"
+            )
         print(f"  {df.shape[0]} filas × {df.shape[1]} cols")
 
     print("\nEntrenando modelos finales...")

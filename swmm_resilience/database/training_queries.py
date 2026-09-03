@@ -331,12 +331,47 @@ def export_training_samples_csv(
     return output
 
 
+def _check_single_snapshot(frame: pd.DataFrame) -> None:
+    """Guard against a database holding more than one run per snapshot key.
+
+    ``load_training_samples`` legitimately returns rows across several runs
+    when a caller passes explicit ``run_ids`` (e.g. two networks backfilled
+    from two different ``.inp`` files). ``load_training_frame`` has no such
+    caller-supplied selection, so more than one row for the same
+    ``(shape_id, factor_mult, node_id)`` key means the database holds more
+    than one snapshot (e.g. two networks backfilled from different .inp
+    files) and callers would silently double-count or train on stale rows.
+    """
+    key_columns = ["shape_id", "factor_mult", "node_id"]
+    counts = frame.groupby(key_columns, dropna=False).size()
+    duplicated = counts[counts > 1]
+    if duplicated.empty:
+        return
+    sample = duplicated.sort_values(ascending=False).head(3)
+    offenders = ", ".join(
+        f"(shape_id={shape_id!r}, factor_mult={factor_mult!r}, "
+        f"node_id={node_id!r}) -> {count} rows"
+        for (shape_id, factor_mult, node_id), count in sample.items()
+    )
+    raise ValueError(
+        "The database holds more than one snapshot: "
+        f"{len(duplicated)} (shape_id, factor_mult, node_id) key(s) have "
+        f"more than one row, e.g. {offenders}. This usually happens when "
+        "--persist-sql was run against more than one .inp file (each yields "
+        "a new network with its own scenarios/runs). These commands require "
+        "the database to hold a single snapshot; re-populate it fresh "
+        "(delete the database file and re-run --persist-sql once) rather "
+        "than training on multiple snapshots at once."
+    )
+
+
 def load_training_frame(db_path: str | Path) -> pd.DataFrame:
     """Load every COMPLETE v17 training sample from the database at ``db_path``.
 
     Convenience wrapper for CLI callers: opens a managed connection, applies
     pending migrations, reads the canonical frame, and closes the connection.
-    Raises ``ValueError`` when the database holds no COMPLETE samples yet.
+    Raises ``ValueError`` when the database holds no COMPLETE samples yet, or
+    when it holds more than one snapshot (see ``_check_single_snapshot``).
 
     The read leaves a transaction open (``load_training_samples`` reads inside
     a savepoint); closing discards it, which is safe because nothing here
@@ -345,6 +380,8 @@ def load_training_frame(db_path: str | Path) -> pd.DataFrame:
     conn = connect_managed_database(db_path)
     try:
         apply_migrations(conn)
-        return load_training_samples(conn)
+        frame = load_training_samples(conn)
+        _check_single_snapshot(frame)
+        return frame
     finally:
         conn.close()

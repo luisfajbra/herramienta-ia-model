@@ -54,3 +54,39 @@ def test_repeated_calls_return_equal_frames(sql_training_db):
     second = load_training_frame(sql_training_db)
 
     pd.testing.assert_frame_equal(first, second)
+
+
+def test_raises_when_two_networks_yield_duplicate_snapshot_keys(
+    tmp_path, csv_shaped_dataset
+):
+    """Back-filling the same logical dataset against two different .inp files
+    creates a second network (different network_sha256) whose scenarios/runs
+    duplicate the (shape_id, factor_mult, node_id) keys of the first. The
+    loader must raise rather than silently hand back a doubled frame."""
+    from swmm_resilience.database.connection import connect_managed_database
+    from swmm_resilience.database.csv_backfill import backfill_networks_and_runs
+    from swmm_resilience.database.migrations import apply_migrations
+
+    db_path = tmp_path / "training_v17.sqlite3"
+    conn = connect_managed_database(db_path)
+    try:
+        apply_migrations(conn)
+        inp_a = tmp_path / "network_a.inp"
+        inp_a.write_text("[TITLE]\nnetwork a\n", encoding="utf-8")
+        backfill_networks_and_runs(conn, csv_shaped_dataset, inp_a, "Network A")
+
+        inp_b = tmp_path / "network_b.inp"
+        inp_b.write_text("[TITLE]\nnetwork b (different bytes)\n", encoding="utf-8")
+        backfill_networks_and_runs(conn, csv_shaped_dataset, inp_b, "Network B")
+    finally:
+        conn.close()
+
+    with pytest.raises(ValueError) as excinfo:
+        load_training_frame(db_path)
+
+    message = str(excinfo.value)
+    assert "more than one" in message or "multiple" in message
+    assert "single snapshot" in message
+    assert "base" in message
+    assert "1.0" in message or "1" in message
+    assert "N0" in message
