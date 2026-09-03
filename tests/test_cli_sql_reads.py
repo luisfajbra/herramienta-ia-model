@@ -49,6 +49,34 @@ def test_resilience_curve_reads_the_frame_from_sql(monkeypatch):
     assert curve_calls[0][1] == [1.0, 2.0]
 
 
+def test_only_ml_reads_the_frame_from_sql(monkeypatch):
+    load_calls = []
+    train_calls = []
+    frame = base_shape_frame()
+
+    def fake_load(db_path):
+        load_calls.append(Path(db_path))
+        return frame
+
+    def fake_train(df, config, models_dir):
+        train_calls.append((df.copy(), config))
+        return object(), object()
+
+    monkeypatch.setattr(main, "load_training_frame", fake_load)
+    monkeypatch.setattr(main, "train_models", fake_train)
+    monkeypatch.setattr(main, "evaluate_models", lambda df, config, out: {})
+    monkeypatch.setattr(
+        main, "generate_feature_importance_plots", lambda clf, reg, out: None
+    )
+    monkeypatch.setattr(sys, "argv", ["main.py", "--only-ml"])
+
+    main.main()
+
+    config = train_calls[0][1]
+    assert load_calls == [config.dataset.db_path]
+    assert train_calls[0][0].equals(frame)
+
+
 def test_flood_volume_curve_reads_the_frame_from_sql(monkeypatch):
     load_calls = []
     curve_calls = []

@@ -612,7 +612,7 @@ def main():
 
     # ── Modo: solo mapas ─────────────────────────────────────────────────────
     if args.only_maps:
-        df_all = pd.read_csv(config.dataset.output_path)
+        df_all = load_training_frame(config.dataset.db_path)
         df = base_shape_rows(df_all)
         factors_in_dataset = sorted(df["factor_mult"].unique())
         print(f"Generando {len(factors_in_dataset)} mapas SWMM...")
@@ -743,8 +743,8 @@ def main():
         validate_dataset(df, n_nodes, n_simulations)
         print(f"  Dataset validado: {df.shape}")
     else:
-        print(f"\nLeyendo dataset desde {config.dataset.output_path}...")
-        df = pd.read_csv(config.dataset.output_path)
+        print(f"\nLeyendo dataset desde {config.dataset.db_path}...")
+        df = load_training_frame(config.dataset.db_path)
         print(f"  {df.shape[0]} filas × {df.shape[1]} cols")
 
     print("\nEntrenando modelos finales...")
