@@ -20,6 +20,7 @@ from swmm_resilience.config import load_config
 from swmm_resilience.dataset.assembler import assemble_dataset
 from swmm_resilience.dataset.shape_selection import augmented_shape_rows, base_shape_rows
 from swmm_resilience.dataset.validator import validate_dataset
+from swmm_resilience.database.training_queries import load_training_frame
 from swmm_resilience.extraction.dynamic_features import compute_dynamic_features
 from swmm_resilience.extraction.labels import extract_labels
 from swmm_resilience.extraction.static_features import extract_static_features
@@ -211,7 +212,7 @@ def main():
     # ── Modo: curva de resiliencia ────────────────────────────────────────────
     if args.resilience_curve:
         print("\nCalculando curva de resiliencia...")
-        df = base_shape_rows(pd.read_csv(config.dataset.output_path))
+        df = base_shape_rows(load_training_frame(config.dataset.db_path))
         factors = sorted(df["factor_mult"].unique())
         result = compute_resilience_curve(df, factors, config, MODELS_DIR)
         print("\nResiliencia por factor:")
@@ -222,7 +223,7 @@ def main():
     # ── Modo: curva de volumen de inundación ─────────────────────────────────
     if args.flood_volume_curve:
         print("\nCalculando curva de volumen de inundación...")
-        df = base_shape_rows(pd.read_csv(config.dataset.output_path))
+        df = base_shape_rows(load_training_frame(config.dataset.db_path))
         factors = sorted(df["factor_mult"].unique())
         result = compute_flood_volume_curve(df, factors, config, MODELS_DIR)
         print("\nVolumen total por factor:")
