@@ -49,7 +49,19 @@ data/training/dataset_final.csv   (~12 MB, 24 columnas)
 + 4 dinámicas + `shape_id` + `vol_inundacion_m3` + `inunda`. Se valida con
 `validate_dataset` (conteos nodo/corrida coherentes).
 
-**Este CSV es el único artefacto de datos que consume el entrenamiento.**
+Este CSV es lo que escribe cada corrida completa del pipeline
+(`assemble_dataset` sigue llamando `dataset.to_csv(...)`) y sigue siendo la
+entrada que lee `--persist-sql`. **Ya no es el único artefacto de datos que
+consume el entrenamiento** (corrección 2026-09-03): `--only-ml` /
+`--skip-extraction` y los seis flags de análisis (`--resilience-curve`,
+`--flood-volume-curve`, `--factor-comparison`, `--analyze-features`,
+`--evaluate-shapes`, `--evaluate-generalization`), más `--only-maps`, ya no
+leen este CSV — todos llaman a `load_training_frame(config.dataset.db_path)`
+y leen `outputs/training_v17.sqlite3` (ver §12.3), lo que requiere haber
+corrido `--persist-sql` al menos una vez antes. Sólo la corrida completa en
+frío (`python main.py` sin flags) sigue usando el CSV: `assemble_dataset`
+devuelve el frame en memoria y `train_models` lo consume directo, sin
+releer el archivo.
 
 ## 5. Contrato de features (17)
 
@@ -107,11 +119,11 @@ no como “selección activa”. No toca los `.joblib` de `outputs/models/`.
 
 | Formato | Contenido | Ruta | Rol |
 |---|---|---|---|
-| CSV | dataset maestro | `data/training/dataset_final.csv` | **entrada del entrenamiento** |
+| CSV | dataset maestro, escrito por cada corrida completa | `data/training/dataset_final.csv` | entrada de la corrida completa en frío (en memoria) y de `--persist-sql`; ya **no** es la entrada de los flags de re-entrenamiento/análisis (ver fila SQLite) |
 | joblib | modelos entrenados (CLI) | `outputs/models/` | inferencia |
 | JSON | métricas de evaluación | `outputs/metrics/` | reporte |
 | PNG | mapas, curvas, importancia | `outputs/maps/`, `outputs/metrics/`, `outputs/…` | reporte |
-| SQLite v17 | evidencia de proveniencia | `outputs/training_v17.sqlite3` | solo si se corre `--persist-sql` |
+| SQLite v17 | evidencia de proveniencia; se escribe solo con `--persist-sql` | `outputs/training_v17.sqlite3` | **entrada de lectura** de `--only-ml`/`--skip-extraction`, `--only-maps`, `--resilience-curve`, `--flood-volume-curve`, `--factor-comparison`, `--analyze-features`, `--evaluate-shapes`, `--evaluate-generalization` (vía `load_training_frame`; requieren `--persist-sql` previo) |
 | XLSX | tablas de revisión del dataset | `outputs/…/dataset_review_tables.xlsx` | opcional, `--analyze-features` / `analysis/eda.py` |
 | XLSX + joblib | pipeline legacy de 7 modelos | `model_artifacts/`, `swmm_resilience.db` | solo GUI de escritorio |
 
@@ -126,9 +138,9 @@ flags que seleccionan el modo:
 | Comando | Hace |
 |---|---|
 | `python main.py` | Completo: SWMM → extracción → CSV → train → eval → mapas |
-| `python main.py --skip-extraction` | Reusa el CSV, corre train + eval + mapas |
-| `python main.py --only-ml` | Reusa el CSV, solo train + eval |
-| `python main.py --only-maps` | Solo regenera mapas desde el CSV |
+| `python main.py --skip-extraction` | Lee `outputs/training_v17.sqlite3` (requiere `--persist-sql` previo), corre train + eval + mapas |
+| `python main.py --only-ml` | Lee `outputs/training_v17.sqlite3` (requiere `--persist-sql` previo), solo train + eval |
+| `python main.py --only-maps` | Solo regenera mapas leyendo `outputs/training_v17.sqlite3` (requiere `--persist-sql` previo) |
 | `python main.py --persist-sql` | Vuelca CSV + un entrenamiento a SQLite v17 |
 | `python main.py --predict --factor X` | Inferencia sin SWMM (usa los `.joblib`) |
 | `python main.py --simulate --factor X` | SWMM + ML para un factor suelto (comparación) |
@@ -141,6 +153,11 @@ flags que seleccionan el modo:
 
 ## 11. Orden real de los datos
 
+**Dos caminos coexisten hoy** (corrección 2026-09-03): la corrida completa
+en frío sigue produciendo y consumiendo el CSV en memoria; todo lo demás
+(re-entrenar, mapas, curvas, análisis) ya lee de SQLite y requiere que
+`--persist-sql` haya poblado la base antes.
+
 ```
 config.yaml + .inp + data/hydrograph_shapes/*.csv
         │
@@ -148,11 +165,24 @@ config.yaml + .inp + data/hydrograph_shapes/*.csv
      .rpt temporales
         │
         ▼  extracción  (17 features + 2 labels + metadata)
-  data/training/dataset_final.csv
-        │
-        ├──▶ train_models → outputs/models/*.joblib → evaluación → outputs/metrics/*.json + outputs/maps/*.png
-        │
-        └──▶ (opcional) --persist-sql → outputs/training_v17.sqlite3
+  data/training/dataset_final.csv  ◀── assemble_dataset escribe el CSV Y
+        │                              devuelve el frame en memoria para
+        │                              esta misma corrida
+        ▼  (solo la corrida completa en frío: `python main.py` sin flags,
+        │   usa el frame en memoria, no relee el CSV)
+  train_models → outputs/models/*.joblib → evaluación →
+  outputs/metrics/*.json + outputs/maps/*.png
+
+  ── por separado ──────────────────────────────────────────────────────────
+  --persist-sql  ──lee dataset_final.csv (pd.read_csv, único caso que queda)──▶
+        outputs/training_v17.sqlite3
+                │
+                ▼  load_training_frame (SELECT sobre training_samples_v17)
+  --only-ml / --skip-extraction / --only-maps / --resilience-curve /
+  --flood-volume-curve / --factor-comparison / --analyze-features /
+  --evaluate-shapes / --evaluate-generalization
+        (los 8 requieren que --persist-sql se haya corrido antes; si la
+         base no tiene runs COMPLETE, `load_training_frame` falla)
 ```
 
 ---
