@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 
 from ..ml.contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
+from .connection import connect_managed_database
+from .migrations import apply_migrations
 
 
 IDENTITY_COLUMNS = (
@@ -327,3 +329,22 @@ def export_training_samples_csv(
         temporary.unlink(missing_ok=True)
         raise
     return output
+
+
+def load_training_frame(db_path: str | Path) -> pd.DataFrame:
+    """Load every COMPLETE v17 training sample from the database at ``db_path``.
+
+    Convenience wrapper for CLI callers: opens a managed connection, applies
+    pending migrations, reads the canonical frame, and closes the connection.
+    Raises ``ValueError`` when the database holds no COMPLETE samples yet.
+
+    The read leaves a transaction open (``load_training_samples`` reads inside
+    a savepoint); closing discards it, which is safe because nothing here
+    writes.
+    """
+    conn = connect_managed_database(db_path)
+    try:
+        apply_migrations(conn)
+        return load_training_samples(conn)
+    finally:
+        conn.close()
