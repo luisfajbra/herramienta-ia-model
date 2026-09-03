@@ -137,7 +137,7 @@ flags que seleccionan el modo:
 | `python main.py --evaluate-shapes` / `--evaluate-generalization` | SWMM vs ML por forma / en factores no vistos |
 | `python main.py --evaluate-hydrographs DIR --base-inp … --clf-path … --reg-path …` | Validación batch de un directorio de hidrogramas |
 | `python -m swmm_resilience.desktop.app` | GUI legacy: comparación de 7 modelos (`ml/train.py`), pipeline separado |
-| `python -m pytest -q` | Tests (517 pasan; 2 fallos ambientales: Tcl/Tk y módulo `build`) |
+| `python -m pytest -q` | Tests (531 passed, 3 deselected — medido en HEAD `7a5ce36` con `./venv/Scripts/python.exe -m pytest -q`; ver nota en §12.3) |
 
 ## 11. Orden real de los datos
 
@@ -224,8 +224,13 @@ Verifica la forma canónica propia de la vista (27 columnas), no paridad con el
 CSV. Esa comparación se agrega en la Fase 2 del plan de cutover, ya con el
 contrato correcto: las 22 columnas compartidas deben coincidir fila por fila
 (ver `docs/superpowers/specs/2026-09-03-sqlite-v17-training-frame-cutover-design.md`).
-El estado verde se infiere del historial de commits; no se re-ejecutó `pytest`
-en esta revisión por falta del módulo en el entorno.
+**Medido (2026-09-03), HEAD `7a5ce36`:** `531 passed, 3 deselected` vía
+`./venv/Scripts/python.exe -m pytest -q` (venv con Python 3.12.10 +
+`requirements.txt` + `build`, este último necesario para `tests/packaging/`
+y ausente de `requirements.txt`; el `python` desnudo de esta máquina es un
+3.14 sin dependencias instaladas). Ver §12.9 y `COMANDOS.md` para el detalle
+del entorno y de un flake intermitente preexistente en
+`tests/desktop/test_results_tab.py`.
 
 ## 12.3 Loader único
 
@@ -259,12 +264,18 @@ Lo que **no** tiene todavía, y sí pide este punto del plan:
   filtros hoy tiene que resolver primero los `run_ids` correspondientes
   (p.ej. consultando `scenarios`/`runs`) y pasarlos.
 
-Ningún consumidor del pipeline (`main.py`, `assembler.py`, `trainer.py`,
-`evaluator.py`, `analysis/*.py`) llama a `load_training_samples` todavía —
-solo lo usa su propio archivo de test. Todos siguen en `pd.read_csv`. El
-trabajo pendiente real de este punto es (a) decidir si se amplían los
-filtros o se resuelven vía `run_ids` desde arriba, y (b) conectar los
-consumidores — no reescribir el loader desde cero.
+**Hecho (2026-09-03):** todos los consumidores de sólo-lectura de `main.py` y
+de `swmm_resilience/analysis/factor_comparison.py` ya pasan por
+`load_training_frame(config.dataset.db_path)`
+(`swmm_resilience/database/training_queries.py:334`), no por
+`load_training_samples` directo. `pd.read_csv` aparece **una sola vez** en
+todo `main.py`: `main.py:573`, dentro de `--persist-sql`. Es deliberado y
+permanece así en esta fase — esa rama necesita `coord_x`/`coord_y` (para
+poblar `nodes` vía `backfill_networks_and_runs`), columnas que el frame de
+27 columnas del loader no trae (ver §12.2). El trabajo pendiente real de
+este punto pasa a ser (a) decidir si se amplían los filtros del loader más
+allá de `run_ids`, y (b) la Fase 2: que `assembler.py` escriba a SQL — ver
+§12.9 y el bloqueador de Fase 2 en el plan de cutover.
 
 ## 12.4 Cambios por archivo
 
@@ -320,9 +331,17 @@ consumidores — no reescribir el loader desde cero.
    `training_queries.py::load_training_samples` + mismo archivo de test.
    Falta: filtros más allá de `run_ids`, y que algo del pipeline lo llame.
    Ver 12.3 para el detalle de la brecha.
-3. Cambiar consumidores de sólo-lectura uno por uno
-   (`resilience` → `flood_volume` → `factor_comparison` → `--only-maps` →
-   `--only-ml`), corriendo la suite tras cada uno.
+3. ~~Cambiar consumidores de sólo-lectura uno por uno (`resilience` →
+   `flood_volume` → `factor_comparison` → `--only-maps` → `--only-ml`),
+   corriendo la suite tras cada uno.~~ **Hecho.** Los ocho sitios de lectura
+   de `main.py` (y `factor_comparison.py`, cuya firma cambió a
+   `generate_factor_comparisons(frame: pd.DataFrame, ...)`) ahora llaman a
+   `load_training_frame(config.dataset.db_path)`:
+   `--resilience-curve`, `--flood-volume-curve`, `--factor-comparison`,
+   `--only-maps`, la rama de lectura de `--only-ml`/`--skip-extraction`,
+   `--analyze-features`, `--evaluate-shapes`, `--evaluate-generalization`.
+   `pd.read_csv` queda en un único sitio (`main.py:573`, dentro de
+   `--persist-sql`) — ver §12.3.
 4. `assembler.py` escribe a SQL; `validate_dataset` valida contra SQL.
 5. Quitar la escritura de CSV del pipeline; añadir `--export-csv`.
 6. Borrar `--persist-sql` (ya redundante) o dejarlo como alias de re-entrenar
@@ -333,7 +352,14 @@ consumidores — no reescribir el loader desde cero.
 ## 12.9 Listo cuando
 
 - [ ] `python main.py` completo escribe sólo en `outputs/training_v17.sqlite3` (+ `.joblib` + `.json` + `.png`).
-- [ ] Ningún módulo del pipeline llama a `pd.read_csv` sobre el dataset.
+  Sigue escribiendo también `data/training/dataset_final.csv` — el corte de
+  escritura es la Fase 2/3, todavía no hecha.
+- [x] Ningún módulo del pipeline llama a `pd.read_csv` sobre el dataset,
+  **con una excepción deliberada**: `--persist-sql` (`main.py:573`) sigue
+  leyendo `dataset_final.csv` vía `pd.read_csv` porque necesita
+  `coord_x`/`coord_y` para `backfill_networks_and_runs`, columnas que el
+  frame de 27 columnas del loader no trae (ver §12.2/§12.3). Es el único
+  `pd.read_csv` que queda en `main.py`.
 - [ ] `training_samples_v17` coincide con el CSV en las 22 columnas
   compartidas, fila por fila (ver §12.2 — la vista tiene 27 columnas, no 24;
   el test de paridad es trabajo de la Fase 2, todavía no existe).
@@ -343,5 +369,13 @@ consumidores — no reescribir el loader desde cero.
   forma nueva de 27 columnas, no la histórica de 24 (decisión tomada el
   2026-09-03: se aceptan las 5 columnas de identidad y se descartan
   `coord_x`/`coord_y`, que ningún consumidor lee).
-- [ ] `pytest -q` y `pytest -m scale` verdes.
-- [ ] `COMANDOS.md` y este archivo actualizados.
+- [ ] `pytest -q` y `pytest -m scale` verdes. Medido: `531 passed, 3
+  deselected` (HEAD `7a5ce36`, `./venv/Scripts/python.exe -m pytest -q`);
+  `-m scale` no se re-ejecutó en esta revisión. Ver `COMANDOS.md` para el
+  detalle del entorno y de un flake intermitente preexistente y no
+  relacionado con esta migración.
+- [ ] `COMANDOS.md` y este archivo actualizados. Esta revisión (2026-09-03)
+  actualiza ambos para reflejar el corte de lectura (ítem de `pd.read_csv`
+  arriba); queda pendiente actualizarlos de nuevo cuando se cierren los
+  puntos que siguen sin marcar (escritura del assembler a SQL,
+  `--export-csv`, la puerta de paridad CSV).
