@@ -256,11 +256,12 @@ def main():
             plot_shap,
         )
 
-        dataset_path = Path(config.dataset.output_path)
-        if not dataset_path.exists():
+        try:
+            df_analysis = load_training_frame(config.dataset.db_path)
+        except ValueError as load_error:
             parser.error(
-                f"--analyze-features requiere el dataset en {dataset_path}; "
-                "ejecuta el pipeline completo primero"
+                f"--analyze-features requiere datos en {config.dataset.db_path}; "
+                f"ejecuta el pipeline completo primero ({load_error})"
             )
 
         clf_path = MODELS_DIR / "classifier.joblib"
@@ -270,8 +271,6 @@ def main():
                 "--analyze-features requiere modelos entrenados en outputs/models/; "
                 "ejecuta python main.py --only-ml primero"
             )
-
-        df_analysis = pd.read_csv(dataset_path)
         # joblib/pickle is safe here: files are written by this pipeline's own
         # train_models() call and never loaded from an external or untrusted source.
         clf_pipeline = joblib.load(clf_path)
@@ -298,10 +297,12 @@ def main():
 
     # ── Modo: evaluación de formas de hidrograma ─────────────────────────────
     if args.evaluate_shapes:
-        if not config.dataset.output_path.exists():
+        try:
+            _df = load_training_frame(config.dataset.db_path)
+        except ValueError as load_error:
             parser.error(
-                f"--evaluate-shapes requiere el dataset entrenado en "
-                f"{config.dataset.output_path}; ejecuta el pipeline completo primero"
+                f"--evaluate-shapes requiere datos en {config.dataset.db_path}; "
+                f"ejecuta el pipeline completo primero ({load_error})"
             )
 
         from swmm_resilience.simulation.hydrograph_shapes import load_all_shapes
@@ -326,7 +327,6 @@ def main():
             if _peak > 0:
                 shapes = {"base": [(t, v / _peak) for t, v in _base_ts_raw], **shapes}
 
-        _df = pd.read_csv(config.dataset.output_path)
         base_inflows = _df.groupby("node_id")["base_inflow_lps"].first().to_dict()
         # Only nodes with non-zero inflow are written to validation CSVs
         expected_nodes = {nid for nid, v in base_inflows.items() if v > 0}
@@ -375,10 +375,12 @@ def main():
 
     # ── Modo: evaluación de generalización (factores no vistos) ──────────────
     if args.evaluate_generalization:
-        if not config.dataset.output_path.exists():
+        try:
+            _df = load_training_frame(config.dataset.db_path)
+        except ValueError as load_error:
             parser.error(
-                f"--evaluate-generalization requiere el dataset en "
-                f"{config.dataset.output_path}; ejecuta el pipeline completo primero"
+                f"--evaluate-generalization requiere datos en {config.dataset.db_path}; "
+                f"ejecuta el pipeline completo primero ({load_error})"
             )
 
         from swmm_resilience.simulation.hydrograph_shapes import load_all_shapes
@@ -402,7 +404,6 @@ def main():
             if _peak > 0:
                 shapes = {"base": [(t, v / _peak) for t, v in _base_ts_raw], **shapes}
 
-        _df = pd.read_csv(config.dataset.output_path)
         base_inflows = _df.groupby("node_id")["base_inflow_lps"].first().to_dict()
         expected_nodes = {nid for nid, v in base_inflows.items() if v > 0}
 

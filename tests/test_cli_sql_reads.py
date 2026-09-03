@@ -77,6 +77,57 @@ def test_only_ml_reads_the_frame_from_sql(monkeypatch):
     assert train_calls[0][0].equals(frame)
 
 
+def test_analyze_features_errors_when_sql_has_no_samples(monkeypatch, capsys):
+    def fake_load(db_path):
+        raise ValueError("No COMPLETE v17 training samples found")
+
+    monkeypatch.setattr(main, "load_training_frame", fake_load)
+    monkeypatch.setattr(sys, "argv", ["main.py", "--analyze-features"])
+
+    try:
+        main.main()
+    except SystemExit as exit_error:
+        assert exit_error.code == 2
+    else:
+        raise AssertionError("--analyze-features should exit via parser.error")
+
+    assert "training_v17.sqlite3" in capsys.readouterr().err
+
+
+def test_evaluate_shapes_errors_when_sql_has_no_samples(monkeypatch, capsys):
+    def fake_load(db_path):
+        raise ValueError("No COMPLETE v17 training samples found")
+
+    monkeypatch.setattr(main, "load_training_frame", fake_load)
+    monkeypatch.setattr(sys, "argv", ["main.py", "--evaluate-shapes"])
+
+    try:
+        main.main()
+    except SystemExit as exit_error:
+        assert exit_error.code == 2
+    else:
+        raise AssertionError("--evaluate-shapes should exit via parser.error")
+
+    assert "training_v17.sqlite3" in capsys.readouterr().err
+
+
+def test_evaluate_generalization_errors_when_sql_has_no_samples(monkeypatch, capsys):
+    def fake_load(db_path):
+        raise ValueError("No COMPLETE v17 training samples found")
+
+    monkeypatch.setattr(main, "load_training_frame", fake_load)
+    monkeypatch.setattr(sys, "argv", ["main.py", "--evaluate-generalization"])
+
+    try:
+        main.main()
+    except SystemExit as exit_error:
+        assert exit_error.code == 2
+    else:
+        raise AssertionError("--evaluate-generalization should exit via parser.error")
+
+    assert "training_v17.sqlite3" in capsys.readouterr().err
+
+
 def test_flood_volume_curve_reads_the_frame_from_sql(monkeypatch):
     load_calls = []
     curve_calls = []
