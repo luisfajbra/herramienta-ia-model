@@ -1,5 +1,11 @@
 # SQLite V17 Legacy Retirement Implementation Plan
 
+> **SUPERSEDED (2026-09-03):** never executed (zero checkboxes checked).
+> The active plan (`docs/FLUJO_ACTUAL.md` §12, minimal path) explicitly
+> keeps CSV, `.joblib`, and the legacy desktop GUI — nothing here is being
+> retired right now. Do not resume without re-confirming with the project
+> owner.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Cut every retained consumer to the SQLite-v17 interfaces, preserve reusable CNN/LSTM model definitions behind an explicit pending boundary, and delete the superseded 15-feature, CSV, Parquet, desktop, and legacy-SQLite paths.

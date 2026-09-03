@@ -1,5 +1,13 @@
 # SQLite V17 Provenance Hardening Design
 
+> **PARTIALLY SUPERSEDED (2026-09-03):** migration 005 and its append-only
+> lifecycle (§3.1-3.4) shipped and are in production, referenced directly by
+> `csv_backfill.py`. §3.4.1's full `model_candidates`/`model_rankings`/
+> `model_promotions`/`model_selections` writer was deliberately *not* built —
+> `csv_backfill.py` calls this the "minimal path, not the full evidence
+> chain." The active plan going forward is `docs/FLUJO_ACTUAL.md` §12; treat
+> the unimplemented parts of this spec as historical, not a live target.
+
 **Date:** 2026-08-22  
 **Status:** Draft for user review  
 **Branch:** `cleanup/sqlite-v17-pipeline-consolidation`

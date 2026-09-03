@@ -189,23 +189,56 @@ produce `dataset_final.csv`:
 - `vol_inundacion_m3` = 0.0 cuando no hubo inundación (no NULL).
 
 Gate: un test que arma una DB pequeña, lee la vista y compara columna a
-columna contra un `dataset_final.csv` de referencia. Ampliar
-`tests/database/test_training_view_v17.py`. **Sin este test la migración no
-va.**
+columna contra un `dataset_final.csv` de referencia.
+
+**Ya implementado** (commits `40c2459` vista → `80d8abc`/`ec7abf2` fixes →
+`2628b93`/`ad7b5d7` tests): `tests/database/test_training_view_v17.py`
+(≈794 líneas) ya cubre esto y más — orden/nombres de columnas, exclusión de
+runs no-`COMPLETE`, aislamiento del snapshot de lectura vía `SAVEPOINT` bajo
+WAL (una escritura concurrente a mitad de lectura no puede colar filas
+inconsistentes), validación de cardinalidad `node_count` vs
+features/results, y roundtrip de exportación a CSV. No hace falta "ampliar"
+este archivo para el gate — ya está verde según el historial de commits
+(no se re-ejecutó en esta revisión por falta de `pytest` en el entorno).
 
 ## 12.3 Loader único
 
-Una función (p.ej. `swmm_resilience/dataset/loader.py :: load_training_frame`)
-que:
+**Ya implementado, pero no en la ruta que este documento proponía.** No hay
+que crear `swmm_resilience/dataset/loader.py`: el equivalente ya existe en
+`swmm_resilience/database/training_queries.py::load_training_samples`,
+con test dedicado en `tests/database/test_training_view_v17.py` (mismo
+commit range que 12.2). Hace:
 
-- abre la DB con `connect_managed_database`, corre `apply_migrations`;
-- `SELECT ... FROM training_samples_v17` con filtros opcionales empujados a
-  SQL: `network`, `shape_id`, lista de `factor_mult`, `only_flooded`,
-  `sample_frac`/`limit`;
-- devuelve un `DataFrame` ya en el orden del contrato;
-- opcional: `chunksize` para evaluación en streaming.
+- `SELECT ... FROM training_samples_v17` (columnas identidad + las 17
+  features + `inunda`/`vol_inundacion_m3`, en el orden del contrato);
+- valida que los `run_ids` pedidos existan y estén `COMPLETE`;
+- valida cardinalidad `node_count` vs filas de `node_features`/`node_results`
+  y sus claves (nunca deja pasar un run con datos huérfanos o incompletos);
+- corre todo dentro de un `SAVEPOINT` para leer un snapshot estable aunque
+  haya un escritor concurrente;
+- valida el frame contra `TABULAR_V3_17` antes de devolverlo (nunca sale un
+  frame con nulos/infinitos fuera de lo permitido);
+- `export_training_samples_csv(conn, output_path, run_ids=None)` ya cubre lo
+  que el paso 5 de 12.8 llama `--export-csv` (escritura atómica vía archivo
+  temporal + `replace`).
 
-Todos los consumidores llaman a esto en vez de `pd.read_csv`.
+Lo que **no** tiene todavía, y sí pide este punto del plan:
+
+- no abre la DB ni corre `apply_migrations` — recibe una conexión ya
+  gestionada (`connect_managed_database` + `apply_migrations` son
+  responsabilidad del caller, como hace `--persist-sql` en `main.py`);
+- el único filtro es `run_ids` (lista de enteros positivos); no hay filtro
+  directo por `network`, `shape_id`, lista de `factor_mult`, `only_flooded`,
+  `sample_frac`/`limit`, ni `chunksize` para streaming — quien quiera esos
+  filtros hoy tiene que resolver primero los `run_ids` correspondientes
+  (p.ej. consultando `scenarios`/`runs`) y pasarlos.
+
+Ningún consumidor del pipeline (`main.py`, `assembler.py`, `trainer.py`,
+`evaluator.py`, `analysis/*.py`) llama a `load_training_samples` todavía —
+solo lo usa su propio archivo de test. Todos siguen en `pd.read_csv`. El
+trabajo pendiente real de este punto es (a) decidir si se amplían los
+filtros o se resuelven vía `run_ids` desde arriba, y (b) conectar los
+consumidores — no reescribir el loader desde cero.
 
 ## 12.4 Cambios por archivo
 
@@ -213,7 +246,7 @@ Todos los consumidores llaman a esto en vez de `pd.read_csv`.
 |---|---|
 | `config.yaml` | añadir `dataset.db_path: "outputs/training_v17.sqlite3"`; marcar `output_path` como ruta de export |
 | `swmm_resilience/dataset/assembler.py` | además de (o en vez de) escribir CSV, insertar en `nodes/scenarios/runs/node_features/node_results` vía las funciones de `csv_backfill.py` (o moverlas a un módulo `dataset/persist.py`) |
-| `swmm_resilience/dataset/loader.py` | **nuevo**: `load_training_frame(...)` (12.3) |
+| `swmm_resilience/database/training_queries.py` | **ya existe** (`load_training_samples`, `export_training_samples_csv`, 12.3); falta ampliar filtros y decidir si se mueve/renombra a `dataset/loader.py` o se deja donde está |
 | `swmm_resilience/dataset/validator.py` | validar contra la DB (conteos por `network`/`run`) en vez de sobre el CSV |
 | `main.py` | reemplazar cada `pd.read_csv(config.dataset.output_path)` por `load_training_frame(...)` con el filtro que ya aplica después (`base_shape_rows`, factores, etc. pasan a ser argumentos del loader); `--persist-sql` deja de existir como paso aparte (el pipeline ya escribe SQL); añadir `--export-csv` |
 | `swmm_resilience/analysis/factor_comparison.py` | recibir la DB / el loader en vez de `dataset_path` |
@@ -253,10 +286,14 @@ Todos los consumidores llaman a esto en vez de `pd.read_csv`.
 
 ## 12.8 Orden de ejecución
 
-1. Test de contrato de la vista (12.2) contra un `dataset_final.csv` de
-   referencia. Verde.
-2. `load_training_frame` (12.3) + test: mismo frame que `read_csv` del CSV
-   de referencia.
+1. ~~Test de contrato de la vista (12.2) contra un `dataset_final.csv` de
+   referencia. Verde.~~ **Hecho.** `training_samples_v17` (migración 001) +
+   `tests/database/test_training_view_v17.py`. Ver 12.2.
+2. ~~`load_training_frame` (12.3) + test: mismo frame que `read_csv` del CSV
+   de referencia.~~ **Hecho, con alcance más chico que el planteado.**
+   `training_queries.py::load_training_samples` + mismo archivo de test.
+   Falta: filtros más allá de `run_ids`, y que algo del pipeline lo llame.
+   Ver 12.3 para el detalle de la brecha.
 3. Cambiar consumidores de sólo-lectura uno por uno
    (`resilience` → `flood_volume` → `factor_comparison` → `--only-maps` →
    `--only-ml`), corriendo la suite tras cada uno.
@@ -271,7 +308,12 @@ Todos los consumidores llaman a esto en vez de `pd.read_csv`.
 
 - [ ] `python main.py` completo escribe sólo en `outputs/training_v17.sqlite3` (+ `.joblib` + `.json` + `.png`).
 - [ ] Ningún módulo del pipeline llama a `pd.read_csv` sobre el dataset.
-- [ ] `training_samples_v17` reproduce el frame de 24 columnas (test verde).
-- [ ] `--export-csv` regenera el CSV idéntico al de referencia.
+- [x] `training_samples_v17` reproduce el frame de 24 columnas (test verde) —
+  `tests/database/test_training_view_v17.py`, no re-ejecutado en esta
+  revisión por falta de `pytest` en el entorno; confiado en el historial de
+  commits (`feat`→`fix`→`fix`→`test`→`test`).
+- [ ] `--export-csv` regenera el CSV idéntico al de referencia — la función
+  que lo hace (`export_training_samples_csv`) ya existe y tiene test, pero
+  no está expuesta como flag de `main.py` todavía.
 - [ ] `pytest -q` y `pytest -m scale` verdes.
 - [ ] `COMANDOS.md` y este archivo actualizados.

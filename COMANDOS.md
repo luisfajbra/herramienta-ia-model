@@ -1,9 +1,13 @@
-# Comandos del pipeline — estado real (2026-08-24)
+# Comandos del pipeline — estado real (2026-09-03)
 
 Este archivo documenta únicamente lo que **funciona hoy**, verificado leyendo
 el código real (no specs ni planes). Ver la sección final "Qué NO está
 conectado todavía" para lo que existe como esquema pero no se usa en
 producción.
+
+> Actualizado junto con `docs/FLUJO_ACTUAL.md` (2026-09-03): faltaba
+> `--persist-sql`, y la afirmación de que la base v17 no tenía ningún
+> consumidor ya no era cierta — ver más abajo.
 
 ## Arquitectura actual (resumen honesto)
 
@@ -12,9 +16,18 @@ producción.
   → mapas/evaluación. Esto es lo que corren todos los comandos de abajo.
 - **Formato de almacenamiento del pipeline activo: CSV + joblib**, no SQL.
   El esquema SQLite v17 (`swmm_resilience/database/sql/001_v17_initial.sql`
-  … `005_provenance_integrity.sql`) existe, está migrado y probado
-  (204 tests en `tests/database/`), pero **ningún código de entrenamiento o
-  predicción lo lee ni lo escribe** — es infraestructura sin consumidor.
+  … `005_provenance_integrity.sql`) existe y está migrado y probado. Con
+  `--persist-sql` **sí hay código que escribe ahí**: vuelca el CSV a
+  `networks/nodes/scenarios/runs/node_features/node_results` y entrena +
+  persiste `training_runs → model_evaluations → oof_predictions →
+  trained_models → model_metrics` (`swmm_resilience/database/csv_backfill.py`).
+  También existe un loader de lectura ya probado
+  (`swmm_resilience/database/training_queries.py::load_training_samples`,
+  con `export_training_samples_csv`), pero **nada del pipeline lo llama
+  todavía** — solo lo usa su propio test. En los dos sentidos, el flujo
+  real de `main.py` (entrenar, predecir, evaluar) sigue siendo siempre
+  CSV → `.joblib`; la base v17 es un paso aparte y opcional que no se
+  retroalimenta hacia el resto del pipeline.
 - **Sigue existiendo un segundo pipeline** (`swmm_resilience/ml/train.py`,
   comparación de 7 modelos) — no accesible desde `main.py`, solo desde la
   GUI de escritorio (`python -m swmm_resilience.desktop.app` o el ejecutable
@@ -46,9 +59,19 @@ python -m pytest tests/database -q -m scale
 python -m pytest tests/packaging -q
 ```
 
-Estado esperado: **504 passed, 3 deselected**. El único fallo conocido es
-`tests/desktop/test_results_tab.py` por un problema de entorno Tcl/Tk local
-(falta `tk.tcl` en esta instalación de Python), no relacionado con el código.
+Estado esperado (al 2026-08-24): **504 passed, 3 deselected**. El único
+fallo conocido era `tests/desktop/test_results_tab.py` por un problema de
+entorno Tcl/Tk local (falta `tk.tcl` en esta instalación de Python), no
+relacionado con el código.
+
+> Nota (2026-09-03): `docs/FLUJO_ACTUAL.md` reporta **517 pasan / 2 fallos
+> ambientales (Tcl/Tk y módulo `build`)** para el mismo comando, en una
+> revisión donde no había `pytest` instalado en el entorno para
+> re-verificarlo. La diferencia con el número de arriba es consistente con
+> los tests agregados desde el 24/08 (p.ej. `test_training_view_v17.py`,
+> `test_scale_v17.py`), pero **ninguno de los dos números está confirmado
+> en esta revisión** — correr `python -m pytest -q` antes de citar una
+> cifra en otro documento.
 
 ## Pipeline activo (CLI, `main.py`) — CSV + 17 features
 
@@ -70,6 +93,11 @@ python main.py --predict --factor 3.5
 
 # Correr SWMM + ML para un factor arbitrario y generar ambos mapas (comparación)
 python main.py --simulate --factor 3.5
+
+# Persistir dataset_final.csv + un entrenamiento GroupKFold5 en
+# outputs/training_v17.sqlite3 (esquema SQLite v17) — paso aparte y opcional,
+# no lo lee nadie del pipeline activo (ver "Qué NO está conectado todavía")
+python main.py --persist-sql
 ```
 
 ### Análisis y visualización (requieren CSV/modelos ya generados)
@@ -120,10 +148,10 @@ usa una tercera base de datos SQLite (`swmm_resilience.db`, esquema en
 `swmm_resilience/database/schema.py`) para almacenar simulaciones — **no** es
 el esquema v17 endurecido hoy, son cosas completamente distintas.
 
-## Base de datos SQLite v17 (esquema endurecido, sin consumidor todavía)
+## Base de datos SQLite v17 (esquema endurecido, con escritura pero sin lectura conectada al pipeline)
 
-Estos comandos son útiles para inspeccionar/mantener la base v17 si decides
-usarla directamente, pero **ningún flag de `main.py` la toca**:
+`python main.py --persist-sql` (ver arriba) ya escribe ahí. Estos comandos
+son para inspeccionar/mantener la base v17 directamente:
 
 ```python
 from swmm_resilience.database.connection import connect_managed_database
@@ -139,14 +167,30 @@ from swmm_resilience.database.upgrade import upgrade_database_with_backup
 receipt = upgrade_database_with_backup("ruta/a/tu.sqlite3", "ruta/a/backups")
 ```
 
+```python
+# Leer de vuelta lo que --persist-sql escribió (mismo contrato de 17
+# features que el CSV) — código probado, pero nada del pipeline lo llama
+from swmm_resilience.database.training_queries import load_training_samples
+frame = load_training_samples(conn)                 # todos los runs COMPLETE
+frame = load_training_samples(conn, run_ids=[1, 2])  # runs específicos
+```
+
 ## Qué NO está conectado todavía
 
-- **No hay código que entrene y guarde resultados en las tablas SQL v17**
+- **`--persist-sql` sí entrena y guarda resultados en las tablas SQL v17**
   (`training_runs`, `model_evaluations`, `oof_predictions`, `trained_models`,
-  `model_promotions`, `model_candidates`). El pipeline activo sigue usando
-  CSV + `.joblib`. Conectar esto (a veces referido como "Plan C /
-  unified-ml" en los specs de `docs/superpowers/`) es trabajo pendiente, no
-  hecho hoy.
+  `model_metrics`) — ver `swmm_resilience/database/csv_backfill.py`. Lo que
+  deliberadamente **no** escribe es `model_candidates` / `model_rankings` /
+  `model_promotions` / `model_selections`: los modelos quedan como
+  artefactos históricos válidos, no como "selección activa" (ver
+  `docs/FLUJO_ACTUAL.md` §8, §12.2–12.3 para el detalle de qué tanto de la
+  vista/loader de lectura ya existe). El pipeline activo (`main.py` sin
+  `--persist-sql`) sigue usando siempre CSV + `.joblib`: `--persist-sql` es
+  un paso aparte y opcional que no se retroalimenta, y aunque ya existe un
+  loader de lectura probado (`training_queries.py::load_training_samples`),
+  ningún consumidor del pipeline lo llama todavía. Conectar esto como fuente
+  de verdad por defecto (a veces referido como "Plan C / unified-ml" en los
+  specs de `docs/superpowers/`) es trabajo pendiente, no hecho hoy.
 - El pipeline legacy de 7 modelos (`ml/train.py`) sigue vivo en la GUI —
   retirarlo es una tarea aparte, ya identificada pero no ejecutada.
 - La búsqueda de hiperparámetros con Optuna (`docs/superpowers/specs/2026-08-04-optuna-hyperparam-search-design.md`)

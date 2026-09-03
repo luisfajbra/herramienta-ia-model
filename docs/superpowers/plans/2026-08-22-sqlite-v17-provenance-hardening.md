@@ -1,5 +1,11 @@
 # SQLite V17 Provenance Hardening Implementation Plan
 
+> **PARTIALLY SUPERSEDED (2026-09-03):** migration 005 and its guards did
+> ship and are live (`csv_backfill.py` follows this lifecycle exactly).
+> Whatever here goes beyond migration 005 (full candidate/ranking/promotion
+> writers) was not built — see `docs/FLUJO_ACTUAL.md` §12 for the active
+> plan before resuming any unchecked step below.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Close the seven confirmed integrity gaps in the SQLite V17 foundation (migrations 001-004) by adding migration 005, so that every model, metric, promotion, or prediction stays traceable to the exact immutable training inputs and OOF evidence that produced it.

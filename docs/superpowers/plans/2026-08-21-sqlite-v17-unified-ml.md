@@ -1,5 +1,13 @@
 # SQLite V17 Unified ML Implementation Plan
 
+> **SUPERSEDED (2026-09-03):** the full model registry
+> (`model_candidates`/`model_rankings`/`model_promotions`/`model_selections`,
+> `train_and_select()`, `load_verified_model()`) was never built (zero
+> checkboxes checked). `csv_backfill.py::persist_training_run` covers the
+> evidence chain up to `trained_models`/`model_metrics` only, by deliberate
+> "minimal path" decision — see `docs/FLUJO_ACTUAL.md` §8, §12. Do not
+> resume this plan without re-confirming with the project owner.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Train, evaluate, select, store, and load every approved tabular model through one SQLite-backed, exact-v17 implementation.

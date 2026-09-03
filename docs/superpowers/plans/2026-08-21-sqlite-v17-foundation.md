@@ -1,5 +1,12 @@
 # SQLite V17 Foundation Implementation Plan
 
+> **PARTIALLY SUPERSEDED (2026-09-03):** most deliverables here (contract,
+> migrations, `training_samples_v17`, the loader) did get built, but via a
+> different, smaller path (`database/training_queries.py`, not a formal
+> execution of this plan's checkboxes — none are checked). Don't re-run this
+> plan; see `docs/FLUJO_ACTUAL.md` §12.2-12.3 for what actually exists and
+> what's still open.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Establish the immutable 17-feature contract and the new SQLite schema/query foundation without switching production callers.

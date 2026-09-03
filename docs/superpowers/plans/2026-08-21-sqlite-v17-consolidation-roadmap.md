@@ -1,5 +1,10 @@
 # SQLite V17 Consolidation Roadmap Implementation Plan
 
+> **SUPERSEDED (2026-09-03):** no task in this roadmap was ever executed
+> (zero checkboxes checked). The branch shipped a much smaller "minimal
+> path" instead — see `docs/FLUJO_ACTUAL.md` §12 for the active plan. Do
+> not execute this roadmap without re-confirming with the project owner.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the overlapping CSV/filesystem/legacy-SQLite pipelines with one SQLite-backed pipeline that enforces the exact 17-feature contract.

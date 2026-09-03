@@ -1,5 +1,11 @@
 # SQLite V17 Simulation Persistence Implementation Plan
 
+> **SUPERSEDED (2026-09-03):** the `SimulationStore`/per-timestep persistence
+> vision here was never built (zero checkboxes checked) and is out of scope
+> for the active plan (`docs/FLUJO_ACTUAL.md` §12, minimal path — simulation
+> results still flow through `.rpt` → CSV/SQL feature rows, not a dedicated
+> store). Do not resume without re-confirming with the project owner.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Persist networks, scenarios, aggregate results, exact v17 features, and every timestep directly into SQLite with recoverable run lifecycle semantics.

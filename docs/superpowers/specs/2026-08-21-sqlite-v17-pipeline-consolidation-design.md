@@ -1,5 +1,13 @@
 # SQLite V17 Pipeline Consolidation Design
 
+> **SUPERSEDED (2026-09-03):** this full-consolidation vision (SimulationStore,
+> unified ML registry, legacy retirement) was never executed — none of Plans
+> A-D's checkboxes are checked. The branch instead shipped a much smaller
+> "minimal path" (`csv_backfill.py`), and the active plan going forward is
+> `docs/FLUJO_ACTUAL.md` §12 (only the 24-column training frame moves to
+> SQL; CSV/`.joblib`/legacy GUI stay). Kept for historical reference only —
+> do not resume this roadmap without re-confirming with the project owner.
+
 **Status:** Approved in conversation; ready for implementation planning
 **Date:** 2026-08-21
 **Branch:** `cleanup/sqlite-v17-pipeline-consolidation`
