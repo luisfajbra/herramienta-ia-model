@@ -95,7 +95,23 @@ normal `.joblib` training. `backfill_networks_and_runs` stays in
 generated before Phase 2 (or via `--export-csv` + a manual re-import) — it
 just stops being what `--persist-sql` calls by default.
 
-**4.6 — `validate_dataset` does not get a SQL-specific variant.**
+**4.6 — The frame changes shape, and that is accepted.** (Decided
+2026-09-03, after verifying the view definition in `001_v17_initial.sql`.)
+`training_samples_v17` returns **27 columns**: 8 identity (`run_id`,
+`network_id`, `scenario_id`, `scenario_key`, `scenario_kind`, `factor_mult`,
+`shape_id`, `node_id`) + the 17 contract features + 2 targets. Versus
+`dataset_final.csv`'s 24, it **adds** the 5 identity columns and **omits**
+`coord_x`/`coord_y`. Verified consumer-by-consumer that nothing reads those
+two from the dataset frame: `visualization/flood_map.py` builds its own
+coordinate dict from the `.inp`, `ml/predict.py` derives features from the
+`.inp`, and `trainer`/`evaluator`/`feature_analysis` use only the 17
+features + labels + `factor_mult`. The sole consumer is
+`backfill_networks_and_runs` (populating `nodes`), which only runs on the
+CSV-fed `--persist-sql` path that Phase 3 retires. Therefore
+`--export-csv` emits the 27-column frame, and byte-for-byte parity with the
+historical CSV is explicitly **not** a goal — see the revised gate in §6.4.
+
+**4.7 — `validate_dataset` does not get a SQL-specific variant.**
 `load_training_samples` already enforces cardinality (node_count vs.
 feature/result rows) and the feature contract before returning a frame —
 duplicating that check in `validate_dataset` for the loader path is
@@ -151,12 +167,17 @@ step.
    on demand. This is the tool that regenerates `dataset_final.csv` from
    SQL for anything still relying on the file directly (spreadsheets, ad
    hoc scripts, `docs/superpowers/...` historical tooling).
-4. **Parity gate (blocking):** a test that runs the full pipeline once,
-   captures `dataset_final.csv`, then runs `--export-csv` and diffs the two
-   byte-for-byte (or via `pd.testing.assert_frame_equal` after
-   `pd.read_csv` on both) — column order, dtypes, and values must match
-   exactly. This is the `12.9` "`--export-csv` regenera el CSV idéntico al
-   de referencia" checklist item.
+4. **Parity gate (blocking), revised per §4.6:** byte-for-byte equality is
+   impossible and not wanted — the frames have deliberately different
+   shapes. The gate instead asserts, on the same assembled dataset written
+   both ways: the exported frame and the CSV frame agree on **the 22 shared
+   columns** (`node_id`, `factor_mult`, `shape_id`, the 17 features,
+   `inunda`, `vol_inundacion_m3`), row-for-row, after sorting both by
+   `(shape_id, factor_mult, node_id)` and resetting the index — via
+   `pd.testing.assert_frame_equal(..., check_like=False)` on that column
+   subset. The export's 5 identity columns and the CSV's `coord_x`/`coord_y`
+   are asserted as the *expected* difference (present on one side only), so
+   the test fails if that set ever changes silently.
 5. Only once the parity gate is green: drop the default `dataset.to_csv(...)`
    call from `assemble_dataset` (CSV now only appears via `--export-csv`).
    This is the one irreversible step in the whole migration — everything
@@ -211,8 +232,8 @@ Same as `docs/FLUJO_ACTUAL.md` §12.9, restated for this spec's scope:
       for the training frame (Phase 1).
 - [ ] `assemble_dataset` writes `networks/.../node_results` directly
       (Phase 2.1-2.2).
-- [ ] `--export-csv` reproduces `dataset_final.csv` byte-for-byte from SQL
-      (Phase 2.4 gate).
+- [ ] `--export-csv` emits the 27-column frame from SQL, agreeing with the
+      CSV on all 22 shared columns row-for-row (Phase 2.4 gate, per §4.6).
 - [ ] Default pipeline run writes only to `outputs/training_v17.sqlite3`
       (+ `.joblib` + `.json` + `.png`); CSV only appears via `--export-csv`
       (Phase 2.5).

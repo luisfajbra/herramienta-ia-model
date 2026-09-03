@@ -178,28 +178,54 @@ contrato de 17 features (`FEATURE_COLUMNS_V17`) igual, LOSO/GroupKFold5 igual.
 
 ## 12.2 El punto crítico: contrato de la vista
 
-`training_samples_v17` **tiene que devolver exactamente** el frame que hoy
-produce `dataset_final.csv`:
+**Corrección (2026-09-03):** este punto estaba mal planteado. La vista **no**
+devuelve las 24 columnas del CSV, y no debe hacerlo. Lo que devuelve son
+**27 columnas**:
 
-- las 24 columnas, **mismos nombres**, **mismo orden**;
+- 8 de identidad: `run_id`, `network_id`, `scenario_id`, `scenario_key`,
+  `scenario_kind`, `factor_mult`, `shape_id`, `node_id`;
+- las 17 features del contrato `tabular_v3_17`;
+- 2 targets: `inunda`, `vol_inundacion_m3`.
+
+Comparado con `dataset_final.csv`: **agrega** las 5 columnas de identidad
+(`run_id`/`network_id`/`scenario_id`/`scenario_key`/`scenario_kind`) y
+**omite** `coord_x`/`coord_y` (las coordenadas viven en la tabla `nodes` y en
+el `.inp`, no son una feature ni parte de una muestra de entrenamiento).
+
+Se verificó consumidor por consumidor que **nadie lee `coord_x`/`coord_y` del
+frame del dataset**: los mapas arman su propio dict de coordenadas desde el
+`.inp` (`visualization/flood_map.py`), `ml/predict.py` construye sus features
+desde el `.inp`, y `trainer`/`evaluator`/`feature_analysis` usan solo las 17
+features + labels + `factor_mult`. El único consumidor de esas dos columnas es
+`backfill_networks_and_runs` (para poblar `nodes`), que solo corre en la ruta
+`--persist-sql` alimentada por CSV.
+
+Garantías que sí se exigen (y que el loader ya valida):
+
 - dtypes: 17 features → numéricas; `inunda` → int 0/1; `shape_id`/`node_id`
   → texto; `factor_mult` → float;
 - nulos sólo en las columnas declaradas `nullable` en `ml/contracts.py`
   (`diam_max_*`, `pendiente_*`, `dist_outfall_m`, `upstream_capacity_lps`);
-- `vol_inundacion_m3` = 0.0 cuando no hubo inundación (no NULL).
-
-Gate: un test que arma una DB pequeña, lee la vista y compara columna a
-columna contra un `dataset_final.csv` de referencia.
+- `vol_inundacion_m3` = 0.0 cuando no hubo inundación (no NULL), y no negativo;
+- solo runs `COMPLETE`, con `node_count` coherente con las filas de
+  `node_features`/`node_results`.
 
 **Ya implementado** (commits `40c2459` vista → `80d8abc`/`ec7abf2` fixes →
 `2628b93`/`ad7b5d7` tests): `tests/database/test_training_view_v17.py`
-(≈794 líneas) ya cubre esto y más — orden/nombres de columnas, exclusión de
+(≈794 líneas) cubre orden/nombres de columnas de la vista, exclusión de
 runs no-`COMPLETE`, aislamiento del snapshot de lectura vía `SAVEPOINT` bajo
 WAL (una escritura concurrente a mitad de lectura no puede colar filas
 inconsistentes), validación de cardinalidad `node_count` vs
-features/results, y roundtrip de exportación a CSV. No hace falta "ampliar"
-este archivo para el gate — ya está verde según el historial de commits
-(no se re-ejecutó en esta revisión por falta de `pytest` en el entorno).
+features/results, y roundtrip de exportación a CSV.
+
+**Lo que ese test NO hace** (y que la versión anterior de este documento daba
+por hecho): no compara contra ningún `dataset_final.csv` de referencia.
+Verifica la forma canónica propia de la vista (27 columnas), no paridad con el
+CSV. Esa comparación se agrega en la Fase 2 del plan de cutover, ya con el
+contrato correcto: las 22 columnas compartidas deben coincidir fila por fila
+(ver `docs/superpowers/specs/2026-09-03-sqlite-v17-training-frame-cutover-design.md`).
+El estado verde se infiere del historial de commits; no se re-ejecutó `pytest`
+en esta revisión por falta del módulo en el entorno.
 
 ## 12.3 Loader único
 
@@ -308,12 +334,14 @@ consumidores — no reescribir el loader desde cero.
 
 - [ ] `python main.py` completo escribe sólo en `outputs/training_v17.sqlite3` (+ `.joblib` + `.json` + `.png`).
 - [ ] Ningún módulo del pipeline llama a `pd.read_csv` sobre el dataset.
-- [x] `training_samples_v17` reproduce el frame de 24 columnas (test verde) —
-  `tests/database/test_training_view_v17.py`, no re-ejecutado en esta
-  revisión por falta de `pytest` en el entorno; confiado en el historial de
-  commits (`feat`→`fix`→`fix`→`test`→`test`).
-- [ ] `--export-csv` regenera el CSV idéntico al de referencia — la función
-  que lo hace (`export_training_samples_csv`) ya existe y tiene test, pero
-  no está expuesta como flag de `main.py` todavía.
+- [ ] `training_samples_v17` coincide con el CSV en las 22 columnas
+  compartidas, fila por fila (ver §12.2 — la vista tiene 27 columnas, no 24;
+  el test de paridad es trabajo de la Fase 2, todavía no existe).
+- [ ] `--export-csv` regenera el frame desde SQL — la función que lo hace
+  (`export_training_samples_csv`) ya existe y tiene test, pero no está
+  expuesta como flag de `main.py` todavía. Nota: el CSV exportado tiene la
+  forma nueva de 27 columnas, no la histórica de 24 (decisión tomada el
+  2026-09-03: se aceptan las 5 columnas de identidad y se descartan
+  `coord_x`/`coord_y`, que ningún consumidor lee).
 - [ ] `pytest -q` y `pytest -m scale` verdes.
 - [ ] `COMANDOS.md` y este archivo actualizados.
