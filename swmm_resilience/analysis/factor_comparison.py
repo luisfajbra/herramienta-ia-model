@@ -15,13 +15,13 @@ from ..visualization.model_comparison import (
 
 
 def generate_factor_comparisons(
-    dataset_path: Path,
+    frame: pd.DataFrame,
     config,
     models_dir: Path,
     output_dir: Path,
 ) -> list[Path]:
     """Generate node-volume and parity plots for every dataset factor."""
-    dataset = base_shape_rows(pd.read_csv(dataset_path))
+    dataset = base_shape_rows(frame)
     required = {"node_id", "factor_mult", "vol_inundacion_m3"}
     missing = required - set(dataset.columns)
     if missing:

@@ -8,15 +8,14 @@ from swmm_resilience.analysis import factor_comparison
 def test_generate_factor_comparisons_processes_every_factor(
     monkeypatch, tmp_path
 ):
-    dataset_path = tmp_path / "dataset.csv"
-    pd.DataFrame(
+    frame = pd.DataFrame(
         {
             "node_id": ["1C", "2C", "1C", "2C"],
             "factor_mult": [1.0, 1.0, 2.0, 2.0],
             "vol_inundacion_m3": [1.0, 2.0, 3.0, 4.0],
             "inunda": [1, 1, 1, 1],
         }
-    ).to_csv(dataset_path, index=False)
+    )
     config = SimpleNamespace()
     prediction_calls = []
     plot_calls = []
@@ -56,7 +55,7 @@ def test_generate_factor_comparisons_processes_every_factor(
     out_dir = tmp_path / "plots"
 
     paths = factor_comparison.generate_factor_comparisons(
-        dataset_path=dataset_path,
+        frame=frame,
         config=config,
         models_dir=tmp_path / "models",
         output_dir=out_dir,

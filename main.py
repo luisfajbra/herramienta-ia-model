@@ -237,7 +237,7 @@ def main():
         output_dir = METRICS_DIR / "factor_comparison"
         print("\nGenerando comparaciones SWMM vs XGBoost por factor...")
         paths = generate_factor_comparisons(
-            dataset_path=config.dataset.output_path,
+            frame=load_training_frame(config.dataset.db_path),
             config=config,
             models_dir=MODELS_DIR,
             output_dir=output_dir,
