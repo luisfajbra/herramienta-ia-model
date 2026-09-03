@@ -10,6 +10,7 @@ simulation:
 
 dataset:
   output_path: "data/training/dataset_final.csv"
+  db_path: "outputs/training_v17.sqlite3"
   flood_threshold_m3: 1.0
 
 validation:

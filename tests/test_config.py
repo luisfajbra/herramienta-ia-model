@@ -81,3 +81,26 @@ def test_load_config_rejects_unknown_algorithm(tmp_path):
 
     with pytest.raises(ValueError, match="Algoritmo de clasificador no soportado"):
         load_config(cfg_path)
+
+
+def test_load_config_resolves_db_path(tmp_path):
+    cfg_path = write_config(tmp_path)
+    text = cfg_path.read_text(encoding="utf-8")
+    cfg_path.write_text(
+        text.replace(
+            '  flood_threshold_m3: 0.0',
+            '  db_path: "outputs/custom_v17.sqlite3"\n  flood_threshold_m3: 0.0',
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    cfg = load_config(cfg_path)
+
+    assert cfg.dataset.db_path == tmp_path / "outputs" / "custom_v17.sqlite3"
+
+
+def test_load_config_defaults_db_path_when_absent(tmp_path):
+    cfg = load_config(write_config(tmp_path))
+
+    assert cfg.dataset.db_path == tmp_path / "outputs" / "training_v17.sqlite3"

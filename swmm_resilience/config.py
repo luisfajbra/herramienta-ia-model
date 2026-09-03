@@ -196,6 +196,7 @@ class SimulationConfig:
 class DatasetConfig:
     output_path: Path
     flood_threshold_m3: float
+    db_path: Path
 
 
 @dataclass
@@ -302,6 +303,7 @@ def load_config(config_path: str = "config.yaml") -> Config:
         dataset=DatasetConfig(
             output_path=base_dir / ds["output_path"],
             flood_threshold_m3=float(ds["flood_threshold_m3"]),
+            db_path=base_dir / ds.get("db_path", "outputs/training_v17.sqlite3"),
         ),
         ml=MLConfig(
             classifier=ClassifierConfig(
