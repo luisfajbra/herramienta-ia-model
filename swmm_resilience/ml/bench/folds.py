@@ -22,11 +22,21 @@ from .schemas import FOLD_COLUMNS, PROTOCOLS
 _GROUPKFOLD_SPLITS = 5
 
 
+def _validate_groupkfold5_groups(groups: pd.Series) -> None:
+    """Valida que hay suficientes grupos para GroupKFold5."""
+    distinct = int(groups.nunique())
+    if distinct < _GROUPKFOLD_SPLITS:
+        raise ValueError(
+            f"GroupKFold5 necesita al menos 5 grupos; el dataset tiene {distinct}"
+        )
+
+
 def n_folds_for(groups: pd.Series, protocol: str) -> int:
     """Número de folds que producirá ``protocol`` sobre ``groups``."""
     if protocol == "LOSO":
         return int(groups.nunique())
     if protocol == "GroupKFold5":
+        _validate_groupkfold5_groups(groups)
         return _GROUPKFOLD_SPLITS
     raise ValueError(f"Protocolo desconocido: {protocol!r}. Opciones: {PROTOCOLS}")
 
@@ -35,11 +45,7 @@ def _splitter(groups: pd.Series, protocol: str):
     if protocol == "LOSO":
         return LeaveOneGroupOut()
     if protocol == "GroupKFold5":
-        distinct = int(groups.nunique())
-        if distinct < _GROUPKFOLD_SPLITS:
-            raise ValueError(
-                f"GroupKFold5 necesita al menos 5 grupos; el dataset tiene {distinct}"
-            )
+        _validate_groupkfold5_groups(groups)
         return GroupKFold(n_splits=_GROUPKFOLD_SPLITS)
     raise ValueError(f"Protocolo desconocido: {protocol!r}. Opciones: {PROTOCOLS}")
 
