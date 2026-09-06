@@ -147,6 +147,14 @@ def _run_bench(args, config) -> None:
         else config.bench.enabled_families()
     )
 
+    unknown_families = [name for name in families if name not in config.bench.families]
+    if unknown_families:
+        known = ", ".join(sorted(config.bench.families)) or "(ninguna)"
+        raise SystemExit(
+            f"Familia(s) desconocida(s) en --models: {', '.join(unknown_families)}. "
+            f"Familias declaradas en config.yaml: {known}"
+        )
+
     if run_all or args.bench_prepare:
         prepared = prepare_dataset(
             config.dataset.db_path,
@@ -156,8 +164,10 @@ def _run_bench(args, config) -> None:
         )
         print(f"PreparedDataset {prepared.prep_id}: {prepared.quality['n_rows']} filas, "
               f"{prepared.quality['class_balance']['n_flooded']} inundadas")
-    else:
+    elif args.bench_train or args.bench_evaluate:
         prepared = resolve_prepared(prepared_dir, args.prep_id)
+    else:
+        prepared = None
 
     if run_all or args.bench_train:
         for family in families:
