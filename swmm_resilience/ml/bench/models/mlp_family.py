@@ -148,8 +148,17 @@ class TorchMLPRegressor(RegressorMixin, _TorchMLPBase):
 
 
 def _settings(params: dict) -> dict:
-    allowed = set(_DEFAULTS)
-    return {**_DEFAULTS, **{k: v for k, v in params.items() if k in allowed}}
+    """Reenvia todos los hiperparametros salvo scale_pos_weight (que
+    build_classifier ya recibe como argumento propio, y duplicaria el
+    keyword si tambien viniera dentro de params). No hay un allow-list:
+    una clave desconocida (o un typo como "epoch" por "epochs") llega
+    intacta al __init__ del estimador, que la rechaza con TypeError en vez
+    de descartarla en silencio -- el mismo defecto que se corrigio en
+    linear_family una tarea atras no debe reaparecer aqui, porque ajustar
+    la arquitectura es la razon de ser de este candidato.
+    """
+    overrides = {k: v for k, v in params.items() if k != "scale_pos_weight"}
+    return {**_DEFAULTS, **overrides}
 
 
 def build_classifier(params: dict, scale_pos_weight: float) -> Pipeline:

@@ -100,6 +100,27 @@ def test_the_estimator_is_clonable_by_sklearn():
     assert cloned.named_steps["model"].get_params()["epochs"] == PARAMS["epochs"]
 
 
+def test_a_legitimate_hyperparameter_reaches_the_estimator():
+    """dropout es un parametro real de _DEFAULTS: debe llegar tal cual al
+    estimador, sin pasar por ningun allow-list que lo reescriba u omita.
+    """
+    params = {**PARAMS, "dropout": 0.5}
+    pipeline = get_family("mlp").build_classifier(params, scale_pos_weight=1.0)
+    assert pipeline.named_steps["model"].get_params()["dropout"] == pytest.approx(0.5)
+
+
+def test_an_unknown_hyperparameter_raises_instead_of_being_silently_dropped():
+    """Una clave que el estimador no reconoce (typo o hiperparametro nuevo
+    que nadie cableo aun) debe reventar en TypeError, no desaparecer sin
+    aviso: ese fue exactamente el defecto que se corrigio en linear_family
+    y no debe reaparecer aqui, porque ajustar la arquitectura del MLP es la
+    razon de ser de este candidato.
+    """
+    params = {**PARAMS, "weight_decay": 0.01}
+    with pytest.raises(TypeError):
+        get_family("mlp").build_classifier(params, scale_pos_weight=1.0)
+
+
 def test_scale_pos_weight_reaches_the_loss(toy_data):
     """El desbalance se aplica como pos_weight de BCEWithLogitsLoss."""
     model = get_family("mlp").build_classifier(PARAMS, scale_pos_weight=5.0).named_steps["model"]

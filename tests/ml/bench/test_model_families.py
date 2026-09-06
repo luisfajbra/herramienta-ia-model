@@ -9,7 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from swmm_resilience.ml.bench.registry import available_families, get_family
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
 
-SCALED_FAMILIES = ("linear", "svm")
+SCALED_FAMILIES = ("linear", "svm", "mlp")
 UNSCALED_FAMILIES = ("xgboost", "random_forest")
 ALL_FAMILIES = SCALED_FAMILIES + UNSCALED_FAMILIES
 
@@ -18,6 +18,7 @@ TINY_PARAMS = {
     "random_forest": {"n_estimators": 5, "max_depth": 2},
     "linear": {"alpha": 1.0},
     "svm": {"C": 1.0},
+    "mlp": {"hidden_sizes": (4,), "epochs": 3, "batch_size": 16},
 }
 
 
@@ -34,7 +35,7 @@ def toy_data():
 
 
 def test_all_five_families_are_registered():
-    assert set(available_families()) == set(ALL_FAMILIES) | {"mlp"}
+    assert set(available_families()) == set(ALL_FAMILIES)
 
 
 @pytest.mark.parametrize("name", ALL_FAMILIES)
@@ -127,8 +128,14 @@ def test_svm_classifier_supports_probability_output():
 
 
 def test_class_weight_is_used_where_scale_pos_weight_does_not_exist():
-    """linear y svm no tienen scale_pos_weight: el desbalance va por class_weight."""
-    for name in SCALED_FAMILIES:
+    """linear y svm no tienen scale_pos_weight: el desbalance va por
+    class_weight. mlp SI tiene scale_pos_weight (via pos_weight de
+    BCEWithLogitsLoss, ver test_mlp_family.py), asi que no pertenece a
+    esta lista aunque tambien este en SCALED_FAMILIES por llevar
+    StandardScaler.
+    """
+    class_weight_families = ("linear", "svm")
+    for name in class_weight_families:
         pipeline = get_family(name).build_classifier(TINY_PARAMS[name], scale_pos_weight=4.0)
         weights = pipeline.named_steps["model"].class_weight
         assert weights == {0: 1.0, 1: pytest.approx(4.0)}
