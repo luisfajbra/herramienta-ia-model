@@ -57,6 +57,23 @@ def test_regressor_oracle_metrics_on_a_perfect_prediction():
     assert result["r2"] == pytest.approx(1.0)
 
 
+def test_regressor_oracle_metrics_on_an_imperfect_wide_range_prediction():
+    """A perfect prediction makes rmse/mae symmetric, nse/r2 coincide, and
+    log_nse indistinguishable from nse. This uses an imperfect prediction over
+    a wide dynamic range so a bug that reverses the (y_true, y_pred) argument
+    order, or that drops the np.log1p in log_nse, changes these numbers."""
+    y_true = np.array([1.0, 10.0, 100.0, 1000.0])
+    y_pred = np.array([2.0, 8.0, 110.0, 900.0])
+
+    result = regressor_oracle_metrics(y_true, y_pred)
+
+    assert result["nse"] == pytest.approx(0.9855955793182168)
+    assert result["log_nse"] == pytest.approx(0.98972348644384)
+    assert result["rmse"] == pytest.approx(50.2618145315109)
+    assert result["mae"] == pytest.approx(28.25)
+    assert result["r2"] == pytest.approx(0.9855955793182168)
+
+
 def test_end_to_end_metrics_report_totals_and_node_accuracy():
     y_true_vol = np.array([0.0, 100.0, 0.0, 50.0])
     y_pred_vol = np.array([0.0, 90.0, 0.0, 0.0])
@@ -86,12 +103,19 @@ def test_mean_metrics_of_an_empty_list_is_empty():
 
 
 def test_pooled_regressor_metrics_concatenate_before_computing():
-    """Es la asimetria heredada: el regresor NO se promedia entre folds."""
-    trues = [np.array([10.0, 20.0]), np.array([30.0])]
-    preds = [np.array([10.0, 20.0]), np.array([30.0])]
+    """Es la asimetria heredada: el regresor NO se promedia entre folds.
+
+    Both parts have imperfect, differently-scaled predictions so pooling
+    (concatenate-then-score) and averaging (score-then-mean) provably give
+    different numbers: pooled rmse=57.76 / nse=0.9845 vs a per-part average
+    of rmse=51.0 / nse=0.42. A per-fold-averaging implementation would fail
+    these assertions.
+    """
+    trues = [np.array([10.0, 20.0]), np.array([1000.0])]
+    preds = [np.array([12.0, 18.0]), np.array([900.0])]
     result = pooled_regressor_metrics(trues, preds)
-    assert result["rmse"] == pytest.approx(0.0)
-    assert result["nse"] == pytest.approx(1.0)
+    assert result["rmse"] == pytest.approx(57.758116312774604)
+    assert result["nse"] == pytest.approx(0.9845284963413378)
 
 
 def test_pooled_regressor_metrics_of_empty_parts_is_empty():
