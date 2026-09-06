@@ -13,6 +13,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC, SVR
 
 from ....config import ML_RANDOM_STATE
+from ..param_filter import filter_estimator_params
 
 FAMILY = "svm"
 SCALE_FEATURES = True
@@ -22,7 +23,10 @@ _REGRESSOR_DEFAULTS = {"C": 10.0, "kernel": "rbf", "epsilon": 0.1}
 
 
 def build_classifier(params: dict, scale_pos_weight: float) -> Pipeline:
-    settings = {**_CLASSIFIER_DEFAULTS, **{k: v for k, v in params.items() if k != "epsilon"}}
+    settings = {
+        **_CLASSIFIER_DEFAULTS,
+        **filter_estimator_params(params, exclude={"epsilon"}),
+    }
     model = SVC(
         **settings,
         probability=True,
@@ -39,7 +43,7 @@ def build_classifier(params: dict, scale_pos_weight: float) -> Pipeline:
 
 
 def build_regressor(params: dict) -> Pipeline:
-    settings = {**_REGRESSOR_DEFAULTS, **params}
+    settings = {**_REGRESSOR_DEFAULTS, **filter_estimator_params(params)}
     model = SVR(**settings)
     return Pipeline(
         [

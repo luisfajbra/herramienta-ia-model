@@ -12,6 +12,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from ....config import ML_RANDOM_STATE
+from ..param_filter import filter_estimator_params
 
 FAMILY = "linear"
 SCALE_FEATURES = True
@@ -21,7 +22,10 @@ _REGRESSOR_DEFAULTS = {"alpha": 1.0}
 
 
 def build_classifier(params: dict, scale_pos_weight: float) -> Pipeline:
-    settings = {**_CLASSIFIER_DEFAULTS, **{k: v for k, v in params.items() if k != "alpha"}}
+    settings = {
+        **_CLASSIFIER_DEFAULTS,
+        **filter_estimator_params(params, exclude={"alpha"}),
+    }
     model = LogisticRegression(
         **settings,
         class_weight={0: 1.0, 1: float(scale_pos_weight)},
@@ -37,7 +41,10 @@ def build_classifier(params: dict, scale_pos_weight: float) -> Pipeline:
 
 
 def build_regressor(params: dict) -> Pipeline:
-    settings = {**_REGRESSOR_DEFAULTS, **{k: v for k, v in params.items() if k != "C"}}
+    settings = {
+        **_REGRESSOR_DEFAULTS,
+        **filter_estimator_params(params, exclude={"C"}),
+    }
     model = Ridge(**settings, random_state=ML_RANDOM_STATE)
     return Pipeline(
         [

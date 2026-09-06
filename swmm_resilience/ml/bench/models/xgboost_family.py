@@ -12,6 +12,7 @@ from sklearn.pipeline import Pipeline
 from xgboost import XGBClassifier, XGBRegressor
 
 from ....config import ML_RANDOM_STATE
+from ..param_filter import filter_estimator_params
 
 FAMILY = "xgboost"
 SCALE_FEATURES = False
@@ -26,8 +27,7 @@ _REGRESSOR_DEFAULTS = dict(_CLASSIFIER_DEFAULTS)
 
 
 def build_classifier(params: dict, scale_pos_weight: float) -> Pipeline:
-    settings = {**_CLASSIFIER_DEFAULTS, **params}
-    settings.pop("scale_pos_weight", None)
+    settings = {**_CLASSIFIER_DEFAULTS, **filter_estimator_params(params)}
     model = XGBClassifier(
         **settings,
         scale_pos_weight=scale_pos_weight,
@@ -38,7 +38,7 @@ def build_classifier(params: dict, scale_pos_weight: float) -> Pipeline:
 
 
 def build_regressor(params: dict) -> Pipeline:
-    settings = {**_REGRESSOR_DEFAULTS, **params}
+    settings = {**_REGRESSOR_DEFAULTS, **filter_estimator_params(params)}
     model = XGBRegressor(**settings, random_state=ML_RANDOM_STATE)
     return Pipeline([("imputer", SimpleImputer(strategy="median")), ("model", model)])
 

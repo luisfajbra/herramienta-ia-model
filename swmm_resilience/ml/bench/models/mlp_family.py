@@ -20,6 +20,7 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
 from ....config import ML_RANDOM_STATE
+from ..param_filter import filter_estimator_params
 
 FAMILY = "mlp"
 SCALE_FEATURES = True
@@ -157,8 +158,7 @@ def _settings(params: dict) -> dict:
     linear_family una tarea atras no debe reaparecer aqui, porque ajustar
     la arquitectura es la razon de ser de este candidato.
     """
-    overrides = {k: v for k, v in params.items() if k != "scale_pos_weight"}
-    return {**_DEFAULTS, **overrides}
+    return {**_DEFAULTS, **filter_estimator_params(params)}
 
 
 def build_classifier(params: dict, scale_pos_weight: float) -> Pipeline:

@@ -160,3 +160,33 @@ def test_linear_regressor_passes_through_non_alpha_hyperparameters():
     """
     pipeline = get_family("linear").build_regressor({"alpha": 1.0, "fit_intercept": False})
     assert pipeline.named_steps["model"].fit_intercept is False
+
+
+@pytest.mark.parametrize("name", ALL_FAMILIES)
+def test_scale_pos_weight_in_params_is_accepted_by_every_family(name):
+    """The spec's own §11 example config puts scale_pos_weight inside a
+    family's classifier block. Every family must tolerate that key showing
+    up in `params` (it is always the reserved key that build_classifier also
+    receives as its own argument), not just the ones that historically
+    special-cased it. Before the shared filter, random_forest forwarded it
+    straight to the estimator and raised a raw TypeError.
+    """
+    params = {**TINY_PARAMS[name], "scale_pos_weight": "auto"}
+    get_family(name).build_classifier(params, scale_pos_weight=2.0)
+    get_family(name).build_regressor(params)
+
+
+@pytest.mark.parametrize("name", ("random_forest", "linear", "svm", "mlp"))
+def test_a_bogus_hyperparameter_key_still_raises_type_error(name):
+    """The shared filter must not turn into a silent-drop allow-list: an
+    unknown key (typo or otherwise) has to reach the estimator's __init__ and
+    fail loudly. xgboost is excluded here: XGBClassifier/XGBRegressor accept
+    arbitrary constructor kwargs and merely warn at fit time (a property of
+    the xgboost library's own sklearn wrapper, unrelated to this filter, and
+    unchanged by it -- it never raised TypeError for an unknown key either).
+    """
+    params = {**TINY_PARAMS[name], "no_existe_este_hiperparametro": 123}
+    with pytest.raises(TypeError):
+        get_family(name).build_classifier(params, scale_pos_weight=1.0)
+    with pytest.raises(TypeError):
+        get_family(name).build_regressor(params)

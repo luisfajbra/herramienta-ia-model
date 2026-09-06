@@ -17,6 +17,9 @@ from .models import (
     svm_family,
     xgboost_family,
 )
+from .param_filter import filter_estimator_params  # re-exported for convenience
+
+__all__ = ["available_families", "get_family", "filter_estimator_params"]
 
 _FAMILIES: dict[str, ModuleType] = {
     module.FAMILY: module
