@@ -2,6 +2,7 @@ import json
 
 import joblib
 import numpy as np
+import pandas as pd
 import pytest
 
 from swmm_resilience.ml.bench.preprocess import prepare_dataset
@@ -82,3 +83,65 @@ def test_load_candidate_roundtrips(prepared, tmp_path):
 
     assert loaded.family == "xgboost"
     assert loaded.metadata["prep_id"] == prepared.prep_id
+
+
+def test_regressor_fit_only_sees_flooded_rows_with_log1p_target(prepared, tmp_path, monkeypatch):
+    """Espia lo que realmente llega a Pipeline.fit(), no solo la metadata.
+
+    metadata["regressor_training_rows"] se calcula por separado de la llamada
+    real a fit(); un mutante que entrene con todas las filas (o sin log1p) la
+    deja intacta. Se parchea Pipeline.fit a nivel de clase (como en el test
+    de fuga de datos de evaluate.py) en vez de envolver el objeto devuelto
+    por build_regressor: envolverlo en una clase local rompe joblib.dump
+    (no es picklable). train_candidate hace exactamente dos llamadas de alto
+    nivel a Pipeline.fit, en orden: clasificador primero, regresor despues.
+    """
+    from sklearn.pipeline import Pipeline
+
+    recorded_calls = []
+    original_fit = Pipeline.fit
+
+    def spy_fit(self, X, y=None, **kwargs):
+        recorded_calls.append((X, y))
+        return original_fit(self, X, y, **kwargs)
+
+    monkeypatch.setattr(Pipeline, "fit", spy_fit)
+
+    train_candidate(prepared, "xgboost", TINY, TINY, tmp_path / "candidates")
+
+    assert len(recorded_calls) == 2, "se esperaban dos Pipeline.fit: clasificador y regresor"
+    reg_X, reg_y = recorded_calls[1]
+
+    flooded_mask = prepared.y_clf.to_numpy() == 1
+    flooded_positions = np.flatnonzero(flooded_mask)
+
+    assert len(reg_X) == int(prepared.y_clf.sum())
+    expected_X = prepared.X.iloc[flooded_positions].reset_index(drop=True)
+    pd.testing.assert_frame_equal(reg_X.reset_index(drop=True), expected_X)
+
+    expected_y = np.log1p(prepared.y_reg.to_numpy()[flooded_positions])
+    assert np.asarray(reg_y) == pytest.approx(expected_y)
+
+
+def test_scale_pos_weight_is_the_whole_dataset_ratio(prepared, tmp_path, monkeypatch):
+    """A diferencia de evaluate.py (fold-local), aqui es correcto usar el dataset entero."""
+    from swmm_resilience.ml.bench.models import xgboost_family
+
+    recorded = []
+    real_build_classifier = xgboost_family.build_classifier
+
+    def spy_build_classifier(params, scale_pos_weight):
+        recorded.append(scale_pos_weight)
+        return real_build_classifier(params, scale_pos_weight)
+
+    monkeypatch.setattr(xgboost_family, "build_classifier", spy_build_classifier)
+
+    train_candidate(prepared, "xgboost", TINY, TINY, tmp_path / "candidates")
+
+    y_clf = prepared.y_clf.to_numpy()
+    n_negative = int((y_clf == 0).sum())
+    n_positive = int((y_clf == 1).sum())
+    expected = n_negative / n_positive
+
+    assert len(recorded) == 1
+    assert recorded[0] == pytest.approx(expected)

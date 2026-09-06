@@ -66,6 +66,11 @@ def train_candidate(
 
     n_negative, n_positive = int((y_clf == 0).sum()), int((y_clf == 1).sum())
     if n_positive == 0:
+        # Deliberate divergence from trainer.train_models: this raises before
+        # fitting anything, instead of fitting the classifier first and only
+        # raising once the regressor's flooded subset turns out empty. Failing
+        # fast avoids burning a full classifier fit before aborting; both
+        # paths raise ValueError, so no caller can tell the difference.
         raise ValueError(
             "El dataset no tiene ninguna fila inundada (inunda == 1); "
             "el regresor no se puede entrenar."
