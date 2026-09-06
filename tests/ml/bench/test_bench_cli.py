@@ -1,3 +1,4 @@
+import hashlib
 import json
 
 import pytest
@@ -30,7 +31,17 @@ def test_promote_copies_the_artifacts_to_the_classic_paths(trained, tmp_path):
 
     assert (models_dir / "classifier.joblib").exists()
     assert (models_dir / "regressor.joblib").exists()
-    assert (models_dir / "training_inp_hash.txt").exists()
+    hash_path = models_dir / "training_inp_hash.txt"
+    assert hash_path.exists()
+
+    stored = hash_path.read_text(encoding="utf-8").strip()
+    expected_md5 = hashlib.md5(inp_path.read_bytes()).hexdigest()
+    assert len(stored) == 32, (
+        "training_inp_hash.txt debe contener un digest MD5 (32 caracteres hex); "
+        f"got {len(stored)} caracteres -- ml/predict.py y el resto de consumidores "
+        "comparan esto contra un MD5 recien calculado del .inp."
+    )
+    assert stored == expected_md5
 
 
 def test_promotion_record_names_the_family_and_prep_id(trained, tmp_path):
