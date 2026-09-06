@@ -301,8 +301,18 @@ pudo cambiar legítimamente entre la corrida que pobló la base y esta.
 
 `prep_id` = primeros 16 hex de `sha256` sobre un JSON canónico con:
 `contract_id`, `feature_contract_sha256`, `run_ids` ordenados, orden de
-columnas, `flood_threshold_m3`, definición de protocolos, y la clave de orden
-canónico. El manifest guarda ese JSON completo, más `python_version`,
+columnas, `flood_threshold_m3`, definición de protocolos, la clave de orden
+canónico, y **`n_rows`**.
+
+**Corrección (2026-09-06, aplicada durante la implementación):** `n_rows` no
+estaba en la enumeración original. Se añadió porque el hash sólo cubría
+`run_ids`, y dos bases distintas con los mismos `run_id` colisionaban; como
+`PreparedDataset.save()` escribe en `outputs/bench/prepared/<prep_id>/` con
+`mkdir(exist_ok=True)` y sin comprobar colisión, la segunda corrida
+sobrescribía los artefactos de la primera en silencio — el camino por el que
+una figura de la tesis acaba atribuida al dataset equivocado. `n_rows` ya se
+calculaba, es determinista dado el mismo dato, y sólo puede aumentar la
+discriminación del hash. El manifest guarda ese JSON completo, más `python_version`,
 `library_versions`, `db_path`, y timestamp UTC.
 
 Dos corridas sobre los mismos datos producen el mismo `prep_id`; cambiar el
