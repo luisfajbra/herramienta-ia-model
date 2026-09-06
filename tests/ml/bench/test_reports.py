@@ -65,6 +65,23 @@ def test_ranking_csv_is_readable_and_ordered(tmp_path):
     assert rows[0]["rank"] == "1"
 
 
+def test_ranking_files_follow_ranked_order_not_dict_insertion_order(tmp_path):
+    # Insertion order is worst-first (linear, then xgboost); ranked order
+    # (by ascending rmse) must be the reverse. If write_reports ever writes
+    # rows in metrics_by_family's insertion order instead of the ranking's
+    # order, this test must fail.
+    metrics = {"linear": _metrics(7.0), "xgboost": _metrics(3.0)}
+    ranking = rank_candidates(metrics, CRITERION, protocol="LOSO")
+    paths = write_reports(metrics, ranking, tmp_path)
+
+    written = json.loads(paths["ranking_json"].read_text(encoding="utf-8"))
+    assert [row["family"] for row in written] == ["xgboost", "linear"]
+
+    with open(tmp_path / "ranking.csv", encoding="utf-8", newline="") as handle:
+        rows = list(csv.DictReader(handle))
+    assert [row["family"] for row in rows] == ["xgboost", "linear"]
+
+
 def test_report_directory_is_created_when_missing(tmp_path):
     target = tmp_path / "no" / "existe" / "todavia"
     metrics = {"xgboost": _metrics(3.0)}
