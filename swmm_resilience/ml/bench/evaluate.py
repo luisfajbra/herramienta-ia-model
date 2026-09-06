@@ -122,3 +122,69 @@ def score_predictions(
             "by_factor": {key: mean_metrics(value) for key, value in by_factor.items()},
         }
     return results
+
+
+def evaluate_candidate(
+    prepared: PreparedDataset,
+    family_name: str,
+    classifier_params: dict,
+    regressor_params: dict,
+) -> tuple[pd.DataFrame, dict]:
+    """Entrena y predice fold a fold, y puntúa el resultado.
+
+    Es una función pura de los hiperparámetros: exactamente la forma que
+    necesita un ``objective`` de Optuna (spec §13.2).
+
+    El Pipeline de la familia lleva dentro la imputación y el escalado, así
+    que ``fit`` sobre el train del fold los ajusta SOLO con esas filas. Ahí
+    está la garantía anti-fuga en ejecución.
+    """
+    from .registry import get_family
+
+    family = get_family(family_name)
+    X = prepared.X
+    y_clf = prepared.y_clf.to_numpy()
+    y_reg = prepared.y_reg.to_numpy()
+
+    records: list[pd.DataFrame] = []
+    for (protocol, fold_id), chunk in prepared.folds.groupby(["protocol", "fold_id"]):
+        train_idx = chunk.loc[chunk["split"] == "train", "sample_idx"].to_numpy()
+        test_idx = chunk.loc[chunk["split"] == "test", "sample_idx"].to_numpy()
+
+        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+        yc_train = y_clf[train_idx]
+        yr_train = y_reg[train_idx]
+
+        n_negative, n_positive = int((yc_train == 0).sum()), int((yc_train == 1).sum())
+        scale_pos_weight = n_negative / n_positive if n_positive else 1.0
+
+        classifier = family.build_classifier(classifier_params, scale_pos_weight)
+        classifier.fit(X_train, yc_train)
+        yc_pred = classifier.predict(X_test)
+        yc_prob = classifier.predict_proba(X_test)[:, 1]
+
+        flooded_train = yc_train == 1
+        if flooded_train.sum():
+            regressor = family.build_regressor(regressor_params)
+            regressor.fit(X_train.iloc[flooded_train], np.log1p(yr_train[flooded_train]))
+            yr_pred = np.clip(np.expm1(regressor.predict(X_test)), a_min=0.0, a_max=None)
+        else:
+            yr_pred = np.zeros(len(test_idx), dtype=float)
+
+        records.append(
+            pd.DataFrame(
+                {
+                    "sample_idx": test_idx,
+                    "protocol": protocol,
+                    "fold_id": fold_id,
+                    "y_pred_clf": yc_pred.astype(int),
+                    "y_prob_clf": yc_prob.astype(float),
+                    "y_pred_reg": yr_pred.astype(float),
+                },
+                columns=list(OOF_COLUMNS),
+            )
+        )
+
+    oof = pd.concat(records, ignore_index=True)
+    metrics = score_predictions(prepared, oof, {"prep_id": prepared.prep_id})
+    return oof, metrics
