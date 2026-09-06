@@ -1,8 +1,10 @@
 import json
+import shutil
 
 import pandas as pd
 import pytest
 
+from swmm_resilience.ml.bench import preprocess as preprocess_module
 from swmm_resilience.ml.bench.preprocess import (
     compute_prep_id,
     prepare_dataset,
@@ -10,6 +12,24 @@ from swmm_resilience.ml.bench.preprocess import (
 )
 from swmm_resilience.ml.bench.schemas import KEY_COLUMNS
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
+
+
+def _build_sql_db(tmp_path, dataset: pd.DataFrame, name: str):
+    """Build a fresh migrated v17 database from ``dataset`` (mirrors sql_training_db)."""
+    from swmm_resilience.database.connection import connect_managed_database
+    from swmm_resilience.database.csv_backfill import backfill_networks_and_runs
+    from swmm_resilience.database.migrations import apply_migrations
+
+    inp_path = tmp_path / f"{name}.inp"
+    inp_path.write_text("[TITLE]\nfixture network\n", encoding="utf-8")
+    db_path = tmp_path / f"{name}.sqlite3"
+    conn = connect_managed_database(db_path)
+    try:
+        apply_migrations(conn)
+        backfill_networks_and_runs(conn, dataset, inp_path, "Fixture Network")
+    finally:
+        conn.close()
+    return db_path
 
 
 @pytest.fixture
@@ -123,3 +143,85 @@ def test_resolve_prepared_loads_the_only_dataset_when_no_id_given(prepared, tmp_
 def test_resolve_prepared_errors_clearly_when_none_exists(tmp_path):
     with pytest.raises(FileNotFoundError, match="--bench-prepare"):
         resolve_prepared(tmp_path / "vacio")
+
+
+def test_prep_id_changes_when_row_count_changes(csv_shaped_dataset, tmp_path):
+    """Two databases with the same run_ids but a different row count must not collide.
+
+    Without n_rows in the hashed descriptor, this would silently overwrite one
+    dataset's artifacts with the other's under save()'s shared prep_id directory.
+    """
+    full_db = _build_sql_db(tmp_path, csv_shaped_dataset, "full")
+    reduced_dataset = (
+        csv_shaped_dataset[csv_shaped_dataset["node_id"] != "N3"]
+        .reset_index(drop=True)
+    )
+    reduced_db = _build_sql_db(tmp_path, reduced_dataset, "reduced")
+
+    full = prepare_dataset(
+        full_db, protocols=("LOSO",), flood_threshold_m3=1.0,
+        output_dir=tmp_path / "prepared_full",
+    )
+    reduced = prepare_dataset(
+        reduced_db, protocols=("LOSO",), flood_threshold_m3=1.0,
+        output_dir=tmp_path / "prepared_reduced",
+    )
+
+    assert full.manifest["run_ids"] == reduced.manifest["run_ids"], (
+        "the test setup should keep run_ids identical so the difference is isolated to n_rows"
+    )
+    assert full.manifest["n_rows"] != reduced.manifest["n_rows"]
+    assert full.prep_id != reduced.prep_id
+
+
+def test_prepare_dataset_sorts_rows_even_when_source_frame_is_shuffled(
+    sql_training_db, tmp_path, monkeypatch
+):
+    """Pins the canonical sort itself, not just its idempotence.
+
+    load_training_samples already emits ORDER BY run_id, node_id, so a test that
+    merely re-sorts prepared.keys and compares it to itself would stay green even
+    if prepare_dataset's own sort_values(...).reset_index(drop=True) were deleted.
+    This test forces the source frame out of order via a monkeypatched
+    load_training_frame, so only prepare_dataset's own sort can save it.
+    """
+    from swmm_resilience.database.training_queries import (
+        load_training_frame as real_load_training_frame,
+    )
+
+    real_frame = real_load_training_frame(sql_training_db)
+    shuffled = real_frame.sample(frac=1.0, random_state=7).reset_index(drop=True)
+    assert list(shuffled["node_id"]) != list(real_frame["node_id"]), (
+        "sanity check: the shuffle must actually reorder rows"
+    )
+
+    monkeypatch.setattr(preprocess_module, "load_training_frame", lambda db_path: shuffled)
+
+    prepared = preprocess_module.prepare_dataset(
+        sql_training_db,
+        protocols=("LOSO",),
+        flood_threshold_m3=1.0,
+        output_dir=tmp_path / "prepared",
+    )
+
+    expected_keys = (
+        shuffled.sort_values(["run_id", "node_id"])
+        .reset_index(drop=True)
+        .loc[:, list(KEY_COLUMNS)]
+    )
+    pd.testing.assert_frame_equal(prepared.keys, expected_keys)
+
+
+def test_prep_id_is_independent_of_db_path(sql_training_db, tmp_path):
+    copy_path = tmp_path / "copy_training_v17.sqlite3"
+    shutil.copy2(sql_training_db, copy_path)
+
+    original = prepare_dataset(
+        sql_training_db, protocols=("LOSO",), flood_threshold_m3=1.0,
+        output_dir=tmp_path / "prepared_original",
+    )
+    copied = prepare_dataset(
+        copy_path, protocols=("LOSO",), flood_threshold_m3=1.0,
+        output_dir=tmp_path / "prepared_copy",
+    )
+    assert original.prep_id == copied.prep_id
