@@ -19,6 +19,7 @@ BENCH_DIR = Path(__file__).resolve().parents[3] / "swmm_resilience" / "ml" / "be
 
 
 def _imported_modules(path: Path) -> set[str]:
+    """Extract all imported module names from a file's AST (direct imports only)."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
     found: set[str] = set()
     for node in ast.walk(tree):
@@ -29,18 +30,109 @@ def _imported_modules(path: Path) -> set[str]:
     return found
 
 
+def _resolve_intra_package_import(import_spec: str, import_level: int, bench_dir: Path) -> Path | None:
+    """Resolve relative/absolute intra-package imports to a file path.
+
+    Returns the resolved .py file path under bench_dir, or None if:
+    - it's an absolute import outside the bench package
+    - the resolved file doesn't exist
+    """
+    if import_level == 0:
+        # Absolute import like "from swmm_resilience.ml.bench.x import y"
+        bench_prefix = "swmm_resilience.ml.bench."
+        if import_spec.startswith(bench_prefix):
+            module_path = import_spec[len(bench_prefix):].replace(".", "/")
+            resolved = bench_dir / (module_path + ".py")
+            return resolved if resolved.exists() else None
+        return None
+    else:
+        # Relative import like "from .x import y" or "from ..x import y"
+        # Calculate the parent level: level 1 is current, level 2 is parent, etc.
+        module_path = import_spec.replace(".", "/") if import_spec else ""
+        resolved = bench_dir / (module_path + ".py") if module_path else bench_dir / "__init__.py"
+        return resolved if resolved.exists() else None
+
+
+def _offenders(path: Path, bench_dir: Path = BENCH_DIR) -> list[str]:
+    """Find forbidden imports in a file, including transitive intra-package imports.
+
+    Returns a list of (source_file: module_name) strings where source_file is relative
+    to bench_dir for transitive hits, or the module name for direct hits.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    found_offenders: list[str] = []
+    visited: set[Path] = set()
+
+    def scan_file(file_path: Path, from_file: str | None = None) -> None:
+        """Recursively scan a file and its intra-package imports."""
+        if file_path in visited:
+            return
+        visited.add(file_path)
+
+        try:
+            tree = ast.parse(file_path.read_text(encoding="utf-8"))
+        except Exception:
+            return
+
+        for node in ast.walk(tree):
+            # Handle direct imports and intra-package imports
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    module_name = alias.name
+                    root = module_name.split(".")[0]
+                    if root in FORBIDDEN_ROOTS:
+                        source = f"{from_file}: {module_name}" if from_file else module_name
+                        found_offenders.append(source)
+                    elif root == "sklearn" and not module_name.startswith(ALLOWED_SKLEARN_PREFIXES):
+                        source = f"{from_file}: {module_name}" if from_file else module_name
+                        found_offenders.append(source)
+                    else:
+                        # Check if this is an intra-package import
+                        resolved = _resolve_intra_package_import(module_name, 0, bench_dir)
+                        if resolved:
+                            rel_path = str(resolved.relative_to(bench_dir)).replace("\\", "/")
+                            scan_file(resolved, rel_path)
+
+            elif isinstance(node, ast.ImportFrom):
+                module_name = node.module
+                if module_name is None:
+                    # from . import x or from .. import x
+                    continue
+
+                if node.level == 0:
+                    # Absolute import
+                    root = module_name.split(".")[0]
+                    if root in FORBIDDEN_ROOTS:
+                        source = f"{from_file}: {module_name}" if from_file else module_name
+                        found_offenders.append(source)
+                    elif root == "sklearn" and not module_name.startswith(ALLOWED_SKLEARN_PREFIXES):
+                        source = f"{from_file}: {module_name}" if from_file else module_name
+                        found_offenders.append(source)
+                    else:
+                        # Check if intra-package
+                        resolved = _resolve_intra_package_import(module_name, 0, bench_dir)
+                        if resolved:
+                            rel_path = str(resolved.relative_to(bench_dir)).replace("\\", "/")
+                            scan_file(resolved, rel_path)
+                else:
+                    # Relative import: from . or from ..
+                    # Resolve relative to bench_dir (stage 1 modules are at bench_dir root)
+                    if module_name:
+                        resolved = _resolve_intra_package_import(module_name, node.level, bench_dir)
+                        if resolved:
+                            rel_path = str(resolved.relative_to(bench_dir)).replace("\\", "/")
+                            scan_file(resolved, rel_path)
+
+    scan_file(path)
+    return found_offenders
+
+
 @pytest.mark.parametrize("module_name", STAGE1_MODULES)
 def test_stage1_module_imports_no_transformer_or_estimator(module_name):
     path = BENCH_DIR / module_name
     assert path.exists(), f"{module_name} no existe todavía"
 
-    offenders = []
-    for imported in _imported_modules(path):
-        root = imported.split(".")[0]
-        if root in FORBIDDEN_ROOTS:
-            offenders.append(imported)
-        elif root == "sklearn" and not imported.startswith(ALLOWED_SKLEARN_PREFIXES):
-            offenders.append(imported)
+    offenders = _offenders(path, BENCH_DIR)
 
     assert not offenders, (
         f"{module_name} importa {offenders}. La etapa 1 sólo puede importar de "
@@ -55,4 +147,24 @@ def test_the_guard_would_catch_a_real_violation(tmp_path):
     offending.write_text(
         "from sklearn.preprocessing import StandardScaler\n", encoding="utf-8"
     )
-    assert "sklearn.preprocessing" in _imported_modules(offending)
+    result = _offenders(offending, tmp_path)
+    assert result == ["sklearn.preprocessing"], f"Expected ['sklearn.preprocessing'], got {result}"
+
+
+def test_transitive_in_package_import_violation(tmp_path):
+    """Verifica que el detector atrapa violaciones indirectas dentro del paquete."""
+    # Create a helper module that imports StandardScaler
+    helper = tmp_path / "_scaling.py"
+    helper.write_text(
+        "from sklearn.preprocessing import StandardScaler\n", encoding="utf-8"
+    )
+
+    # Create a main module that imports from the helper
+    main = tmp_path / "main.py"
+    main.write_text("from ._scaling import StandardScaler\n", encoding="utf-8")
+
+    # Scanning main should find the violation transitively
+    result = _offenders(main, tmp_path)
+    assert "_scaling.py: sklearn.preprocessing" in result, (
+        f"Expected transitive violation report, got {result}"
+    )
