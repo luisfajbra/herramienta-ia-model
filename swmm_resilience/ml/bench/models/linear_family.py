@@ -37,7 +37,7 @@ def build_classifier(params: dict, scale_pos_weight: float) -> Pipeline:
 
 
 def build_regressor(params: dict) -> Pipeline:
-    settings = {**_REGRESSOR_DEFAULTS, **{k: v for k, v in params.items() if k in ("alpha",)}}
+    settings = {**_REGRESSOR_DEFAULTS, **{k: v for k, v in params.items() if k != "C"}}
     model = Ridge(**settings, random_state=ML_RANDOM_STATE)
     return Pipeline(
         [

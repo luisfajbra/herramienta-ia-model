@@ -132,3 +132,12 @@ def test_class_weight_is_used_where_scale_pos_weight_does_not_exist():
         pipeline = get_family(name).build_classifier(TINY_PARAMS[name], scale_pos_weight=4.0)
         weights = pipeline.named_steps["model"].class_weight
         assert weights == {0: 1.0, 1: pytest.approx(4.0)}
+
+
+def test_linear_regressor_passes_through_non_alpha_hyperparameters():
+    """build_regressor no debe descartar en silencio hiperparametros de Ridge
+    distintos de alpha: un include-list previo tiraba fit_intercept, solver,
+    tol, etc. sin avisar, mintiendo sobre la procedencia declarada en config.
+    """
+    pipeline = get_family("linear").build_regressor({"alpha": 1.0, "fit_intercept": False})
+    assert pipeline.named_steps["model"].fit_intercept is False
