@@ -81,9 +81,17 @@ SVM y MLP, con la evidencia completa persistida en SQL.
   `fit_and_save_inference_models()`, `load_saved_model_artifact()`, manifest en
   `model_artifacts/`. Usa `StandardScaler` + `PCA` (`ML_USE_PCA = True`,
   `ML_PCA_COMPONENTS = 5`) y `GroupShuffleSplit`/`GroupKFold` por `run_id`.
-- `swmm_resilience/ml/preprocessing.py`: `select_features_for_model()` —
-  selección por **lista negra** (`ML_DROP_COLUMNS`) + filtro de dtypes
-  numéricos. Consumido únicamente por `ml/train.py`.
+- `swmm_resilience/ml/preprocessing.py`: tres funciones con **dos consumidores
+  distintos** (corregido 2026-09-05; la versión anterior de esta spec afirmaba
+  que sólo la usaba `train.py`, y era falso):
+  - `select_features_for_model()` — selección por **lista negra**
+    (`ML_DROP_COLUMNS`) + filtro de dtypes numéricos. La usa sólo `ml/train.py`,
+    así que se va con él.
+  - `get_feature_columns()` y `dataset_info()` — las usa `analysis/eda.py`, que
+    `swmm_resilience/main.py:309` invoca al cerrar **cada corrida de simulación
+    de la GUI**, y esa corrida sobrevive al retiro. Se mueven a
+    `analysis/eda_columns.py` junto con `ML_DROP_COLUMNS`,
+    `ML_TARGET_CLASSIFICATION` y `ML_TARGET_REGRESSION`.
 - Consumidores: `ml/predict_tabular.py` → `ml/predict_from_inp.py` →
   `visualization/loaders.py` (`load_from_ml`, `load_all_ml`) →
   `visualization/runner.py` → `desktop/app.py`.
@@ -533,7 +541,7 @@ no afecta a nadie más.
 | `ml/train.py` | borrar |
 | `ml/predict_tabular.py` | borrar |
 | `ml/predict_from_inp.py` | borrar |
-| `ml/preprocessing.py` | borrar |
+| `ml/preprocessing.py` | **corregido 2026-09-05:** no lo usaba solo `train.py`. `analysis/eda.py` importa `get_feature_columns` y `dataset_info`, y `swmm_resilience/main.py:309` lo invoca al cerrar cada corrida de simulacion de la GUI (que sobrevive). Esas dos funciones se **mueven** a `analysis/eda_columns.py`; `select_features_for_model` se borra |
 | `visualization/loaders.py` | quitar `load_from_ml`, `load_all_ml` |
 | `visualization/runner.py` | quitar las ramas `--source ml` |
 | `desktop/app.py` | quitar pestaña ML: entrenamiento, predicción y mapas ML |
@@ -687,7 +695,7 @@ intermitente preexistente en `tests/desktop/test_results_tab.py`.
 - [ ] `--bench-promote` deja `outputs/models/{classifier,regressor}.joblib` con
       el formato actual, y `--predict` / `--only-maps` / `--evaluate-hydrographs`
       funcionan sin cambios.
-- [ ] `ml/train.py`, `ml/preprocessing.py`, `ml/predict_tabular.py`,
+- [ ] `ml/train.py`, `ml/predict_tabular.py`,
       `ml/predict_from_inp.py`, `ml/trainer.py`, `ml/evaluator.py` y la parte ML
       de la GUI están borrados; ningún import roto.
 - [ ] `pytest -q` verde (línea base 531 passed) y `pytest -m scale` verde.
