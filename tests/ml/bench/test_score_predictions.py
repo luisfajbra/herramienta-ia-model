@@ -142,3 +142,98 @@ def test_regressor_oracle_uses_true_labels_not_predicted(prepared):
 
     assert result["LOSO"]["regressor_oracle"]["nse"] == pytest.approx(1.0)
     assert result["LOSO"]["classifier"]["recall"] == pytest.approx(0.0)
+
+
+def test_end_to_end_gate_suppresses_predicted_volume_when_classifier_says_no_flood(prepared):
+    """Nivel 3 enruta con la etiqueta PREDICHA: si el clasificador dice 'no
+
+    inunda', el volumen predicho -por grande que sea- se debe descartar. Sin
+    esa compuerta, el volumen de un regresor que predice de todos modos se
+    filtraria al total end-to-end, que dejaria de ser el numero honesto que
+    se supone que es (a diferencia del oraculo del nivel 2).
+    """
+    oof = _perfect_oof(prepared)
+    oof["y_pred_clf"] = 0          # el clasificador dice "no inunda" en todo
+    oof["y_prob_clf"] = 0.0
+    oof["y_pred_reg"] = 500.0      # pero el regresor predice un volumen grande
+
+    result = score_predictions(prepared, oof, {"prep_id": prepared.prep_id})
+
+    # Con la compuerta: todo se enruta a 0, el volumen grande nunca se usa.
+    assert result["LOSO"]["end_to_end"]["vol_total_pred_m3"] == pytest.approx(0.0)
+    assert result["LOSO"]["end_to_end"]["rmse_vol_todos_nodos"] == pytest.approx(
+        20.88872897341967
+    )
+    # Sin la compuerta (usando yr_pred directamente) darian 1500.0 y ~483.52:
+    # una diferencia de dos ordenes de magnitud que confirma que la
+    # compuerta esta activa.
+
+
+def test_regressor_oracle_pools_across_folds_not_averaged():
+    """Nivel 2 se calcula sobre el POOL concatenado, no el promedio por fold.
+
+    Dos folds con conteos de filas inundadas distintos (2 vs 1) y escalas de
+    error distintas (~2 vs ~100) hacen que "concatenar y luego calcular" y
+    "calcular por fold y promediar" den numeros DEMOSTRABLEMENTE distintos.
+    Los valores esperados replican los de
+    test_pooled_regressor_metrics_concatenate_before_computing (Task 7,
+    tests/ml/bench/test_metrics.py), pero aqui se llega a ellos por el
+    camino completo de score_predictions, no llamando al helper de metrics.py
+    directamente.
+    """
+    n = 3
+    keys = pd.DataFrame(
+        {
+            "run_id": [1, 1, 2],
+            "network_id": [1] * n,
+            "scenario_id": [1, 1, 2],
+            "scenario_key": ["base@1.0"] * 2 + ["base@2.0"],
+            "scenario_kind": ["base"] * n,
+            "node_id": ["N0", "N1", "N0"],
+            "factor_mult": [1.0, 1.0, 2.0],
+            "shape_id": ["base"] * n,
+        },
+        columns=list(KEY_COLUMNS),
+    )
+    X = pd.DataFrame(
+        {col: [float(i) for i in range(n)] for col in FEATURE_COLUMNS_V17}
+    )
+    folds = pd.DataFrame(
+        [
+            {"protocol": "LOSO", "fold_id": 0, "sample_idx": 0, "split": "test"},
+            {"protocol": "LOSO", "fold_id": 0, "sample_idx": 1, "split": "test"},
+            {"protocol": "LOSO", "fold_id": 0, "sample_idx": 2, "split": "train"},
+            {"protocol": "LOSO", "fold_id": 1, "sample_idx": 0, "split": "train"},
+            {"protocol": "LOSO", "fold_id": 1, "sample_idx": 1, "split": "train"},
+            {"protocol": "LOSO", "fold_id": 1, "sample_idx": 2, "split": "test"},
+        ],
+        columns=list(FOLD_COLUMNS),
+    )
+    prepared = PreparedDataset(
+        prep_id="pool_vs_mean",
+        keys=keys,
+        X=X,
+        y_clf=pd.Series([1, 1, 1], name="inunda"),
+        y_reg=pd.Series([10.0, 20.0, 1000.0], name="vol_inundacion_m3"),
+        folds=folds,
+        manifest={"prep_id": "pool_vs_mean"},
+        quality={},
+    )
+    oof = pd.DataFrame(
+        {
+            "sample_idx": [0, 1, 2],
+            "protocol": ["LOSO"] * 3,
+            "fold_id": [0, 0, 1],
+            "y_pred_clf": [1, 1, 1],
+            "y_prob_clf": [1.0, 1.0, 1.0],
+            "y_pred_reg": [12.0, 18.0, 900.0],
+        },
+        columns=list(OOF_COLUMNS),
+    )
+
+    result = score_predictions(prepared, oof, {"prep_id": "pool_vs_mean"})
+
+    # Pooled (correcto): concatenar [10,20,1000] vs [12,18,900] y calcular una vez.
+    assert result["LOSO"]["regressor_oracle"]["rmse"] == pytest.approx(57.758116312774604)
+    assert result["LOSO"]["regressor_oracle"]["nse"] == pytest.approx(0.9845284963413378)
+    # Promediado por fold (mutante) daria rmse=51.0, nse=0.42 -- muy distinto.
