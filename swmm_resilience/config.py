@@ -246,6 +246,15 @@ class ValidationConfig:
 
 BENCH_PROTOCOLS = ("LOSO", "GroupKFold5")
 
+# Debe permanecer igual a swmm_resilience.ml.bench.registry.available_families().
+# No se importa registry aquí a propósito: registry importa las cinco familias
+# de modelos, que a su vez importan torch y xgboost, así que cualquier
+# load_config() sobre un config.yaml con bloque `bench:` pagaría ese costo de
+# import -- incluyendo --predict, --simulate y la GUI de escritorio, que nunca
+# tocan el banco. tests/ml/bench/test_bench_config.py compara esta tupla
+# contra available_families() para que las dos listas no puedan divergir.
+BENCH_FAMILIES = ("linear", "mlp", "random_forest", "svm", "xgboost")
+
 
 @dataclass
 class BenchFamilyConfig:
@@ -298,8 +307,6 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
     if not raw_bench:
         return None
 
-    from swmm_resilience.ml.bench.registry import available_families
-
     protocols = [str(item) for item in raw_bench["protocols"]]
     invalid = [item for item in protocols if item not in BENCH_PROTOCOLS]
     if invalid:
@@ -308,7 +315,7 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
             f"Opciones: {', '.join(BENCH_PROTOCOLS)}"
         )
 
-    known = set(available_families())
+    known = set(BENCH_FAMILIES)
     families = {}
     for name, spec in (raw_bench.get("families") or {}).items():
         if name not in known:

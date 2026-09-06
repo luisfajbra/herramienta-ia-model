@@ -1,4 +1,5 @@
 import textwrap
+from pathlib import Path
 
 import pytest
 
@@ -125,3 +126,40 @@ bench:
 def test_promote_can_name_a_specific_family(tmp_path):
     named = _BENCH_YAML.replace('promote: "auto"', 'promote: "xgboost"')
     assert load_config(_write_config(tmp_path, named)).bench.promote == "xgboost"
+
+
+def test_bench_families_literal_matches_the_registry():
+    """config.py validates family names against a hard-coded tuple instead of
+    importing swmm_resilience.ml.bench.registry (which drags in torch and
+    xgboost on every load_config() call, even for --predict/--simulate/the
+    GUI, none of which touch the bench). This test is the guard against the
+    two lists drifting apart; it is the one place allowed to import registry.
+    """
+    from swmm_resilience.config import BENCH_FAMILIES
+    from swmm_resilience.ml.bench.registry import available_families
+
+    assert BENCH_FAMILIES == available_families()
+
+
+def test_loading_a_config_with_a_bench_block_does_not_import_torch_or_xgboost(tmp_path):
+    """Regression guard for the import-cost bug: _parse_bench must not import
+    swmm_resilience.ml.bench.registry (or anything that imports torch/xgboost
+    transitively) just to validate family names."""
+    import subprocess
+    import sys
+
+    config_path = _write_config(tmp_path, _BENCH_YAML)
+    script = (
+        "import sys\n"
+        f"sys.path.insert(0, {str(Path(__file__).resolve().parents[3])!r})\n"
+        "from swmm_resilience.config import load_config\n"
+        f"load_config({config_path!r})\n"
+        "assert 'torch' not in sys.modules, 'torch got imported by load_config'\n"
+        "assert 'xgboost' not in sys.modules, 'xgboost got imported by load_config'\n"
+        "print('OK')\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, cwd=str(Path(__file__).resolve().parents[3])
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "OK" in result.stdout
