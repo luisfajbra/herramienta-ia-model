@@ -118,3 +118,15 @@ def test_zero_flooded_rows_is_a_hard_error():
 
     with pytest.raises(DatasetQualityError, match="ninguna fila inundada"):
         build_quality_report(keys, X, y_clf, y_reg, flood_threshold_m3=1.0)
+
+
+def test_an_entirely_null_nullable_feature_is_a_hard_error():
+    """SimpleImputer(strategy='median') drops an all-NaN column by default,
+    so the model would silently train on fewer features than ordered_features
+    records. That must fail loudly, not be imputed away quietly."""
+    keys, X, y_clf, y_reg = _frames()
+    X = X.copy()
+    X["diam_max_in"] = np.nan   # nullable per contract, but entirely null here
+
+    with pytest.raises(DatasetQualityError, match="diam_max_in"):
+        build_quality_report(keys, X, y_clf, y_reg, flood_threshold_m3=1.0)

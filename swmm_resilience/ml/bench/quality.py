@@ -2,9 +2,11 @@
 
 Restricción: sólo pandas/numpy. Ver tests/ml/bench/test_stage1_imports.py.
 
-El informe no bloquea la ejecución salvo en dos casos que hacen imposible
-entrenar: filas duplicadas por (run_id, node_id) y cero filas inundadas.
-Todo lo demás se reporta para que quede registro, no para frenar.
+El informe no bloquea la ejecución salvo en tres casos que hacen imposible
+entrenar de forma honesta: filas duplicadas por (run_id, node_id), cero filas
+inundadas, y una feature nullable enteramente nula (ver
+_raise_if_any_feature_is_entirely_null). Todo lo demás se reporta para que
+quede registro, no para frenar.
 """
 
 from __future__ import annotations
@@ -58,6 +60,23 @@ def build_quality_report(
         )
 
     nulls = {column: int(X[column].isna().sum()) for column in FEATURE_COLUMNS_V17}
+
+    all_null_features = [
+        column
+        for column in FEATURE_COLUMNS_V17
+        if column in NULLABLE_FEATURE_COLUMNS_V17 and nulls[column] == len(X)
+    ]
+    if all_null_features:
+        raise DatasetQualityError(
+            f"La(s) columna(s) {all_null_features} son enteramente nulas. El "
+            "contrato las permite nullable, pero SimpleImputer(strategy='median') "
+            "con keep_empty_features=False por defecto las elimina en silencio, y "
+            "el modelo entrenaría con menos features de las que su metadata "
+            "(ordered_features) declara. Esta no es una decisión que el banco deba "
+            "tomar por su cuenta: corrige la extracción de datos, o si el vacío es "
+            "legítimo, retira la feature del contrato deliberadamente."
+        )
+
     unexpected = [
         column
         for column, count in nulls.items()
