@@ -118,3 +118,24 @@ def test_a_protocol_absent_from_a_candidate_is_reported_not_crashed():
         protocol="LOSO",
     )
     assert ranking.set_index("family").loc["only_kfold", "valid"] == 0
+
+
+def test_column_schema_is_stable_even_when_every_candidate_is_invalid():
+    # When every candidate is missing the protocol, there is no valid row
+    # to union against. The tie-breaker columns must still appear -- the
+    # column schema is part of the declared interface and must not shrink
+    # just because nothing valid happened to be ranked.
+    ranking = rank_candidates(
+        {"only_kfold": {"GroupKFold5": {}}},
+        CRITERION,
+        protocol="LOSO",
+    )
+    assert list(ranking.columns) == [
+        "rank",
+        "family",
+        "primary_value",
+        "valid",
+        "invalid_reason",
+        "classifier.f1",
+        "regressor_oracle.nse",
+    ]

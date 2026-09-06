@@ -54,35 +54,35 @@ def rank_candidates(
     """Ordena las familias por la métrica primaria y sus desempates."""
     rows = []
     for family, all_metrics in metrics_by_family.items():
+        # Every row gets the full column set up front, regardless of which
+        # branch below fires. Otherwise a run where every candidate is
+        # missing the protocol never touches the tie-breaker keys, and with
+        # no valid row to union against, pandas silently drops those
+        # columns from the frame.
+        row = {
+            "family": family,
+            "primary_value": None,
+            "valid": 0,
+            "invalid_reason": None,
+        }
+        for path, _ in criterion.tie_breakers:
+            row[path] = None
+
         protocol_metrics = all_metrics.get(protocol)
         if protocol_metrics is None:
-            rows.append(
-                {
-                    "family": family,
-                    "primary_value": None,
-                    "valid": 0,
-                    "invalid_reason": f"el candidato no tiene resultados para {protocol}",
-                }
-            )
+            row["invalid_reason"] = f"el candidato no tiene resultados para {protocol}"
+            rows.append(row)
             continue
 
         primary = resolve_metric(protocol_metrics, criterion.primary_metric)
         if primary is None:
-            reason = f"falta la métrica primaria {criterion.primary_metric}"
-            valid = 0
+            row["invalid_reason"] = f"falta la métrica primaria {criterion.primary_metric}"
         elif math.isnan(primary):
-            reason = f"la métrica primaria {criterion.primary_metric} es NaN"
-            valid = 0
+            row["invalid_reason"] = f"la métrica primaria {criterion.primary_metric} es NaN"
         else:
-            reason = None
-            valid = 1
+            row["valid"] = 1
 
-        row = {
-            "family": family,
-            "primary_value": primary,
-            "valid": valid,
-            "invalid_reason": reason,
-        }
+        row["primary_value"] = primary
         for path, _ in criterion.tie_breakers:
             row[path] = resolve_metric(protocol_metrics, path)
         rows.append(row)
