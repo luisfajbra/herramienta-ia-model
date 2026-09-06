@@ -8,6 +8,7 @@ from swmm_resilience.ml.bench.schemas import (
     KEY_COLUMNS,
     OOF_COLUMNS,
     PreparedDataset,
+    PROTOCOLS,
 )
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
 
@@ -237,3 +238,156 @@ def test_regressor_oracle_pools_across_folds_not_averaged():
     assert result["LOSO"]["regressor_oracle"]["rmse"] == pytest.approx(57.758116312774604)
     assert result["LOSO"]["regressor_oracle"]["nse"] == pytest.approx(0.9845284963413378)
     # Promediado por fold (mutante) daria rmse=51.0, nse=0.42 -- muy distinto.
+
+
+def test_by_factor_values_are_correct_not_just_the_key_set():
+    """by_factor no es solo el conjunto de llaves: los NUMEROS por factor
+
+    tienen que ser los correctos, calculados con f1 (no otra metrica de
+    clasificador), con la compuerta de enrutamiento del nivel 3 (no
+    yr_pred crudo), y con mean_metrics (no pooled_regressor_metrics, que
+    aqui ni siquiera aplica -- by_factor no tiene nivel de oraculo).
+
+    Un solo fold con dos grupos de factor, para poder calcular las
+    esperadas a mano sin necesidad de promediar entre folds:
+
+    Grupo A (factor 1.00), 3 filas:
+      fila0: y_true_clf=1, y_pred_clf=1, y_true_reg=10, y_pred_reg=10  (TP)
+      fila1: y_true_clf=0, y_pred_clf=0, y_true_reg=0,  y_pred_reg=0   (TN)
+      fila2: y_true_clf=1, y_pred_clf=0, y_true_reg=20, y_pred_reg=500 (FN,
+             y la compuerta de enrutamiento tiene que descartar ese 500)
+
+      f1: TP=1, FP=0, FN=1 -> precision=1.0, recall=0.5 -> f1=2/3.
+      routed = donde(pred_clf==1, y_pred_reg, 0) = [10, 0, 0]  (la fila2
+      NO se enruta pese a su y_pred_reg=500, porque pred_clf=0 alli).
+      rmse_vol = sqrt(mean(([10,0,20]-[10,0,0])**2)) = sqrt(400/3).
+
+    Grupo B (factor 2.00), 3 filas, predicciones perfectas:
+      fila3: y_true_clf=0, y_pred_clf=0, y_true_reg=0,  y_pred_reg=0
+      fila4: y_true_clf=1, y_pred_clf=1, y_true_reg=30, y_pred_reg=30
+      fila5: y_true_clf=1, y_pred_clf=1, y_true_reg=40, y_pred_reg=40
+
+      f1=1.0 (todo correcto). routed=[0,30,40]=true -> rmse_vol=0.0.
+
+    Los dos grupos tienen f1 y rmse_vol claramente distintos entre si, y
+    distintos de 0/1 en el caso de A, para que ningun mutante "de casualidad"
+    siga dando el numero correcto.
+    """
+    n = 6
+    keys = pd.DataFrame(
+        {
+            "run_id": [1, 1, 1, 2, 2, 2],
+            "network_id": [1] * n,
+            "scenario_id": [1, 1, 1, 2, 2, 2],
+            "scenario_key": ["base@1.0"] * 3 + ["base@2.0"] * 3,
+            "scenario_kind": ["base"] * n,
+            "node_id": ["N0", "N1", "N2"] * 2,
+            "factor_mult": [1.0] * 3 + [2.0] * 3,
+            "shape_id": ["base"] * n,
+        },
+        columns=list(KEY_COLUMNS),
+    )
+    X = pd.DataFrame(
+        {col: [float(i) for i in range(n)] for col in FEATURE_COLUMNS_V17}
+    )
+    folds = pd.DataFrame(
+        [{"protocol": "LOSO", "fold_id": 0, "sample_idx": i, "split": "test"} for i in range(n)],
+        columns=list(FOLD_COLUMNS),
+    )
+    prepared = PreparedDataset(
+        prep_id="by_factor_values",
+        keys=keys,
+        X=X,
+        y_clf=pd.Series([1, 0, 1, 0, 1, 1], name="inunda"),
+        y_reg=pd.Series([10.0, 0.0, 20.0, 0.0, 30.0, 40.0], name="vol_inundacion_m3"),
+        folds=folds,
+        manifest={"prep_id": "by_factor_values"},
+        quality={},
+    )
+    oof = pd.DataFrame(
+        {
+            "sample_idx": [0, 1, 2, 3, 4, 5],
+            "protocol": ["LOSO"] * n,
+            "fold_id": [0] * n,
+            "y_pred_clf": [1, 0, 0, 0, 1, 1],
+            "y_prob_clf": [1.0, 0.0, 0.0, 0.0, 1.0, 1.0],
+            "y_pred_reg": [10.0, 0.0, 500.0, 0.0, 30.0, 40.0],
+        },
+        columns=list(OOF_COLUMNS),
+    )
+
+    result = score_predictions(prepared, oof, {"prep_id": "by_factor_values"})
+    by_factor = result["LOSO"]["by_factor"]
+
+    assert by_factor["1.00"]["f1"] == pytest.approx(2.0 / 3.0)
+    assert by_factor["1.00"]["rmse_vol"] == pytest.approx((400.0 / 3.0) ** 0.5)
+    assert by_factor["2.00"]["f1"] == pytest.approx(1.0)
+    assert by_factor["2.00"]["rmse_vol"] == pytest.approx(0.0)
+
+
+def test_each_protocol_is_scored_from_its_own_predictions_not_pooled():
+    """El resultado esta indexado por protocolo; LOSO y GroupKFold5 no se
+
+    deben mezclar en un solo balde. Mismas 3 muestras, predicciones
+    perfectas bajo LOSO (f1=1.0) y predicciones "no inunda en todo" bajo
+    GroupKFold5 (f1=0.0) -- si el bucle por protocolo se pierde y todo se
+    agrupa junto, ninguno de los dos numeros sale limpio (y ni siquiera
+    existirian las llaves "LOSO"/"GroupKFold5" por separado).
+    """
+    n = 3
+    keys = pd.DataFrame(
+        {
+            "run_id": [1, 1, 1],
+            "network_id": [1] * n,
+            "scenario_id": [1, 1, 1],
+            "scenario_key": ["base@1.0"] * n,
+            "scenario_kind": ["base"] * n,
+            "node_id": ["N0", "N1", "N2"],
+            "factor_mult": [1.0] * n,
+            "shape_id": ["base"] * n,
+        },
+        columns=list(KEY_COLUMNS),
+    )
+    X = pd.DataFrame(
+        {col: [float(i) for i in range(n)] for col in FEATURE_COLUMNS_V17}
+    )
+    folds = pd.DataFrame(
+        [
+            {"protocol": "LOSO", "fold_id": 0, "sample_idx": i, "split": "test"}
+            for i in range(n)
+        ]
+        + [
+            {"protocol": "GroupKFold5", "fold_id": 0, "sample_idx": i, "split": "test"}
+            for i in range(n)
+        ],
+        columns=list(FOLD_COLUMNS),
+    )
+    prepared = PreparedDataset(
+        prep_id="two_protocols",
+        keys=keys,
+        X=X,
+        y_clf=pd.Series([0, 1, 1], name="inunda"),
+        y_reg=pd.Series([0.0, 10.0, 20.0], name="vol_inundacion_m3"),
+        folds=folds,
+        manifest={"prep_id": "two_protocols"},
+        quality={},
+    )
+    oof = pd.DataFrame(
+        {
+            "sample_idx": [0, 1, 2, 0, 1, 2],
+            "protocol": ["LOSO"] * 3 + ["GroupKFold5"] * 3,
+            "fold_id": [0, 0, 0, 0, 0, 0],
+            # LOSO: predicciones perfectas.
+            # GroupKFold5: predice "no inunda" en todo -> f1=0.0.
+            "y_pred_clf": [0, 1, 1, 0, 0, 0],
+            "y_prob_clf": [0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
+            "y_pred_reg": [0.0, 10.0, 20.0, 0.0, 0.0, 0.0],
+        },
+        columns=list(OOF_COLUMNS),
+    )
+
+    result = score_predictions(prepared, oof, {"prep_id": "two_protocols"})
+
+    assert set(result) == set(PROTOCOLS)
+    assert result["LOSO"]["classifier"]["f1"] == pytest.approx(1.0)
+    assert result["GroupKFold5"]["classifier"]["f1"] == pytest.approx(0.0)
