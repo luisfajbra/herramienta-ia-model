@@ -188,9 +188,20 @@ outputs/training_v17.sqlite3
 
 Estas reglas son verificables por test y son lo que hace la capa auditable:
 
-1. **`preprocess.py` no importa `sklearn` ni `torch`.** Solo pandas, numpy y
-   `ml/contracts.py`. Garantía estructural contra la fuga: no tiene con qué
-   ajustar un transformador.
+1. **La etapa 1 no puede ajustar un transformador.** `preprocess.py`,
+   `folds.py` y `quality.py` sólo pueden importar de `sklearn.model_selection`
+   (splitters, que no ajustan nada). Queda prohibido importar de
+   `sklearn.preprocessing`, `sklearn.impute`, `sklearn.decomposition`,
+   `sklearn.pipeline`, cualquier módulo de estimadores, `xgboost` o `torch`.
+
+   **Corrección (2026-09-05)** sobre la formulación inicial ("no importa
+   `sklearn` en absoluto"): `folds.py` **debe** usar
+   `sklearn.model_selection.GroupKFold` para producir exactamente los mismos
+   folds que `evaluator.py`. Reimplementar el reparto a mano arriesga
+   divergencias en el desempate que harían fallar el test de paridad (§14.2).
+   Lo que importa para la garantía anti-fuga es que la etapa no ajuste
+   transformadores, y un splitter no ajusta ninguno. El test estructural
+   (§14.1) verifica la lista de módulos prohibidos, no el paquete entero.
 2. **`models/*.py` no leen SQL ni `config.yaml`.** Reciben un dict de
    hiperparámetros ya resuelto y devuelven un `Pipeline` de sklearn.
 3. **`evaluate.py` no construye modelos.** Recibe una función constructora del
@@ -239,15 +250,20 @@ prepare_dataset(
 
 | Componente | Contenido | Archivo |
 |---|---|---|
-| `keys` | `run_id`, `node_pk`, `node_id`, `factor_mult`, `shape_id`, `scenario_id` | `keys.parquet` |
+| `keys` | `run_id`, `network_id`, `scenario_id`, `scenario_key`, `scenario_kind`, `node_id`, `factor_mult`, `shape_id` | `keys.parquet` |
 | `X` | las 17 features en el orden del contrato | `features.parquet` |
 | `y_clf` / `y_reg` | `inunda`, `vol_inundacion_m3` | `targets.parquet` |
 | `folds` | `protocol`, `fold_id`, `sample_idx`, `split` (`train`/`test`) | `folds.parquet` |
 | manifest | proveniencia completa (§6.5) | `manifest.json` |
 | calidad | informe de datos (§6.4) | `quality_report.json` |
 
-`node_pk` es obligatorio en `keys` porque `oof_predictions` tiene clave
-`(evaluation_id, run_id, node_pk)`.
+**Corrección (2026-09-05, verificada contra el código):** la vista
+`training_samples_v17` **no expone `node_pk`** — sus 8 columnas de identidad son
+`run_id`, `network_id`, `scenario_id`, `scenario_key`, `scenario_kind`,
+`factor_mult`, `shape_id`, `node_id`. Como `oof_predictions` tiene clave
+`(evaluation_id, run_id, node_pk)`, la resolución `(network_id, node_id) →
+node_pk` se hace en `persist.py` con un `JOIN` contra la tabla `nodes`, que ya
+tiene esa unicidad. No se modifica la vista ni `training_queries.py`.
 
 Parquet (no CSV) porque `pyarrow` ya es dependencia, preserva dtypes exactos —
 necesario para que el hash sea estable — y no re-interpreta nulos.
@@ -585,8 +601,10 @@ Todo por TDD: test primero, en cada etapa.
 
 ### 14.1 Tests estructurales (los que protegen el diseño)
 
-1. **`preprocess.py` no importa `sklearn` ni `torch`** — inspección del AST del
-   módulo. Es el guardián contra la fuga de datos.
+1. **La etapa 1 no importa transformadores ni estimadores** — inspección del
+   AST de `preprocess.py`, `folds.py` y `quality.py` contra la lista prohibida
+   de §5.1 (todo `sklearn` salvo `sklearn.model_selection`, más `xgboost` y
+   `torch`). Es el guardián contra la fuga de datos.
 2. **Determinismo del `prep_id`** — dos llamadas sobre los mismos datos dan el
    mismo hash; cambiar `run_ids` o el umbral lo cambia.
 3. **Rechazo por proveniencia** — `score_predictions` rechaza predicciones cuyo
@@ -660,7 +678,8 @@ intermitente preexistente en `tests/desktop/test_results_tab.py`.
 ## 17. Listo cuando
 
 - [ ] `preprocess.py` produce un `PreparedDataset` determinista con informe de
-      calidad, y el test estructural confirma que no importa `sklearn` ni `torch`.
+      calidad, y el test estructural confirma que la etapa 1 no importa ningún
+      transformador ni estimador (§5.1 regla 1).
 - [ ] Las cinco familias corren de punta a punta y producen un ranking.
 - [ ] El test de paridad está verde en LOSO y GroupKFold5.
 - [ ] La cadena de proveniencia se escribe completa y `training_runs` termina en
