@@ -50,7 +50,10 @@ MODELS_DIR = Path("outputs/models")
 METRICS_DIR = Path("outputs/metrics")
 
 
-def main():
+BENCH_ROOT = Path("outputs/bench")
+
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Pipeline de predicción hidráulica — Chico Sur")
     parser.add_argument("--skip-extraction", action="store_true",
                         help="Saltar extracción (leer CSV existente)")
@@ -103,12 +106,115 @@ def main():
                         help="Continuar (con warning) si el .inp base no coincide con el hash de entrenamiento")
     parser.add_argument("--out-dir", metavar="PATH", default="./validation_output",
                         help="Directorio de salida para validación batch (default: ./validation_output)")
+    parser.add_argument("--bench-prepare", action="store_true",
+                        help="Etapa 1 del banco: SQL -> outputs/bench/prepared/")
+    parser.add_argument("--bench-train", action="store_true",
+                        help="Etapa 2 del banco: entrena cada familia habilitada")
+    parser.add_argument("--bench-evaluate", action="store_true",
+                        help="Etapa 3 del banco: folds -> OOF -> metricas -> ranking")
+    parser.add_argument("--bench-promote", action="store_true",
+                        help="Copia el candidato ganador a outputs/models/")
+    parser.add_argument("--bench", action="store_true",
+                        help="Corre las cuatro etapas del banco en secuencia")
+    parser.add_argument("--models", metavar="LISTA", default=None,
+                        help="Familias separadas por coma (por defecto: las habilitadas en config.yaml)")
+    parser.add_argument("--prep-id", metavar="ID", default=None,
+                        help="PreparedDataset concreto (por defecto: el mas reciente)")
+    return parser
+
+
+def _run_bench(args, config) -> None:
+    from swmm_resilience.ml.bench.evaluate import evaluate_candidate
+    from swmm_resilience.ml.bench.preprocess import prepare_dataset, resolve_prepared
+    from swmm_resilience.ml.bench.promote import promote_candidate
+    from swmm_resilience.ml.bench.ranking import RankingCriterion, rank_candidates
+    from swmm_resilience.ml.bench.reports import write_reports
+    from swmm_resilience.ml.bench.train import train_candidate
+
+    if config.bench is None:
+        raise SystemExit(
+            "config.yaml no tiene bloque `bench:`. Añádelo antes de usar los comandos --bench-*."
+        )
+
+    prepared_dir = BENCH_ROOT / "prepared"
+    candidates_dir = BENCH_ROOT / "candidates"
+    reports_dir = BENCH_ROOT / "reports"
+
+    run_all = args.bench
+    families = (
+        [name.strip() for name in args.models.split(",")]
+        if args.models
+        else config.bench.enabled_families()
+    )
+
+    if run_all or args.bench_prepare:
+        prepared = prepare_dataset(
+            config.dataset.db_path,
+            protocols=tuple(config.bench.protocols),
+            flood_threshold_m3=config.dataset.flood_threshold_m3,
+            output_dir=prepared_dir,
+        )
+        print(f"PreparedDataset {prepared.prep_id}: {prepared.quality['n_rows']} filas, "
+              f"{prepared.quality['class_balance']['n_flooded']} inundadas")
+    else:
+        prepared = resolve_prepared(prepared_dir, args.prep_id)
+
+    if run_all or args.bench_train:
+        for family in families:
+            spec = config.bench.families[family]
+            artifacts = train_candidate(
+                prepared, family, spec.classifier, spec.regressor, candidates_dir
+            )
+            print(f"  {family}: {artifacts.classifier_path}")
+
+    ranking = None
+    if run_all or args.bench_evaluate:
+        metrics_by_family = {}
+        for family in families:
+            spec = config.bench.families[family]
+            _, metrics = evaluate_candidate(prepared, family, spec.classifier, spec.regressor)
+            metrics_by_family[family] = metrics
+            print(f"  {family} evaluado")
+
+        criterion = RankingCriterion(
+            primary_metric=config.bench.ranking.primary_metric,
+            primary_direction=config.bench.ranking.primary_direction,
+            tie_breakers=config.bench.ranking.tie_breakers,
+        )
+        ranking = rank_candidates(metrics_by_family, criterion, config.bench.protocols[0])
+        write_reports(metrics_by_family, ranking, reports_dir)
+        print(ranking.to_string(index=False))
+
+    if run_all or args.bench_promote:
+        chosen = config.bench.promote
+        if chosen == "auto":
+            if ranking is None:
+                raise SystemExit(
+                    "promote: 'auto' necesita un ranking. Corre --bench-evaluate antes, "
+                    "o nombra la familia en config.yaml."
+                )
+            valid = ranking[ranking["valid"] == 1]
+            if valid.empty:
+                raise SystemExit("Ningún candidato tiene una métrica primaria válida.")
+            chosen = valid.iloc[0]["family"]
+        record = promote_candidate(
+            candidates_dir / chosen, Path("outputs/models"), config.network.inp_path
+        )
+        print(f"Promovido: {record['family']} (prep_id={record['prep_id']})")
+
+
+def main():
+    parser = build_parser()
     args = parser.parse_args()
 
     if args.skip_simulation and not (args.skip_extraction or args.only_ml):
         parser.error("--skip-simulation requiere --skip-extraction o --only-ml en esta version; el pipeline aun no indexa .rpt persistentes")
 
     config = load_config("config.yaml")
+
+    if args.bench or args.bench_prepare or args.bench_train or args.bench_evaluate or args.bench_promote:
+        _run_bench(args, config)
+        return
 
     # ── Modo: inferencia ──────────────────────────────────────────────────────
     if args.predict:

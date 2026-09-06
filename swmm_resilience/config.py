@@ -244,6 +244,34 @@ class ValidationConfig:
     drain_down_hours: float = 6.0
 
 
+BENCH_PROTOCOLS = ("LOSO", "GroupKFold5")
+
+
+@dataclass
+class BenchFamilyConfig:
+    enabled: bool
+    classifier: dict
+    regressor: dict
+
+
+@dataclass
+class BenchRankingConfig:
+    primary_metric: str
+    primary_direction: str
+    tie_breakers: tuple
+
+
+@dataclass
+class BenchConfig:
+    protocols: list
+    ranking: BenchRankingConfig
+    promote: str
+    families: dict
+
+    def enabled_families(self) -> list:
+        return [name for name, family in self.families.items() if family.enabled]
+
+
 @dataclass
 class Config:
     network: NetworkConfig
@@ -253,6 +281,7 @@ class Config:
     evaluation: EvaluationConfig
     visualization: VisualizationConfig
     validation: ValidationConfig = field(default_factory=ValidationConfig)
+    bench: Optional[BenchConfig] = None
 
     def factors(self) -> list:
         """Return list of simulation factors from factor_min to factor_max (inclusive)."""
@@ -262,6 +291,51 @@ class Config:
             values.append(round(current, 6))
             current = round(current + self.simulation.factor_step, 6)
         return values
+
+
+def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
+    """El bloque bench es opcional mientras conviva con ml:/evaluation:."""
+    if not raw_bench:
+        return None
+
+    from swmm_resilience.ml.bench.registry import available_families
+
+    protocols = [str(item) for item in raw_bench["protocols"]]
+    invalid = [item for item in protocols if item not in BENCH_PROTOCOLS]
+    if invalid:
+        raise ValueError(
+            f"Protocolo desconocido: {', '.join(invalid)}. "
+            f"Opciones: {', '.join(BENCH_PROTOCOLS)}"
+        )
+
+    known = set(available_families())
+    families = {}
+    for name, spec in (raw_bench.get("families") or {}).items():
+        if name not in known:
+            raise ValueError(
+                f"Familia desconocida en config.yaml: {name!r}. "
+                f"Disponibles: {', '.join(sorted(known))}"
+            )
+        families[name] = BenchFamilyConfig(
+            enabled=bool(spec.get("enabled", True)),
+            classifier=dict(spec.get("classifier") or {}),
+            regressor=dict(spec.get("regressor") or {}),
+        )
+
+    ranking_raw = raw_bench["ranking"]
+    return BenchConfig(
+        protocols=protocols,
+        ranking=BenchRankingConfig(
+            primary_metric=str(ranking_raw["primary_metric"]),
+            primary_direction=str(ranking_raw["primary_direction"]),
+            tie_breakers=tuple(
+                (str(item["metric"]), str(item["direction"]))
+                for item in (ranking_raw.get("tie_breakers") or [])
+            ),
+        ),
+        promote=str(raw_bench.get("promote", "auto")),
+        families=families,
+    )
 
 
 def load_config(config_path: str = "config.yaml") -> Config:
@@ -338,4 +412,5 @@ def load_config(config_path: str = "config.yaml") -> Config:
                 (raw.get("validation") or {}).get("drain_down_hours", 6.0)
             ),
         ),
+        bench=_parse_bench(raw.get("bench")),
     )

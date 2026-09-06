@@ -47,3 +47,48 @@ visualization:
   colormap: "RdBu_r"
   output_path: "outputs/maps/"
   show_labels_top_n: 5
+
+bench:
+  protocols: ["LOSO", "GroupKFold5"]
+  ranking:
+    primary_metric: "end_to_end.rmse_vol_todos_nodos"
+    primary_direction: "minimize"
+    tie_breakers:
+      - {metric: "classifier.f1", direction: "maximize"}
+      - {metric: "regressor_oracle.nse", direction: "maximize"}
+  promote: "auto"
+  families:
+    xgboost:
+      enabled: true
+      # Justificacion: valores heredados del pipeline validado en 2026-06.
+      # Profundidad 6 y lr 0.05 con 200 arboles evitan sobreajuste sobre los
+      # 175 escenarios sin perder capacidad en los factores extremos.
+      classifier: {n_estimators: 200, max_depth: 6, learning_rate: 0.05, subsample: 0.8}
+      regressor: {n_estimators: 200, max_depth: 6, learning_rate: 0.05, subsample: 0.8}
+    random_forest:
+      enabled: true
+      # Justificacion: mismo numero de arboles y profundidad que XGBoost para
+      # que la comparacion aisle el metodo (boosting vs bagging), no el tamano.
+      classifier: {n_estimators: 200, max_depth: 6}
+      regressor: {n_estimators: 200, max_depth: 6}
+    linear:
+      enabled: true
+      # Justificacion: baseline. alpha=1.0 y C=1.0 son los valores por defecto
+      # de sklearn; el objetivo es medir cuanto aporta la no-linealidad, no
+      # exprimir el modelo lineal.
+      classifier: {C: 1.0, max_iter: 5000}
+      regressor: {alpha: 1.0}
+    svm:
+      enabled: true
+      # Justificacion: C=10 y kernel RBF son los valores que usaba el stack
+      # legacy (ML_MODEL_CONFIGS.svr_rbf), conservados para que los numeros
+      # sean comparables con lo ya reportado.
+      classifier: {C: 10.0, kernel: "rbf", gamma: "scale"}
+      regressor: {C: 10.0, kernel: "rbf", epsilon: 0.1}
+    mlp:
+      enabled: true
+      # Justificacion: dos capas ocultas (64, 32) sobre 17 features es una
+      # capacidad holgada sin llegar a memorizar; 200 epocas con Adam a 1e-3
+      # convergen en este tamano de dataset. Pendiente de afinar con Optuna.
+      classifier: {hidden_sizes: [64, 32], epochs: 200, learning_rate: 0.001, batch_size: 256, dropout: 0.1}
+      regressor: {hidden_sizes: [64, 32], epochs: 200, learning_rate: 0.001, batch_size: 256, dropout: 0.1}
