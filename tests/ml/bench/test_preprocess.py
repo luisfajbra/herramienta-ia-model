@@ -120,6 +120,30 @@ def test_manifest_records_full_provenance(prepared):
     assert "created_at_utc" in manifest
 
 
+def test_a_version_lookup_failure_does_not_abort_prepare_dataset(
+    sql_training_db, tmp_path, monkeypatch
+):
+    """importlib.metadata.version() raises PackageNotFoundError if a
+    distribution is installed under a different name than the import name.
+    That is a provenance detail destined for manifest.json, not something
+    that should kill the whole prepare stage -- a failed lookup must degrade
+    to "unknown" for that entry instead of propagating."""
+
+    def _boom(name):
+        raise Exception(f"no distribution found for {name!r}")
+
+    monkeypatch.setattr(preprocess_module, "_package_version", _boom)
+
+    prepared = prepare_dataset(
+        sql_training_db,
+        protocols=("LOSO",),
+        flood_threshold_m3=1.0,
+        output_dir=tmp_path / "prepared",
+    )
+
+    assert prepared.manifest["library_versions"]["scikit-learn"] == "unknown"
+
+
 def test_artifacts_are_written_to_disk(prepared, tmp_path):
     directory = tmp_path / "prepared" / prepared.prep_id
     for filename in (

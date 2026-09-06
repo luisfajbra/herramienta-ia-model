@@ -35,11 +35,27 @@ from .schemas import KEY_COLUMNS, PROTOCOLS, PreparedDataset
 SORT_KEY = ("run_id", "node_id")
 
 
+def _safe_package_version(name: str) -> str:
+    """Version lookup for provenance metadata, not for anything load-bearing.
+
+    importlib.metadata.version() raises PackageNotFoundError if the
+    distribution is installed under a different name than the import name
+    (or is not resolvable as a distribution at all). That must not abort the
+    whole prepare stage over a string destined for manifest.json -- so a
+    failed lookup degrades to "unknown" for that entry instead of
+    propagating.
+    """
+    try:
+        return _package_version(name)
+    except Exception:
+        return "unknown"
+
+
 def _library_versions() -> dict:
     return {
         "pandas": pd.__version__,
         "numpy": np.__version__,
-        "scikit-learn": _package_version("scikit-learn"),
+        "scikit-learn": _safe_package_version("scikit-learn"),
     }
 
 
