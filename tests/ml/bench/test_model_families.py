@@ -112,13 +112,25 @@ def test_preprocessing_descriptor_is_json_serialisable(name):
 
 @pytest.mark.parametrize("name", ALL_FAMILIES)
 def test_families_handle_missing_values_via_the_imputer(name, toy_data):
+    """No basta con checar la longitud: si un NaN se cuela hasta el
+    modelo, torch lo propaga a cada peso y toda prediccion sale NaN -- y
+    para el MLP, predict() hace (proba >= 0.5).astype(int), y NumPy
+    evalua NaN >= 0.5 como False, asi que una red enteramente NaN da un
+    array de ceros de longitud correcta, sin ningun aviso. Por eso la
+    prueba tiene que exigir predicciones y probabilidades finitas, no
+    solo del tamano correcto.
+    """
     X, y_clf, _ = toy_data
     X = X.copy()
     X.loc[0, "diam_max_in"] = np.nan
 
     pipeline = get_family(name).build_classifier(TINY_PARAMS[name], scale_pos_weight=1.0)
     pipeline.fit(X, y_clf)
-    assert len(pipeline.predict(X)) == len(X)
+
+    predictions = pipeline.predict(X)
+    probabilities = pipeline.predict_proba(X)
+    assert len(predictions) == len(X)
+    assert np.isfinite(probabilities).all()
 
 
 def test_svm_classifier_supports_probability_output():
