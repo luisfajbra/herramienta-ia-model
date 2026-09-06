@@ -112,3 +112,95 @@ def test_feature_columns_must_match_the_contract_order():
             manifest=prepared.manifest,
             quality=prepared.quality,
         )
+
+
+def test_keys_columns_must_match_the_contract():
+    prepared = _tiny_prepared()
+    shuffled_keys = prepared.keys.loc[:, list(reversed(KEY_COLUMNS))]
+
+    with pytest.raises(ValueError, match="keys debe tener"):
+        PreparedDataset(
+            prep_id=prepared.prep_id,
+            keys=shuffled_keys,
+            X=prepared.X,
+            y_clf=prepared.y_clf,
+            y_reg=prepared.y_reg,
+            folds=prepared.folds,
+            manifest=prepared.manifest,
+            quality=prepared.quality,
+        )
+
+
+def test_folds_columns_must_match_the_contract():
+    prepared = _tiny_prepared()
+    shuffled_folds = prepared.folds.loc[:, list(reversed(FOLD_COLUMNS))]
+
+    with pytest.raises(ValueError, match="folds debe tener"):
+        PreparedDataset(
+            prep_id=prepared.prep_id,
+            keys=prepared.keys,
+            X=prepared.X,
+            y_clf=prepared.y_clf,
+            y_reg=prepared.y_reg,
+            folds=shuffled_folds,
+            manifest=prepared.manifest,
+            quality=prepared.quality,
+        )
+
+
+def test_y_clf_name_must_match_the_contract():
+    prepared = _tiny_prepared()
+    renamed = prepared.y_clf.rename("not_inunda")
+
+    with pytest.raises(ValueError, match="inunda"):
+        PreparedDataset(
+            prep_id=prepared.prep_id,
+            keys=prepared.keys,
+            X=prepared.X,
+            y_clf=renamed,
+            y_reg=prepared.y_reg,
+            folds=prepared.folds,
+            manifest=prepared.manifest,
+            quality=prepared.quality,
+        )
+
+
+def test_y_reg_name_must_match_the_contract():
+    prepared = _tiny_prepared()
+    renamed = prepared.y_reg.rename("not_vol_inundacion_m3")
+
+    with pytest.raises(ValueError, match="vol_inundacion_m3"):
+        PreparedDataset(
+            prep_id=prepared.prep_id,
+            keys=prepared.keys,
+            X=prepared.X,
+            y_clf=prepared.y_clf,
+            y_reg=renamed,
+            folds=prepared.folds,
+            manifest=prepared.manifest,
+            quality=prepared.quality,
+        )
+
+
+def test_non_contiguous_index_is_rejected():
+    prepared = _tiny_prepared()
+    # Drop one row from every row-aligned component so the surviving index
+    # ([0, 1, 3, 4, 5]) is no longer a default, contiguous RangeIndex. If
+    # this went undetected, folds.sample_idx would silently misalign with
+    # the rows it is meant to address positionally.
+    filtered_keys = prepared.keys.drop(index=2)
+    filtered_X = prepared.X.drop(index=2)
+    filtered_y_clf = prepared.y_clf.drop(index=2)
+    filtered_y_reg = prepared.y_reg.drop(index=2)
+
+    with pytest.raises(ValueError, match="RangeIndex"):
+        PreparedDataset(
+            prep_id=prepared.prep_id,
+            keys=filtered_keys,
+            X=filtered_X,
+            y_clf=filtered_y_clf,
+            y_reg=filtered_y_reg,
+            folds=prepared.folds,
+            manifest=prepared.manifest,
+            quality=prepared.quality,
+        )

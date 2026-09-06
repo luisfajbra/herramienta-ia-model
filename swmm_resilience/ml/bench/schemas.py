@@ -12,7 +12,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from ..contracts import FEATURE_COLUMNS_V17
+from ..contracts import FEATURE_COLUMNS_V17, TARGET_DEFINITIONS_V17
+
+_TARGET_NAME_BY_TASK = {item.task: item.name for item in TARGET_DEFINITIONS_V17}
+_CLF_TARGET_NAME = _TARGET_NAME_BY_TASK["classification"]
+_REG_TARGET_NAME = _TARGET_NAME_BY_TASK["regression"]
 
 KEY_COLUMNS = (
     "run_id",
@@ -81,6 +85,36 @@ class PreparedDataset:
                 f"folds debe tener las columnas {FOLD_COLUMNS}; "
                 f"recibido {tuple(self.folds.columns)}"
             )
+        if self.y_clf.name != _CLF_TARGET_NAME:
+            raise ValueError(
+                f"y_clf debe llamarse {_CLF_TARGET_NAME!r}; "
+                f"recibido {self.y_clf.name!r}"
+            )
+        if self.y_reg.name != _REG_TARGET_NAME:
+            raise ValueError(
+                f"y_reg debe llamarse {_REG_TARGET_NAME!r}; "
+                f"recibido {self.y_reg.name!r}"
+            )
+        n = len(self.keys)
+        for label, component in (
+            ("keys", self.keys),
+            ("X", self.X),
+            ("y_clf", self.y_clf),
+            ("y_reg", self.y_reg),
+        ):
+            index = component.index
+            if not (
+                isinstance(index, pd.RangeIndex)
+                and index.start == 0
+                and index.step == 1
+                and len(index) == n
+            ):
+                raise ValueError(
+                    f"{label} debe tener un RangeIndex por defecto (0..{n - 1}, "
+                    "compartido entre keys/X/y_clf/y_reg) para que "
+                    "folds.sample_idx siga siendo posicionalmente válido; "
+                    f"recibido index={index!r}"
+                )
 
     def save(self, output_dir: Path | str) -> Path:
         """Escribe el dataset en ``output_dir/<prep_id>/`` y devuelve esa ruta."""
@@ -117,8 +151,8 @@ class PreparedDataset:
             prep_id=manifest["prep_id"],
             keys=pd.read_parquet(directory / _COMPONENT_FILES["keys"]),
             X=pd.read_parquet(directory / _COMPONENT_FILES["features"]),
-            y_clf=targets["inunda"],
-            y_reg=targets["vol_inundacion_m3"],
+            y_clf=targets[_CLF_TARGET_NAME],
+            y_reg=targets[_REG_TARGET_NAME],
             folds=pd.read_parquet(directory / _COMPONENT_FILES["folds"]),
             manifest=manifest,
             quality=json.loads(
