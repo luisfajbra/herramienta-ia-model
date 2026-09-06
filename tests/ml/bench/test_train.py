@@ -85,16 +85,17 @@ def test_load_candidate_roundtrips(prepared, tmp_path):
     assert loaded.metadata["prep_id"] == prepared.prep_id
 
 
-def test_regressor_fit_only_sees_flooded_rows_with_log1p_target(prepared, tmp_path, monkeypatch):
+def test_classifier_and_regressor_fit_calls_see_the_right_rows(prepared, tmp_path, monkeypatch):
     """Espia lo que realmente llega a Pipeline.fit(), no solo la metadata.
 
     metadata["regressor_training_rows"] se calcula por separado de la llamada
     real a fit(); un mutante que entrene con todas las filas (o sin log1p) la
     deja intacta. Se parchea Pipeline.fit a nivel de clase (como en el test
     de fuga de datos de evaluate.py) en vez de envolver el objeto devuelto
-    por build_regressor: envolverlo en una clase local rompe joblib.dump
-    (no es picklable). train_candidate hace exactamente dos llamadas de alto
-    nivel a Pipeline.fit, en orden: clasificador primero, regresor despues.
+    por build_regressor/build_classifier: envolverlo en una clase local rompe
+    joblib.dump (no es picklable). train_candidate hace exactamente dos
+    llamadas de alto nivel a Pipeline.fit, en orden: clasificador primero
+    (sobre TODAS las filas), regresor despues (solo inunda == 1, log1p).
     """
     from sklearn.pipeline import Pipeline
 
@@ -110,7 +111,15 @@ def test_regressor_fit_only_sees_flooded_rows_with_log1p_target(prepared, tmp_pa
     train_candidate(prepared, "xgboost", TINY, TINY, tmp_path / "candidates")
 
     assert len(recorded_calls) == 2, "se esperaban dos Pipeline.fit: clasificador y regresor"
+    clf_X, clf_y = recorded_calls[0]
     reg_X, reg_y = recorded_calls[1]
+
+    # El clasificador debe entrenar sobre TODAS las filas, sin subconjuntos.
+    assert len(clf_X) == len(prepared.X)
+    pd.testing.assert_frame_equal(
+        clf_X.reset_index(drop=True), prepared.X.reset_index(drop=True)
+    )
+    assert np.asarray(clf_y) == pytest.approx(prepared.y_clf.to_numpy())
 
     flooded_mask = prepared.y_clf.to_numpy() == 1
     flooded_positions = np.flatnonzero(flooded_mask)
