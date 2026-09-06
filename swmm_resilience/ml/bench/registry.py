@@ -10,11 +10,23 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from .models import linear_family, random_forest_family, svm_family, xgboost_family
+from .models import (
+    linear_family,
+    mlp_family,
+    random_forest_family,
+    svm_family,
+    xgboost_family,
+)
 
 _FAMILIES: dict[str, ModuleType] = {
     module.FAMILY: module
-    for module in (xgboost_family, random_forest_family, linear_family, svm_family)
+    for module in (
+        xgboost_family,
+        random_forest_family,
+        linear_family,
+        svm_family,
+        mlp_family,
+    )
 }
 
 

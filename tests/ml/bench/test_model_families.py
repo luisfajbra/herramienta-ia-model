@@ -33,8 +33,8 @@ def toy_data():
     return X, y_clf, y_reg
 
 
-def test_all_four_families_are_registered():
-    assert set(available_families()) == set(ALL_FAMILIES)
+def test_all_five_families_are_registered():
+    assert set(available_families()) == set(ALL_FAMILIES) | {"mlp"}
 
 
 @pytest.mark.parametrize("name", ALL_FAMILIES)
