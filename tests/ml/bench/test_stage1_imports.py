@@ -94,10 +94,19 @@ def _offenders(path: Path, bench_dir: Path = BENCH_DIR) -> list[str]:
                             scan_file(resolved, rel_path)
 
             elif isinstance(node, ast.ImportFrom):
-                module_name = node.module
-                if module_name is None:
+                if node.module is None:
                     # from . import x or from .. import x
+                    # node.names contains the submodules to scan
+                    if node.level > 0:
+                        for alias in node.names:
+                            submodule_name = alias.name
+                            resolved = _resolve_intra_package_import(submodule_name, node.level, bench_dir)
+                            if resolved:
+                                rel_path = str(resolved.relative_to(bench_dir)).replace("\\", "/")
+                                scan_file(resolved, rel_path)
                     continue
+
+                module_name = node.module
 
                 if node.level == 0:
                     # Absolute import
@@ -115,13 +124,12 @@ def _offenders(path: Path, bench_dir: Path = BENCH_DIR) -> list[str]:
                             rel_path = str(resolved.relative_to(bench_dir)).replace("\\", "/")
                             scan_file(resolved, rel_path)
                 else:
-                    # Relative import: from . or from ..
+                    # Relative import: from .sub import x
                     # Resolve relative to bench_dir (stage 1 modules are at bench_dir root)
-                    if module_name:
-                        resolved = _resolve_intra_package_import(module_name, node.level, bench_dir)
-                        if resolved:
-                            rel_path = str(resolved.relative_to(bench_dir)).replace("\\", "/")
-                            scan_file(resolved, rel_path)
+                    resolved = _resolve_intra_package_import(module_name, node.level, bench_dir)
+                    if resolved:
+                        rel_path = str(resolved.relative_to(bench_dir)).replace("\\", "/")
+                        scan_file(resolved, rel_path)
 
     scan_file(path)
     return found_offenders
@@ -167,4 +175,23 @@ def test_transitive_in_package_import_violation(tmp_path):
     result = _offenders(main, tmp_path)
     assert "_scaling.py: sklearn.preprocessing" in result, (
         f"Expected transitive violation report, got {result}"
+    )
+
+
+def test_bare_relative_import_violation(tmp_path):
+    """Verifica que 'from . import x' atrapa violaciones en el submodulo."""
+    # Create a helper module that imports StandardScaler
+    helper = tmp_path / "_helper.py"
+    helper.write_text(
+        "from sklearn.preprocessing import StandardScaler\n", encoding="utf-8"
+    )
+
+    # Create a main module that uses bare relative import
+    main = tmp_path / "main.py"
+    main.write_text("from . import _helper\n", encoding="utf-8")
+
+    # Scanning main should find the violation transitively
+    result = _offenders(main, tmp_path)
+    assert "_helper.py: sklearn.preprocessing" in result, (
+        f"Expected violation from bare import, got {result}"
     )
