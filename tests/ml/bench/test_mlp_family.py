@@ -67,11 +67,25 @@ def test_regressor_fits_and_predicts_finite_values(toy_data):
 
 
 def test_the_same_seed_gives_the_same_predictions(toy_data):
-    """Sin esto el MLP no es comparable: cada corrida daria otro numero."""
+    """Sin esto el MLP no es comparable: cada corrida daria otro numero.
+
+    El generador global de torch se perturba deliberadamente antes de cada
+    fit (con una semilla distinta cada vez) para que el unico motivo por el
+    que ambas corridas puedan coincidir sea que el estimador se resiembra a
+    si mismo por dentro. Sin esta perturbacion, un estado global heredado
+    de un test vecino con el mismo PARAMS podria hacer que la prueba pasara
+    aunque el estimador no fuera realmente determinista.
+    """
     X, y_clf, _ = toy_data
     first = get_family("mlp").build_classifier(PARAMS, scale_pos_weight=1.0)
     second = get_family("mlp").build_classifier(PARAMS, scale_pos_weight=1.0)
+
+    torch.manual_seed(111)
+    torch.rand(100)
     first.fit(X, y_clf)
+
+    torch.manual_seed(222)
+    torch.rand(100)
     second.fit(X, y_clf)
 
     np.testing.assert_allclose(
@@ -90,6 +104,31 @@ def test_scale_pos_weight_reaches_the_loss(toy_data):
     """El desbalance se aplica como pos_weight de BCEWithLogitsLoss."""
     model = get_family("mlp").build_classifier(PARAMS, scale_pos_weight=5.0).named_steps["model"]
     assert model.get_params()["scale_pos_weight"] == pytest.approx(5.0)
+
+
+def test_scale_pos_weight_actually_reaches_bcewithlogitsloss_during_fit(toy_data, monkeypatch):
+    """El test anterior solo comprueba que el constructor guarda el valor;
+    esta prueba espia BCEWithLogitsLoss dentro del modulo mlp_family para
+    confirmar que fit() de verdad lo pasa a la perdida, no solo que el
+    estimador lo recuerda.
+    """
+    import swmm_resilience.ml.bench.models.mlp_family as mlp_family
+
+    X, y_clf, _ = toy_data
+    captured = {}
+    real_loss_cls = mlp_family.nn.BCEWithLogitsLoss
+
+    def spying_bcewithlogitsloss(*args, **kwargs):
+        captured["pos_weight"] = kwargs.get("pos_weight")
+        return real_loss_cls(*args, **kwargs)
+
+    monkeypatch.setattr(mlp_family.nn, "BCEWithLogitsLoss", spying_bcewithlogitsloss)
+
+    pipeline = get_family("mlp").build_classifier(PARAMS, scale_pos_weight=4.0)
+    pipeline.fit(X, y_clf)
+
+    assert captured["pos_weight"] is not None
+    torch.testing.assert_close(captured["pos_weight"], torch.tensor([4.0]))
 
 
 def test_training_runs_on_cpu_without_requiring_cuda(toy_data):
