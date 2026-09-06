@@ -286,6 +286,60 @@ def test_bench_promote_alone_promotes_without_a_prepared_directory(
     )
 
 
+def test_bench_evaluate_fails_clearly_when_the_prepared_dataset_lacks_the_configured_protocol(
+    sql_training_db, tmp_path, monkeypatch
+):
+    """resolve_prepared picks the newest PreparedDataset by mtime alone, with
+    no check that it actually covers what config.yaml asks for. Without the
+    protocol-coverage guard, changing bench.protocols and running
+    --bench-evaluate alone silently degrades every candidate to valid=0
+    ("el candidato no tiene resultados para X") instead of failing clearly.
+    """
+    import main
+
+    monkeypatch.chdir(tmp_path)
+    # Prepared with only LOSO, but config below asks for GroupKFold5 too.
+    prepare_dataset(
+        sql_training_db, protocols=("LOSO",), flood_threshold_m3=1.0,
+        output_dir=Path("outputs/bench/prepared"),
+    )
+
+    config = _make_config(
+        inp_path=tmp_path / "network.inp", db_path=sql_training_db,
+        families=["xgboost"], protocols=("LOSO", "GroupKFold5"),
+    )
+    args = _make_args(bench_evaluate=True)
+
+    with pytest.raises(SystemExit) as excinfo:
+        main._run_bench(args, config)
+
+    message = str(excinfo.value)
+    assert "GroupKFold5" in message
+    assert "--bench-prepare" in message
+
+
+def test_bench_train_succeeds_when_the_prepared_dataset_covers_the_configured_protocols(
+    sql_training_db_six_factors, tmp_path, monkeypatch
+):
+    """The guard must not be a false positive: when the PreparedDataset does
+    cover every configured protocol, --bench-train proceeds normally."""
+    import main
+
+    monkeypatch.chdir(tmp_path)
+    prepare_dataset(
+        sql_training_db_six_factors, protocols=("LOSO", "GroupKFold5"), flood_threshold_m3=1.0,
+        output_dir=Path("outputs/bench/prepared"),
+    )
+
+    config = _make_config(
+        inp_path=tmp_path / "network.inp", db_path=sql_training_db_six_factors,
+        families=["xgboost"], protocols=("LOSO", "GroupKFold5"),
+    )
+    args = _make_args(bench_train=True)
+
+    main._run_bench(args, config)  # must not raise
+
+
 def test_full_bench_run_produces_ranking_csv_with_one_row_per_family(
     sql_training_db, tmp_path, monkeypatch
 ):

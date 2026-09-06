@@ -166,6 +166,18 @@ def _run_bench(args, config) -> None:
               f"{prepared.quality['class_balance']['n_flooded']} inundadas")
     elif args.bench_train or args.bench_evaluate:
         prepared = resolve_prepared(prepared_dir, args.prep_id)
+        available_protocols = set(prepared.manifest.get("protocols", []))
+        missing_protocols = [
+            protocol for protocol in config.bench.protocols if protocol not in available_protocols
+        ]
+        if missing_protocols:
+            raise SystemExit(
+                f"El PreparedDataset {prepared.prep_id} no cubre el/los protocolo(s) "
+                f"{', '.join(missing_protocols)} que pide config.yaml (bench.protocols). "
+                f"Protocolos disponibles en el PreparedDataset: {', '.join(sorted(available_protocols)) or '(ninguno)'}. "
+                "Corre `python main.py --bench-prepare` de nuevo para regenerarlo con los "
+                "protocolos actuales."
+            )
     else:
         prepared = None
 
@@ -191,8 +203,10 @@ def _run_bench(args, config) -> None:
             primary_direction=config.bench.ranking.primary_direction,
             tie_breakers=config.bench.ranking.tie_breakers,
         )
-        ranking = rank_candidates(metrics_by_family, criterion, config.bench.protocols[0])
+        ranking_protocol = config.bench.protocols[0]
+        ranking = rank_candidates(metrics_by_family, criterion, ranking_protocol)
         write_reports(metrics_by_family, ranking, reports_dir)
+        print(f"Ranking calculado sobre el protocolo: {ranking_protocol}")
         print(ranking.to_string(index=False))
 
     if run_all or args.bench_promote:

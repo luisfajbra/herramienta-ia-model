@@ -97,4 +97,5 @@ def rank_candidates(
     ordered = sorted(rows, key=sort_key)
     frame = pd.DataFrame(ordered)
     frame.insert(0, "rank", range(1, len(frame) + 1))
+    frame.insert(1, "protocol", protocol)
     return frame

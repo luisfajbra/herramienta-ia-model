@@ -132,6 +132,7 @@ def test_column_schema_is_stable_even_when_every_candidate_is_invalid():
     )
     assert list(ranking.columns) == [
         "rank",
+        "protocol",
         "family",
         "primary_value",
         "valid",
@@ -139,3 +140,15 @@ def test_column_schema_is_stable_even_when_every_candidate_is_invalid():
         "classifier.f1",
         "regressor_oracle.nse",
     ]
+
+
+def test_ranking_records_which_protocol_produced_it():
+    """ranking.csv/json is the one artifact a reader looks at; it must say
+    which protocol the numbers came from, not just rank silently on whatever
+    main.py passed in."""
+    ranking = rank_candidates(
+        {"xgboost": _metrics(3.0), "svm": _metrics(9.0)},
+        CRITERION,
+        protocol="LOSO",
+    )
+    assert (ranking["protocol"] == "LOSO").all()
