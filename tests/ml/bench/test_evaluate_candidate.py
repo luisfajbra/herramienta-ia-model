@@ -54,7 +54,6 @@ def test_running_it_twice_gives_identical_predictions(prepared):
     pd.testing.assert_frame_equal(first, second)
 
 
-@pytest.mark.xfail(reason="familia linear llega en la Task 12", strict=False)
 def test_the_scaler_is_fitted_inside_the_fold_not_on_the_whole_dataset(prepared, monkeypatch):
     """El nucleo de la garantia anti-fuga, verificado en ejecucion."""
     from sklearn.preprocessing import StandardScaler

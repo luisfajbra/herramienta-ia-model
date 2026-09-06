@@ -10,10 +10,11 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from .models import xgboost_family
+from .models import linear_family, random_forest_family, svm_family, xgboost_family
 
 _FAMILIES: dict[str, ModuleType] = {
-    xgboost_family.FAMILY: xgboost_family,
+    module.FAMILY: module
+    for module in (xgboost_family, random_forest_family, linear_family, svm_family)
 }
 
 
