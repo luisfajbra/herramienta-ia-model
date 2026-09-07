@@ -902,6 +902,19 @@ def main():
         print("Validando dataset...")
         validate_dataset(df, n_nodes, n_simulations)
         print(f"  Dataset validado: {df.shape}")
+
+        # XGBoost's `subsample` (config.yaml ml.classifier/regressor) draws a
+        # random row fraction per tree, so which rows land in that sample
+        # depends on the order rows are presented in — not just their values.
+        # assemble_dataset() keeps CSV/assembly order (node_id-major) so the
+        # CSV on disk stays unperturbed for --persist-sql and other readers,
+        # but load_training_frame() (the --only-ml/--skip-extraction path)
+        # returns rows `ORDER BY run_id, node_id`, equivalent to sorting by
+        # (shape_id, factor_mult, node_id). Without this sort, a cold run and
+        # a SQL-fed run over identical data would train on different row
+        # orders and disagree on metrics. Sort only this in-memory frame —
+        # the one handed to training/evaluation below — to match.
+        df = df.sort_values(["shape_id", "factor_mult", "node_id"]).reset_index(drop=True)
     else:
         print(f"\nLeyendo dataset desde {config.dataset.db_path}...")
         try:
