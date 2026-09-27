@@ -115,10 +115,11 @@ python main.py --skip-extraction
 # requiere haber corrido --persist-sql al menos una vez)
 python main.py --only-maps
 
-# Inferencia para un factor arbitrario sin correr SWMM (usa los .joblib guardados)
+# Inferencia ML para un factor arbitrario (usa los .joblib guardados) + una
+# corrida SWMM de verificacion; imprime la tabla de nodos inundados
 python main.py --predict --factor 3.5
 
-# Correr SWMM + ML para un factor arbitrario y generar ambos mapas (comparación)
+# Correr SWMM + ML para un factor arbitrario y generar ambos mapas (comparacion)
 python main.py --simulate --factor 3.5
 
 # Persistir dataset_final.csv + un entrenamiento GroupKFold5 en
@@ -126,6 +127,71 @@ python main.py --simulate --factor 3.5
 # la escritura sigue siendo manual (ver "Qué NO está conectado todavía")
 python main.py --persist-sql
 ```
+
+### Qué forma de hidrograma usa cada comando
+
+Esta es la confusión más común del CLI, así que explícito:
+
+**`--factor` NO elige la forma del hidrograma. Solo escala la que ya está
+fijada.** `--predict` y `--simulate` corren siempre la forma que vive dentro
+del `TIMESERIES` del `.inp` de `config.network.inp_path` — el "hidrograma
+base". No hay flag para cambiarla.
+
+- SWMM corre ese `TIMESERIES` del `.inp` multiplicado por el factor.
+- El ML reproduce la misma forma vía `base_shape_stats`
+  (`swmm_resilience/ml/predict.py:16`), que abre el `.inp`, toma el primer
+  `TIMESERIES` no vacío y deriva `duracion_horas` y `tiempo_al_pico_h`.
+  **Esas dos features son toda la información de forma que ve el modelo**
+  (`predict.py:63-69`); el resto de las 17 son estáticas, topológicas y
+  dinámicas del factor.
+
+Entonces, para elegir forma hay que usar otro comando. Resumen:
+
+| Comando | Qué forma usa | De dónde sale |
+|---|---|---|
+| `--predict --factor F` | solo la del `.inp` | `TIMESERIES` del `.inp` |
+| `--simulate --factor F` | solo la del `.inp` | `TIMESERIES` del `.inp` |
+| `--evaluate-shapes` | todas las de entrenamiento | vista SQL v17 (pide `--persist-sql`) |
+| `--evaluate-validation-shapes DIR` | **las que pongas en `DIR`** | CSVs `time_h,q_norm` |
+| `--evaluate-hydrographs DIR` | **las que pongas en `DIR`** | CSVs `node_id,time,value_lps` |
+
+#### Evaluar UNA sola forma específica, en los factores que tú quieras
+
+`--evaluate-validation-shapes` carga **todos** los `*.csv` del directorio
+(`load_all_shapes`, `swmm_resilience/simulation/hydrograph_shapes.py:23`), así
+que el truco es pasarle un directorio con un único archivo:
+
+```bash
+# 1. Un directorio con SOLO la forma que quieres evaluar
+mkdir -p tmp_una_forma
+cp data/hydrograph_validation/val_single_peak_4h5.csv tmp_una_forma/
+
+# 2. 1 forma x 2 factores = 2 escenarios SWMM (sin --factors serían 24)
+python main.py --evaluate-validation-shapes tmp_una_forma \
+    --factors 1.075,1.14 --out-dir ./validation_output
+```
+
+Imprime `F1`, `NSE` y `Vol_error` de esa forma, y la etiqueta
+`INTERPOLACIÓN` / `EXTRAPOLACIÓN` según si su duración cae dentro del rango de
+duraciones del catálogo de entrenamiento.
+
+El CSV de forma es **normalizado**: dos columnas `time_h,q_norm`, obligatorio
+empezar en `t=0`. El caudal absoluto lo arma solo, nodo por nodo:
+`flow(t) = base_inflow_del_nodo × factor × q_norm(t)`, con los `base_inflow`
+leídos del `.inp` — por eso este comando **no** requiere `--persist-sql`.
+
+Dos cosas que muerden:
+
+1. **Rechaza formas de entrenamiento.** Si el nombre del archivo (sin `.csv`)
+   también existe en `data/hydrograph_shapes/`, aborta con error
+   (`main.py:681-687`): una forma vista en entrenamiento no es fuera de
+   muestra. Para evaluar una forma *del catálogo de entrenamiento* en factores
+   puntuales, usa `--evaluate-hydrographs DIR`, que consume CSVs de caudal
+   absoluto (`node_id,time,value_lps`, con `time` en formato `H:MM`) y no
+   tiene ese guard rail.
+2. **Sin `--factors` corre 24 factores** (los puntos medios no vistos
+   0.3, 0.5 … 4.9), o sea 24 corridas de SWMM por forma en vez de las 2 que
+   pediste.
 
 ### Análisis y visualización (requieren modelos ya generados; las seis desde
 ### `--resilience-curve` leen `outputs/training_v17.sqlite3` vía
@@ -143,6 +209,27 @@ python main.py --analyze-features                # Correlación, ablación y SHA
 python main.py --evaluate-shapes                  # SWMM vs ML por forma de hidrograma
 python main.py --evaluate-generalization          # SWMM vs ML en factores no vistos en entrenamiento
 ```
+
+### Validación con formas fuera de muestra
+
+Expande formas normalizadas (`time_h,q_norm`) de un directorio externo a los
+CSV de caudal absoluto que `run_batch_validation` consume, y corre SWMM vs ML
+para cada una. **No lee la base v17**: saca `base_inflows` del `.inp`, así que
+no requiere `--persist-sql` previo. Rechaza con error cualquier forma cuyo
+nombre también exista en `data/hydrograph_shapes/` — una forma que está en
+entrenamiento no es fuera de muestra.
+
+```bash
+# Factores por defecto: los 24 puntos medios no vistos (0.3, 0.5, ... 4.9)
+python main.py --evaluate-validation-shapes data/hydrograph_validation
+
+# Un subconjunto de factores
+python main.py --evaluate-validation-shapes data/hydrograph_validation \
+    --factors 1.15,2.5,3.75 --out-dir ./validation_output
+```
+
+Cada forma se reporta como `INTERPOLACIÓN` o `EXTRAPOLACIÓN` según si su
+duración cae dentro del rango de duraciones del catálogo de entrenamiento.
 
 ### Validación batch de hidrogramas
 

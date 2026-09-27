@@ -9,6 +9,8 @@ Uso:
   python main.py --predict --factor 3.5              # Inferencia sin SWMM
 """
 import argparse
+import math
+import sys
 import shutil
 import tempfile
 import time
@@ -92,6 +94,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Evaluar SWMM vs ML para cada forma de hidrograma en hydrograph_shapes_dir")
     parser.add_argument("--evaluate-generalization", action="store_true",
                         help="Evaluar generalización: SWMM vs ML en factores no vistos (puntos medios entre factores de entrenamiento)")
+    parser.add_argument("--evaluate-validation-shapes", metavar="DIR",
+                        help="Validar formas normalizadas de un directorio fuera del "
+                             "entrenamiento (las expande a CSV de caudal absoluto por factor)")
+    parser.add_argument("--factors", metavar="LISTA", default=None,
+                        help="Factores separados por coma para --evaluate-validation-shapes "
+                             "(default: puntos medios no vistos entre los factores de entrenamiento)")
     parser.add_argument("--analyze-features", action="store_true",
                         help="Correlación, ablación y SHAP para los features del modelo")
     parser.add_argument("--base-inp", metavar="PATH",
@@ -227,7 +235,42 @@ def _run_bench(args, config) -> None:
         print(f"Promovido: {record['family']} (prep_id={record['prep_id']})")
 
 
+def _make_stdout_unicode_safe() -> None:
+    """Keep the CLI's Unicode output from crashing a legacy Windows console.
+
+    Several branches print box-drawing and arrow characters that cp1252 cannot
+    encode, which raised UnicodeEncodeError mid-run instead of just rendering
+    a substitute glyph. pytest's capture objects have no reconfigure(), hence
+    the guard.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
+
+def _fmt_metric(value, spec: str = ".3f", fallback: str = "N/A") -> str:
+    """Format a metric the evaluator may report as None or NaN.
+
+    dict.get(key, 0) does not help here: the keys exist, their values are
+    None when a scenario has too few flooded nodes to define the metric.
+    """
+    if value is None:
+        return fallback
+    try:
+        if isinstance(value, float) and math.isnan(value):
+            return fallback
+        return format(value, spec)
+    except (TypeError, ValueError):
+        return fallback
+
+
 def main():
+    _make_stdout_unicode_safe()
     parser = build_parser()
     args = parser.parse_args()
 
@@ -509,9 +552,9 @@ def main():
             vol = summary["volume"]
             print(
                 f"    Escenarios: {summary['n_scenarios']}  "
-                f"F1={cls.get('f1', 0):.3f}  "
-                f"NSE={vol.get('nse', float('nan')):.3f}  "
-                f"Vol_error={vol.get('error_pct_total', float('nan')):.1f}%"
+                f"F1={_fmt_metric(cls.get('f1'))}  "
+                f"NSE={_fmt_metric(vol.get('nse'))}  "
+                f"Vol_error={_fmt_metric(vol.get('error_pct_total'), '.1f')}%"
             )
             if summary.get("timings"):
                 t_sw = sum(t["t_swmm_s"] for t in summary["timings"])
@@ -594,9 +637,9 @@ def main():
             vol = summary["volume"]
             print(
                 f"    Scenarios: {summary['n_scenarios']}  "
-                f"F1={cls.get('f1', 0):.3f}  "
-                f"NSE={vol.get('nse', float('nan')):.3f}  "
-                f"Vol_error={vol.get('error_pct_total', float('nan')):.1f}%"
+                f"F1={_fmt_metric(cls.get('f1'))}  "
+                f"NSE={_fmt_metric(vol.get('nse'))}  "
+                f"Vol_error={_fmt_metric(vol.get('error_pct_total'), '.1f')}%"
             )
             if summary.get("timings"):
                 t_sw = sum(t["t_swmm_s"] for t in summary["timings"])
@@ -606,6 +649,126 @@ def main():
                     f"    SWMM: {t_sw:.2f} s  ML: {t_ml:.4f} s"
                     + (f"  x{sum(speedups)/len(speedups):.0f}" if speedups else "")
                 )
+        return
+
+    # ── Modo: validación con formas normalizadas fuera del entrenamiento ─────
+    if args.evaluate_validation_shapes:
+        shapes_dir = Path(args.evaluate_validation_shapes)
+        if not shapes_dir.is_dir():
+            parser.error(
+                f"--evaluate-validation-shapes: no existe el directorio {shapes_dir}"
+            )
+
+        from swmm_resilience.simulation.hydrograph_shapes import (
+            get_shape_stats, load_all_shapes,
+        )
+        from swmm_resilience.validation.hydrograph_csv import write_shape_validation_csv
+        from swmm_resilience.validation.hydrograph_batch import run_batch_validation
+
+        shapes = load_all_shapes(shapes_dir)
+        if not shapes:
+            parser.error(
+                f"--evaluate-validation-shapes: no hay CSVs de forma en {shapes_dir}"
+            )
+
+        # Guard rail: a shape that also lives in the training directory is not
+        # out-of-sample, and silently reporting it as such would be a lie.
+        training_shapes = (
+            load_all_shapes(config.simulation.hydrograph_shapes_dir)
+            if config.simulation.hydrograph_shapes_dir is not None
+            else {}
+        )
+        overlap = sorted(set(shapes) & set(training_shapes))
+        if overlap:
+            parser.error(
+                "--evaluate-validation-shapes: estas formas también están en "
+                f"{config.simulation.hydrograph_shapes_dir}, no son fuera de "
+                f"muestra: {overlap}"
+            )
+
+        # base_inflows comes from the .inp, not the training DB: validating an
+        # unseen shape must not require having run --persist-sql first.
+        static_df = extract_static_features(config.network.inp_path)
+        base_inflows = dict(
+            zip(static_df["node_id"].astype(str), static_df["base_inflow_lps"])
+        )
+        expected_nodes = {nid for nid, value in base_inflows.items() if value > 0}
+        if not expected_nodes:
+            parser.error(
+                f"--evaluate-validation-shapes: ningún nodo con inflow > 0 en "
+                f"{config.network.inp_path}"
+            )
+
+        training_factors = config.factors()
+        if args.factors:
+            try:
+                factors_to_eval = [float(x) for x in args.factors.split(",") if x.strip()]
+            except ValueError:
+                parser.error(f"--factors: lista de números inválida: {args.factors!r}")
+            if not factors_to_eval:
+                parser.error("--factors: la lista está vacía")
+        else:
+            factors_to_eval = [
+                round((training_factors[i] + training_factors[i + 1]) / 2, 3)
+                for i in range(len(training_factors) - 1)
+            ]
+
+        # Duration range actually covered by training, so each validation shape
+        # can be labelled as interpolation or extrapolation in the report.
+        training_durations = [
+            get_shape_stats(train_shape)[0] for train_shape in training_shapes.values()
+        ]
+        dur_min = min(training_durations) if training_durations else 0.0
+        dur_max = max(training_durations) if training_durations else 0.0
+
+        tmp_val_root = Path(tempfile.mkdtemp(prefix="val_shapes_"))
+        out_root = Path(args.out_dir)
+
+        print()
+        print(
+            f"Validación de formas fuera de muestra: {len(shapes)} formas × "
+            f"{len(factors_to_eval)} factores = "
+            f"{len(shapes) * len(factors_to_eval)} escenarios SWMM"
+        )
+        print(f"Factores: {factors_to_eval}")
+        print(f"Rango de duración entrenado: {dur_min:.2f} h – {dur_max:.2f} h")
+
+        for shape_id, shape in shapes.items():
+            dur_h, t_pico_h = get_shape_stats(shape)
+            regime = "INTERPOLACIÓN" if dur_min <= dur_h <= dur_max else "EXTRAPOLACIÓN"
+            shape_csv_dir = tmp_val_root / shape_id
+            for factor in factors_to_eval:
+                write_shape_validation_csv(
+                    shape_id, shape, base_inflows, factor, shape_csv_dir
+                )
+
+            out_dir = out_root / shape_id
+            print()
+            print(
+                f"  [{shape_id}]  dur={dur_h:.2f} h  t_pico={t_pico_h:.2f} h  "
+                f"{regime}  → {out_dir}"
+            )
+            summary = run_batch_validation(
+                csv_dir=shape_csv_dir,
+                base_inp_path=config.network.inp_path,
+                clf_path=MODELS_DIR / "classifier.joblib",
+                reg_path=MODELS_DIR / "regressor.joblib",
+                flood_threshold_m3=config.dataset.flood_threshold_m3,
+                out_dir=out_dir,
+                expected_nodes=expected_nodes,
+                drain_down_hours=config.validation.drain_down_hours,
+                allow_inp_mismatch=args.allow_inp_mismatch,
+                factor_range=(config.simulation.factor_min, config.simulation.factor_max),
+            )
+            cls = summary["classification"]
+            vol = summary["volume"]
+            print(
+                f"    Escenarios: {summary['n_scenarios']}  "
+                f"F1={_fmt_metric(cls.get('f1'))}  "
+                f"NSE={_fmt_metric(vol.get('nse'))}  "
+                f"Vol_error={_fmt_metric(vol.get('error_pct_total'), '.1f')}%"
+            )
+        shutil.rmtree(tmp_val_root, ignore_errors=True)
         return
 
     # ── Modo: validación batch de hidrogramas ────────────────────────────────

@@ -13,6 +13,8 @@ from swmm_resilience.simulation.hydrograph_shapes import (
     normalize_from_csv,
 )
 
+SHAPES_DIR = Path(__file__).parents[2] / "data" / "hydrograph_shapes"
+
 
 def _write_shape_csv(tmp_path: Path, name: str, rows: list[tuple]) -> Path:
     p = tmp_path / name
@@ -45,6 +47,43 @@ def test_load_all_shapes(tmp_path):
     shapes = load_all_shapes(tmp_path)
     assert set(shapes.keys()) == {"shape_a", "shape_b"}
     assert shapes["shape_a"][1] == (1.0, 1.0)
+
+
+def test_training_catalog_has_40_shapes_including_base():
+    shapes = load_all_shapes(SHAPES_DIR)
+
+    assert len(shapes) + 1 == 40  # The canonical INP contributes "base".
+
+
+def test_late_peak_profile_is_compressed_to_four_hours():
+    shapes = load_all_shapes(SHAPES_DIR)
+    profile = shapes.get("shape_late_peak_4h")
+
+    assert profile is not None
+    assert get_shape_stats(profile) == pytest.approx((4.0, 2.8))
+
+
+@pytest.mark.parametrize(
+    "csv_path",
+    sorted(SHAPES_DIR.glob("*.csv")),
+    ids=lambda path: path.stem,
+)
+def test_training_shape_files_are_valid_normalized_profiles(csv_path):
+    shape = load_shape(csv_path)
+    times = [time_h for time_h, _ in shape]
+    flows = [q_norm for _, q_norm in shape]
+
+    assert times[0] == 0.0
+    assert all(later > earlier for earlier, later in zip(times, times[1:]))
+    assert all(0.0 <= flow <= 1.0 for flow in flows)
+    assert max(flows) == pytest.approx(1.0)
+
+
+def test_training_shape_duration_and_peak_time_pairs_are_unique():
+    shapes = load_all_shapes(SHAPES_DIR)
+    descriptors = [get_shape_stats(shape) for shape in shapes.values()]
+
+    assert len(descriptors) == len(set(descriptors))
 
 
 def test_get_shape_stats():

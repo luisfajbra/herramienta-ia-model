@@ -8,7 +8,24 @@ from ..config import Config
 from ..extraction.static_features import extract_static_features
 from ..extraction.topology import compute_topology_features
 from ..extraction.dynamic_features import compute_dynamic_features
+from ..simulation.hydrograph_shapes import get_shape_stats
+from ..simulation.swmm_api_io import load_inp
 from .trainer import FEATURE_COLS
+
+
+def base_shape_stats(inp_path: Path) -> tuple[float, float]:
+    """Return (duracion_horas, tiempo_al_pico_h) of the .inp's own hydrograph.
+
+    The training pipeline labels every base-shape row with these two values,
+    so inference must reproduce them. Their default of 0.0 is a value that
+    appears in no training row at all, and the regressor leans on both, so
+    omitting them silently pushed predictions out of the trained domain.
+    """
+    inp = load_inp(inp_path)
+    if "TIMESERIES" not in inp:
+        return 0.0, 0.0
+    series = next((list(ts.data) for ts in inp["TIMESERIES"].values() if ts.data), [])
+    return get_shape_stats(series)
 
 
 def _md5(path: Path) -> str:
@@ -43,7 +60,13 @@ def predict_network(factor: float, config: Config, models_dir: Path) -> pd.DataF
 
     static_df = extract_static_features(config.network.inp_path)
     full_df = compute_topology_features(static_df, config.network.inp_path)
-    dynamic_df = compute_dynamic_features(full_df, factor)
+    duracion_horas, tiempo_al_pico_h = base_shape_stats(config.network.inp_path)
+    dynamic_df = compute_dynamic_features(
+        full_df,
+        factor,
+        duracion_horas=duracion_horas,
+        tiempo_al_pico_h=tiempo_al_pico_h,
+    )
     merged = full_df.merge(dynamic_df, on="node_id", how="left")
 
     X = merged[FEATURE_COLS]

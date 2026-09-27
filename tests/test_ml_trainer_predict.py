@@ -133,7 +133,9 @@ def test_predict_network_uses_dataframe_features(monkeypatch, tmp_path, tiny_con
     def fake_compute_topology_features(static_df, inp_path):
         return static.copy()
 
-    def fake_compute_dynamic_features(full_df, factor):
+    def fake_compute_dynamic_features(
+        full_df, factor, duracion_horas=0.0, tiempo_al_pico_h=0.0
+    ):
         return pd.DataFrame(
             {
                 "node_id": ["J1", "J2"],
@@ -146,6 +148,7 @@ def test_predict_network_uses_dataframe_features(monkeypatch, tmp_path, tiny_con
     monkeypatch.setattr(predict, "extract_static_features", fake_extract_static_features)
     monkeypatch.setattr(predict, "compute_topology_features", fake_compute_topology_features)
     monkeypatch.setattr(predict, "compute_dynamic_features", fake_compute_dynamic_features)
+    monkeypatch.setattr(predict, "base_shape_stats", lambda inp: (3.0, 0.7))
 
     result = predict.predict_network(1.0, cfg, models)
 

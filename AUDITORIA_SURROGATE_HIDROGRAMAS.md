@@ -276,3 +276,56 @@ diccionario de datos).
 8. **(Estratégico)** El repo ya contiene un scaffold temporal (LSTM/CNN en
    `swmm_resilience/ml/temporal/`): es el camino natural para capturar la forma del
    hidrograma si las features de evento del punto 1 resultan insuficientes.
+
+---
+
+## Seguimiento de implementacion - 2026-09-27
+
+Esta seccion contrasta los hallazgos de esta auditoria con el estado verificable del repositorio y de las validaciones producidas. Los estados se refieren al modelo XGBoost activo y a la red Chico Sur; no demuestran todavia transferencia a otra red.
+
+| Hallazgo | Estado | Evidencia actual | Cierre pendiente |
+|---|---|---|---|
+| C1: features ciegas a la forma | Parcial | El contrato v17 tiene 17 features e incorpora `duracion_horas` y `tiempo_al_pico_h`; el dataset final tiene 160,000 filas, 40 formas y 25 factores (1,000 corridas de 160 nodos). | Anadir volumen integrado del evento, tiempo/volumen por encima de capacidad y descriptores de multipico/recesion; medir la ganancia con el mismo protocolo. |
+| C2: un solo grado de libertad y validacion optimista | Parcial, prioridad critica | Las 40 formas resuelven la diversidad del dataset. Pero `LOSO` y `GroupKFold5` siguen construyendo grupos con `factor_mult`; al dejar un factor fuera, las mismas formas permanecen en entrenamiento. | Implementar Leave-One-Shape-Out usando `shape_id` como grupo y reportarlo como protocolo principal de generalizacion temporal. |
+| M1: features de inferencia inconsistentes | Resuelto | `ScenarioPredictor` calcula `q_pico_nodo` y el acumulado con los picos reales y los ancestros topologicos; ya no usa factor promedio. Predice todos los junctions. | Para escenarios con hidrogramas espaciales no sincronicos, reemplazar el unico `tiempo_al_pico_h` representativo por descriptores por nodo o por cuenca. |
+| M2: extrapolacion silenciosa | Resuelto para magnitud; parcial para forma | La salida incluye `extrapolated` para picos nodales fuera de `[0.2, 5.0]`. | Crear tambien una etiqueta de forma fuera de entrenamiento; el flag actual no detecta una forma temporal nueva con pico dentro de rango. |
+| M3: simulacion truncada | Parcial | Se agrega un punto de caudal cero y `drain_down_hours=6.0`; hay advertencia si el CSV no termina cerca de cero. | Verificar automaticamente que al final de la simulacion ya no haya inundacion/carga relevante; seis horas es un valor fijo, no una prueba de drenaje. |
+| M4: nodos sin aporte directo excluidos | Resuelto | La verdad SWMM y las predicciones se construyen sobre todos los nodos del predictor y se valida igualdad de conjuntos. | Mantener prueba automatizada. |
+| M5/MO3: umbral y unidades | Resuelto | El umbral configurado es 1 m3 y entrenamiento/validacion usan `extract_labels`; la validacion exige LPS, revisa hash del INP y alerta sobre ponding. | Documentar la regla de conciliacion clasificador-regresor: hoy un nodo puede tener `inunda_pred=1` y volumen predicho menor que el umbral. |
+| MO1: proxy de pico acumulado | Pendiente | `q_pico_acum_escalado` suma picos de ancestros, sin desfases, atenuacion ni cuello de botella aguas abajo. | Evaluar capacidad minima hasta outfall y features temporales de excedencia; documentar la limitacion si no se implementa. |
+| MO2: metricas que ocultan errores | Resuelto en gran parte | Se guardan CSI, precision, recall, F1, PR-AUC, MAE/RMSE en nodos inundados, metricas por escenario y R2 por nodo. | Agregar una metrica de error relativo por nodo inundado si se necesita comparar escenarios de distinta escala. |
+| MO5: total de volumen por escenario | Resuelto | Cada corrida genera `scenario_totals.csv` y `totals_comparison.png`. | Mantenerlo como figura/tabla de tesis. |
+| MO6: tiempos SWMM vs ML | Resuelto | `timings.csv` separa escritura, SWMM, parseo, features, inferencia, carga y features estaticas. En CPU, los casos revisados muestran aproximadamente 9-11x (ultrafast) y 29-51x (marathon). | Repetir medicion en la maquina final y, si se prueba una red neuronal, reportar CPU/GPU por separado. |
+
+### Evidencia de extrapolacion temporal disponible
+
+Las cinco formas de validacion ordinaria se usaron durante entrenamiento y prueban nuevos factores de carga. Las dos formas realmente nuevas son `val_extrap_ultrafast_20min` y `val_extrap_marathon_20h`.
+
+| Forma nueva | Factor de referencia | CSI | Volumen SWMM | Volumen XGBoost | Error total |
+|---|---:|---:|---:|---:|---:|
+| Ultrafast, 20 min | 3.7 | 0.889 | 829 m3 | 623 m3 | -24.9% |
+| Marathon, 20 h | 2.5 | 0.941 | 28,227 m3 | 23,801 m3 | -15.7% |
+
+La clasificacion espacial es buena en ambos ejemplos, pero el modelo subestima el volumen total para las formas no vistas. Estos dos casos son evidencia inicial, no una demostracion suficiente de generalizacion. Los casos ultrafast de baja intensidad con error de continuidad SWMM superior a 5% deben quedar marcados como referencia hidraulica menos confiable.
+
+### Trabajo recomendado para cerrar con otro agente
+
+1. **Implementar Leave-One-Shape-Out (prioridad 1).** Extender los protocolos de `ml/bench` para crear folds por `shape_id`, guardar el protocolo junto a LOSO y GroupKFold5, y producir metricas OOF comparables. Aceptacion: ningun `shape_id` presente en test puede aparecer en train dentro del mismo fold; la tabla de resultados debe incluir media, dispersion y resultado por forma retenida.
+2. **Agregar features de evento (prioridad 2).** Calcular por nodo el volumen integrado, duracion efectiva y excedencia respecto a `upstream_capacity_lps`; actualizar contrato, ensamblado, inferencia y pruebas. Aceptacion: el mismo feature frame se obtiene en entrenamiento e inferencia y el modelo se reentrena bajo el protocolo Leave-One-Shape-Out.
+3. **Cerrar el drenaje y la trazabilidad (prioridad 3).** Persistir una comprobacion final de drenaje/continuidad por escenario y regenerar el manifiesto de promocion de modelos. Los `joblib` activos fueron modificados el 2026-09-15, mientras `promotion.json` registra una promocion anterior (2026-09-07). Aceptacion: cada resultado de validacion identifica hashes del INP, dataset, modelo y protocolo.
+4. **Decidir si vale una red neuronal (prioridad 4).** Ejecutar primero el XGBoost enriquecido contra el baseline bajo los mismos folds. Solo pasar al scaffold temporal CNN/LSTM si Leave-One-Shape-Out muestra una brecha que las features agregadas no cierran.
+5. **Reevaluar todas las familias de modelos despues de los cambios (prioridad 1, junto con Leave-One-Shape-Out).** Ejecutar XGBoost, random forest, modelo lineal, SVM y MLP con exactamente el mismo dataset, particiones por `shape_id`, metricas y regla de promocion. No asumir que XGBoost seguira siendo el mejor: la diversidad de formas y las nuevas features pueden favorecer otra familia. Aceptacion: producir una tabla unica por familia con metricas OOF de clasificacion, volumen end-to-end, dispersion entre formas y tiempo de inferencia; promover un modelo solo si mejora la metrica primaria sin degradacion material de CSI ni de volumen total.
+
+### Estado de optimizacion y Naive Bayes
+
+- **Optuna no esta implementado ni forma parte del benchmark activo.** El banco tiene un punto de enganche: `evaluate_candidate()` recibe hiperparametros y puede ser usado como objetivo. Sin embargo, no existe `bench/tune.py`, no hay dependencia `optuna` en uso y los parametros de `config.yaml` son fijos. Los documentos bajo `docs/superpowers/` son un diseno/plan pendiente, no evidencia de una busqueda ejecutada.
+- **Naive Bayes no esta integrado.** El registro activo solo contiene XGBoost, random forest, lineal, SVM y MLP. Ademas, Naive Bayes resuelve clasificacion, no regresion de volumen; para compararlo habria que definir un regresor separado y mantener la evaluacion end-to-end. Es un baseline clasificatorio opcional, de baja prioridad frente a reevaluar las cinco familias ya disponibles y ajustar sus hiperparametros de manera anidada.
+- Si se implementa Optuna, la seleccion de hiperparametros debe ocurrir solamente dentro del entrenamiento de cada fold Leave-One-Shape-Out. La forma retenida no puede participar ni en el ajuste de parametros ni en la comparacion final; de otro modo se filtraria informacion y se sobreestimaria el desempeno.
+### Fase posterior: optimizacion del modelo seleccionado
+
+Esta fase se ejecutara solamente despues de completar las prioridades 1 a 5 anteriores: features de evento, Leave-One-Shape-Out, reevaluacion completa de familias, drenaje y trazabilidad. Su objetivo es mejorar el mejor candidato sin usar la forma retenida como informacion de ajuste.
+
+1. **Seleccionar la familia candidata.** Elegirla con las metricas OOF Leave-One-Shape-Out ya producidas, aplicando la regla de promocion definida. XGBoost no se da por supuesto como ganador.
+2. **Implementar y ejecutar Optuna.** Usar Optuna para buscar hiperparametros del clasificador y regresor de la familia ganadora. La busqueda debe ocurrir dentro de cada fold de entrenamiento; `shape_id` retenido queda completamente aislado hasta la evaluacion final. Guardar semilla, espacio de busqueda, numero de trials, tiempo, parametros ganadores y resultados por fold.
+3. **Reentrenar y comparar.** Comparar el modelo ajustado contra la configuracion fija usando exactamente los mismos folds, con CSI, metricas de volumen end-to-end, totales por escenario, dispersion por forma y tiempo de inferencia. Promoverlo solo si la mejora es reproducible y no degrada materialmente los demas criterios.
+4. **Naive Bayes (opcional).** Puede agregarse despues como baseline de clasificacion de bajo costo para `inunda`, pero no sustituye el pipeline completo porque no estima `vol_inundacion_m3`. Si se incluye, debe presentarse solo frente a los clasificadores y no como competidor directo del surrogate clasificacion + volumen.

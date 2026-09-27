@@ -68,6 +68,7 @@ ml_outputs/
 *.csv
 !data/hydrographs/*.csv
 !data/hydrograph_shapes/*.csv
+!data/hydrograph_validation/*.csv
 *.xlsx
 *.png
 
@@ -88,3 +89,6 @@ data/networks/**/*.ini
 *.db-shm
 *.db-journal
 *.workflow.lock
+
+# Salidas de validacion generadas
+validation_output/
