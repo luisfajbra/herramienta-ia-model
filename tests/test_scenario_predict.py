@@ -335,3 +335,46 @@ def test_predict_timed_shape_features_vary_with_duration(monkeypatch, tmp_path):
     dur_5h = captured_Xs[1]["duracion_horas"].iloc[0]
     assert dur_2h == pytest.approx(2.0)
     assert dur_5h == pytest.approx(5.0)
+
+
+# ---------------------------------------------------------------------------
+# compute_tributary_dynamic_features (fase B2, Task 4)
+# ---------------------------------------------------------------------------
+
+def test_compute_tributary_dynamic_features_returns_one_row_per_node():
+    import networkx as nx
+    from swmm_resilience.extraction.dynamic_features import compute_tributary_dynamic_features
+
+    graph = nx.DiGraph()
+    graph.add_edge("A", "B")
+    node_series = {
+        "A": [(0.0, 1.0), (1.0, 2.0)],
+        "B": [(0.0, 0.5), (1.0, 0.5)],
+    }
+    capacity_by_node = {"A": 10.0, "B": None}
+
+    df = compute_tributary_dynamic_features(["A", "B"], node_series, graph, capacity_by_node)
+
+    assert sorted(df["node_id"]) == ["A", "B"]
+    assert {
+        "volumen_local_integrado_m3", "volumen_tributario_integrado_m3",
+        "duracion_efectiva_tributario_h", "tiempo_primer_pico_tributario_h",
+        "tiempo_sobre_capacidad_h", "integral_exceso_capacidad_m3",
+    }.issubset(df.columns)
+    row_b = df.loc[df["node_id"] == "B"].iloc[0]
+    assert row_b["tiempo_sobre_capacidad_h"] is None or pd.isna(row_b["tiempo_sobre_capacidad_h"])
+
+
+def test_compute_tributary_dynamic_features_handles_a_node_with_no_own_series():
+    """Un nodo con base_inflow == 0 nunca aparece en node_series; debe seguir
+    recibiendo una fila (con volumen local 0), no romper la extraccion."""
+    import networkx as nx
+    from swmm_resilience.extraction.dynamic_features import compute_tributary_dynamic_features
+
+    graph = nx.DiGraph()
+    graph.add_node("no_inflow")
+    df = compute_tributary_dynamic_features(
+        ["no_inflow"], {}, graph, {"no_inflow": 5.0},
+    )
+    assert len(df) == 1
+    assert df.iloc[0]["volumen_local_integrado_m3"] == 0.0

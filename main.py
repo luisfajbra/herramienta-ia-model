@@ -26,7 +26,7 @@ from swmm_resilience.database.training_queries import load_training_frame
 from swmm_resilience.extraction.dynamic_features import compute_dynamic_features
 from swmm_resilience.extraction.labels import extract_labels
 from swmm_resilience.extraction.static_features import extract_static_features
-from swmm_resilience.extraction.topology import compute_topology_features
+from swmm_resilience.extraction.topology import build_network_graph, compute_topology_features
 from swmm_resilience.ml.evaluator import evaluate_models
 from swmm_resilience.ml.feature_importance import generate_feature_importance_plots
 from swmm_resilience.ml.predict import predict_network
@@ -1075,6 +1075,7 @@ def main():
                 f"= {n_extra} simulaciones SWMM adicionales..."
             )
             shape_results = run_batch_shapes(config, shapes, base_inflows, run_dir)
+            graph, _ = build_network_graph(_load_inp(config.network.inp_path))
             for shape_id, factor, rpt_path in shape_results:
                 dur_h, t_pico_h = get_shape_stats(shapes[shape_id])
                 dynamic_df = compute_dynamic_features(
@@ -1083,6 +1084,36 @@ def main():
                     tiempo_al_pico_h=t_pico_h,
                 )
                 dynamic_df["shape_id"] = shape_id
+
+                from swmm_resilience.simulation.hydrograph_shapes import apply_shape
+                from swmm_resilience.simulation.inflow_closure import apply_closure_policy
+                from swmm_resilience.validation.hydrograph_csv import HydrographScenario
+                from swmm_resilience.extraction.dynamic_features import (
+                    compute_tributary_dynamic_features,
+                )
+
+                node_series_for_features = apply_shape(shapes[shape_id], base_inflows, factor)
+                time_grid = [t for t, _ in shapes[shape_id]]
+                effective_scenario, _ = apply_closure_policy(
+                    HydrographScenario(
+                        scenario_id=f"{shape_id}_f{factor:.3f}",
+                        node_series=node_series_for_features,
+                        time_grid_hours=time_grid,
+                        last_time_hours=shapes[shape_id][-1][0],
+                    ),
+                    config.validation.inflow_closure_tolerance_lps,
+                )
+                capacity_by_node = dict(
+                    zip(
+                        static_topo_df["node_id"].astype(str),
+                        static_topo_df["upstream_capacity_lps"],
+                    )
+                )
+                tributary_df = compute_tributary_dynamic_features(
+                    all_node_ids, effective_scenario.node_series, graph, capacity_by_node,
+                )
+                dynamic_df = dynamic_df.merge(tributary_df, on="node_id", how="left")
+
                 labels_df = extract_labels(
                     rpt_path, all_node_ids, config.dataset.flood_threshold_m3
                 )

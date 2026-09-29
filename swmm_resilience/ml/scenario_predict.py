@@ -16,7 +16,10 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from ..extraction.dynamic_features import compute_scenario_dynamic_features
+from ..extraction.dynamic_features import (
+    compute_scenario_dynamic_features,
+    compute_tributary_dynamic_features,
+)
 from ..extraction.static_features import extract_static_features
 from ..extraction.topology import build_network_graph, compute_topology_features
 from ..ml.trainer import FEATURE_COLS
@@ -122,6 +125,14 @@ class ScenarioPredictor:
             duracion_horas=duracion_horas,
             tiempo_al_pico_h=tiempo_al_pico_h,
         )
+        capacity_by_node = dict(
+            zip(self.full_df["node_id"].astype(str), self.full_df["upstream_capacity_lps"])
+        )
+        tributary_df = compute_tributary_dynamic_features(
+            list(self.full_df["node_id"].astype(str)),
+            scenario.node_series, self.graph, capacity_by_node,
+        )
+        dynamic_df = dynamic_df.merge(tributary_df, on="node_id", how="left")
         static_base = self.full_df.drop(
             columns=[
                 c
