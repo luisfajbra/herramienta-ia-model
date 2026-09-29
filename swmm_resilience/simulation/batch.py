@@ -16,6 +16,45 @@ def run_batch(config: Config, run_dir: Path) -> list:
     return results
 
 
+def _prepare_closed_scenario_inp(
+    config,
+    shape_id: str,
+    factor: float,
+    shape: "list[tuple[float, float]]",
+    time_grid: "list[float]",
+    base_inflows: "dict[str, float]",
+    run_dir: Path,
+) -> "tuple[Path, Path]":
+    """Construye el escenario de (shape_id, factor), lo cierra, guarda el
+    manifiesto y escribe el .inp. Devuelve (scenario_inp_path, rpt_path).
+
+    Se extrajo de run_batch_shapes para que el cierre del aporte sea
+    comprobable sin necesidad de simular con pyswmm de verdad.
+    """
+    from .hydrograph_shapes import apply_shape
+    from .inflow_closure import apply_closure_policy, save_closure_manifest
+    from .timeseries_scenario import write_scenario_inp
+    from ..validation.hydrograph_csv import HydrographScenario
+
+    node_series = apply_shape(shape, base_inflows, factor)
+    scenario = HydrographScenario(
+        scenario_id=f"{shape_id}_f{factor:.3f}",
+        node_series=node_series,
+        time_grid_hours=time_grid,
+        last_time_hours=shape[-1][0],
+    )
+    scenario, closure_manifest = apply_closure_policy(
+        scenario, config.validation.inflow_closure_tolerance_lps
+    )
+    shape_run_dir = run_dir / shape_id
+    save_closure_manifest(closure_manifest, shape_run_dir, scenario.scenario_id)
+    scenario_inp = write_scenario_inp(
+        config.network.inp_path, scenario, shape_run_dir,
+        drain_down_hours=config.validation.drain_down_hours,
+    )
+    return scenario_inp, scenario_inp.with_suffix(".rpt")
+
+
 def run_batch_shapes(
     config: Config,
     shapes: "dict[str, list[tuple[float, float]]]",
@@ -29,19 +68,14 @@ def run_batch_shapes(
     Returns list of (shape_id, factor, rpt_path).
     """
     from pyswmm import Simulation as _Simulation
-    from .timeseries_scenario import write_scenario_inp
-    from .hydrograph_shapes import apply_shape
-    from ..validation.hydrograph_csv import HydrographScenario
 
     factors = config.factors()
-    drain_down = config.validation.drain_down_hours
     total = len(shapes) * len(factors)
     results = []
     i = 0
 
     for shape_id, shape in shapes.items():
         time_grid = [t for t, _ in shape]
-        last_time = shape[-1][0]
 
         for factor in factors:
             i += 1
@@ -49,22 +83,12 @@ def run_batch_shapes(
                 f"  [{i:>3}/{total}] shape={shape_id:<20} factor={factor:.2f}",
                 end=" ... ", flush=True,
             )
-            node_series = apply_shape(shape, base_inflows, factor)
-            scenario = HydrographScenario(
-                scenario_id=f"{shape_id}_f{factor:.3f}",
-                node_series=node_series,
-                time_grid_hours=time_grid,
-                last_time_hours=last_time,
-            )
-            shape_run_dir = run_dir / shape_id
-            scenario_inp = write_scenario_inp(
-                config.network.inp_path, scenario, shape_run_dir,
-                drain_down_hours=drain_down,
+            scenario_inp, rpt_path = _prepare_closed_scenario_inp(
+                config, shape_id, factor, shape, time_grid, base_inflows, run_dir,
             )
             with _Simulation(str(scenario_inp)) as sim:
                 for _ in sim:
                     pass
-            rpt_path = scenario_inp.with_suffix(".rpt")
             if not rpt_path.exists():
                 raise FileNotFoundError(f"SWMM no generó .rpt: {rpt_path}")
             results.append((shape_id, factor, rpt_path))
