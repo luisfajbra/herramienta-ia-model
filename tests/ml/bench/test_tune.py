@@ -1,9 +1,18 @@
+import json
+
 import numpy as np
 import pandas as pd
 import pytest
 import optuna
 
-from swmm_resilience.ml.bench.tune import build_tuning_folds, SEARCH_SPACES, _sample_params
+from swmm_resilience.ml.bench.preprocess import prepare_dataset
+from swmm_resilience.ml.bench.tune import (
+    build_tuning_folds,
+    SEARCH_SPACES,
+    _sample_params,
+    run_study,
+    save_tune_result,
+)
 
 
 def _keys_six_shapes() -> pd.DataFrame:
@@ -92,3 +101,59 @@ def test_sample_params_does_not_collide_between_classifier_and_regressor_in_the_
 
     assert set(clf_params) == set(SEARCH_SPACES["xgboost"]["classifier"])
     assert set(reg_params) == set(SEARCH_SPACES["xgboost"]["regressor"])
+
+
+@pytest.fixture
+def prepared_six_shapes(sql_training_db_six_shapes, tmp_path):
+    return prepare_dataset(
+        sql_training_db_six_shapes,
+        protocols=("LeaveOneShapeOut",),
+        flood_threshold_m3=1.0,
+        output_dir=tmp_path / "prepared",
+    )
+
+
+def test_run_study_returns_a_finite_best_value_and_matching_param_keys(prepared_six_shapes):
+    result = run_study(prepared_six_shapes, "xgboost", n_trials=2, n_splits=5)
+
+    assert result.family == "xgboost"
+    assert result.prep_id == prepared_six_shapes.prep_id
+    assert result.n_trials == 2
+    assert len(result.trials) == 2
+    assert np.isfinite(result.best_value)
+    assert set(result.best_classifier_params) == set(SEARCH_SPACES["xgboost"]["classifier"])
+    assert set(result.best_regressor_params) == set(SEARCH_SPACES["xgboost"]["regressor"])
+    assert result.status == "estimacion_exploratoria_condicionada"
+    assert "holdout" in result.status_reason
+
+
+def test_run_study_rejects_a_family_with_too_few_shapes_for_the_inner_cv(prepared_six_shapes):
+    with pytest.raises(ValueError, match="99"):
+        run_study(prepared_six_shapes, "xgboost", n_trials=1, n_splits=99)
+
+
+def test_save_tune_result_writes_the_declared_schema(prepared_six_shapes, tmp_path):
+    result = run_study(prepared_six_shapes, "xgboost", n_trials=2, n_splits=5)
+    path = save_tune_result(result, tmp_path / "tuning")
+
+    assert path.exists()
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    for key in (
+        "family", "prep_id", "inner_cv", "objective_metric", "direction",
+        "n_trials", "seed", "optuna_version", "started_at_utc", "finished_at_utc",
+        "duration_s", "trials", "best_classifier_params", "best_regressor_params",
+        "best_value", "status", "status_reason",
+    ):
+        assert key in payload, f"falta {key} en study.json"
+    assert payload["inner_cv"] == {
+        "method": "GroupKFold", "n_splits": 5, "group_column": "shape_id"
+    }
+    assert payload["status"] == "estimacion_exploratoria_condicionada"
+
+
+def test_save_tune_result_never_touches_outputs_models(prepared_six_shapes, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    result = run_study(prepared_six_shapes, "xgboost", n_trials=2, n_splits=5)
+    save_tune_result(result, tmp_path / "outputs" / "bench" / "tuning")
+
+    assert not (tmp_path / "outputs" / "models").exists()
