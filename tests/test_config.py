@@ -138,3 +138,26 @@ def test_validation_rejects_an_unknown_csv_inflow_closure_mode(tmp_path):
     )
     with pytest.raises(ValueError, match="strict.*close|close.*strict"):
         load_config(cfg)
+
+
+def test_validation_drainage_state_defaults(tmp_path):
+    config = load_config(write_config(tmp_path))
+    assert config.validation.drainage_inflow_tolerance_lps == 0.01
+    assert config.validation.drainage_flooding_tolerance_lps == 0.01
+    assert config.validation.drainage_storage_change_tolerance_m3 == 0.01
+    assert config.validation.drainage_tail_window_hours == 1.0
+
+
+def test_validation_drainage_state_is_parsed_when_present(tmp_path):
+    cfg = _write_config_with_validation_block(
+        tmp_path,
+        '  drainage_inflow_tolerance_lps: 0.05\n'
+        '  drainage_flooding_tolerance_lps: 0.05\n'
+        '  drainage_storage_change_tolerance_m3: 0.1\n'
+        '  drainage_tail_window_hours: 2.0',
+    )
+    config = load_config(cfg)
+    assert config.validation.drainage_inflow_tolerance_lps == 0.05
+    assert config.validation.drainage_flooding_tolerance_lps == 0.05
+    assert config.validation.drainage_storage_change_tolerance_m3 == 0.1
+    assert config.validation.drainage_tail_window_hours == 2.0

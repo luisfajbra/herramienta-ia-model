@@ -17,6 +17,10 @@ validation:
   drain_down_hours: 6.0
   inflow_closure_tolerance_lps: 0.01
   csv_inflow_closure_mode: "strict"
+  drainage_inflow_tolerance_lps: 0.01
+  drainage_flooding_tolerance_lps: 0.01
+  drainage_storage_change_tolerance_m3: 0.01
+  drainage_tail_window_hours: 1.0
 
 ml:
   classifier:

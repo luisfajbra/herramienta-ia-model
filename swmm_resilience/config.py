@@ -256,6 +256,10 @@ class ValidationConfig:
     drain_down_hours: float = 6.0
     inflow_closure_tolerance_lps: float = 0.01
     csv_inflow_closure_mode: str = "strict"  # "strict" | "close"
+    drainage_inflow_tolerance_lps: float = 0.01
+    drainage_flooding_tolerance_lps: float = 0.01
+    drainage_storage_change_tolerance_m3: float = 0.01
+    drainage_tail_window_hours: float = 1.0
 
 
 BENCH_PROTOCOLS = ("LeaveOneShapeOut", "LOSO", "GroupKFold5")
@@ -457,6 +461,18 @@ def load_config(config_path: str = "config.yaml") -> Config:
                 (raw.get("validation") or {}).get("inflow_closure_tolerance_lps", 0.01)
             ),
             csv_inflow_closure_mode=csv_inflow_closure_mode,
+            drainage_inflow_tolerance_lps=float(
+                (raw.get("validation") or {}).get("drainage_inflow_tolerance_lps", 0.01)
+            ),
+            drainage_flooding_tolerance_lps=float(
+                (raw.get("validation") or {}).get("drainage_flooding_tolerance_lps", 0.01)
+            ),
+            drainage_storage_change_tolerance_m3=float(
+                (raw.get("validation") or {}).get("drainage_storage_change_tolerance_m3", 0.01)
+            ),
+            drainage_tail_window_hours=float(
+                (raw.get("validation") or {}).get("drainage_tail_window_hours", 1.0)
+            ),
         ),
         bench=_parse_bench(raw.get("bench")),
     )
