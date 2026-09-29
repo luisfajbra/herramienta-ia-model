@@ -1,6 +1,7 @@
 """Tests for swmm_resilience.validation.hydrograph_batch.run_batch_validation."""
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -19,6 +20,18 @@ from swmm_resilience.visualization import model_comparison
 _NODES = ["J1", "J2"]
 
 _FAKE_SCENARIO = HydrographScenario(
+    scenario_id="sc001",
+    node_series={
+        "J1": [(0.0, 0.0), (1.0, 0.0)],
+        "J2": [(0.0, 0.0), (1.0, 0.0)],
+    },
+    time_grid_hours=[0.0, 1.0],
+    last_time_hours=1.0,
+)
+
+# Ends at non-zero values on purpose: used only by the two inflow-closure
+# tests below, which need a scenario the strict/close policy actually acts on.
+_FAKE_SCENARIO_UNCLOSED = HydrographScenario(
     scenario_id="sc001",
     node_series={
         "J1": [(0.0, 0.0), (1.0, 50.0)],
@@ -244,6 +257,56 @@ def test_run_batch_validation_derives_expected_nodes_from_base_inp(
     _run(tmp_path, csv_dir)
 
     assert captured["expected_nodes"] == {"J1", "J2"}
+
+
+def test_strict_mode_rejects_a_csv_that_does_not_end_at_zero(monkeypatch, tmp_path):
+    """csv_inflow_closure_mode='strict' (default) aborta con un mensaje claro
+    y nunca llega a escribir un .inp."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch,
+        "load_scenario",
+        lambda csv_path, expected_nodes: _FAKE_SCENARIO_UNCLOSED,
+    )
+
+    with pytest.raises(ValueError, match="J1|J2"):
+        _run(tmp_path, csv_dir, csv_inflow_closure_mode="strict")
+
+
+def test_close_mode_closes_the_scenario_before_writing_the_inp(monkeypatch, tmp_path):
+    """csv_inflow_closure_mode='close' cierra el escenario y deja un manifiesto
+    junto al .inp, en vez de rechazarlo."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    fake_inp, _ = _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch,
+        "load_scenario",
+        lambda csv_path, expected_nodes: _FAKE_SCENARIO_UNCLOSED,
+    )
+
+    received: dict = {}
+
+    def _capture_write_scenario_inp(base_inp_path, scenario, out_dir, drain_down_hours=6.0):
+        received["scenario"] = scenario
+        return fake_inp
+
+    monkeypatch.setattr(hydrograph_batch, "write_scenario_inp", _capture_write_scenario_inp)
+
+    _run(tmp_path, csv_dir, csv_inflow_closure_mode="close")
+
+    closed = received["scenario"]
+    assert closed.node_series["J1"][-1] == (2.0, 0.0)  # paso de malla 1.0-0.0=1.0
+    assert closed.node_series["J2"][-1] == (2.0, 0.0)
+
+    manifest_path = tmp_path / "out" / "inp" / "sc001.closure_manifest.json"
+    assert manifest_path.exists()
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert sorted(payload["changed_nodes"]) == ["J1", "J2"]
 
 
 # ---------------------------------------------------------------------------

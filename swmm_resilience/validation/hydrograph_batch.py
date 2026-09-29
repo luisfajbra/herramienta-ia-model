@@ -32,6 +32,9 @@ from ..analysis.model_comparison import (
 )
 from ..extraction.labels import extract_labels
 from ..ml.scenario_predict import ScenarioPredictor
+from ..simulation.inflow_closure import (
+    apply_closure_policy, enforce_strict_zero_endpoint, save_closure_manifest,
+)
 from ..simulation.swmm_api_io import get_node_timeseries_map, load_inp
 from ..simulation.timeseries_scenario import write_scenario_inp
 from ..validation.hydrograph_csv import HydrographScenario, load_scenario
@@ -224,6 +227,8 @@ def run_batch_validation(
     drain_down_hours: float = 6.0,
     allow_inp_mismatch: bool = False,
     factor_range: tuple[float, float] | None = None,
+    csv_inflow_closure_mode: str = "strict",
+    inflow_closure_tolerance_lps: float = 0.01,
 ) -> dict:
     """Run batch validation of ML predictions against SWMM simulations.
 
@@ -253,6 +258,13 @@ def run_batch_validation(
     factor_range:
         (factor_min, factor_max) of the training sweep; used to flag
         per-node extrapolation. None disables flagging.
+    csv_inflow_closure_mode:
+        ``"strict"`` (default) rejects a CSV scenario whose inflow does not
+        end at (near) zero. ``"close"`` applies the same linear closure
+        policy used for generated shapes instead of rejecting it.
+    inflow_closure_tolerance_lps:
+        Tolerance (L/s) below which a node's final inflow value is treated
+        as already zero, for both the strict check and the close policy.
 
     Returns
     -------
@@ -293,6 +305,15 @@ def run_batch_validation(
     for csv_path in csv_files:
         # Step a: load scenario
         scenario = load_scenario(csv_path, expected_nodes)
+
+        # Step a.5: enforce/apply the inflow closure policy
+        if csv_inflow_closure_mode == "close":
+            scenario, closure_manifest = apply_closure_policy(
+                scenario, inflow_closure_tolerance_lps
+            )
+            save_closure_manifest(closure_manifest, inp_dir, scenario.scenario_id)
+        else:
+            enforce_strict_zero_endpoint(scenario, inflow_closure_tolerance_lps)
 
         # Step b: write scenario-specific .inp (with drain-down buffer)
         t0 = time.perf_counter()

@@ -560,6 +560,8 @@ def main():
                 expected_nodes=expected_nodes,
                 drain_down_hours=config.validation.drain_down_hours,
                 factor_range=(config.simulation.factor_min, config.simulation.factor_max),
+                csv_inflow_closure_mode=config.validation.csv_inflow_closure_mode,
+                inflow_closure_tolerance_lps=config.validation.inflow_closure_tolerance_lps,
             )
             cls = summary["classification"]
             vol = summary["volume"]
@@ -645,6 +647,8 @@ def main():
                 expected_nodes=expected_nodes,
                 drain_down_hours=config.validation.drain_down_hours,
                 factor_range=(config.simulation.factor_min, config.simulation.factor_max),
+                csv_inflow_closure_mode=config.validation.csv_inflow_closure_mode,
+                inflow_closure_tolerance_lps=config.validation.inflow_closure_tolerance_lps,
             )
             cls = summary["classification"]
             vol = summary["volume"]
@@ -772,6 +776,8 @@ def main():
                 drain_down_hours=config.validation.drain_down_hours,
                 allow_inp_mismatch=args.allow_inp_mismatch,
                 factor_range=(config.simulation.factor_min, config.simulation.factor_max),
+                csv_inflow_closure_mode=config.validation.csv_inflow_closure_mode,
+                inflow_closure_tolerance_lps=config.validation.inflow_closure_tolerance_lps,
             )
             cls = summary["classification"]
             vol = summary["volume"]
@@ -810,6 +816,14 @@ def main():
             factor_range = (config.simulation.factor_min, config.simulation.factor_max)
         except Exception:
             factor_range = None
+        try:
+            csv_inflow_closure_mode = config.validation.csv_inflow_closure_mode
+        except Exception:
+            csv_inflow_closure_mode = "strict"
+        try:
+            inflow_closure_tolerance_lps = config.validation.inflow_closure_tolerance_lps
+        except Exception:
+            inflow_closure_tolerance_lps = 0.01
 
         from swmm_resilience.validation.hydrograph_batch import run_batch_validation
 
@@ -824,6 +838,8 @@ def main():
             drain_down_hours=drain_down_hours,
             allow_inp_mismatch=args.allow_inp_mismatch,
             factor_range=factor_range,
+            csv_inflow_closure_mode=csv_inflow_closure_mode,
+            inflow_closure_tolerance_lps=inflow_closure_tolerance_lps,
         )
 
         print("\n" + "=" * 50)
