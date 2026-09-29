@@ -11,13 +11,14 @@ se añada la búsqueda de hiperparámetros, sin modificar este módulo.
 
 from __future__ import annotations
 
+import json
 from typing import Sequence
 
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import GroupKFold, LeaveOneGroupOut
 
-from .schemas import FOLD_COLUMNS, PROTOCOLS
+from .schemas import FOLD_COLUMNS, PROTOCOLS, group_column_for
 
 _GROUPKFOLD_SPLITS = 5
 
@@ -33,7 +34,7 @@ def _validate_groupkfold5_groups(groups: pd.Series) -> None:
 
 def n_folds_for(groups: pd.Series, protocol: str) -> int:
     """Número de folds que producirá ``protocol`` sobre ``groups``."""
-    if protocol == "LOSO":
+    if protocol in ("LOSO", "LeaveOneShapeOut"):
         return int(groups.nunique())
     if protocol == "GroupKFold5":
         _validate_groupkfold5_groups(groups)
@@ -42,7 +43,7 @@ def n_folds_for(groups: pd.Series, protocol: str) -> int:
 
 
 def _splitter(groups: pd.Series, protocol: str):
-    if protocol == "LOSO":
+    if protocol in ("LOSO", "LeaveOneShapeOut"):
         return LeaveOneGroupOut()
     if protocol == "GroupKFold5":
         _validate_groupkfold5_groups(groups)
@@ -58,12 +59,22 @@ def build_folds(groups: pd.Series, protocol: str) -> pd.DataFrame:
     modelo entrenado en otro script, o meses después, use exactamente los
     mismos folds.
     """
+    group_column = group_column_for(protocol)
+    if groups.name != group_column:
+        raise ValueError(
+            f"{protocol} requiere grupos de la columna {group_column!r}; "
+            f"recibido {groups.name!r}"
+        )
     splitter = _splitter(groups, protocol)
     x_dummy = np.zeros((len(groups), 1))
     records: list[dict] = []
     for fold_id, (train_idx, test_idx) in enumerate(
         splitter.split(x_dummy, None, groups.values)
     ):
+        held_out_groups = json.dumps(
+            sorted(str(value) for value in groups.iloc[test_idx].unique()),
+            ensure_ascii=False,
+        )
         for split_name, indices in (("train", train_idx), ("test", test_idx)):
             for sample_idx in sorted(int(value) for value in indices):
                 records.append(
@@ -72,12 +83,16 @@ def build_folds(groups: pd.Series, protocol: str) -> pd.DataFrame:
                         "fold_id": fold_id,
                         "sample_idx": sample_idx,
                         "split": split_name,
+                        "group_column": group_column,
+                        "held_out_groups": held_out_groups,
                     }
                 )
     return pd.DataFrame.from_records(records, columns=list(FOLD_COLUMNS))
 
 
-def build_all_folds(groups: pd.Series, protocols: Sequence[str]) -> pd.DataFrame:
+def build_all_folds(keys: pd.DataFrame, protocols: Sequence[str]) -> pd.DataFrame:
     """Concatena los folds de varios protocolos en un solo frame."""
-    frames = [build_folds(groups, protocol) for protocol in protocols]
-    return pd.concat(frames, ignore_index=True)
+    return pd.concat(
+        [build_folds(keys[group_column_for(protocol)], protocol) for protocol in protocols],
+        ignore_index=True,
+    )

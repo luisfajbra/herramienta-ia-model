@@ -33,13 +33,13 @@ visualization:
 
 _BENCH_YAML = """
 bench:
-  protocols: ["LOSO", "GroupKFold5"]
+  protocols: ["LeaveOneShapeOut", "LOSO", "GroupKFold5"]
   ranking:
     primary_metric: "end_to_end.rmse_vol_todos_nodos"
     primary_direction: "minimize"
     tie_breakers:
       - {metric: "classifier.f1", direction: "maximize"}
-  promote: "auto"
+  promote: "none"
   families:
     xgboost:
       enabled: true
@@ -69,8 +69,8 @@ def test_bench_block_is_parsed(tmp_path):
     config = load_config(_write_config(tmp_path, _BENCH_YAML))
 
     assert config.bench is not None
-    assert config.bench.protocols == ["LOSO", "GroupKFold5"]
-    assert config.bench.promote == "auto"
+    assert config.bench.protocols == ["LeaveOneShapeOut", "LOSO", "GroupKFold5"]
+    assert config.bench.promote == "none"
 
 
 def test_ranking_criterion_is_built_from_the_yaml(tmp_path):
@@ -113,7 +113,7 @@ bench:
 def test_an_unknown_protocol_is_rejected_at_load_time(tmp_path):
     bad = """
 bench:
-  protocols: ["LeaveOneShapeOut"]
+  protocols: ["NotAProtocol"]
   ranking: {primary_metric: "classifier.f1", primary_direction: "maximize", tie_breakers: []}
   promote: "auto"
   families:
@@ -124,7 +124,7 @@ bench:
 
 
 def test_promote_can_name_a_specific_family(tmp_path):
-    named = _BENCH_YAML.replace('promote: "auto"', 'promote: "xgboost"')
+    named = _BENCH_YAML.replace('promote: "none"', 'promote: "xgboost"')
     assert load_config(_write_config(tmp_path, named)).bench.promote == "xgboost"
 
 

@@ -244,7 +244,7 @@ class ValidationConfig:
     drain_down_hours: float = 6.0
 
 
-BENCH_PROTOCOLS = ("LOSO", "GroupKFold5")
+BENCH_PROTOCOLS = ("LeaveOneShapeOut", "LOSO", "GroupKFold5")
 
 # Debe permanecer igual a swmm_resilience.ml.bench.registry.available_families().
 # No se importa registry aquí a propósito: registry importa las cinco familias
@@ -340,7 +340,7 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
                 for item in (ranking_raw.get("tie_breakers") or [])
             ),
         ),
-        promote=str(raw_bench.get("promote", "auto")),
+        promote=str(raw_bench.get("promote", "none")),
         families=families,
     )
 

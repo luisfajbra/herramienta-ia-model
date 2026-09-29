@@ -173,19 +173,12 @@ def _run_bench(args, config) -> None:
         print(f"PreparedDataset {prepared.prep_id}: {prepared.quality['n_rows']} filas, "
               f"{prepared.quality['class_balance']['n_flooded']} inundadas")
     elif args.bench_train or args.bench_evaluate:
-        prepared = resolve_prepared(prepared_dir, args.prep_id)
-        available_protocols = set(prepared.manifest.get("protocols", []))
-        missing_protocols = [
-            protocol for protocol in config.bench.protocols if protocol not in available_protocols
-        ]
-        if missing_protocols:
-            raise SystemExit(
-                f"El PreparedDataset {prepared.prep_id} no cubre el/los protocolo(s) "
-                f"{', '.join(missing_protocols)} que pide config.yaml (bench.protocols). "
-                f"Protocolos disponibles en el PreparedDataset: {', '.join(sorted(available_protocols)) or '(ninguno)'}. "
-                "Corre `python main.py --bench-prepare` de nuevo para regenerarlo con los "
-                "protocolos actuales."
+        try:
+            prepared = resolve_prepared(
+                prepared_dir, args.prep_id, tuple(config.bench.protocols)
             )
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
     else:
         prepared = None
 
@@ -217,18 +210,13 @@ def _run_bench(args, config) -> None:
         print(f"Ranking calculado sobre el protocolo: {ranking_protocol}")
         print(ranking.to_string(index=False))
 
-    if run_all or args.bench_promote:
+    if args.bench_promote:
         chosen = config.bench.promote
-        if chosen == "auto":
-            if ranking is None:
-                raise SystemExit(
-                    "promote: 'auto' necesita un ranking. Corre --bench-evaluate antes, "
-                    "o nombra la familia en config.yaml."
-                )
-            valid = ranking[ranking["valid"] == 1]
-            if valid.empty:
-                raise SystemExit("Ningún candidato tiene una métrica primaria válida.")
-            chosen = valid.iloc[0]["family"]
+        if chosen in {"none", "auto"}:
+            raise SystemExit(
+                "--bench-promote requiere una familia explícita distinta de 'none'; "
+                "config.bench.promote no puede seleccionar automáticamente desde el ranking."
+            )
         record = promote_candidate(
             candidates_dir / chosen, Path("outputs/models"), config.network.inp_path
         )

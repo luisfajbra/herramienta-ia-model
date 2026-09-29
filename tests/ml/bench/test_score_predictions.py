@@ -8,7 +8,6 @@ from swmm_resilience.ml.bench.schemas import (
     KEY_COLUMNS,
     OOF_COLUMNS,
     PreparedDataset,
-    PROTOCOLS,
 )
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
 
@@ -35,11 +34,25 @@ def prepared() -> PreparedDataset:
     )
     folds = pd.DataFrame(
         [
-            {"protocol": "LOSO", "fold_id": 0, "sample_idx": i, "split": "train" if i >= 3 else "test"}
+            {
+                "protocol": "LOSO",
+                "fold_id": 0,
+                "sample_idx": i,
+                "split": "train" if i >= 3 else "test",
+                "group_column": "factor_mult",
+                "held_out_groups": '["1.0"]',
+            }
             for i in range(n)
         ]
         + [
-            {"protocol": "LOSO", "fold_id": 1, "sample_idx": i, "split": "train" if i < 3 else "test"}
+            {
+                "protocol": "LOSO",
+                "fold_id": 1,
+                "sample_idx": i,
+                "split": "train" if i < 3 else "test",
+                "group_column": "factor_mult",
+                "held_out_groups": '["2.0"]',
+            }
             for i in range(n)
         ],
         columns=list(FOLD_COLUMNS),
@@ -51,7 +64,7 @@ def prepared() -> PreparedDataset:
         y_clf=pd.Series([0, 1, 1, 0, 1, 1], name="inunda"),
         y_reg=pd.Series([0.0, 10.0, 20.0, 0.0, 30.0, 40.0], name="vol_inundacion_m3"),
         folds=folds,
-        manifest={"prep_id": "0123456789abcdef"},
+        manifest={"prep_id": "0123456789abcdef", "protocols": ["LOSO"]},
         quality={},
     )
 
@@ -201,12 +214,12 @@ def test_regressor_oracle_pools_across_folds_not_averaged():
     )
     folds = pd.DataFrame(
         [
-            {"protocol": "LOSO", "fold_id": 0, "sample_idx": 0, "split": "test"},
-            {"protocol": "LOSO", "fold_id": 0, "sample_idx": 1, "split": "test"},
-            {"protocol": "LOSO", "fold_id": 0, "sample_idx": 2, "split": "train"},
-            {"protocol": "LOSO", "fold_id": 1, "sample_idx": 0, "split": "train"},
-            {"protocol": "LOSO", "fold_id": 1, "sample_idx": 1, "split": "train"},
-            {"protocol": "LOSO", "fold_id": 1, "sample_idx": 2, "split": "test"},
+            {"protocol": "LOSO", "fold_id": 0, "sample_idx": 0, "split": "test", "group_column": "factor_mult", "held_out_groups": '["1.0"]'},
+            {"protocol": "LOSO", "fold_id": 0, "sample_idx": 1, "split": "test", "group_column": "factor_mult", "held_out_groups": '["1.0"]'},
+            {"protocol": "LOSO", "fold_id": 0, "sample_idx": 2, "split": "train", "group_column": "factor_mult", "held_out_groups": '["1.0"]'},
+            {"protocol": "LOSO", "fold_id": 1, "sample_idx": 0, "split": "train", "group_column": "factor_mult", "held_out_groups": '["2.0"]'},
+            {"protocol": "LOSO", "fold_id": 1, "sample_idx": 1, "split": "train", "group_column": "factor_mult", "held_out_groups": '["2.0"]'},
+            {"protocol": "LOSO", "fold_id": 1, "sample_idx": 2, "split": "test", "group_column": "factor_mult", "held_out_groups": '["2.0"]'},
         ],
         columns=list(FOLD_COLUMNS),
     )
@@ -217,7 +230,7 @@ def test_regressor_oracle_pools_across_folds_not_averaged():
         y_clf=pd.Series([1, 1, 1], name="inunda"),
         y_reg=pd.Series([10.0, 20.0, 1000.0], name="vol_inundacion_m3"),
         folds=folds,
-        manifest={"prep_id": "pool_vs_mean"},
+        manifest={"prep_id": "pool_vs_mean", "protocols": ["LOSO"]},
         quality={},
     )
     oof = pd.DataFrame(
@@ -291,7 +304,22 @@ def test_by_factor_values_are_correct_not_just_the_key_set():
         {col: [float(i) for i in range(n)] for col in FEATURE_COLUMNS_V17}
     )
     folds = pd.DataFrame(
-        [{"protocol": "LOSO", "fold_id": 0, "sample_idx": i, "split": "test"} for i in range(n)],
+        [
+            {
+                "protocol": "LOSO",
+                "fold_id": fold_id,
+                "sample_idx": i,
+                "split": (
+                    "test"
+                    if (fold_id == 0 and i < 3) or (fold_id == 1 and i >= 3)
+                    else "train"
+                ),
+                "group_column": "factor_mult",
+                "held_out_groups": f'["{fold_id + 1}.0"]',
+            }
+            for fold_id in (0, 1)
+            for i in range(n)
+        ],
         columns=list(FOLD_COLUMNS),
     )
     prepared = PreparedDataset(
@@ -301,14 +329,14 @@ def test_by_factor_values_are_correct_not_just_the_key_set():
         y_clf=pd.Series([1, 0, 1, 0, 1, 1], name="inunda"),
         y_reg=pd.Series([10.0, 0.0, 20.0, 0.0, 30.0, 40.0], name="vol_inundacion_m3"),
         folds=folds,
-        manifest={"prep_id": "by_factor_values"},
+        manifest={"prep_id": "by_factor_values", "protocols": ["LOSO"]},
         quality={},
     )
     oof = pd.DataFrame(
         {
             "sample_idx": [0, 1, 2, 3, 4, 5],
             "protocol": ["LOSO"] * n,
-            "fold_id": [0] * n,
+            "fold_id": [0, 0, 0, 1, 1, 1],
             "y_pred_clf": [1, 0, 0, 0, 1, 1],
             "y_prob_clf": [1.0, 0.0, 0.0, 0.0, 1.0, 1.0],
             "y_pred_reg": [10.0, 0.0, 500.0, 0.0, 30.0, 40.0],
@@ -328,22 +356,23 @@ def test_by_factor_values_are_correct_not_just_the_key_set():
 def test_each_protocol_is_scored_from_its_own_predictions_not_pooled():
     """El resultado esta indexado por protocolo; LOSO y GroupKFold5 no se
 
-    deben mezclar en un solo balde. Mismas 3 muestras, predicciones
-    perfectas bajo LOSO (f1=1.0) y predicciones "no inunda en todo" bajo
-    GroupKFold5 (f1=0.0) -- si el bucle por protocolo se pierde y todo se
-    agrupa junto, ninguno de los dos numeros sale limpio (y ni siquiera
-    existirian las llaves "LOSO"/"GroupKFold5" por separado).
+    deben mezclar en un solo balde. Mismas 5 muestras, predicciones
+    con etiqueta positiva, predicciones perfectas bajo LOSO (f1=1.0) y
+    predicciones "no inunda en todo" bajo GroupKFold5 (f1=0.0). Asi, el
+    promedio de F1 por fold conserva el contraste: si el bucle por protocolo
+    se pierde y todo se agrupa junto, ninguno de los dos numeros sale limpio
+    (y ni siquiera existirian las llaves "LOSO"/"GroupKFold5" por separado).
     """
-    n = 3
+    n = 5
     keys = pd.DataFrame(
         {
-            "run_id": [1, 1, 1],
+            "run_id": [1] * n,
             "network_id": [1] * n,
-            "scenario_id": [1, 1, 1],
-            "scenario_key": ["base@1.0"] * n,
+            "scenario_id": list(range(1, n + 1)),
+            "scenario_key": [f"base@{value}.0" for value in range(1, n + 1)],
             "scenario_kind": ["base"] * n,
-            "node_id": ["N0", "N1", "N2"],
-            "factor_mult": [1.0] * n,
+            "node_id": [f"N{value}" for value in range(n)],
+            "factor_mult": [float(value) for value in range(1, n + 1)],
             "shape_id": ["base"] * n,
         },
         columns=list(KEY_COLUMNS),
@@ -353,11 +382,16 @@ def test_each_protocol_is_scored_from_its_own_predictions_not_pooled():
     )
     folds = pd.DataFrame(
         [
-            {"protocol": "LOSO", "fold_id": 0, "sample_idx": i, "split": "test"}
-            for i in range(n)
-        ]
-        + [
-            {"protocol": "GroupKFold5", "fold_id": 0, "sample_idx": i, "split": "test"}
+            {
+                "protocol": protocol,
+                "fold_id": fold_id,
+                "sample_idx": i,
+                "split": "test" if i == fold_id else "train",
+                "group_column": "factor_mult",
+                "held_out_groups": f'["{fold_id + 1}.0"]',
+            }
+            for protocol in ("LOSO", "GroupKFold5")
+            for fold_id in range(5)
             for i in range(n)
         ],
         columns=list(FOLD_COLUMNS),
@@ -366,28 +400,31 @@ def test_each_protocol_is_scored_from_its_own_predictions_not_pooled():
         prep_id="two_protocols",
         keys=keys,
         X=X,
-        y_clf=pd.Series([0, 1, 1], name="inunda"),
-        y_reg=pd.Series([0.0, 10.0, 20.0], name="vol_inundacion_m3"),
+        y_clf=pd.Series([1] * n, name="inunda"),
+        y_reg=pd.Series([0.0, 10.0, 20.0, 0.0, 30.0], name="vol_inundacion_m3"),
         folds=folds,
-        manifest={"prep_id": "two_protocols"},
+        manifest={
+            "prep_id": "two_protocols",
+            "protocols": ["LOSO", "GroupKFold5"],
+        },
         quality={},
     )
     oof = pd.DataFrame(
         {
-            "sample_idx": [0, 1, 2, 0, 1, 2],
-            "protocol": ["LOSO"] * 3 + ["GroupKFold5"] * 3,
-            "fold_id": [0, 0, 0, 0, 0, 0],
+            "sample_idx": list(range(n)) * 2,
+            "protocol": ["LOSO"] * n + ["GroupKFold5"] * n,
+            "fold_id": list(range(n)) * 2,
             # LOSO: predicciones perfectas.
             # GroupKFold5: predice "no inunda" en todo -> f1=0.0.
-            "y_pred_clf": [0, 1, 1, 0, 0, 0],
-            "y_prob_clf": [0.0, 1.0, 1.0, 0.0, 0.0, 0.0],
-            "y_pred_reg": [0.0, 10.0, 20.0, 0.0, 0.0, 0.0],
+            "y_pred_clf": [1] * n + [0] * n,
+            "y_prob_clf": [1.0] * n + [0.0] * n,
+            "y_pred_reg": [0.0, 10.0, 20.0, 0.0, 30.0] + [0.0] * n,
         },
         columns=list(OOF_COLUMNS),
     )
 
     result = score_predictions(prepared, oof, {"prep_id": "two_protocols"})
 
-    assert set(result) == set(PROTOCOLS)
+    assert set(result) == {"LOSO", "GroupKFold5"}
     assert result["LOSO"]["classifier"]["f1"] == pytest.approx(1.0)
     assert result["GroupKFold5"]["classifier"]["f1"] == pytest.approx(0.0)
