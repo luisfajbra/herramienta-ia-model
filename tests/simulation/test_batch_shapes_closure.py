@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -145,3 +146,60 @@ def test_prepare_closed_scenario_inp_leaves_an_already_closed_shape_untouched(
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert payload["changed_nodes"] == []
     assert payload["mode"] == "close"
+
+
+def test_run_batch_shapes_classifies_and_saves_drainage_state(monkeypatch, tmp_path):
+    import swmm_resilience.simulation.batch as batch_mod
+
+    fake_inp = _FakeInp()
+    monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
+
+    calls = {}
+
+    def _fake_read(out_path, drain_down_hours, tail_window_hours):
+        calls["read_args"] = (out_path, drain_down_hours, tail_window_hours)
+        return {"n_report_steps": 3, "has_link_data": True}
+
+    def _fake_classify(observables, **kwargs):
+        calls["classify_kwargs"] = kwargs
+        return "drained", {"policy_version": "tail_window_v1", "state": "drained", "failed_checks": []}
+
+    class _FakeSimulation:
+        def __init__(self, inp_path):
+            self._inp_path = Path(inp_path)
+
+        def __enter__(self):
+            self._inp_path.with_suffix(".rpt").touch()
+            self._inp_path.with_suffix(".out").touch()
+            return iter([])
+
+        def __exit__(self, *exc):
+            return False
+
+    import pyswmm
+    monkeypatch.setattr(pyswmm, "Simulation", _FakeSimulation)
+    monkeypatch.setattr(batch_mod, "read_tail_window_observables", _fake_read)
+    monkeypatch.setattr(batch_mod, "classify_drainage_state", _fake_classify)
+
+    config = SimpleNamespace(
+        validation=SimpleNamespace(
+            inflow_closure_tolerance_lps=0.01, drain_down_hours=6.0,
+            drainage_inflow_tolerance_lps=0.01, drainage_flooding_tolerance_lps=0.01,
+            drainage_storage_change_tolerance_m3=0.01, drainage_tail_window_hours=1.0,
+        ),
+        network=SimpleNamespace(inp_path=tmp_path / "base.inp"),
+        factors=lambda: [1.0],
+    )
+    shape = [(0.0, 0.0), (0.05, 1.0), (0.1, 0.0)]
+    shapes = {"storm_z": shape}
+
+    batch_mod.run_batch_shapes(config, shapes, {"1C": 2.0}, tmp_path / "run")
+
+    assert calls["read_args"][1] == 6.0  # drain_down_hours
+    assert calls["read_args"][2] == 1.0  # drainage_tail_window_hours
+    assert calls["classify_kwargs"]["inflow_tolerance_lps"] == 0.01
+
+    manifest_path = tmp_path / "run" / "storm_z" / "storm_z_f1.000.drainage_state.json"
+    assert manifest_path.exists()
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["state"] == "drained"

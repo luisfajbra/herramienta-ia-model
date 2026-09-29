@@ -3,6 +3,9 @@ from pathlib import Path
 
 from .runner import run_simulation_simple as run_simulation
 from ..config import Config
+from ..validation.drainage_state import (
+    classify_drainage_state, read_tail_window_observables, save_drainage_state_manifest,
+)
 
 
 def run_batch(config: Config, run_dir: Path) -> list:
@@ -99,6 +102,21 @@ def run_batch_shapes(
                     pass
             if not rpt_path.exists():
                 raise FileNotFoundError(f"SWMM no generó .rpt: {rpt_path}")
+            out_path = scenario_inp.with_suffix(".out")
+            observables = read_tail_window_observables(
+                out_path, config.validation.drain_down_hours,
+                config.validation.drainage_tail_window_hours,
+            )
+            _, drainage_manifest = classify_drainage_state(
+                observables,
+                inflow_tolerance_lps=config.validation.drainage_inflow_tolerance_lps,
+                flooding_tolerance_lps=config.validation.drainage_flooding_tolerance_lps,
+                storage_change_tolerance_m3=config.validation.drainage_storage_change_tolerance_m3,
+                residual_flow_tolerance_lps=config.validation.drainage_inflow_tolerance_lps,
+            )
+            save_drainage_state_manifest(
+                drainage_manifest, scenario_inp.parent, scenario_inp.stem,
+            )
             results.append((shape_id, factor, rpt_path))
             print("OK")
 
