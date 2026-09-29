@@ -124,6 +124,57 @@ def score_predictions(
     return results
 
 
+def _fit_predict_fold(
+    prepared: PreparedDataset,
+    family_name: str,
+    classifier_params: dict,
+    regressor_params: dict,
+    train_idx: np.ndarray,
+    test_idx: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Ajusta clasificador+regresor SOLO con train_idx, predice sobre test_idx.
+
+    Única función que decide fit/predict de un fold: evaluate_candidate()
+    (folds exteriores de comparación) y tune.py (folds interiores de
+    búsqueda de hiperparámetros) la comparten, así que la garantía de que
+    ningún test toca .fit() vive en un solo lugar.
+
+    Devuelve (y_pred_clf, y_prob_clf, y_pred_reg).
+    """
+    from .registry import get_family
+
+    family = get_family(family_name)
+    X = prepared.X
+    y_clf = prepared.y_clf.to_numpy()
+    y_reg = prepared.y_reg.to_numpy()
+
+    X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+    yc_train = y_clf[train_idx]
+    yr_train = y_reg[train_idx]
+
+    n_negative, n_positive = int((yc_train == 0).sum()), int((yc_train == 1).sum())
+    scale_pos_weight = n_negative / n_positive if n_positive else 1.0
+
+    classifier = family.build_classifier(classifier_params, scale_pos_weight)
+    classifier.fit(X_train, yc_train)
+    yc_pred = classifier.predict(X_test)
+    yc_prob = classifier.predict_proba(X_test)[:, 1]
+
+    flooded_train = yc_train == 1
+    if flooded_train.sum():
+        regressor = family.build_regressor(regressor_params)
+        regressor.fit(X_train.iloc[flooded_train], np.log1p(yr_train[flooded_train]))
+        yr_pred = np.clip(np.expm1(regressor.predict(X_test)), a_min=0.0, a_max=None)
+    else:
+        # Ver el comentario original en evaluate_candidate: divergencia
+        # deliberada de _run_cv cuando el fold no tiene filas inundadas de
+        # entrenamiento -- se predice volumen cero en vez de reventar con
+        # NotFittedError.
+        yr_pred = np.zeros(len(test_idx), dtype=float)
+
+    return yc_pred.astype(int), yc_prob.astype(float), yr_pred.astype(float)
+
+
 def evaluate_candidate(
     prepared: PreparedDataset,
     family_name: str,
@@ -139,45 +190,19 @@ def evaluate_candidate(
     que ``fit`` sobre el train del fold los ajusta SOLO con esas filas. Ahí
     está la garantía anti-fuga en ejecución.
     """
-    from .registry import get_family
-
-    family = get_family(family_name)
-    X = prepared.X
-    y_clf = prepared.y_clf.to_numpy()
-    y_reg = prepared.y_reg.to_numpy()
-
     records: list[pd.DataFrame] = []
     for (protocol, fold_id), chunk in prepared.folds.groupby(["protocol", "fold_id"]):
         train_idx = chunk.loc[chunk["split"] == "train", "sample_idx"].to_numpy()
         test_idx = chunk.loc[chunk["split"] == "test", "sample_idx"].to_numpy()
 
-        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-        yc_train = y_clf[train_idx]
-        yr_train = y_reg[train_idx]
-
-        n_negative, n_positive = int((yc_train == 0).sum()), int((yc_train == 1).sum())
-        scale_pos_weight = n_negative / n_positive if n_positive else 1.0
-
-        classifier = family.build_classifier(classifier_params, scale_pos_weight)
-        classifier.fit(X_train, yc_train)
-        yc_pred = classifier.predict(X_test)
-        yc_prob = classifier.predict_proba(X_test)[:, 1]
-
-        flooded_train = yc_train == 1
-        if flooded_train.sum():
-            regressor = family.build_regressor(regressor_params)
-            regressor.fit(X_train.iloc[flooded_train], np.log1p(yr_train[flooded_train]))
-            yr_pred = np.clip(np.expm1(regressor.predict(X_test)), a_min=0.0, a_max=None)
-        else:
-            # Divergencia deliberada de _run_cv: allí, si el fold no tiene filas
-            # inundadas de entrenamiento, el regresor nunca se ajusta pero el
-            # nivel end-to-end igual puede invocar reg.predict(...), lo que
-            # lanzaría NotFittedError (bug latente no manejado en el código
-            # legado). Aquí predecimos volumen cero explícitamente en su
-            # lugar. Con LOSO sobre los ~25 factores reales cada fold de
-            # entrenamiento tiene filas inundadas, así que esta rama no
-            # afecta al test de paridad.
-            yr_pred = np.zeros(len(test_idx), dtype=float)
+        yc_pred, yc_prob, yr_pred = _fit_predict_fold(
+            prepared,
+            family_name,
+            classifier_params,
+            regressor_params,
+            train_idx,
+            test_idx,
+        )
 
         records.append(
             pd.DataFrame(
