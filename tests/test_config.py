@@ -104,3 +104,37 @@ def test_load_config_defaults_db_path_when_absent(tmp_path):
     cfg = load_config(write_config(tmp_path))
 
     assert cfg.dataset.db_path == tmp_path / "outputs" / "training_v17.sqlite3"
+
+
+def test_validation_inflow_closure_defaults(tmp_path):
+    """write_config() no incluye bloque validation: -- deben aplicar los defaults."""
+    config = load_config(write_config(tmp_path))
+    assert config.validation.inflow_closure_tolerance_lps == 0.01
+    assert config.validation.csv_inflow_closure_mode == "strict"
+
+
+def _write_config_with_validation_block(tmp_path: Path, validation_yaml: str) -> Path:
+    """Como write_config(), pero añade un bloque validation: al final del YAML."""
+    cfg = write_config(tmp_path)
+    text = cfg.read_text(encoding="utf-8")
+    cfg.write_text(text + f"\nvalidation:\n{validation_yaml}\n", encoding="utf-8")
+    return cfg
+
+
+def test_validation_inflow_closure_is_parsed_when_present(tmp_path):
+    cfg = _write_config_with_validation_block(
+        tmp_path,
+        '  drain_down_hours: 6.0\n  inflow_closure_tolerance_lps: 0.05\n'
+        '  csv_inflow_closure_mode: "close"',
+    )
+    config = load_config(cfg)
+    assert config.validation.inflow_closure_tolerance_lps == 0.05
+    assert config.validation.csv_inflow_closure_mode == "close"
+
+
+def test_validation_rejects_an_unknown_csv_inflow_closure_mode(tmp_path):
+    cfg = _write_config_with_validation_block(
+        tmp_path, '  csv_inflow_closure_mode: "auto"',
+    )
+    with pytest.raises(ValueError, match="strict.*close|close.*strict"):
+        load_config(cfg)

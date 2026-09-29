@@ -178,6 +178,18 @@ def _validate_methods(methods: list) -> list[str]:
     return normalized
 
 
+def _validate_csv_inflow_closure_mode(value: str) -> str:
+    """Validate that csv_inflow_closure_mode is either 'strict' or 'close'."""
+    normalized = str(value).strip().lower()
+    valid_modes = {"strict", "close"}
+    if normalized not in valid_modes:
+        raise ValueError(
+            f"Modo desconocido en validation.csv_inflow_closure_mode: {value}. "
+            f"Opciones válidas: {', '.join(sorted(valid_modes))}"
+        )
+    return normalized
+
+
 @dataclass
 class NetworkConfig:
     inp_path: Path
@@ -242,6 +254,8 @@ class VisualizationConfig:
 @dataclass
 class ValidationConfig:
     drain_down_hours: float = 6.0
+    inflow_closure_tolerance_lps: float = 0.01
+    csv_inflow_closure_mode: str = "strict"  # "strict" | "close"
 
 
 BENCH_PROTOCOLS = ("LeaveOneShapeOut", "LOSO", "GroupKFold5")
@@ -382,6 +396,12 @@ def load_config(config_path: str = "config.yaml") -> Config:
     if float(sim["factor_step"]) <= 0:
         raise ValueError("factor_step debe ser mayor que 0")
 
+    # Validation config
+    csv_inflow_closure_mode = str(
+        (raw.get("validation") or {}).get("csv_inflow_closure_mode", "strict")
+    )
+    csv_inflow_closure_mode = _validate_csv_inflow_closure_mode(csv_inflow_closure_mode)
+
     clf = ml["classifier"]
     reg = ml["regressor"]
     return Config(
@@ -433,6 +453,10 @@ def load_config(config_path: str = "config.yaml") -> Config:
             drain_down_hours=float(
                 (raw.get("validation") or {}).get("drain_down_hours", 6.0)
             ),
+            inflow_closure_tolerance_lps=float(
+                (raw.get("validation") or {}).get("inflow_closure_tolerance_lps", 0.01)
+            ),
+            csv_inflow_closure_mode=csv_inflow_closure_mode,
         ),
         bench=_parse_bench(raw.get("bench")),
     )

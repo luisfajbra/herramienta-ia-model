@@ -15,6 +15,8 @@ dataset:
 
 validation:
   drain_down_hours: 6.0
+  inflow_closure_tolerance_lps: 0.01
+  csv_inflow_closure_mode: "strict"
 
 ml:
   classifier:
