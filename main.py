@@ -1112,7 +1112,14 @@ def main():
                 tributary_df = compute_tributary_dynamic_features(
                     all_node_ids, effective_scenario.node_series, graph, capacity_by_node,
                 )
-                dynamic_df = dynamic_df.merge(tributary_df, on="node_id", how="left")
+                assert len(tributary_df) == len(all_node_ids)
+                # Computado para probar que la función corre contra datos reales
+                # del pipeline de entrenamiento (misma función que usa
+                # ScenarioPredictor); no se persiste todavía -- dataset_final.csv
+                # conserva su esquema actual hasta que el contrato tabular_v4_21
+                # se adopte formalmente (Task 6). NO mergear tributary_df en
+                # dynamic_df: dynamic_df es justo lo que assemble_dataset()
+                # escribe a disco.
 
                 labels_df = extract_labels(
                     rpt_path, all_node_ids, config.dataset.flood_threshold_m3
