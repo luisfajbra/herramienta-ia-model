@@ -156,6 +156,7 @@ def test_loading_a_config_with_a_bench_block_does_not_import_torch_or_xgboost(tm
         f"load_config({config_path!r})\n"
         "assert 'torch' not in sys.modules, 'torch got imported by load_config'\n"
         "assert 'xgboost' not in sys.modules, 'xgboost got imported by load_config'\n"
+        "assert 'optuna' not in sys.modules, 'optuna got imported by load_config'\n"
         "print('OK')\n"
     )
     result = subprocess.run(

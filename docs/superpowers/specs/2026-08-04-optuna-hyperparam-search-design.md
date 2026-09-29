@@ -3,6 +3,13 @@
 Fecha: 2026-08-04
 Branch: `feature/optuna-hyperparam-search`
 
+> **Superseded**: este diseño quedó reemplazado por
+> `docs/superpowers/specs/2026-09-29-optuna-tuning-familia-ganadora-design.md`,
+> que tomó un enfoque distinto y más acotado: invocación manual únicamente
+> (vía `--bench-tune`), inner CV agrupada por `shape_id` (no `factor_mult`) y
+> sin reescritura automática de `config.yaml`. No implementar el diseño de
+> este documento sobre `swmm_resilience/ml/bench/tune.py`.
+
 > Estado: **diseño pendiente; no implementado**. Este documento no implica que
 > Optuna esté disponible en el código. Cualquier implementación debe usar el
 > contrato activo de **17 features** definido por `ml/trainer.py`, incluidas

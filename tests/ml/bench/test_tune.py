@@ -132,6 +132,50 @@ def test_run_study_rejects_a_family_with_too_few_shapes_for_the_inner_cv(prepare
         run_study(prepared_six_shapes, "xgboost", n_trials=1, n_splits=99)
 
 
+def test_run_study_survives_a_failing_trial_and_keeps_the_completed_ones(
+    prepared_six_shapes, monkeypatch
+):
+    """Un trial que falla (p.ej. una combinacion de hiperparametros
+    degenerada que rechaza fit()) no debe abortar todo el estudio: Optuna
+    debe marcarlo FAIL internamente y seguir con los trials restantes, y
+    run_study() debe seguir devolviendo un TuneResult con todos los trials
+    -- completos y fallidos -- y un best_value finito (spec §12: un trial
+    malo debe poder descartarse sin destruir el estudio)."""
+    import swmm_resilience.ml.bench.tune as tune_module
+
+    real_fit_predict_fold = tune_module._fit_predict_fold
+    calls = {"count": 0}
+
+    def _flaky_fit_predict_fold(*args, **kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            raise RuntimeError("forced failure for test")
+        return real_fit_predict_fold(*args, **kwargs)
+
+    monkeypatch.setattr(tune_module, "_fit_predict_fold", _flaky_fit_predict_fold)
+
+    result = run_study(prepared_six_shapes, "xgboost", n_trials=3, n_splits=5)
+
+    assert len(result.trials) == 3
+    assert np.isfinite(result.best_value)
+    # el trial fallido no debe haber bloqueado la evaluacion de los siguientes
+    assert calls["count"] > 1
+
+
+def test_run_study_raises_a_clear_error_when_every_trial_fails(
+    prepared_six_shapes, monkeypatch
+):
+    import swmm_resilience.ml.bench.tune as tune_module
+
+    def _always_fail(*args, **kwargs):
+        raise RuntimeError("forced failure for test")
+
+    monkeypatch.setattr(tune_module, "_fit_predict_fold", _always_fail)
+
+    with pytest.raises(ValueError, match="fallaron todos"):
+        run_study(prepared_six_shapes, "xgboost", n_trials=3, n_splits=5)
+
+
 def test_save_tune_result_writes_the_declared_schema(prepared_six_shapes, tmp_path):
     result = run_study(prepared_six_shapes, "xgboost", n_trials=2, n_splits=5)
     path = save_tune_result(result, tmp_path / "tuning")

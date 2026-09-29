@@ -406,6 +406,7 @@ def test_full_bench_run_writes_ranking_without_promoting(
         assert column in ranking.columns
 
     assert not (tmp_path / "outputs" / "models").exists()
+    assert not (tmp_path / "outputs" / "bench" / "tuning").exists()
 
 
 # ── --bench-tune ─────────────────────────────────────────────────────────

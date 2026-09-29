@@ -227,6 +227,7 @@ def run_study(
     study.optimize(
         lambda trial: _objective(trial, prepared, family_name, tuning_folds),
         n_trials=n_trials,
+        catch=(Exception,),
     )
     duration_s = time.perf_counter() - start_perf
     finished = datetime.now(timezone.utc)
@@ -234,13 +235,19 @@ def run_study(
     trials = [
         {
             "number": t.number,
-            "classifier_params": t.user_attrs["classifier_params"],
-            "regressor_params": t.user_attrs["regressor_params"],
+            "classifier_params": t.user_attrs.get("classifier_params"),
+            "regressor_params": t.user_attrs.get("regressor_params"),
             "value": t.value,
             "duration_s": t.duration.total_seconds() if t.duration else None,
         }
         for t in study.trials
     ]
+
+    if not any(t.state == optuna.trial.TrialState.COMPLETE for t in study.trials):
+        raise ValueError(
+            f"Los {n_trials} trials de Optuna para {family_name!r} fallaron todos; "
+            "no hay ningún resultado válido que reportar."
+        )
 
     return TuneResult(
         family=family_name,
