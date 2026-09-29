@@ -122,6 +122,8 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Etapa 3 del banco: folds -> OOF -> metricas -> ranking")
     parser.add_argument("--bench-promote", action="store_true",
                         help="Copia el candidato ganador a outputs/models/")
+    parser.add_argument("--bench-tune", action="store_true",
+                        help="Busqueda Optuna de hiperparametros sobre UNA familia (exploratoria)")
     parser.add_argument("--bench", action="store_true",
                         help="Corre las cuatro etapas del banco en secuencia")
     parser.add_argument("--models", metavar="LISTA", default=None,
@@ -163,6 +165,12 @@ def _run_bench(args, config) -> None:
             f"Familias declaradas en config.yaml: {known}"
         )
 
+    if args.bench_tune and len(families) != 1:
+        raise SystemExit(
+            "--bench-tune requiere exactamente una familia en --models "
+            f"(recibidas {len(families)}: {', '.join(families) or '(ninguna)'})."
+        )
+
     if run_all or args.bench_prepare:
         prepared = prepare_dataset(
             config.dataset.db_path,
@@ -172,7 +180,7 @@ def _run_bench(args, config) -> None:
         )
         print(f"PreparedDataset {prepared.prep_id}: {prepared.quality['n_rows']} filas, "
               f"{prepared.quality['class_balance']['n_flooded']} inundadas")
-    elif args.bench_train or args.bench_evaluate:
+    elif args.bench_train or args.bench_evaluate or args.bench_tune:
         try:
             prepared = resolve_prepared(
                 prepared_dir, args.prep_id, tuple(config.bench.protocols)
@@ -209,6 +217,22 @@ def _run_bench(args, config) -> None:
         write_reports(metrics_by_family, ranking, reports_dir)
         print(f"Ranking calculado sobre el protocolo: {ranking_protocol}")
         print(ranking.to_string(index=False))
+
+    if args.bench_tune:
+        from swmm_resilience.ml.bench.tune import run_study, save_tune_result
+
+        tuning_cfg = config.bench.tuning
+        result = run_study(
+            prepared, families[0],
+            n_trials=tuning_cfg.n_trials, n_splits=tuning_cfg.n_splits,
+        )
+        study_path = save_tune_result(result, BENCH_ROOT / "tuning")
+        print(f"Estudio Optuna guardado en {study_path}")
+        print(f"status={result.status}: {result.status_reason}")
+        print(
+            f"Mejor valor ({result.objective_metric}): {result.best_value:.4f} "
+            f"tras {result.n_trials} trials"
+        )
 
     if args.bench_promote:
         chosen = config.bench.promote
@@ -267,7 +291,8 @@ def main():
 
     config = load_config("config.yaml")
 
-    if args.bench or args.bench_prepare or args.bench_train or args.bench_evaluate or args.bench_promote:
+    if (args.bench or args.bench_prepare or args.bench_train or args.bench_evaluate
+            or args.bench_promote or args.bench_tune):
         _run_bench(args, config)
         return
 

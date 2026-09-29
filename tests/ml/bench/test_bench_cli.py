@@ -10,6 +10,7 @@ from swmm_resilience.config import (
     BenchConfig,
     BenchFamilyConfig,
     BenchRankingConfig,
+    BenchTuningConfig,
     Config,
     DatasetConfig,
     NetworkConfig,
@@ -21,7 +22,9 @@ from swmm_resilience.ml.bench.train import train_candidate
 TINY = {"n_estimators": 5, "max_depth": 2, "learning_rate": 0.3, "subsample": 1.0}
 
 
-def _make_config(*, inp_path, db_path, families, promote="auto", protocols=("LOSO",)):
+def _make_config(
+    *, inp_path, db_path, families, promote="auto", protocols=("LOSO",), tuning=None
+):
     """Builds a Config with only the fields _run_bench actually reads.
 
     ``simulation``/``ml``/``evaluation``/``visualization`` are left as None:
@@ -41,6 +44,7 @@ def _make_config(*, inp_path, db_path, families, promote="auto", protocols=("LOS
         ),
         promote=promote,
         families=family_configs,
+        tuning=tuning or BenchTuningConfig(n_trials=2, n_splits=5),
     )
     return Config(
         network=NetworkConfig(inp_path=inp_path, name="fixture"),
@@ -60,6 +64,7 @@ def _make_args(**overrides):
         bench_train=False,
         bench_evaluate=False,
         bench_promote=False,
+        bench_tune=False,
         models=None,
         prep_id=None,
     )
@@ -401,3 +406,68 @@ def test_full_bench_run_writes_ranking_without_promoting(
         assert column in ranking.columns
 
     assert not (tmp_path / "outputs" / "models").exists()
+
+
+# ── --bench-tune ─────────────────────────────────────────────────────────
+
+
+def test_bench_tune_requires_exactly_one_family(sql_training_db, tmp_path):
+    import main
+
+    config = _make_config(
+        inp_path=tmp_path / "network.inp", db_path=sql_training_db,
+        families=["xgboost", "random_forest"],
+    )
+    args = _make_args(bench_tune=True)  # sin --models: toma las dos habilitadas
+
+    with pytest.raises(SystemExit, match="exactamente una familia"):
+        main._run_bench(args, config)
+
+
+def test_bench_tune_rejects_a_prepared_dataset_with_stale_protocol_semantics(
+    sql_training_db_six_shapes, tmp_path, monkeypatch
+):
+    import main
+
+    monkeypatch.chdir(tmp_path)
+    prepared = prepare_dataset(
+        sql_training_db_six_shapes, protocols=("LOSO",), flood_threshold_m3=1.0,
+        output_dir=Path("outputs/bench/prepared"),
+    )
+    manifest_path = Path("outputs/bench/prepared") / prepared.prep_id / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["protocol_definitions"]["LOSO"]["group_column"] = "shape_id"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    config = _make_config(
+        inp_path=tmp_path / "network.inp", db_path=sql_training_db_six_shapes,
+        families=["xgboost"], protocols=("LOSO",),
+    )
+    args = _make_args(bench_tune=True, models="xgboost")
+
+    with pytest.raises(SystemExit) as excinfo:
+        main._run_bench(args, config)
+    assert "--bench-prepare" in str(excinfo.value)
+
+
+def test_bench_tune_writes_a_study_and_touches_neither_models_nor_ranking(
+    sql_training_db_six_shapes, tmp_path, monkeypatch
+):
+    import main
+
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(
+        inp_path=tmp_path / "network.inp", db_path=sql_training_db_six_shapes,
+        families=["xgboost"], protocols=("LeaveOneShapeOut",),
+    )
+    main._run_bench(_make_args(bench_prepare=True), config)
+    main._run_bench(_make_args(bench_tune=True, models="xgboost"), config)
+
+    study_files = list((tmp_path / "outputs" / "bench" / "tuning").rglob("study.json"))
+    assert len(study_files) == 1
+    payload = json.loads(study_files[0].read_text(encoding="utf-8"))
+    assert payload["family"] == "xgboost"
+    assert payload["status"] == "estimacion_exploratoria_condicionada"
+
+    assert not (tmp_path / "outputs" / "models").exists()
+    assert not (tmp_path / "outputs" / "bench" / "reports" / "ranking.csv").exists()
