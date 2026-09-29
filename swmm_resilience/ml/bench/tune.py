@@ -16,6 +16,7 @@ cierre de auditoría): no debe presentarse como confirmatorio.
 from __future__ import annotations
 
 import numpy as np
+import optuna
 import pandas as pd
 from sklearn.model_selection import GroupKFold
 
@@ -50,3 +51,79 @@ def build_tuning_folds(
                     {"fold_id": fold_id, "split": split_name, "sample_idx": sample_idx}
                 )
     return pd.DataFrame.from_records(records, columns=["fold_id", "split", "sample_idx"])
+
+
+# Notación por parámetro: ("int", low, high) | ("float", low, high) |
+# ("float_log", low, high) muestreado log-uniforme | ("categorical", [...]).
+# Rangos centrados en los defaults actuales de config.yaml (ver spec §6).
+SEARCH_SPACES: dict[str, dict[str, dict[str, tuple]]] = {
+    "xgboost": {
+        "classifier": {
+            "max_depth": ("int", 3, 10),
+            "learning_rate": ("float_log", 1e-3, 0.3),
+            "n_estimators": ("int", 50, 500),
+            "subsample": ("float", 0.5, 1.0),
+        },
+        "regressor": {
+            "max_depth": ("int", 3, 10),
+            "learning_rate": ("float_log", 1e-3, 0.3),
+            "n_estimators": ("int", 50, 500),
+            "subsample": ("float", 0.5, 1.0),
+        },
+    },
+    "random_forest": {
+        "classifier": {"max_depth": ("int", 3, 15), "n_estimators": ("int", 50, 500)},
+        "regressor": {"max_depth": ("int", 3, 15), "n_estimators": ("int", 50, 500)},
+    },
+    "linear": {
+        "classifier": {"C": ("float_log", 1e-3, 100.0)},
+        "regressor": {"alpha": ("float_log", 1e-3, 100.0)},
+    },
+    "svm": {
+        "classifier": {
+            "C": ("float_log", 1e-2, 100.0),
+            "gamma": ("categorical", ["scale", "auto"]),
+        },
+        "regressor": {
+            "C": ("float_log", 1e-2, 100.0),
+            "epsilon": ("float", 0.01, 1.0),
+        },
+    },
+    "mlp": {
+        "classifier": {
+            "hidden_sizes": ("categorical", [(32,), (64, 32), (128, 64), (64, 32, 16)]),
+            "learning_rate": ("float_log", 1e-4, 1e-2),
+            "dropout": ("float", 0.0, 0.5),
+        },
+        "regressor": {
+            "hidden_sizes": ("categorical", [(32,), (64, 32), (128, 64), (64, 32, 16)]),
+            "learning_rate": ("float_log", 1e-4, 1e-2),
+            "dropout": ("float", 0.0, 0.5),
+        },
+    },
+}
+
+
+def _sample_params(trial, space: dict, *, prefix: str) -> dict:
+    """Muestrea un dict de hiperparámetros desde `space` usando `trial`.
+
+    `prefix` evita colisiones de nombre entre clasificador y regresor
+    dentro del mismo trial (p.ej. "xgboost_classifier_max_depth" vs
+    "xgboost_regressor_max_depth"): Optuna identifica cada valor muestreado
+    por su nombre completo dentro del estudio.
+    """
+    params: dict = {}
+    for name, spec in space.items():
+        kind = spec[0]
+        full_name = f"{prefix}{name}"
+        if kind == "int":
+            params[name] = trial.suggest_int(full_name, spec[1], spec[2])
+        elif kind == "float":
+            params[name] = trial.suggest_float(full_name, spec[1], spec[2])
+        elif kind == "float_log":
+            params[name] = trial.suggest_float(full_name, spec[1], spec[2], log=True)
+        elif kind == "categorical":
+            params[name] = trial.suggest_categorical(full_name, spec[1])
+        else:
+            raise ValueError(f"Tipo de espacio desconocido: {kind!r}")
+    return params

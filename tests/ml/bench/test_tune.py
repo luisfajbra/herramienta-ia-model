@@ -1,8 +1,9 @@
 import numpy as np
 import pandas as pd
 import pytest
+import optuna
 
-from swmm_resilience.ml.bench.tune import build_tuning_folds
+from swmm_resilience.ml.bench.tune import build_tuning_folds, SEARCH_SPACES, _sample_params
 
 
 def _keys_six_shapes() -> pd.DataFrame:
@@ -55,3 +56,39 @@ def test_build_tuning_folds_rejects_too_few_shapes_for_n_splits():
     keys = pd.DataFrame({"shape_id": ["a", "b", "c"], "factor_mult": [1.0, 1.0, 1.0]})
     with pytest.raises(ValueError, match="5"):
         build_tuning_folds(keys, n_splits=5)
+
+
+@pytest.mark.parametrize("family_name", ["xgboost", "random_forest", "linear", "svm", "mlp"])
+@pytest.mark.parametrize("task", ["classifier", "regressor"])
+def test_sample_params_returns_only_declared_keys_within_range(family_name, task):
+    space = SEARCH_SPACES[family_name][task]
+    study = optuna.create_study()
+    trial = study.ask()
+
+    params = _sample_params(trial, space, prefix=f"{family_name}_{task}_")
+
+    assert set(params) == set(space)
+    for name, spec in space.items():
+        kind = spec[0]
+        if kind in ("int", "float", "float_log"):
+            low, high = spec[1], spec[2]
+            assert low <= params[name] <= high
+        elif kind == "categorical":
+            assert params[name] in spec[1]
+
+
+def test_sample_params_does_not_collide_between_classifier_and_regressor_in_the_same_trial():
+    """El prefijo evita que Optuna vea el mismo nombre de parametro dos veces
+    en un trial con rangos distintos (p.ej. xgboost.max_depth en ambas tareas)."""
+    study = optuna.create_study()
+    trial = study.ask()
+
+    clf_params = _sample_params(
+        trial, SEARCH_SPACES["xgboost"]["classifier"], prefix="xgboost_classifier_"
+    )
+    reg_params = _sample_params(
+        trial, SEARCH_SPACES["xgboost"]["regressor"], prefix="xgboost_regressor_"
+    )
+
+    assert set(clf_params) == set(SEARCH_SPACES["xgboost"]["classifier"])
+    assert set(reg_params) == set(SEARCH_SPACES["xgboost"]["regressor"])
