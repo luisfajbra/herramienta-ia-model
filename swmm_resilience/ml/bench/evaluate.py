@@ -166,10 +166,14 @@ def _fit_predict_fold(
         regressor.fit(X_train.iloc[flooded_train], np.log1p(yr_train[flooded_train]))
         yr_pred = np.clip(np.expm1(regressor.predict(X_test)), a_min=0.0, a_max=None)
     else:
-        # Ver el comentario original en evaluate_candidate: divergencia
-        # deliberada de _run_cv cuando el fold no tiene filas inundadas de
-        # entrenamiento -- se predice volumen cero en vez de reventar con
-        # NotFittedError.
+        # Divergencia deliberada de _run_cv: allí, si el fold no tiene filas
+        # inundadas de entrenamiento, el regresor nunca se ajusta pero el
+        # nivel end-to-end igual puede invocar reg.predict(...), lo que
+        # lanzaría NotFittedError (bug latente no manejado en el código
+        # legado). Aquí predecimos volumen cero explícitamente en su
+        # lugar. Con LOSO sobre los ~25 factores reales cada fold de
+        # entrenamiento tiene filas inundadas, así que esta rama no
+        # afecta al test de paridad.
         yr_pred = np.zeros(len(test_idx), dtype=float)
 
     return yc_pred.astype(int), yc_prob.astype(float), yr_pred.astype(float)
