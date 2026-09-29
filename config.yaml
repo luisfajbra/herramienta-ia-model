@@ -53,6 +53,9 @@ bench:
       - {metric: "classifier.f1", direction: "maximize"}
       - {metric: "regressor_oracle.nse", direction: "maximize"}
   promote: "none"
+  tuning:
+    n_trials: 50
+    n_splits: 5
   families:
     xgboost:
       enabled: true

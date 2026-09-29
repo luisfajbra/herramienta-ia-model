@@ -271,11 +271,18 @@ class BenchRankingConfig:
 
 
 @dataclass
+class BenchTuningConfig:
+    n_trials: int
+    n_splits: int
+
+
+@dataclass
 class BenchConfig:
     protocols: list
     ranking: BenchRankingConfig
     promote: str
     families: dict
+    tuning: BenchTuningConfig
 
     def enabled_families(self) -> list:
         return [name for name, family in self.families.items() if family.enabled]
@@ -330,6 +337,13 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
         )
 
     ranking_raw = raw_bench["ranking"]
+    tuning_raw = raw_bench.get("tuning") or {}
+    n_trials = int(tuning_raw.get("n_trials", 50))
+    n_splits = int(tuning_raw.get("n_splits", 5))
+    if n_trials <= 0:
+        raise ValueError(f"bench.tuning.n_trials debe ser positivo; recibido {n_trials}")
+    if n_splits <= 0:
+        raise ValueError(f"bench.tuning.n_splits debe ser positivo; recibido {n_splits}")
     return BenchConfig(
         protocols=protocols,
         ranking=BenchRankingConfig(
@@ -342,6 +356,7 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
         ),
         promote=str(raw_bench.get("promote", "none")),
         families=families,
+        tuning=BenchTuningConfig(n_trials=n_trials, n_splits=n_splits),
     )
 
 

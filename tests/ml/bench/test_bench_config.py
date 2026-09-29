@@ -163,3 +163,37 @@ def test_loading_a_config_with_a_bench_block_does_not_import_torch_or_xgboost(tm
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "OK" in result.stdout
+
+
+def test_bench_tuning_defaults_when_the_block_is_absent(tmp_path):
+    config = load_config(_write_config(tmp_path, _BENCH_YAML))
+    assert config.bench.tuning.n_trials == 50
+    assert config.bench.tuning.n_splits == 5
+
+
+def test_bench_tuning_block_is_parsed_when_present(tmp_path):
+    with_tuning = _BENCH_YAML.replace(
+        'promote: "none"',
+        'promote: "none"\n  tuning: {n_trials: 10, n_splits: 3}',
+    )
+    config = load_config(_write_config(tmp_path, with_tuning))
+    assert config.bench.tuning.n_trials == 10
+    assert config.bench.tuning.n_splits == 3
+
+
+def test_bench_tuning_rejects_non_positive_n_trials(tmp_path):
+    with_tuning = _BENCH_YAML.replace(
+        'promote: "none"',
+        'promote: "none"\n  tuning: {n_trials: 0, n_splits: 5}',
+    )
+    with pytest.raises(ValueError, match="n_trials"):
+        load_config(_write_config(tmp_path, with_tuning))
+
+
+def test_bench_tuning_rejects_non_positive_n_splits(tmp_path):
+    with_tuning = _BENCH_YAML.replace(
+        'promote: "none"',
+        'promote: "none"\n  tuning: {n_trials: 50, n_splits: 0}',
+    )
+    with pytest.raises(ValueError, match="n_splits"):
+        load_config(_write_config(tmp_path, with_tuning))
