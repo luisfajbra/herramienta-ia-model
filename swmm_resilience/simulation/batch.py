@@ -1,3 +1,4 @@
+import warnings
 from pathlib import Path
 
 from .runner import run_simulation_simple as run_simulation
@@ -46,6 +47,13 @@ def _prepare_closed_scenario_inp(
     scenario, closure_manifest = apply_closure_policy(
         scenario, config.validation.inflow_closure_tolerance_lps
     )
+    closure_manifest["mode"] = "close"
+    if closure_manifest["changed_nodes"]:
+        warnings.warn(
+            f"[{scenario.scenario_id}] Aporte cerrado a cero en los nodos: "
+            f"{closure_manifest['changed_nodes']}.",
+            stacklevel=2,
+        )
     shape_run_dir = run_dir / shape_id
     save_closure_manifest(closure_manifest, shape_run_dir, scenario.scenario_id)
     scenario_inp = write_scenario_inp(

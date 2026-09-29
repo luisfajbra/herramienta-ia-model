@@ -276,6 +276,93 @@ def test_strict_mode_rejects_a_csv_that_does_not_end_at_zero(monkeypatch, tmp_pa
         _run(tmp_path, csv_dir, csv_inflow_closure_mode="strict")
 
 
+def test_strict_mode_writes_a_manifest_when_the_scenario_already_passes(
+    monkeypatch, tmp_path
+):
+    """Finding 3: a scenario that PASSES strict validation must still leave a
+    durable manifest recording the tolerance it was checked against (spec §6:
+    tolerance must appear in every run's manifest, not only closed ones)."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    # _FAKE_SCENARIO already ends at zero, so enforce_strict_zero_endpoint
+    # passes without raising.
+    monkeypatch.setattr(
+        hydrograph_batch,
+        "load_scenario",
+        lambda csv_path, expected_nodes: _FAKE_SCENARIO,
+    )
+
+    _run(tmp_path, csv_dir, csv_inflow_closure_mode="strict")
+
+    manifest_path = tmp_path / "out" / "inp" / "sc001.closure_manifest.json"
+    assert manifest_path.exists()
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["changed_nodes"] == []
+    assert payload["mode"] == "strict"
+    assert payload["tolerance_lps"] == pytest.approx(0.01)
+    assert payload["source_scenario_id"] == "sc001"
+    assert payload["original_last_time_hours"] == _FAKE_SCENARIO.last_time_hours
+    assert payload["effective_last_time_hours"] == _FAKE_SCENARIO.last_time_hours
+
+
+def test_close_mode_manifest_has_mode_close(monkeypatch, tmp_path):
+    """Finding 3 (related, cheap addition): the close branch's manifest is
+    also self-describing via a 'mode' field."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch,
+        "load_scenario",
+        lambda csv_path, expected_nodes: _FAKE_SCENARIO_UNCLOSED,
+    )
+
+    _run(tmp_path, csv_dir, csv_inflow_closure_mode="close")
+
+    manifest_path = tmp_path / "out" / "inp" / "sc001.closure_manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["mode"] == "close"
+
+
+def test_close_mode_warns_when_closure_changes_the_scenario(monkeypatch, tmp_path):
+    """Finding 2: spec §6 requires a warning of the change when closure
+    actually modifies a scenario's series."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch,
+        "load_scenario",
+        lambda csv_path, expected_nodes: _FAKE_SCENARIO_UNCLOSED,
+    )
+
+    with pytest.warns(UserWarning, match="sc001"):
+        _run(tmp_path, csv_dir, csv_inflow_closure_mode="close")
+
+
+def test_close_mode_does_not_warn_when_nothing_needed_closing(monkeypatch, tmp_path):
+    """No spurious warning when the scenario was already closed."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch,
+        "load_scenario",
+        lambda csv_path, expected_nodes: _FAKE_SCENARIO,
+    )
+
+    import warnings as warnings_mod
+
+    with warnings_mod.catch_warnings():
+        warnings_mod.simplefilter("error")
+        _run(tmp_path, csv_dir, csv_inflow_closure_mode="close")
+
+
 def test_close_mode_closes_the_scenario_before_writing_the_inp(monkeypatch, tmp_path):
     """csv_inflow_closure_mode='close' cierra el escenario y deja un manifiesto
     junto al .inp, en vez de rechazarlo."""

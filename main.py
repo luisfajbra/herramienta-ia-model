@@ -560,7 +560,7 @@ def main():
                 expected_nodes=expected_nodes,
                 drain_down_hours=config.validation.drain_down_hours,
                 factor_range=(config.simulation.factor_min, config.simulation.factor_max),
-                csv_inflow_closure_mode=config.validation.csv_inflow_closure_mode,
+                csv_inflow_closure_mode="close",  # forma generada (write_shape_validation_csv): no es CSV de usuario, siempre auto-cierra
                 inflow_closure_tolerance_lps=config.validation.inflow_closure_tolerance_lps,
             )
             cls = summary["classification"]
@@ -647,7 +647,7 @@ def main():
                 expected_nodes=expected_nodes,
                 drain_down_hours=config.validation.drain_down_hours,
                 factor_range=(config.simulation.factor_min, config.simulation.factor_max),
-                csv_inflow_closure_mode=config.validation.csv_inflow_closure_mode,
+                csv_inflow_closure_mode="close",  # forma generada (write_shape_validation_csv): no es CSV de usuario, siempre auto-cierra
                 inflow_closure_tolerance_lps=config.validation.inflow_closure_tolerance_lps,
             )
             cls = summary["classification"]
@@ -776,7 +776,7 @@ def main():
                 drain_down_hours=config.validation.drain_down_hours,
                 allow_inp_mismatch=args.allow_inp_mismatch,
                 factor_range=(config.simulation.factor_min, config.simulation.factor_max),
-                csv_inflow_closure_mode=config.validation.csv_inflow_closure_mode,
+                csv_inflow_closure_mode="close",  # forma generada (write_shape_validation_csv): no es CSV de usuario, siempre auto-cierra
                 inflow_closure_tolerance_lps=config.validation.inflow_closure_tolerance_lps,
             )
             cls = summary["classification"]

@@ -33,6 +33,7 @@ from ..analysis.model_comparison import (
 from ..extraction.labels import extract_labels
 from ..ml.scenario_predict import ScenarioPredictor
 from ..simulation.inflow_closure import (
+    INFLOW_CLOSURE_POLICY_VERSION,
     apply_closure_policy, enforce_strict_zero_endpoint, save_closure_manifest,
 )
 from ..simulation.swmm_api_io import get_node_timeseries_map, load_inp
@@ -311,9 +312,26 @@ def run_batch_validation(
             scenario, closure_manifest = apply_closure_policy(
                 scenario, inflow_closure_tolerance_lps
             )
+            closure_manifest["mode"] = "close"
+            if closure_manifest["changed_nodes"]:
+                warnings.warn(
+                    f"[{scenario.scenario_id}] Aporte cerrado a cero en los nodos: "
+                    f"{closure_manifest['changed_nodes']}.",
+                    stacklevel=2,
+                )
             save_closure_manifest(closure_manifest, inp_dir, scenario.scenario_id)
         else:
             enforce_strict_zero_endpoint(scenario, inflow_closure_tolerance_lps)
+            strict_manifest = {
+                "policy_version": INFLOW_CLOSURE_POLICY_VERSION,
+                "mode": "strict",
+                "tolerance_lps": inflow_closure_tolerance_lps,
+                "source_scenario_id": scenario.scenario_id,
+                "changed_nodes": [],
+                "original_last_time_hours": scenario.last_time_hours,
+                "effective_last_time_hours": scenario.last_time_hours,
+            }
+            save_closure_manifest(strict_manifest, inp_dir, scenario.scenario_id)
 
         # Step b: write scenario-specific .inp (with drain-down buffer)
         t0 = time.perf_counter()

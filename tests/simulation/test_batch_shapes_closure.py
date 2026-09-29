@@ -82,6 +82,42 @@ def test_prepare_closed_scenario_inp_closes_a_shape_that_does_not_end_at_zero(
     assert payload["changed_nodes"] == ["1C"]
 
 
+def test_prepare_closed_scenario_inp_warns_when_closure_changes_a_node(
+    monkeypatch, tmp_path,
+):
+    """Finding 2: spec section 6 requires a warning of the change; this is
+    the other production call site of apply_closure_policy besides
+    hydrograph_batch.py's close branch."""
+    fake_inp = _FakeInp()
+    monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
+
+    shape = [(0.0, 0.0), (0.05, 1.0), (0.1, 0.3)]  # q_norm no termina en 0
+    time_grid = [t for t, _ in shape]
+    config = _make_config(tmp_path)
+
+    with pytest.warns(UserWarning, match="storm_x"):
+        batch_mod._prepare_closed_scenario_inp(
+            config, "storm_x", 1.0, shape, time_grid, {"1C": 2.0}, tmp_path / "run",
+        )
+
+
+def test_prepare_closed_scenario_inp_manifest_has_mode_close(monkeypatch, tmp_path):
+    fake_inp = _FakeInp()
+    monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
+
+    shape = [(0.0, 0.0), (0.05, 1.0), (0.1, 0.3)]  # q_norm no termina en 0
+    time_grid = [t for t, _ in shape]
+    config = _make_config(tmp_path)
+
+    batch_mod._prepare_closed_scenario_inp(
+        config, "storm_z", 1.0, shape, time_grid, {"1C": 2.0}, tmp_path / "run",
+    )
+
+    manifest_path = tmp_path / "run" / "storm_z" / "storm_z_f1.000.closure_manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["mode"] == "close"
+
+
 def test_prepare_closed_scenario_inp_leaves_an_already_closed_shape_untouched(
     monkeypatch, tmp_path,
 ):
@@ -92,9 +128,13 @@ def test_prepare_closed_scenario_inp_leaves_an_already_closed_shape_untouched(
     time_grid = [t for t, _ in shape]
     config = _make_config(tmp_path)
 
-    batch_mod._prepare_closed_scenario_inp(
-        config, "storm_y", 1.0, shape, time_grid, {"1C": 2.0}, tmp_path / "run",
-    )
+    import warnings as warnings_mod
+
+    with warnings_mod.catch_warnings():
+        warnings_mod.simplefilter("error")
+        batch_mod._prepare_closed_scenario_inp(
+            config, "storm_y", 1.0, shape, time_grid, {"1C": 2.0}, tmp_path / "run",
+        )
 
     data = fake_inp["TIMESERIES"]["1C"].data
     assert data[2] == pytest.approx((0.1, 0.0))   # sin punto de cierre añadido
@@ -104,3 +144,4 @@ def test_prepare_closed_scenario_inp_leaves_an_already_closed_shape_untouched(
     manifest_path = tmp_path / "run" / "storm_y" / "storm_y_f1.000.closure_manifest.json"
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert payload["changed_nodes"] == []
+    assert payload["mode"] == "close"
