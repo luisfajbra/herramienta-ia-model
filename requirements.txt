@@ -14,3 +14,4 @@ Pillow==12.2.0
 pytest==9.0.3
 networkx==3.6.1
 PyYAML==6.0.3
+optuna==5.0.0
