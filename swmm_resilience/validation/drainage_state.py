@@ -19,6 +19,7 @@ plan), que consume el dict que devuelve `read_tail_window_observables()`.
 from __future__ import annotations
 
 import datetime
+import json
 from pathlib import Path
 
 
@@ -100,3 +101,85 @@ def read_tail_window_observables(
         "node_volume_m3": _part_to_dict(node_volume),
         "link_flow_lps": _part_to_dict(link_flow) if has_link_data else {},
     }
+
+
+DRAINAGE_STATE_POLICY_VERSION = "tail_window_v1"
+
+
+def classify_drainage_state(
+    observables: dict,
+    inflow_tolerance_lps: float,
+    flooding_tolerance_lps: float,
+    storage_change_tolerance_m3: float,
+    residual_flow_tolerance_lps: float,
+    min_report_steps: int = 2,
+) -> tuple[str, dict]:
+    """Aplica la regla operativa del spec Sec.7 sobre `observables`.
+
+    "drained" exige: suficientes reportes, datos de enlace presentes,
+    aporte e inundacion bajo tolerancia en toda la ventana, cambio de
+    almacenamiento estabilizado entre pasos consecutivos, y flujo residual
+    de nodos y enlaces bajo tolerancia (basal = cero, ver Global
+    Constraints de este plan). Cualquier dato insuficiente -> "unverified",
+    nunca "drained" ni "not_drained" por omision.
+    """
+    failed_checks: list[str] = []
+
+    if observables["n_report_steps"] < min_report_steps:
+        failed_checks.append("insufficient_report_steps")
+    if not observables["has_link_data"]:
+        failed_checks.append("missing_link_data")
+
+    if failed_checks:
+        state = "unverified"
+    else:
+        if any(
+            abs(v) > inflow_tolerance_lps
+            for series in observables["node_total_inflow_lps"].values()
+            for v in series
+        ):
+            failed_checks.append("inflow")
+        if any(
+            abs(v) > flooding_tolerance_lps
+            for series in observables["node_flooding_lps"].values()
+            for v in series
+        ):
+            failed_checks.append("flooding")
+        if any(
+            abs(series[i + 1] - series[i]) > storage_change_tolerance_m3
+            for series in observables["node_volume_m3"].values()
+            for i in range(len(series) - 1)
+        ):
+            failed_checks.append("storage_change")
+        if any(
+            abs(v) > residual_flow_tolerance_lps
+            for series in observables["link_flow_lps"].values()
+            for v in series
+        ):
+            failed_checks.append("residual_flow")
+
+        state = "drained" if not failed_checks else "not_drained"
+
+    diagnostics = {
+        "policy_version": DRAINAGE_STATE_POLICY_VERSION,
+        "state": state,
+        "failed_checks": failed_checks,
+        "n_report_steps": observables["n_report_steps"],
+        "has_link_data": observables["has_link_data"],
+        "tolerances": {
+            "inflow_tolerance_lps": inflow_tolerance_lps,
+            "flooding_tolerance_lps": flooding_tolerance_lps,
+            "storage_change_tolerance_m3": storage_change_tolerance_m3,
+            "residual_flow_tolerance_lps": residual_flow_tolerance_lps,
+        },
+    }
+    return state, diagnostics
+
+
+def save_drainage_state_manifest(manifest: dict, out_dir: Path | str, scenario_id: str) -> Path:
+    """Escribe `manifest` en `<out_dir>/<scenario_id>.drainage_state.json`."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{scenario_id}.drainage_state.json"
+    path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path

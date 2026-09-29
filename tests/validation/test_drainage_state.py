@@ -141,3 +141,92 @@ def test_part_to_dict_normalizes_single_object_series_id(tiny_out_file):
     result = _part_to_dict(single)
     assert set(result.keys()) == {"J1"}
     assert len(result["J1"]) == len(single)
+
+
+# ============================================================================
+# Task 2: pure classifier tests (synthetic observables, no .out file)
+# ============================================================================
+
+import json
+
+from swmm_resilience.validation.drainage_state import (
+    DRAINAGE_STATE_POLICY_VERSION,
+    classify_drainage_state,
+    save_drainage_state_manifest,
+)
+
+_TOL = dict(
+    inflow_tolerance_lps=0.01,
+    flooding_tolerance_lps=0.01,
+    storage_change_tolerance_m3=0.01,
+    residual_flow_tolerance_lps=0.01,
+)
+
+
+def _obs(**overrides):
+    base = {
+        "n_report_steps": 3,
+        "has_link_data": True,
+        "node_total_inflow_lps": {"A": [0.0, 0.0, 0.0]},
+        "node_flooding_lps": {"A": [0.0, 0.0, 0.0]},
+        "node_volume_m3": {"A": [1.0, 1.0, 1.0]},
+        "link_flow_lps": {"L1": [0.0, 0.0, 0.0]},
+    }
+    base.update(overrides)
+    return base
+
+
+def test_classify_drained_when_everything_is_within_tolerance():
+    state, diag = classify_drainage_state(_obs(), **_TOL, min_report_steps=2)
+    assert state == "drained"
+    assert diag["policy_version"] == DRAINAGE_STATE_POLICY_VERSION
+
+
+def test_classify_not_drained_when_inflow_exceeds_tolerance():
+    obs = _obs(node_total_inflow_lps={"A": [0.0, 0.0, 5.0]})
+    state, diag = classify_drainage_state(obs, **_TOL, min_report_steps=2)
+    assert state == "not_drained"
+    assert "inflow" in diag["failed_checks"]
+
+
+def test_classify_not_drained_when_flooding_exceeds_tolerance():
+    obs = _obs(node_flooding_lps={"A": [0.0, 0.2, 0.0]})
+    state, diag = classify_drainage_state(obs, **_TOL, min_report_steps=2)
+    assert state == "not_drained"
+    assert "flooding" in diag["failed_checks"]
+
+
+def test_classify_not_drained_when_storage_change_between_steps_exceeds_tolerance():
+    obs = _obs(node_volume_m3={"A": [1.0, 5.0, 5.0]})  # salto de 4.0 m3 entre pasos
+    state, diag = classify_drainage_state(obs, **_TOL, min_report_steps=2)
+    assert state == "not_drained"
+    assert "storage_change" in diag["failed_checks"]
+
+
+def test_classify_not_drained_when_residual_link_flow_exceeds_tolerance():
+    obs = _obs(link_flow_lps={"L1": [0.0, 0.0, 3.0]})
+    state, diag = classify_drainage_state(obs, **_TOL, min_report_steps=2)
+    assert state == "not_drained"
+    assert "residual_flow" in diag["failed_checks"]
+
+
+def test_classify_unverified_when_too_few_report_steps():
+    obs = _obs(n_report_steps=1)
+    state, diag = classify_drainage_state(obs, **_TOL, min_report_steps=2)
+    assert state == "unverified"
+    assert "insufficient_report_steps" in diag["failed_checks"]
+
+
+def test_classify_unverified_when_link_data_is_missing():
+    """Spec: si el .out solo ofrece volumen nodal, nunca se declara drenaje."""
+    obs = _obs(has_link_data=False, link_flow_lps={})
+    state, diag = classify_drainage_state(obs, **_TOL, min_report_steps=2)
+    assert state == "unverified"
+    assert "missing_link_data" in diag["failed_checks"]
+
+
+def test_save_drainage_state_manifest_writes_readable_json(tmp_path):
+    _, diag = classify_drainage_state(_obs(), **_TOL, min_report_steps=2)
+    path = save_drainage_state_manifest(diag, tmp_path, "scenario_1")
+    assert path.name == "scenario_1.drainage_state.json"
+    assert json.loads(path.read_text(encoding="utf-8")) == diag
