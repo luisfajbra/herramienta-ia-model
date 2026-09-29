@@ -25,6 +25,31 @@ def test_migration_006_creates_node_features_v4_21(tmp_path):
     conn.close()
 
 
+def test_migration_006_node_features_v4_21_feature_columns_match_the_contract_exactly(tmp_path):
+    """Regresion del hallazgo 3: el test original solo comprobaba un
+    subconjunto parcial de ~10 nombres via issubset(), asi que un typo o una
+    omision en cualquier otra columna legada (o un desvio entre
+    FEATURE_COLUMNS_V21 y la tabla real) hubiera pasado en silencio. Este
+    test compara, en orden, TODAS las columnas de feature contra
+    FEATURE_COLUMNS_V21, excluyendo solo las columnas estructurales/de
+    identidad (run_id, network_id, node_pk, feature_contract_id), que no son
+    features."""
+    from swmm_resilience.database.connection import connect_managed_database
+    from swmm_resilience.database.migrations import apply_migrations
+    from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V21
+
+    db_path = tmp_path / "test.sqlite3"
+    conn = connect_managed_database(db_path)
+    apply_migrations(conn)
+
+    structural = {"run_id", "network_id", "node_pk", "feature_contract_id"}
+    rows = conn.execute("PRAGMA table_info(node_features_v4_21)").fetchall()
+    feature_columns = tuple(row[1] for row in rows if row[1] not in structural)
+
+    assert feature_columns == FEATURE_COLUMNS_V21
+    conn.close()
+
+
 def test_migration_006_does_not_alter_the_legacy_node_features_table(tmp_path):
     from swmm_resilience.database.connection import connect_managed_database
     from swmm_resilience.database.migrations import apply_migrations

@@ -93,6 +93,7 @@ class FeatureContract:
         return hashlib.sha256(payload).hexdigest()
 
     def validate_frame(self, frame: pd.DataFrame) -> pd.DataFrame:
+        nullable = frozenset(item.name for item in self.definitions if item.nullable)
         actual = tuple(frame.columns)
         if actual != self.feature_names:
             raise FeatureContractError(
@@ -111,7 +112,7 @@ class FeatureContract:
         for name in self.feature_names:
             series = frame[name]
             all_null_nullable = (
-                name in NULLABLE_FEATURE_COLUMNS_V17 and series.isna().all()
+                name in nullable and series.isna().all()
             )
             if not all_null_nullable and (
                 not is_numeric_dtype(series) or is_bool_dtype(series)
@@ -120,7 +121,7 @@ class FeatureContract:
         if bad_types:
             raise FeatureContractError(f"Non-numeric feature columns: {bad_types}")
         numeric = frame.astype(float)
-        required = [name for name in self.feature_names if name not in NULLABLE_FEATURE_COLUMNS_V17]
+        required = [name for name in self.feature_names if name not in nullable]
         missing_required = [name for name in required if numeric[name].isna().any()]
         if missing_required:
             raise FeatureContractError(f"Null required feature values: {missing_required}")

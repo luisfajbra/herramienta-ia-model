@@ -133,8 +133,14 @@ def tiempo_sobre_capacidad_h(q_tributario: _Series, capacity_lps: float | None) 
     """Duracion en que Q_tributario supera upstream_capacity_lps.
 
     None si la capacidad falta o es <= 0 (spec §6: sin divisiones artificiales).
+
+    El guard usa `not (capacity_lps > 0)` en lugar de `capacity_lps <= 0` para
+    que capture tambien NaN explicitamente: en produccion la capacidad llega
+    desde una columna de pandas, y una capacidad invalida es NaN (no None) --
+    `nan <= 0` es False, asi que ese guard nunca disparaba; `nan > 0` tambien
+    es False, y `not False` es True, asi que esta forma si dispara.
     """
-    if capacity_lps is None or capacity_lps <= 0:
+    if capacity_lps is None or not (capacity_lps > 0):
         return None
     return sum(
         _segment_duration_above(t0, v0, t1, v1, capacity_lps)
@@ -145,9 +151,10 @@ def tiempo_sobre_capacidad_h(q_tributario: _Series, capacity_lps: float | None) 
 def integral_exceso_capacidad_m3(q_tributario: _Series, capacity_lps: float | None) -> float | None:
     """Integral de max(Q_tributario - upstream_capacity_lps, 0), en m3.
 
-    None si la capacidad falta o es <= 0.
+    None si la capacidad falta o es <= 0 (ver nota sobre NaN en
+    tiempo_sobre_capacidad_h).
     """
-    if capacity_lps is None or capacity_lps <= 0:
+    if capacity_lps is None or not (capacity_lps > 0):
         return None
     total = sum(
         _segment_excess_integral(t0, v0, t1, v1, capacity_lps)

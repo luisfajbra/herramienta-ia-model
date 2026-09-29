@@ -113,6 +113,7 @@ def test_tiempo_sobre_capacidad_is_none_when_capacity_is_missing_or_non_positive
     assert tiempo_sobre_capacidad_h(series, capacity_lps=None) is None
     assert tiempo_sobre_capacidad_h(series, capacity_lps=0.0) is None
     assert tiempo_sobre_capacidad_h(series, capacity_lps=-1.0) is None
+    assert tiempo_sobre_capacidad_h(series, capacity_lps=float("nan")) is None
 
 
 def test_integral_exceso_capacidad_uses_exact_segment_crossings():
@@ -132,6 +133,7 @@ def test_integral_exceso_capacidad_is_none_when_capacity_is_missing_or_non_posit
     series = [(0.0, 0.0), (1.0, 10.0)]
     assert integral_exceso_capacidad_m3(series, capacity_lps=None) is None
     assert integral_exceso_capacidad_m3(series, capacity_lps=0.0) is None
+    assert integral_exceso_capacidad_m3(series, capacity_lps=float("nan")) is None
 
 
 def test_compute_node_tributary_features_returns_all_six_keys():
@@ -147,6 +149,35 @@ def test_compute_node_tributary_features_returns_all_six_keys():
         "duracion_efectiva_tributario_h", "tiempo_primer_pico_tributario_h",
         "tiempo_sobre_capacidad_h", "integral_exceso_capacidad_m3",
     }
+
+
+@pytest.mark.parametrize("bad_capacity", [None, float("nan")])
+def test_capacity_dependent_features_are_none_not_zero_for_an_empty_q_tributario(bad_capacity):
+    """Nodo cabecera real: sin aporte propio en node_series y sin ancestros
+    presentes en node_series -> Q_tributario vacio (spec S6/M4: sigue siendo
+    elegible, no se excluye). Con capacidad invalida (None o NaN, que es lo
+    que realmente llega desde una columna de pandas), el guard debe disparar
+    ANTES de sumar sobre la serie vacia -- de lo contrario `sum(<generador
+    vacio>)` devuelve el entero 0 y la funcion afirma falsamente "cero tiempo
+    sobre capacidad" para un nodo cuya capacidad es en realidad desconocida.
+    """
+    graph = nx.DiGraph()
+    graph.add_node("headwater")  # sin ancestros
+    node_series = {}  # "headwater" ausente: sin aporte propio
+
+    q_trib = compute_q_tributario("headwater", node_series, graph)
+    assert q_trib == []
+
+    result_tiempo = tiempo_sobre_capacidad_h(q_trib, capacity_lps=bad_capacity)
+    result_integral = integral_exceso_capacidad_m3(q_trib, capacity_lps=bad_capacity)
+    assert result_tiempo is None
+    assert result_integral is None
+
+    features = compute_node_tributary_features(
+        "headwater", node_series, graph, capacity_lps=bad_capacity,
+    )
+    assert features["tiempo_sobre_capacidad_h"] is None
+    assert features["integral_exceso_capacidad_m3"] is None
 
 
 def test_compute_node_tributary_features_nulls_only_the_capacity_dependent_pair():
