@@ -116,3 +116,28 @@ def test_read_tail_window_observables_flow_settles_toward_zero_at_the_end(tiny_o
     (fin de simulacion) el aporte de J1 en la ventana final debe ser ~0."""
     result = read_tail_window_observables(tiny_out_file, drain_down_hours=1.0, tail_window_hours=1.0)
     assert result["node_total_inflow_lps"]["J1"][-1] == pytest.approx(0.0, abs=0.5)
+
+
+def test_part_to_dict_normalizes_single_object_series_id(tiny_out_file):
+    """SwmmOutput.get_part() devuelve una pandas.Series (no DataFrame) cuando
+    la seleccion resuelve a un unico objeto (p.ej. label="J1"). En ese caso
+    swmm_api todavia NO separo el label interno de columna: part.name llega
+    como "node;J1;total_inflow" (kind;label;variable unidos por
+    SwmmOutput._COL_SEP), no como "J1". Este test fuerza esa seleccion de un
+    solo objeto directamente contra el .out real y comprueba que
+    _part_to_dict() devuelve el id limpio, no el label crudo."""
+    from swmm_api import SwmmOutput
+
+    from swmm_resilience.validation.drainage_state import _part_to_dict
+
+    with SwmmOutput(str(tiny_out_file)) as out:
+        single = out.get_part(kind="node", label="J1", variable="total_inflow")
+
+    # Confirma que esta seleccion realmente cae en el caso Series (no
+    # DataFrame) -- si esto deja de ser cierto, el test ya no prueba nada.
+    assert not hasattr(single, "columns")
+    assert single.name == "node;J1;total_inflow"
+
+    result = _part_to_dict(single)
+    assert set(result.keys()) == {"J1"}
+    assert len(result["J1"]) == len(single)

@@ -1,4 +1,4 @@
-"""Lectura de la ventana final del .out y clasificacion del estado de drenaje.
+"""Lectura de la ventana final del .out (fase C1, tarea 1 de 5).
 
 Antes de este modulo, el pipeline asumia que una simulacion habia drenado
 solo por haber corrido END_TIME + drain_down_hours, o por profundidad cero
@@ -6,9 +6,14 @@ aislada en un unico paso -- ninguna de las dos demuestra drenaje real (spec
 Sec.7 del diseno de cierre de auditoria). Este modulo lee observables reales
 del .out binario de SWMM (nunca antes leido en este proyecto -- todo el resto
 del pipeline usa el .rpt de texto) en la ultima ventana de la simulacion, con
-al menos dos reportes, y aplica la regla operativa del spec: ausencia de
-aporte e inundacion sobre tolerancia, cambio de almacenamiento estabilizado,
-y flujo residual de nodos y enlaces dentro de tolerancia.
+al menos dos reportes: aporte total, inundacion y volumen por nodo, y flujo
+por enlace.
+
+Este modulo SOLO lee y devuelve esas series crudas -- no aplica todavia la
+regla operativa del spec (ausencia de aporte e inundacion sobre tolerancia,
+cambio de almacenamiento estabilizado, flujo residual dentro de tolerancia).
+Esa clasificacion es responsabilidad de una funcion separada (tarea 2 de este
+plan), que consume el dict que devuelve `read_tail_window_observables()`.
 """
 
 from __future__ import annotations
@@ -31,8 +36,22 @@ def _part_to_dict(part) -> dict:
         return {}
     if hasattr(part, "columns"):
         return {str(col): part[col].tolist() for col in part.columns}
-    # Series: un unico objeto seleccionado; part.name es su id.
-    return {str(part.name): part.tolist()}
+    # Series: un unico objeto seleccionado. part.name NO es el id limpio --
+    # SwmmOutput._to_pandas() devuelve df.iloc[:, 0] *antes* de separar la
+    # etiqueta interna de columna, asi que part.name es el label crudo
+    # "kind;label;variable" unido con SwmmOutput._COL_SEP (p.ej.
+    # "node;J1;total_inflow"), no "J1" -- verificado contra swmm_api 0.4.73
+    # forzando una seleccion de un solo objeto (get_part(label=...)) e
+    # inspeccionando .name directamente, y confirmado leyendo
+    # SwmmOutput._to_pandas() en swmm_api/output_file/out.py (linea ~369:
+    # `if df.columns.size == 1: return df.iloc[:, 0]` ocurre antes del split
+    # por _COL_SEP que arma el MultiIndex para el caso multi-columna).
+    from swmm_api import SwmmOutput
+
+    raw_label = str(part.name)
+    segments = raw_label.split(SwmmOutput._COL_SEP)
+    object_id = segments[1] if len(segments) >= 2 else raw_label
+    return {object_id: part.tolist()}
 
 
 def read_tail_window_observables(
