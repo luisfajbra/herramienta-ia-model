@@ -132,6 +132,31 @@ class FeatureContract:
 
 TABULAR_V3_17 = FeatureContract("tabular_v3_17", FEATURE_DEFINITIONS_V17)
 
+FEATURE_DEFINITIONS_V21 = tuple(
+    item for item in FEATURE_DEFINITIONS_V17
+    if item.name not in {"duracion_horas", "tiempo_al_pico_h"}
+) + (
+    FeatureDefinition("volumen_local_integrado_m3", "m3", "Node's own integrated inflow volume"),
+    FeatureDefinition("volumen_tributario_integrado_m3", "m3", "Integrated Q_tributario volume"),
+    FeatureDefinition("duracion_efectiva_tributario_h", "h", "Time Q_tributario stays above 1% of its own peak"),
+    FeatureDefinition("tiempo_primer_pico_tributario_h", "h", "Time to the first Q_tributario maximum"),
+    FeatureDefinition(
+        "tiempo_sobre_capacidad_h", "h",
+        "Time Q_tributario exceeds upstream_capacity_lps", nullable=True,
+    ),
+    FeatureDefinition(
+        "integral_exceso_capacidad_m3", "m3",
+        "Integral of max(Q_tributario - upstream_capacity_lps, 0)", nullable=True,
+    ),
+)
+
+FEATURE_COLUMNS_V21 = tuple(item.name for item in FEATURE_DEFINITIONS_V21)
+NULLABLE_FEATURE_COLUMNS_V4_21 = frozenset(
+    item.name for item in FEATURE_DEFINITIONS_V21 if item.nullable
+)
+
+TABULAR_V4_21 = FeatureContract("tabular_v4_21", FEATURE_DEFINITIONS_V21)
+
 
 def validate_feature_frame(frame: pd.DataFrame) -> pd.DataFrame:
     return TABULAR_V3_17.validate_frame(frame)
