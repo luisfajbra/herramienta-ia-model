@@ -184,8 +184,8 @@ def test_run_batch_shapes_classifies_and_saves_drainage_state(monkeypatch, tmp_p
     config = SimpleNamespace(
         validation=SimpleNamespace(
             inflow_closure_tolerance_lps=0.01, drain_down_hours=6.0,
-            drainage_inflow_tolerance_lps=0.01, drainage_flooding_tolerance_lps=0.01,
-            drainage_storage_change_tolerance_m3=0.01, drainage_tail_window_hours=1.0,
+            drainage_inflow_tolerance_lps=0.01, drainage_flooding_tolerance_lps=0.02,
+            drainage_storage_change_tolerance_m3=0.03, drainage_tail_window_hours=1.0,
         ),
         network=SimpleNamespace(inp_path=tmp_path / "base.inp"),
         factors=lambda: [1.0],
@@ -195,9 +195,17 @@ def test_run_batch_shapes_classifies_and_saves_drainage_state(monkeypatch, tmp_p
 
     batch_mod.run_batch_shapes(config, shapes, {"1C": 2.0}, tmp_path / "run")
 
+    expected_out_path = tmp_path / "run" / "storm_z" / "storm_z_f1.000.out"
+    assert calls["read_args"][0] == expected_out_path
     assert calls["read_args"][1] == 6.0  # drain_down_hours
     assert calls["read_args"][2] == 1.0  # drainage_tail_window_hours
     assert calls["classify_kwargs"]["inflow_tolerance_lps"] == 0.01
+    assert calls["classify_kwargs"]["flooding_tolerance_lps"] == 0.02
+    assert calls["classify_kwargs"]["storage_change_tolerance_m3"] == 0.03
+    # residual_flow_tolerance_lps is documented to intentionally reuse
+    # drainage_inflow_tolerance_lps (0.01), not a distinct config field --
+    # this must equal 0.01 (drainage_inflow_tolerance_lps), NOT 0.02 or 0.03.
+    assert calls["classify_kwargs"]["residual_flow_tolerance_lps"] == 0.01
 
     manifest_path = tmp_path / "run" / "storm_z" / "storm_z_f1.000.drainage_state.json"
     assert manifest_path.exists()
