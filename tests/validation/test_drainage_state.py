@@ -177,42 +177,42 @@ def _obs(**overrides):
 
 
 def test_classify_drained_when_everything_is_within_tolerance():
-    state, diag = classify_drainage_state(_obs(), **_TOL, min_report_steps=2)
+    state, diag = classify_drainage_state(_obs(), **_TOL, window_hours=1.0, min_report_steps=2)
     assert state == "drained"
     assert diag["policy_version"] == DRAINAGE_STATE_POLICY_VERSION
 
 
 def test_classify_not_drained_when_inflow_exceeds_tolerance():
     obs = _obs(node_total_inflow_lps={"A": [0.0, 0.0, 5.0]})
-    state, diag = classify_drainage_state(obs, **_TOL, min_report_steps=2)
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0, min_report_steps=2)
     assert state == "not_drained"
     assert "inflow" in diag["failed_checks"]
 
 
 def test_classify_not_drained_when_flooding_exceeds_tolerance():
     obs = _obs(node_flooding_lps={"A": [0.0, 0.2, 0.0]})
-    state, diag = classify_drainage_state(obs, **_TOL, min_report_steps=2)
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0, min_report_steps=2)
     assert state == "not_drained"
     assert "flooding" in diag["failed_checks"]
 
 
 def test_classify_not_drained_when_storage_change_between_steps_exceeds_tolerance():
     obs = _obs(node_volume_m3={"A": [1.0, 5.0, 5.0]})  # salto de 4.0 m3 entre pasos
-    state, diag = classify_drainage_state(obs, **_TOL, min_report_steps=2)
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0, min_report_steps=2)
     assert state == "not_drained"
     assert "storage_change" in diag["failed_checks"]
 
 
 def test_classify_not_drained_when_residual_link_flow_exceeds_tolerance():
     obs = _obs(link_flow_lps={"L1": [0.0, 0.0, 3.0]})
-    state, diag = classify_drainage_state(obs, **_TOL, min_report_steps=2)
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0, min_report_steps=2)
     assert state == "not_drained"
     assert "residual_flow" in diag["failed_checks"]
 
 
 def test_classify_unverified_when_too_few_report_steps():
     obs = _obs(n_report_steps=1)
-    state, diag = classify_drainage_state(obs, **_TOL, min_report_steps=2)
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0, min_report_steps=2)
     assert state == "unverified"
     assert "insufficient_report_steps" in diag["failed_checks"]
 
@@ -220,13 +220,78 @@ def test_classify_unverified_when_too_few_report_steps():
 def test_classify_unverified_when_link_data_is_missing():
     """Spec: si el .out solo ofrece volumen nodal, nunca se declara drenaje."""
     obs = _obs(has_link_data=False, link_flow_lps={})
-    state, diag = classify_drainage_state(obs, **_TOL, min_report_steps=2)
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0, min_report_steps=2)
     assert state == "unverified"
     assert "missing_link_data" in diag["failed_checks"]
 
 
 def test_save_drainage_state_manifest_writes_readable_json(tmp_path):
-    _, diag = classify_drainage_state(_obs(), **_TOL, min_report_steps=2)
+    _, diag = classify_drainage_state(_obs(), **_TOL, window_hours=1.0, min_report_steps=2)
     path = save_drainage_state_manifest(diag, tmp_path, "scenario_1")
     assert path.name == "scenario_1.drainage_state.json"
     assert json.loads(path.read_text(encoding="utf-8")) == diag
+
+
+# ============================================================================
+# Final review fix wave: Finding 2 -- completeness guard on empty/too-short
+# node series (previously only n_report_steps and has_link_data were
+# checked, so all-empty node dicts could still be classified "drained").
+# ============================================================================
+
+
+def test_classify_unverified_when_node_series_are_empty():
+    """Spec: sin evidencia real por nodo, nunca se declara "drained"."""
+    obs = _obs(
+        node_total_inflow_lps={}, node_flooding_lps={}, node_volume_m3={},
+    )
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0, min_report_steps=2)
+    assert state == "unverified"
+    assert "missing_node_data" in diag["failed_checks"]
+
+
+def test_classify_unverified_when_a_series_is_shorter_than_min_report_steps():
+    obs = _obs(node_total_inflow_lps={"A": [0.0]})  # 1 valor, min_report_steps=2
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0, min_report_steps=2)
+    assert state == "unverified"
+    assert "insufficient_series_length" in diag["failed_checks"]
+
+
+# ============================================================================
+# Final review fix wave: Finding 3 -- the manifest now records the window,
+# the step threshold, and observed magnitudes (not just pass/fail labels).
+# ============================================================================
+
+
+def test_classify_diagnostics_include_window_and_observed_maxima():
+    obs = _obs(
+        node_total_inflow_lps={"A": [0.0, 1.5, 0.0]},
+        node_flooding_lps={"A": [0.0, 0.2, 0.0]},
+        node_volume_m3={"A": [1.0, 5.0, 2.0]},
+        link_flow_lps={"L1": [0.0, 0.0, 3.0]},
+    )
+    _, diag = classify_drainage_state(obs, **_TOL, window_hours=0.5, min_report_steps=2)
+    assert diag["window_hours"] == 0.5
+    assert diag["min_report_steps"] == 2
+    assert diag["max_inflow_lps"] == pytest.approx(1.5)
+    assert diag["max_flooding_lps"] == pytest.approx(0.2)
+    assert diag["max_storage_change_m3"] == pytest.approx(4.0)  # |5.0 - 1.0|
+    assert diag["max_residual_flow_lps"] == pytest.approx(3.0)
+
+
+# ============================================================================
+# Final review fix wave: Finding 5 -- chain the real .out reader's output
+# directly into the real classifier, so a renamed key or type mismatch at
+# that boundary would fail a test instead of leaving every current test green.
+# ============================================================================
+
+
+def test_read_and_classify_chain_together_without_error(tiny_out_file):
+    observables = read_tail_window_observables(tiny_out_file, drain_down_hours=1.0, tail_window_hours=1.0)
+    state, diagnostics = classify_drainage_state(
+        observables,
+        inflow_tolerance_lps=0.01, flooding_tolerance_lps=0.01,
+        storage_change_tolerance_m3=0.01, residual_flow_tolerance_lps=0.01,
+        window_hours=1.0,
+    )
+    assert state in {"drained", "not_drained", "unverified"}
+    assert diagnostics["policy_version"] == DRAINAGE_STATE_POLICY_VERSION

@@ -4,7 +4,8 @@ from pathlib import Path
 from .runner import run_simulation_simple as run_simulation
 from ..config import Config
 from ..validation.drainage_state import (
-    classify_drainage_state, read_tail_window_observables, save_drainage_state_manifest,
+    DRAINAGE_STATE_POLICY_VERSION, classify_drainage_state, read_tail_window_observables,
+    save_drainage_state_manifest,
 )
 
 
@@ -103,21 +104,65 @@ def run_batch_shapes(
             if not rpt_path.exists():
                 raise FileNotFoundError(f"SWMM no generó .rpt: {rpt_path}")
             out_path = scenario_inp.with_suffix(".out")
-            observables = read_tail_window_observables(
-                out_path, config.validation.drain_down_hours,
-                config.validation.drainage_tail_window_hours,
+            scenario_id = scenario_inp.stem
+            window_hours = min(
+                config.validation.drainage_tail_window_hours, config.validation.drain_down_hours,
             )
-            _, drainage_manifest = classify_drainage_state(
-                observables,
-                inflow_tolerance_lps=config.validation.drainage_inflow_tolerance_lps,
-                flooding_tolerance_lps=config.validation.drainage_flooding_tolerance_lps,
-                storage_change_tolerance_m3=config.validation.drainage_storage_change_tolerance_m3,
-                residual_flow_tolerance_lps=config.validation.drainage_inflow_tolerance_lps,
-            )
+            try:
+                observables = read_tail_window_observables(
+                    out_path, config.validation.drain_down_hours,
+                    config.validation.drainage_tail_window_hours,
+                )
+                state, drainage_manifest = classify_drainage_state(
+                    observables,
+                    inflow_tolerance_lps=config.validation.drainage_inflow_tolerance_lps,
+                    flooding_tolerance_lps=config.validation.drainage_flooding_tolerance_lps,
+                    storage_change_tolerance_m3=config.validation.drainage_storage_change_tolerance_m3,
+                    residual_flow_tolerance_lps=config.validation.drainage_inflow_tolerance_lps,
+                    window_hours=window_hours,
+                )
+            except Exception as exc:
+                # Un .out ilegible/truncado/faltante no debe abortar el resto
+                # del lote -- se degrada a "unverified" (spec Sec.7) y se
+                # sigue con el resto de escenarios ya simulados.
+                state = "unverified"
+                drainage_manifest = {
+                    "policy_version": DRAINAGE_STATE_POLICY_VERSION,
+                    "state": "unverified",
+                    "failed_checks": ["out_read_error"],
+                    "error": repr(exc),
+                    "n_report_steps": None,
+                    "has_link_data": None,
+                    "window_hours": window_hours,
+                    "min_report_steps": 2,
+                    "max_inflow_lps": None,
+                    "max_flooding_lps": None,
+                    "max_storage_change_m3": None,
+                    "max_residual_flow_lps": None,
+                    "tolerances": {
+                        "inflow_tolerance_lps": config.validation.drainage_inflow_tolerance_lps,
+                        "flooding_tolerance_lps": config.validation.drainage_flooding_tolerance_lps,
+                        "storage_change_tolerance_m3": (
+                            config.validation.drainage_storage_change_tolerance_m3
+                        ),
+                        "residual_flow_tolerance_lps": config.validation.drainage_inflow_tolerance_lps,
+                    },
+                }
+                warnings.warn(
+                    f"[{scenario_id}] No se pudo leer/clasificar el .out: {exc!r} — "
+                    f"estado marcado unverified.",
+                    stacklevel=2,
+                )
             save_drainage_state_manifest(
                 drainage_manifest, scenario_inp.parent, scenario_inp.stem,
             )
             results.append((shape_id, factor, rpt_path))
-            print("OK")
+            print(f"OK [{state}]")
+            if state != "drained":
+                warnings.warn(
+                    f"[{scenario_id}] Estado de drenaje: {state} "
+                    f"({drainage_manifest['failed_checks']}).",
+                    stacklevel=2,
+                )
 
     return results

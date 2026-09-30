@@ -207,7 +207,168 @@ def test_run_batch_shapes_classifies_and_saves_drainage_state(monkeypatch, tmp_p
     # this must equal 0.01 (drainage_inflow_tolerance_lps), NOT 0.02 or 0.03.
     assert calls["classify_kwargs"]["residual_flow_tolerance_lps"] == 0.01
 
+    assert calls["classify_kwargs"]["window_hours"] == 1.0  # min(1.0, 6.0)
+
     manifest_path = tmp_path / "run" / "storm_z" / "storm_z_f1.000.drainage_state.json"
     assert manifest_path.exists()
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert payload["state"] == "drained"
+
+
+def test_run_batch_shapes_does_not_warn_when_drainage_state_is_drained(monkeypatch, tmp_path):
+    """Finding 6: a "drained" verdict must not trigger the not-drained warning."""
+    import swmm_resilience.simulation.batch as batch_mod
+
+    fake_inp = _FakeInp()
+    monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
+
+    def _fake_read(out_path, drain_down_hours, tail_window_hours):
+        return {"n_report_steps": 3, "has_link_data": True}
+
+    def _fake_classify(observables, **kwargs):
+        return "drained", {"policy_version": "tail_window_v1", "state": "drained", "failed_checks": []}
+
+    class _FakeSimulation:
+        def __init__(self, inp_path):
+            self._inp_path = Path(inp_path)
+
+        def __enter__(self):
+            self._inp_path.with_suffix(".rpt").touch()
+            self._inp_path.with_suffix(".out").touch()
+            return iter([])
+
+        def __exit__(self, *exc):
+            return False
+
+    import pyswmm
+    monkeypatch.setattr(pyswmm, "Simulation", _FakeSimulation)
+    monkeypatch.setattr(batch_mod, "read_tail_window_observables", _fake_read)
+    monkeypatch.setattr(batch_mod, "classify_drainage_state", _fake_classify)
+
+    config = SimpleNamespace(
+        validation=SimpleNamespace(
+            inflow_closure_tolerance_lps=0.01, drain_down_hours=6.0,
+            drainage_inflow_tolerance_lps=0.01, drainage_flooding_tolerance_lps=0.02,
+            drainage_storage_change_tolerance_m3=0.03, drainage_tail_window_hours=1.0,
+        ),
+        network=SimpleNamespace(inp_path=tmp_path / "base.inp"),
+        factors=lambda: [1.0],
+    )
+    shape = [(0.0, 0.0), (0.05, 1.0), (0.1, 0.0)]  # ya termina en 0 -> sin warning de cierre
+    shapes = {"storm_drained": shape}
+
+    import warnings as warnings_mod
+
+    with warnings_mod.catch_warnings():
+        warnings_mod.simplefilter("error")
+        results = batch_mod.run_batch_shapes(config, shapes, {"1C": 2.0}, tmp_path / "run")
+
+    assert len(results) == 1
+
+
+def test_run_batch_shapes_warns_when_drainage_state_is_not_drained(monkeypatch, tmp_path):
+    """Finding 6: the classified state must not be silently discarded -- a
+    non-"drained" verdict must surface as a warning."""
+    import swmm_resilience.simulation.batch as batch_mod
+
+    fake_inp = _FakeInp()
+    monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
+
+    def _fake_read(out_path, drain_down_hours, tail_window_hours):
+        return {"n_report_steps": 3, "has_link_data": True}
+
+    def _fake_classify(observables, **kwargs):
+        return "not_drained", {
+            "policy_version": "tail_window_v1", "state": "not_drained",
+            "failed_checks": ["inflow"],
+        }
+
+    class _FakeSimulation:
+        def __init__(self, inp_path):
+            self._inp_path = Path(inp_path)
+
+        def __enter__(self):
+            self._inp_path.with_suffix(".rpt").touch()
+            self._inp_path.with_suffix(".out").touch()
+            return iter([])
+
+        def __exit__(self, *exc):
+            return False
+
+    import pyswmm
+    monkeypatch.setattr(pyswmm, "Simulation", _FakeSimulation)
+    monkeypatch.setattr(batch_mod, "read_tail_window_observables", _fake_read)
+    monkeypatch.setattr(batch_mod, "classify_drainage_state", _fake_classify)
+
+    config = SimpleNamespace(
+        validation=SimpleNamespace(
+            inflow_closure_tolerance_lps=0.01, drain_down_hours=6.0,
+            drainage_inflow_tolerance_lps=0.01, drainage_flooding_tolerance_lps=0.02,
+            drainage_storage_change_tolerance_m3=0.03, drainage_tail_window_hours=1.0,
+        ),
+        network=SimpleNamespace(inp_path=tmp_path / "base.inp"),
+        factors=lambda: [1.0],
+    )
+    shape = [(0.0, 0.0), (0.05, 1.0), (0.1, 0.0)]  # ya termina en 0 -> sin warning de cierre
+    shapes = {"storm_notdrained": shape}
+
+    with pytest.warns(UserWarning, match="Estado de drenaje: not_drained"):
+        results = batch_mod.run_batch_shapes(config, shapes, {"1C": 2.0}, tmp_path / "run")
+
+    assert len(results) == 1
+
+
+def test_run_batch_shapes_survives_an_unreadable_out_file(monkeypatch, tmp_path):
+    """Finding 1: a broken/missing/truncated .out must not abort the whole
+    batch -- the scenario degrades to "unverified" and the loop continues."""
+    import swmm_resilience.simulation.batch as batch_mod
+
+    fake_inp = _FakeInp()
+    monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
+
+    def _raising_read(out_path, drain_down_hours, tail_window_hours):
+        raise OSError("simulated truncated .out")
+
+    class _FakeSimulation:
+        def __init__(self, inp_path):
+            self._inp_path = Path(inp_path)
+
+        def __enter__(self):
+            self._inp_path.with_suffix(".rpt").touch()
+            self._inp_path.with_suffix(".out").touch()
+            return iter([])
+
+        def __exit__(self, *exc):
+            return False
+
+    import pyswmm
+    monkeypatch.setattr(pyswmm, "Simulation", _FakeSimulation)
+    monkeypatch.setattr(batch_mod, "read_tail_window_observables", _raising_read)
+
+    config = SimpleNamespace(
+        validation=SimpleNamespace(
+            inflow_closure_tolerance_lps=0.01, drain_down_hours=6.0,
+            drainage_inflow_tolerance_lps=0.01, drainage_flooding_tolerance_lps=0.02,
+            drainage_storage_change_tolerance_m3=0.03, drainage_tail_window_hours=1.0,
+        ),
+        network=SimpleNamespace(inp_path=tmp_path / "base.inp"),
+        factors=lambda: [1.0],
+    )
+    shape = [(0.0, 0.0), (0.05, 1.0), (0.1, 0.0)]  # ya termina en 0 -> sin warning de cierre
+    shapes = {"storm_broken": shape}
+
+    with pytest.warns(UserWarning, match="No se pudo leer/clasificar el .out"):
+        results = batch_mod.run_batch_shapes(config, shapes, {"1C": 2.0}, tmp_path / "run")
+
+    # (a) run_batch_shapes does NOT raise, and (b) the scenario still
+    # appears in the returned results.
+    assert len(results) == 1
+    assert results[0][0] == "storm_broken"
+
+    # (c) a manifest is still written with state == "unverified" and
+    # "out_read_error" in failed_checks.
+    manifest_path = tmp_path / "run" / "storm_broken" / "storm_broken_f1.000.drainage_state.json"
+    assert manifest_path.exists()
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["state"] == "unverified"
+    assert "out_read_error" in payload["failed_checks"]

@@ -1,4 +1,4 @@
-"""Lectura de la ventana final del .out (fase C1, tarea 1 de 5).
+"""Clasificacion del estado de drenaje a partir del .out binario de SWMM.
 
 Antes de este modulo, el pipeline asumia que una simulacion habia drenado
 solo por haber corrido END_TIME + drain_down_hours, o por profundidad cero
@@ -9,11 +9,24 @@ del pipeline usa el .rpt de texto) en la ultima ventana de la simulacion, con
 al menos dos reportes: aporte total, inundacion y volumen por nodo, y flujo
 por enlace.
 
-Este modulo SOLO lee y devuelve esas series crudas -- no aplica todavia la
-regla operativa del spec (ausencia de aporte e inundacion sobre tolerancia,
-cambio de almacenamiento estabilizado, flujo residual dentro de tolerancia).
-Esa clasificacion es responsabilidad de una funcion separada (tarea 2 de este
-plan), que consume el dict que devuelve `read_tail_window_observables()`.
+El modulo cubre las tres etapas del flujo de estado de drenaje:
+
+- `read_tail_window_observables()` lee esas series crudas de la ventana final
+  del .out.
+- `classify_drainage_state()` aplica la regla operativa del spec sobre esas
+  series (ausencia de aporte e inundacion sobre tolerancia, cambio de
+  almacenamiento estabilizado, flujo residual dentro de tolerancia) y
+  devuelve el veredicto junto con un diagnostico auditable.
+- `save_drainage_state_manifest()` persiste ese diagnostico como sidecar
+  `<scenario_id>.drainage_state.json` junto al escenario.
+
+El flujo residual es una simplificacion "basal cero": se compara el flujo de
+enlaces contra cero, no contra una corrida basal real, porque este plan no
+incluye una simulacion de referencia. Las cuatro tolerancias (aporte,
+inundacion, cambio de almacenamiento, flujo residual) son valores por
+defecto pendientes de calibracion piloto, no constantes derivadas del
+comportamiento real de una red -- ver Global Constraints del plan que
+introdujo este modulo.
 """
 
 from __future__ import annotations
@@ -106,12 +119,29 @@ def read_tail_window_observables(
 DRAINAGE_STATE_POLICY_VERSION = "tail_window_v1"
 
 
+def _max_abs_value(series_by_id: dict) -> float:
+    """Maximo absoluto entre todos los valores de todas las series de `series_by_id`."""
+    values = [abs(v) for series in series_by_id.values() for v in series]
+    return max(values) if values else 0.0
+
+
+def _max_abs_step_delta(series_by_id: dict) -> float:
+    """Maxima diferencia absoluta entre pasos consecutivos, entre todas las series."""
+    deltas = [
+        abs(series[i + 1] - series[i])
+        for series in series_by_id.values()
+        for i in range(len(series) - 1)
+    ]
+    return max(deltas) if deltas else 0.0
+
+
 def classify_drainage_state(
     observables: dict,
     inflow_tolerance_lps: float,
     flooding_tolerance_lps: float,
     storage_change_tolerance_m3: float,
     residual_flow_tolerance_lps: float,
+    window_hours: float,
     min_report_steps: int = 2,
 ) -> tuple[str, dict]:
     """Aplica la regla operativa del spec Sec.7 sobre `observables`.
@@ -122,6 +152,10 @@ def classify_drainage_state(
     de nodos y enlaces bajo tolerancia (basal = cero, ver Global
     Constraints de este plan). Cualquier dato insuficiente -> "unverified",
     nunca "drained" ni "not_drained" por omision.
+
+    `window_hours` es la ventana efectiva ya resuelta por el llamador (no se
+    recalcula aqui); se registra en el diagnostico devuelto para que el
+    manifiesto sea auditable.
     """
     failed_checks: list[str] = []
 
@@ -129,6 +163,21 @@ def classify_drainage_state(
         failed_checks.append("insufficient_report_steps")
     if not observables["has_link_data"]:
         failed_checks.append("missing_link_data")
+    if (
+        not observables["node_total_inflow_lps"]
+        or not observables["node_flooding_lps"]
+        or not observables["node_volume_m3"]
+    ):
+        failed_checks.append("missing_node_data")
+    if any(
+        len(series) < min_report_steps
+        for series_dict in (
+            observables["node_total_inflow_lps"], observables["node_flooding_lps"],
+            observables["node_volume_m3"], observables["link_flow_lps"],
+        )
+        for series in series_dict.values()
+    ):
+        failed_checks.append("insufficient_series_length")
 
     if failed_checks:
         state = "unverified"
@@ -166,6 +215,12 @@ def classify_drainage_state(
         "failed_checks": failed_checks,
         "n_report_steps": observables["n_report_steps"],
         "has_link_data": observables["has_link_data"],
+        "window_hours": window_hours,
+        "min_report_steps": min_report_steps,
+        "max_inflow_lps": _max_abs_value(observables["node_total_inflow_lps"]),
+        "max_flooding_lps": _max_abs_value(observables["node_flooding_lps"]),
+        "max_storage_change_m3": _max_abs_step_delta(observables["node_volume_m3"]),
+        "max_residual_flow_lps": _max_abs_value(observables["link_flow_lps"]),
         "tolerances": {
             "inflow_tolerance_lps": inflow_tolerance_lps,
             "flooding_tolerance_lps": flooding_tolerance_lps,
