@@ -396,13 +396,23 @@ def _check_single_snapshot(frame: pd.DataFrame) -> None:
     )
 
 
-def load_training_frame(db_path: str | Path) -> pd.DataFrame:
+def load_training_frame(
+    db_path: str | Path,
+    max_continuity_error_pct: float | None = None,
+) -> pd.DataFrame:
     """Load every COMPLETE v17 training sample from the database at ``db_path``.
 
     Convenience wrapper for CLI callers: opens a managed connection, applies
     pending migrations, reads the canonical frame, and closes the connection.
     Raises ``ValueError`` when the database holds no COMPLETE samples yet, or
     when it holds more than one snapshot (see ``_check_single_snapshot``).
+
+    ``max_continuity_error_pct`` defaults to ``None`` (no exclusion) because
+    most callers are reporting/visualisation paths that must keep seeing the
+    full historical set. Callers that train or rank a model pass
+    ``config.validation.max_continuity_error_pct`` explicitly so runs whose
+    routing continuity error exceeds the threshold are dropped (a NULL
+    continuity is never excluded -- see ``load_training_samples``).
 
     The read leaves a transaction open (``load_training_samples`` reads inside
     a savepoint); closing discards it, which is safe because nothing here
@@ -411,7 +421,9 @@ def load_training_frame(db_path: str | Path) -> pd.DataFrame:
     conn = connect_managed_database(db_path)
     try:
         apply_migrations(conn)
-        frame = load_training_samples(conn)
+        frame = load_training_samples(
+            conn, max_continuity_error_pct=max_continuity_error_pct
+        )
         _check_single_snapshot(frame)
         return frame
     finally:

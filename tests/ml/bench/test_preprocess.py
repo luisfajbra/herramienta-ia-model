@@ -229,11 +229,13 @@ def test_prepare_captures_readonly_snapshot_and_never_loads_source(
     seen_paths = []
     real_loader = preprocess_module.load_training_frame
 
-    def capture_loader(path):
+    def capture_loader(path, max_continuity_error_pct=None):
         seen_paths.append(path)
         assert str(path) != str(sql_training_db)
         assert preprocess_module.Path(path).exists()
-        return real_loader(path)
+        return real_loader(
+            path, max_continuity_error_pct=max_continuity_error_pct
+        )
 
     monkeypatch.setattr(preprocess_module, "load_training_frame", capture_loader)
     prepared = prepare_dataset(
@@ -262,7 +264,11 @@ def test_relevant_training_value_change_changes_logical_identity(
     changed.loc[0, FEATURE_COLUMNS_V17[0]] = (
         float(changed.loc[0, FEATURE_COLUMNS_V17[0]]) + 1.0
     )
-    monkeypatch.setattr(preprocess_module, "load_training_frame", lambda _path: changed)
+    monkeypatch.setattr(
+        preprocess_module,
+        "load_training_frame",
+        lambda _path, max_continuity_error_pct=None: changed,
+    )
     modified = prepare_dataset(
         sql_training_db,
         protocols=("LOSO",),
@@ -378,7 +384,11 @@ def test_prepare_dataset_sorts_rows_even_when_source_frame_is_shuffled(
         "sanity check: the shuffle must actually reorder rows"
     )
 
-    monkeypatch.setattr(preprocess_module, "load_training_frame", lambda db_path: shuffled)
+    monkeypatch.setattr(
+        preprocess_module,
+        "load_training_frame",
+        lambda db_path, max_continuity_error_pct=None: shuffled,
+    )
 
     prepared = preprocess_module.prepare_dataset(
         sql_training_db,
@@ -408,3 +418,93 @@ def test_prep_id_is_independent_of_db_path(sql_training_db, tmp_path):
         output_dir=tmp_path / "prepared_copy",
     )
     assert original.prep_id == copied.prep_id
+
+
+def _dataset_with_continuity(
+    csv_shaped_dataset, *, high_shape_id, high_factor, high_value, low_value=0.5
+):
+    """csv_shaped_dataset + continuity_error_pct: un run alto, el resto bajos."""
+    dataset = csv_shaped_dataset.copy()
+    dataset["continuity_error_pct"] = low_value
+    is_high = (dataset["shape_id"] == high_shape_id) & (
+        dataset["factor_mult"] == high_factor
+    )
+    assert is_high.any(), "el setup debe marcar al menos un run como alto"
+    dataset.loc[is_high, "continuity_error_pct"] = high_value
+    return dataset
+
+
+def _shape_factor_pairs(keys):
+    return {
+        (shape_id, float(factor))
+        for shape_id, factor in zip(keys["shape_id"], keys["factor_mult"])
+    }
+
+
+def test_prepare_dataset_drops_runs_above_the_continuity_threshold(
+    csv_shaped_dataset, tmp_path
+):
+    """Fase C2 / revision final (C1): el umbral no basta con existir en SQL --
+    el banco real (prepare_dataset) debe recibirlo y perder esas filas. Sin esta
+    asercion el filtro puede quedar nunca invocado en produccion y el reporte de
+    excluidos miente."""
+    dataset = _dataset_with_continuity(
+        csv_shaped_dataset, high_shape_id="storm_a", high_factor=3.0,
+        high_value=-7.31,
+    )
+    db_path = _build_sql_db(tmp_path, dataset, "continuity")
+
+    filtered = prepare_dataset(
+        db_path, protocols=("LOSO",), flood_threshold_m3=1.0,
+        output_dir=tmp_path / "filtered",
+        max_continuity_error_pct=5.0,
+    )
+    unfiltered = prepare_dataset(
+        db_path, protocols=("LOSO",), flood_threshold_m3=1.0,
+        output_dir=tmp_path / "unfiltered",
+    )
+
+    assert ("storm_a", 3.0) in _shape_factor_pairs(unfiltered.keys)
+    assert ("storm_a", 3.0) not in _shape_factor_pairs(filtered.keys), (
+        "el run con |continuity_error_pct| = 7.31 > 5.0 debe salir del banco"
+    )
+    assert ("base", 3.0) in _shape_factor_pairs(filtered.keys)
+    n_nodes = dataset["node_id"].nunique()
+    assert filtered.manifest["n_rows"] == unfiltered.manifest["n_rows"] - n_nodes
+    assert filtered.manifest["max_continuity_error_pct"] == 5.0
+    assert filtered.prep_id != unfiltered.prep_id
+
+
+def test_prepare_dataset_keeps_runs_with_null_continuity(csv_shaped_dataset, tmp_path):
+    """Ruling "NULL = no excluido": una corrida sin medicion de continuidad
+    (p.ej. backfill viejo) no se descarta."""
+    dataset = csv_shaped_dataset.copy()
+    dataset["continuity_error_pct"] = float("nan")
+    db_path = _build_sql_db(tmp_path, dataset, "null_continuity")
+
+    prepared = prepare_dataset(
+        db_path, protocols=("LOSO",), flood_threshold_m3=1.0,
+        output_dir=tmp_path / "prepared",
+        max_continuity_error_pct=5.0,
+    )
+
+    assert prepared.manifest["n_rows"] == len(dataset)
+
+
+def test_prepare_dataset_without_threshold_keeps_high_continuity_runs(
+    csv_shaped_dataset, tmp_path
+):
+    """El default None preserva el comportamiento historico (sin filtrar)."""
+    dataset = _dataset_with_continuity(
+        csv_shaped_dataset, high_shape_id="storm_a", high_factor=3.0,
+        high_value=-7.31,
+    )
+    db_path = _build_sql_db(tmp_path, dataset, "unfiltered_default")
+
+    prepared = prepare_dataset(
+        db_path, protocols=("LOSO",), flood_threshold_m3=1.0,
+        output_dir=tmp_path / "prepared",
+    )
+
+    assert prepared.manifest["n_rows"] == len(dataset)
+    assert prepared.manifest["max_continuity_error_pct"] is None

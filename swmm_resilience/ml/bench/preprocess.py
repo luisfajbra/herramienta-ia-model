@@ -172,12 +172,21 @@ def prepare_dataset(
     protocols: Sequence[str] = PROTOCOLS,
     flood_threshold_m3: float,
     output_dir: Path | str,
+    max_continuity_error_pct: float | None = None,
 ) -> PreparedDataset:
-    """Lee el frame de SQL y materializa un PreparedDataset en ``output_dir``."""
+    """Lee el frame de SQL y materializa un PreparedDataset en ``output_dir``.
+
+    ``max_continuity_error_pct`` (normalmente
+    ``config.validation.max_continuity_error_pct``) excluye del banco los runs
+    cuyo |continuity_error_pct| supera el umbral; ``None`` no excluye nada.
+    Un ``continuity_error_pct`` NULL nunca excluye (misma regla que SQL).
+    """
     protocols = tuple(protocols)
     with _readonly_sqlite_snapshot(db_path) as snapshot_path:
         source_snapshot_sha256 = _sha256_file(snapshot_path)
-        frame = load_training_frame(snapshot_path)
+        frame = load_training_frame(
+            snapshot_path, max_continuity_error_pct=max_continuity_error_pct
+        )
     frame = frame.sort_values(list(SORT_KEY)).reset_index(drop=True)
     training_frame_sha256 = _training_frame_sha256(frame)
 
@@ -208,6 +217,11 @@ def prepare_dataset(
 
     manifest = dict(
         descriptor,
+        # Fuera del descriptor (y por tanto del prep_id) a proposito: el efecto
+        # del umbral sobre los datos ya queda capturado por
+        # training_frame_sha256, que si entra al prep_id. Aqui queda solo como
+        # procedencia de que umbral se aplico.
+        max_continuity_error_pct=max_continuity_error_pct,
         source_snapshot_sha256=source_snapshot_sha256,
         prep_id=prep_id,
         db_path=str(db_path),

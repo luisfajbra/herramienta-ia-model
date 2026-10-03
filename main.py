@@ -177,6 +177,7 @@ def _run_bench(args, config) -> None:
             protocols=tuple(config.bench.protocols),
             flood_threshold_m3=config.dataset.flood_threshold_m3,
             output_dir=prepared_dir,
+            max_continuity_error_pct=config.validation.max_continuity_error_pct,
         )
         print(f"PreparedDataset {prepared.prep_id}: {prepared.quality['n_rows']} filas, "
               f"{prepared.quality['class_balance']['n_flooded']} inundadas")
@@ -955,14 +956,40 @@ def main():
             excluded.to_csv(report_path, index=False)
             print(
                 f"  ADVERTENCIA: {len(excluded)} escenario(s) excluidos del "
-                f"benchmark principal por continuidad > "
+                f"entrenamiento y del benchmark principal por continuidad > "
                 f"{config.validation.max_continuity_error_pct}% -- "
-                f"reporte en {report_path}"
+                f"siguen persistidos en la base (visibles para curvas y "
+                f"reportes historicos); reporte en {report_path}"
+            )
+
+        # El entrenamiento legacy corre sobre el CSV crudo, no sobre SQL, asi que
+        # el filtro por continuidad de training_samples_v17 no lo alcanza: se
+        # replica aqui sobre `df` con la misma regla que SQL
+        # (NULL / columna ausente => no excluido).
+        df_training = df
+        if "continuity_error_pct" in df.columns:
+            continuity = pd.to_numeric(df["continuity_error_pct"], errors="coerce")
+            keep = ~(
+                continuity.notna()
+                & (continuity.abs() > config.validation.max_continuity_error_pct)
+            )
+            if not bool(keep.all()):
+                df_training = df.loc[keep].reset_index(drop=True)
+                print(
+                    f"  Entrenamiento legacy: {int((~keep).sum())} de {len(df)} "
+                    f"filas descartadas por continuidad > "
+                    f"{config.validation.max_continuity_error_pct}%"
+                )
+        if df_training.empty or (df_training["inunda"] == 1).sum() == 0:
+            parser.error(
+                "tras excluir los escenarios con error de continuidad > "
+                f"{config.validation.max_continuity_error_pct}% no quedan filas "
+                "inundadas para entrenar el regresor; revisa continuity_excluded.csv"
             )
 
         print("\nEntrenando (GroupKFold5 por factor_mult) y persistiendo evidencia...")
         training_run_id = persist_training_run(
-            conn, df, info["run_id_by_key"], info["node_pk_by_id"], config
+            conn, df_training, info["run_id_by_key"], info["node_pk_by_id"], config
         )
         metrics = conn.execute(
             "SELECT metric_name, value FROM model_metrics WHERE owner_kind = 'model'"

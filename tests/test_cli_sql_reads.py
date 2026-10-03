@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import main
 from swmm_resilience.database.training_queries import load_training_frame
@@ -194,6 +195,124 @@ def test_persist_sql_writes_to_config_dataset_db_path(monkeypatch):
     main.main()
 
     assert connect_calls == [config.dataset.db_path]
+
+
+def _persist_sql_fakes(monkeypatch, csv_frame, captured):
+    """Fakes compartidos del camino --persist-sql (sin SQL ni entrenamiento real)."""
+    import swmm_resilience.database.connection as connection_module
+    import swmm_resilience.database.migrations as migrations_module
+    import swmm_resilience.database.csv_backfill as csv_backfill_module
+    import swmm_resilience.database.training_queries as training_queries_module
+
+    class FakeCursor:
+        def fetchall(self):
+            return []
+
+    class FakeConn:
+        def execute(self, sql):
+            return FakeCursor()
+
+        def close(self):
+            pass
+
+    def fake_persist_training_run(conn, df, run_id_by_key, node_pk_by_id, config):
+        captured.append(df.copy())
+        return 1
+
+    monkeypatch.setattr(pd, "read_csv", lambda path: csv_frame)
+    monkeypatch.setattr(
+        connection_module, "connect_managed_database", lambda db_path: FakeConn()
+    )
+    monkeypatch.setattr(migrations_module, "apply_migrations", lambda conn: None)
+    monkeypatch.setattr(
+        csv_backfill_module,
+        "backfill_networks_and_runs",
+        lambda conn, df, inp_path, network_name: {
+            "network_id": 1,
+            "node_pk_by_id": {"N0": 1, "N1": 2, "N2": 3},
+            "run_id_by_key": {("base", 1.0): 1},
+        },
+    )
+    monkeypatch.setattr(
+        csv_backfill_module, "persist_training_run", fake_persist_training_run
+    )
+    monkeypatch.setattr(
+        training_queries_module,
+        "load_continuity_excluded",
+        lambda conn, pct: pd.DataFrame(),
+    )
+    monkeypatch.setattr(sys, "argv", ["main.py", "--persist-sql"])
+
+
+def test_persist_sql_excludes_high_continuity_rows_from_legacy_training(monkeypatch):
+    """Fase C2 / revision final (C1): el XGBoost legacy entrena sobre el CSV
+    crudo, nunca sobre SQL, asi que el filtro por continuidad debe aplicarse
+    sobre `df` antes de persist_training_run. NaN no excluye (Ruling
+    "NULL = no excluido")."""
+    csv_frame = pd.DataFrame(
+        {
+            "shape_id": ["base", "base", "base"],
+            "inunda": [1, 1, 1],
+            "node_id": ["N0", "N1", "N2"],
+            "continuity_error_pct": [1.0, -7.31, float("nan")],
+        }
+    )
+    captured = []
+    _persist_sql_fakes(monkeypatch, csv_frame, captured)
+
+    config = main.load_config("config.yaml")
+    assert config.validation.max_continuity_error_pct == 5.0, (
+        "premisa: el umbral de config.yaml deja 1.0 dentro y 7.31 fuera"
+    )
+
+    main.main()
+
+    assert len(captured) == 1
+    assert captured[0]["node_id"].tolist() == ["N0", "N2"], (
+        "N1 (|-7.31| > 5.0) debe salir del entrenamiento legacy; N2 (NaN) se queda"
+    )
+
+
+def test_persist_sql_keeps_every_row_when_the_csv_has_no_continuity_column(monkeypatch):
+    """Dataset viejo sin la columna: no se filtra nada (compatibilidad)."""
+    csv_frame = pd.DataFrame(
+        {
+            "shape_id": ["base", "base"],
+            "inunda": [1, 1],
+            "node_id": ["N0", "N1"],
+        }
+    )
+    captured = []
+    _persist_sql_fakes(monkeypatch, csv_frame, captured)
+
+    main.main()
+
+    assert len(captured) == 1
+    assert captured[0]["node_id"].tolist() == ["N0", "N1"]
+
+
+def test_persist_sql_errors_when_the_filter_removes_every_flooded_row(
+    monkeypatch, capsys
+):
+    """Si el filtro deja el entrenamiento sin filas inundadas, el CLI falla con
+    un mensaje explicito en vez de un error opaco del regresor."""
+    csv_frame = pd.DataFrame(
+        {
+            "shape_id": ["base", "base"],
+            "inunda": [1, 0],
+            "node_id": ["N0", "N1"],
+            "continuity_error_pct": [-9.0, 0.1],
+        }
+    )
+    captured = []
+    _persist_sql_fakes(monkeypatch, csv_frame, captured)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main.main()
+
+    assert exit_info.value.code == 2
+    assert captured == [], "no debe entrenarse nada"
+    assert "continuidad" in capsys.readouterr().err
 
 
 def test_resilience_curve_errors_when_sql_has_no_samples(monkeypatch, capsys):
