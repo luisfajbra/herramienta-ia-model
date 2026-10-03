@@ -269,6 +269,7 @@ def _find_key_mismatches(
 def load_training_samples(
     conn: sqlite3.Connection,
     run_ids: list[int] | None = None,
+    max_continuity_error_pct: float | None = None,
 ) -> pd.DataFrame:
     normalized_run_ids = _normalize_run_ids(run_ids)
     run_filter, params = _run_id_selection(normalized_run_ids)
@@ -284,13 +285,23 @@ def load_training_samples(
                 "feature/result row count or key mismatch for COMPLETE runs: "
                 f"{details}"
             )
+        continuity_filter = ""
+        continuity_params: list[float] = []
+        if max_continuity_error_pct is not None:
+            continuity_filter = (
+                " AND run_id NOT IN ("
+                "SELECT run_id FROM runs"
+                " WHERE continuity_error_pct IS NOT NULL"
+                " AND ABS(continuity_error_pct) > ?)"
+            )
+            continuity_params = [max_continuity_error_pct]
         columns = IDENTITY_COLUMNS + FEATURE_COLUMNS_V17 + TARGET_COLUMNS
         sql = (
             f"SELECT {', '.join(columns)} FROM training_samples_v17"
-            f" WHERE 1 = 1{run_filter}"
+            f" WHERE 1 = 1{run_filter}{continuity_filter}"
             " ORDER BY run_id, node_id"
         )
-        frame = pd.read_sql_query(sql, conn, params=params)
+        frame = pd.read_sql_query(sql, conn, params=params + continuity_params)
         if frame.empty:
             raise ValueError("No COMPLETE v17 training samples found")
         features = TABULAR_V3_17.validate_frame(
@@ -305,6 +316,26 @@ def load_training_samples(
             ],
             axis=1,
         )
+
+
+def load_continuity_excluded(
+    conn: sqlite3.Connection,
+    max_continuity_error_pct: float,
+) -> pd.DataFrame:
+    """Escenarios cuyo |continuity_error_pct| supera el umbral -- el
+    'reporte separado' exigido por el spec Sec.7 para referencias
+    cuestionadas. No valida cardinalidad ni COMPLETE: es un reporte de
+    diagnostico, no una fuente de entrenamiento."""
+    sql = """
+        SELECT r.run_id, s.scenario_key, s.shape_id, s.factor_mult,
+               r.continuity_error_pct
+        FROM runs AS r
+        JOIN scenarios AS s ON s.scenario_id = r.scenario_id
+        WHERE r.continuity_error_pct IS NOT NULL
+          AND ABS(r.continuity_error_pct) > ?
+        ORDER BY r.run_id
+    """
+    return pd.read_sql_query(sql, conn, params=[max_continuity_error_pct])
 
 
 def export_training_samples_csv(

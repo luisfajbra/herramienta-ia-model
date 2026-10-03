@@ -9,6 +9,7 @@ from swmm_resilience.database.connection import connect_database
 from swmm_resilience.database.migrations import apply_migrations
 from swmm_resilience.database.training_queries import (
     export_training_samples_csv,
+    load_continuity_excluded,
     load_training_samples,
 )
 from swmm_resilience.ml.contracts import (
@@ -81,6 +82,7 @@ def _insert_scenario_and_run(
     network_id=1,
     scenario_id=None,
     node_count=1,
+    continuity_error_pct=None,
 ):
     scenario_id = scenario_id if scenario_id is not None else 100 + run_id
     conn.execute(
@@ -106,8 +108,8 @@ def _insert_scenario_and_run(
         """
         INSERT INTO runs (
             run_id, scenario_id, network_id, status, config_sha256,
-            node_count
-        ) VALUES (?, ?, ?, ?, ?, ?)
+            node_count, continuity_error_pct
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             run_id,
@@ -116,6 +118,7 @@ def _insert_scenario_and_run(
             status,
             f"{run_id:064x}",
             node_count,
+            continuity_error_pct,
         ),
     )
 
@@ -792,3 +795,59 @@ def test_export_write_failure_preserves_existing_csv_and_removes_temporary(
 
     assert output.read_bytes() == original
     assert list(tmp_path.glob(".training.csv.*.tmp")) == []
+
+
+def test_load_training_samples_excludes_runs_above_continuity_threshold(migrated_conn):
+    conn = migrated_conn
+    _insert_network(conn)
+    _insert_node(conn, node_pk=1, node_id="N1")
+
+    _insert_scenario_and_run(conn, run_id=1, continuity_error_pct=1.0)
+    _insert_feature(conn, run_id=1, node_pk=1)
+    _insert_result(conn, run_id=1, node_pk=1, inunda=1)
+
+    _insert_scenario_and_run(conn, run_id=2, scenario_id=200, continuity_error_pct=-7.31)
+    _insert_feature(conn, run_id=2, node_pk=1)
+    _insert_result(conn, run_id=2, node_pk=1, inunda=1)
+
+    frame = load_training_samples(conn, max_continuity_error_pct=5.0)
+    assert set(frame["run_id"]) == {1}
+
+
+def test_load_training_samples_includes_null_continuity_as_not_excluded(migrated_conn):
+    conn = migrated_conn
+    _insert_network(conn)
+    _insert_node(conn, node_pk=1, node_id="N1")
+
+    _insert_scenario_and_run(conn, run_id=1, continuity_error_pct=None)
+    _insert_feature(conn, run_id=1, node_pk=1)
+    _insert_result(conn, run_id=1, node_pk=1, inunda=1)
+
+    frame = load_training_samples(conn, max_continuity_error_pct=5.0)
+    assert set(frame["run_id"]) == {1}
+
+
+def test_load_training_samples_without_threshold_includes_everything(migrated_conn):
+    conn = migrated_conn
+    _insert_network(conn)
+    _insert_node(conn, node_pk=1, node_id="N1")
+
+    _insert_scenario_and_run(conn, run_id=1, continuity_error_pct=-7.31)
+    _insert_feature(conn, run_id=1, node_pk=1)
+    _insert_result(conn, run_id=1, node_pk=1, inunda=1)
+
+    frame = load_training_samples(conn)
+    assert set(frame["run_id"]) == {1}
+
+
+def test_load_continuity_excluded_returns_only_scenarios_above_threshold(migrated_conn):
+    conn = migrated_conn
+    _insert_network(conn)
+    _insert_node(conn, node_pk=1, node_id="N1")
+
+    _insert_scenario_and_run(conn, run_id=1, continuity_error_pct=1.0)
+    _insert_scenario_and_run(conn, run_id=2, scenario_id=200, continuity_error_pct=-7.31)
+
+    excluded = load_continuity_excluded(conn, max_continuity_error_pct=5.0)
+    assert excluded["run_id"].tolist() == [2]
+    assert excluded["continuity_error_pct"].iloc[0] == pytest.approx(-7.31)
