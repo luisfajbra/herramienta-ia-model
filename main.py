@@ -1080,6 +1080,10 @@ def main():
                 tiempo_al_pico_h=base_t_pico,
             )
             dynamic_df["shape_id"] = "base"
+            from swmm_resilience.simulation.swmm_api_io import read_continuity_error
+
+            dynamic_df["continuity_error_pct"] = read_continuity_error(rpt_path)
+
             labels_df = extract_labels(rpt_path, all_node_ids, config.dataset.flood_threshold_m3)
             simulation_results.append((factor, dynamic_df, labels_df))
 
