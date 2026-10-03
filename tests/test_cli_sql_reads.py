@@ -136,6 +136,7 @@ def test_persist_sql_writes_to_config_dataset_db_path(monkeypatch):
     import swmm_resilience.database.connection as connection_module
     import swmm_resilience.database.migrations as migrations_module
     import swmm_resilience.database.csv_backfill as csv_backfill_module
+    import swmm_resilience.database.training_queries as training_queries_module
 
     connect_calls = []
     csv_frame = pd.DataFrame(
@@ -183,6 +184,9 @@ def test_persist_sql_writes_to_config_dataset_db_path(monkeypatch):
     )
     monkeypatch.setattr(
         csv_backfill_module, "persist_training_run", fake_persist_training_run
+    )
+    monkeypatch.setattr(
+        training_queries_module, "load_continuity_excluded", lambda conn, pct: pd.DataFrame()
     )
     monkeypatch.setattr(sys, "argv", ["main.py", "--persist-sql"])
 

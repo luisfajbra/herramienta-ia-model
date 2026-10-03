@@ -937,6 +937,21 @@ def main():
         print(f"  network_id={info['network_id']}  nodos={len(info['node_pk_by_id'])}  "
               f"corridas={len(info['run_id_by_key'])}")
 
+        from swmm_resilience.database.training_queries import load_continuity_excluded
+
+        excluded = load_continuity_excluded(
+            conn, config.validation.max_continuity_error_pct
+        )
+        if not excluded.empty:
+            report_path = config.dataset.db_path.parent / "continuity_excluded.csv"
+            excluded.to_csv(report_path, index=False)
+            print(
+                f"  ADVERTENCIA: {len(excluded)} escenario(s) excluidos del "
+                f"benchmark principal por continuidad > "
+                f"{config.validation.max_continuity_error_pct}% -- "
+                f"reporte en {report_path}"
+            )
+
         print("\nEntrenando (GroupKFold5 por factor_mult) y persistiendo evidencia...")
         training_run_id = persist_training_run(
             conn, df, info["run_id_by_key"], info["node_pk_by_id"], config
