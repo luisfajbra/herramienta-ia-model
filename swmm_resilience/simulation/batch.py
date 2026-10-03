@@ -198,6 +198,8 @@ def run_batch_shapes(
                 attempt += 1
 
             drainage_manifest["extension_log"] = extension_log
+            drainage_manifest["drainage_extension_increment_hours"] = increment
+            drainage_manifest["drainage_extension_max_retries"] = max_retries
             save_drainage_state_manifest(
                 drainage_manifest, scenario_inp.parent, scenario_inp.stem,
             )

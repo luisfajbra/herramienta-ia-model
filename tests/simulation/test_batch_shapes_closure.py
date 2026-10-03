@@ -214,6 +214,13 @@ def test_run_batch_shapes_classifies_and_saves_drainage_state(monkeypatch, tmp_p
     assert manifest_path.exists()
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert payload["state"] == "drained"
+    # Fase C2 / revision final (I3): el spec exige registrar el incremento y el
+    # limite CONFIGURADOS, no solo los intentos. En el caso comun (drena en el
+    # intento 0) extension_log tiene una sola entrada, asi que sin estos dos
+    # campos ninguno de los dos valores seria recuperable del manifiesto.
+    assert payload["drainage_extension_increment_hours"] == pytest.approx(2.0)
+    assert payload["drainage_extension_max_retries"] == 2
+    assert len(payload["extension_log"]) == 1
 
 
 def test_run_batch_shapes_does_not_warn_when_drainage_state_is_drained(monkeypatch, tmp_path):
@@ -332,6 +339,8 @@ def test_run_batch_shapes_warns_when_drainage_state_is_not_drained(monkeypatch, 
     assert [entry["attempt"] for entry in payload["extension_log"]] == [0, 1, 2]
     assert payload["extension_log"][1]["drain_down_hours"] == pytest.approx(8.0)  # 6.0 + 1*2.0
     assert payload["extension_log"][2]["drain_down_hours"] == pytest.approx(10.0)  # 6.0 + 2*2.0
+    assert payload["drainage_extension_increment_hours"] == pytest.approx(2.0)
+    assert payload["drainage_extension_max_retries"] == 2
 
 
 def test_run_batch_shapes_survives_an_unreadable_out_file(monkeypatch, tmp_path):
