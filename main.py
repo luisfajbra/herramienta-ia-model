@@ -1084,6 +1084,9 @@ def main():
                     tiempo_al_pico_h=t_pico_h,
                 )
                 dynamic_df["shape_id"] = shape_id
+                from swmm_resilience.simulation.swmm_api_io import read_continuity_error
+
+                dynamic_df["continuity_error_pct"] = read_continuity_error(rpt_path)
 
                 from swmm_resilience.simulation.hydrograph_shapes import apply_shape
                 from swmm_resilience.simulation.inflow_closure import apply_closure_policy
