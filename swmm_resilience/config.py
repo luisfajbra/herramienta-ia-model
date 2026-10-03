@@ -260,6 +260,7 @@ class ValidationConfig:
     drainage_flooding_tolerance_lps: float = 0.01
     drainage_storage_change_tolerance_m3: float = 0.01
     drainage_tail_window_hours: float = 1.0
+    max_continuity_error_pct: float = 5.0
 
 
 BENCH_PROTOCOLS = ("LeaveOneShapeOut", "LOSO", "GroupKFold5")
@@ -472,6 +473,9 @@ def load_config(config_path: str = "config.yaml") -> Config:
             ),
             drainage_tail_window_hours=float(
                 (raw.get("validation") or {}).get("drainage_tail_window_hours", 1.0)
+            ),
+            max_continuity_error_pct=float(
+                (raw.get("validation") or {}).get("max_continuity_error_pct", 5.0)
             ),
         ),
         bench=_parse_bench(raw.get("bench")),

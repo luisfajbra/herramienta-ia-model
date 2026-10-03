@@ -36,7 +36,9 @@ from ..simulation.inflow_closure import (
     INFLOW_CLOSURE_POLICY_VERSION,
     apply_closure_policy, enforce_strict_zero_endpoint, save_closure_manifest,
 )
-from ..simulation.swmm_api_io import get_node_timeseries_map, load_inp
+from ..simulation.swmm_api_io import (
+    get_node_timeseries_map, load_inp, read_continuity_error as _read_continuity_error,
+)
 from ..simulation.timeseries_scenario import write_scenario_inp
 from ..validation.hydrograph_csv import HydrographScenario, load_scenario
 from ..visualization.hydrograph import plot_scenario_hydrograph
@@ -174,27 +176,6 @@ def _run_swmm(scenario_inp_path: Path) -> Path:
             f"SWMM did not generate the expected .rpt file: {rpt_path}"
         )
     return rpt_path
-
-
-_CONTINUITY_RE = re.compile(
-    r"Continuity Error \(%\)\s*\.*\s*(-?\d+(?:\.\d+)?)"
-)
-
-
-def _read_continuity_error(rpt_path: Path) -> float | None:
-    """Worst (max |value|) continuity error (%) reported in the .rpt.
-
-    A routing continuity error above ~5 % means SWMM itself does not trust
-    its mass balance, so the 'truth' side of the comparison is unreliable.
-    """
-    try:
-        text = Path(rpt_path).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    values = [float(v) for v in _CONTINUITY_RE.findall(text)]
-    if not values:
-        return None
-    return max(values, key=abs)
 
 
 def _build_swmm_df(

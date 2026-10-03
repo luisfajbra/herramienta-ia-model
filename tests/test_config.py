@@ -161,3 +161,16 @@ def test_validation_drainage_state_is_parsed_when_present(tmp_path):
     assert config.validation.drainage_flooding_tolerance_lps == 0.05
     assert config.validation.drainage_storage_change_tolerance_m3 == 0.1
     assert config.validation.drainage_tail_window_hours == 2.0
+
+
+def test_validation_max_continuity_error_pct_default(tmp_path):
+    config = load_config(write_config(tmp_path))
+    assert config.validation.max_continuity_error_pct == 5.0
+
+
+def test_validation_max_continuity_error_pct_is_parsed_when_present(tmp_path):
+    cfg = _write_config_with_validation_block(
+        tmp_path, '  max_continuity_error_pct: 3.0',
+    )
+    config = load_config(cfg)
+    assert config.validation.max_continuity_error_pct == 3.0

@@ -21,6 +21,7 @@ validation:
   drainage_flooding_tolerance_lps: 0.01
   drainage_storage_change_tolerance_m3: 0.01
   drainage_tail_window_hours: 1.0
+  max_continuity_error_pct: 5.0
 
 ml:
   classifier:

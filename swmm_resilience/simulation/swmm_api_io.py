@@ -15,6 +15,7 @@ link/conduit statistics while equivalence with .rpt/swmm_api is being validated.
 from __future__ import annotations
 
 import copy
+import re
 import warnings
 from pathlib import Path
 from typing import Optional
@@ -398,3 +399,28 @@ def get_link_series(out, link_id: str) -> "pd.DataFrame":
     }
     df = df.rename(columns={k: v for k, v in column_aliases.items() if k in df.columns})
     return df
+
+
+# ---------------------------------------------------------------------------
+# Continuity error reading
+# ---------------------------------------------------------------------------
+
+_CONTINUITY_RE = re.compile(
+    r"Continuity Error \(%\)\s*\.*\s*(-?\d+(?:\.\d+)?)"
+)
+
+
+def read_continuity_error(rpt_path: Path) -> float | None:
+    """Worst (max |value|) continuity error (%) reported in the .rpt.
+
+    A routing continuity error above the configured threshold means SWMM
+    itself does not trust its mass balance for that scenario (spec Sec.7).
+    """
+    try:
+        text = Path(rpt_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    values = [float(v) for v in _CONTINUITY_RE.findall(text)]
+    if not values:
+        return None
+    return max(values, key=abs)
