@@ -144,14 +144,25 @@ def backfill_networks_and_runs(
             (dataset["shape_id"] == srow.shape_id)
             & (abs(dataset["factor_mult"] - srow.factor_mult) < 1e-9)
         ]
+        if "continuity_error_pct" in subset.columns:
+            raw_continuity = subset["continuity_error_pct"].iloc[0]
+            continuity_error_pct = (
+                float(raw_continuity) if pd.notna(raw_continuity) else None
+            )
+        else:
+            continuity_error_pct = None
+
         cur = conn.execute(
             """
             INSERT INTO runs (
                 scenario_id, network_id, status, started_at_utc, completed_at_utc,
-                config_sha256, node_count
-            ) VALUES (?, ?, 'COMPLETE', ?, ?, ?, ?)
+                config_sha256, node_count, continuity_error_pct
+            ) VALUES (?, ?, 'COMPLETE', ?, ?, ?, ?, ?)
             """,
-            (scenario_id, network_id, _now(), _now(), config_sha256, len(subset)),
+            (
+                scenario_id, network_id, _now(), _now(), config_sha256, len(subset),
+                continuity_error_pct,
+            ),
         )
         run_id = cur.lastrowid
         run_id_by_key[(srow.shape_id, float(srow.factor_mult))] = run_id

@@ -205,3 +205,45 @@ def test_persist_training_run_uses_full_feature_contract(migrated_managed_conn, 
     ).fetchone()[0]
     import json
     assert json.loads(ordered) == list(FEATURE_COLUMNS_V17)
+
+
+def test_backfill_persists_continuity_error_pct_when_present(tmp_path):
+    from swmm_resilience.database.connection import connect_managed_database
+    from swmm_resilience.database.migrations import apply_migrations
+
+    dataset = _synthetic_dataset()
+    dataset["continuity_error_pct"] = -7.31
+
+    conn = connect_managed_database(tmp_path / "test.sqlite3")
+    apply_migrations(conn)
+    inp_path = tmp_path / "base.inp"
+    inp_path.write_bytes(b"fake inp bytes")
+
+    info = backfill_networks_and_runs(conn, dataset, inp_path, "test-network")
+
+    run_id = next(iter(info["run_id_by_key"].values()))
+    row = conn.execute(
+        "SELECT continuity_error_pct FROM runs WHERE run_id = ?", (run_id,)
+    ).fetchone()
+    assert row[0] == pytest.approx(-7.31)
+
+
+def test_backfill_leaves_continuity_error_pct_null_when_column_absent(tmp_path):
+    from swmm_resilience.database.connection import connect_managed_database
+    from swmm_resilience.database.migrations import apply_migrations
+
+    dataset = _synthetic_dataset()
+    assert "continuity_error_pct" not in dataset.columns
+
+    conn = connect_managed_database(tmp_path / "test.sqlite3")
+    apply_migrations(conn)
+    inp_path = tmp_path / "base.inp"
+    inp_path.write_bytes(b"fake inp bytes")
+
+    info = backfill_networks_and_runs(conn, dataset, inp_path, "test-network")
+
+    run_id = next(iter(info["run_id_by_key"].values()))
+    row = conn.execute(
+        "SELECT continuity_error_pct FROM runs WHERE run_id = ?", (run_id,)
+    ).fetchone()
+    assert row[0] is None
