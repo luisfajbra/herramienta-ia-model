@@ -190,6 +190,15 @@ def _validate_csv_inflow_closure_mode(value: str) -> str:
     return normalized
 
 
+def _validate_drainage_extension_max_retries(value: int) -> int:
+    """Validate that drainage_extension_max_retries is a non-negative integer."""
+    if value < 0:
+        raise ValueError(
+            f"validation.drainage_extension_max_retries debe ser >= 0: {value}"
+        )
+    return value
+
+
 @dataclass
 class NetworkConfig:
     inp_path: Path
@@ -261,6 +270,8 @@ class ValidationConfig:
     drainage_storage_change_tolerance_m3: float = 0.01
     drainage_tail_window_hours: float = 1.0
     max_continuity_error_pct: float = 5.0
+    drainage_extension_increment_hours: float = 2.0
+    drainage_extension_max_retries: int = 2
 
 
 BENCH_PROTOCOLS = ("LeaveOneShapeOut", "LOSO", "GroupKFold5")
@@ -407,6 +418,10 @@ def load_config(config_path: str = "config.yaml") -> Config:
     )
     csv_inflow_closure_mode = _validate_csv_inflow_closure_mode(csv_inflow_closure_mode)
 
+    drainage_extension_max_retries = _validate_drainage_extension_max_retries(
+        int((raw.get("validation") or {}).get("drainage_extension_max_retries", 2))
+    )
+
     clf = ml["classifier"]
     reg = ml["regressor"]
     return Config(
@@ -477,6 +492,10 @@ def load_config(config_path: str = "config.yaml") -> Config:
             max_continuity_error_pct=float(
                 (raw.get("validation") or {}).get("max_continuity_error_pct", 5.0)
             ),
+            drainage_extension_increment_hours=float(
+                (raw.get("validation") or {}).get("drainage_extension_increment_hours", 2.0)
+            ),
+            drainage_extension_max_retries=drainage_extension_max_retries,
         ),
         bench=_parse_bench(raw.get("bench")),
     )

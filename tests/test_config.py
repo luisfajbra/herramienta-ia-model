@@ -174,3 +174,28 @@ def test_validation_max_continuity_error_pct_is_parsed_when_present(tmp_path):
     )
     config = load_config(cfg)
     assert config.validation.max_continuity_error_pct == 3.0
+
+
+def test_validation_drainage_extension_defaults(tmp_path):
+    config = load_config(write_config(tmp_path))
+    assert config.validation.drainage_extension_increment_hours == 2.0
+    assert config.validation.drainage_extension_max_retries == 2
+
+
+def test_validation_drainage_extension_is_parsed_when_present(tmp_path):
+    cfg = _write_config_with_validation_block(
+        tmp_path,
+        '  drainage_extension_increment_hours: 1.0\n'
+        '  drainage_extension_max_retries: 5',
+    )
+    config = load_config(cfg)
+    assert config.validation.drainage_extension_increment_hours == 1.0
+    assert config.validation.drainage_extension_max_retries == 5
+
+
+def test_validation_drainage_extension_max_retries_rejects_negative(tmp_path):
+    cfg = _write_config_with_validation_block(
+        tmp_path, '  drainage_extension_max_retries: -1',
+    )
+    with pytest.raises(ValueError, match="drainage_extension_max_retries"):
+        load_config(cfg)
