@@ -186,6 +186,7 @@ def test_run_batch_shapes_classifies_and_saves_drainage_state(monkeypatch, tmp_p
             inflow_closure_tolerance_lps=0.01, drain_down_hours=6.0,
             drainage_inflow_tolerance_lps=0.01, drainage_flooding_tolerance_lps=0.02,
             drainage_storage_change_tolerance_m3=0.03, drainage_tail_window_hours=1.0,
+            drainage_extension_increment_hours=2.0, drainage_extension_max_retries=2,
         ),
         network=SimpleNamespace(inp_path=tmp_path / "base.inp"),
         factors=lambda: [1.0],
@@ -250,6 +251,7 @@ def test_run_batch_shapes_does_not_warn_when_drainage_state_is_drained(monkeypat
             inflow_closure_tolerance_lps=0.01, drain_down_hours=6.0,
             drainage_inflow_tolerance_lps=0.01, drainage_flooding_tolerance_lps=0.02,
             drainage_storage_change_tolerance_m3=0.03, drainage_tail_window_hours=1.0,
+            drainage_extension_increment_hours=2.0, drainage_extension_max_retries=2,
         ),
         network=SimpleNamespace(inp_path=tmp_path / "base.inp"),
         factors=lambda: [1.0],
@@ -268,16 +270,20 @@ def test_run_batch_shapes_does_not_warn_when_drainage_state_is_drained(monkeypat
 
 def test_run_batch_shapes_warns_when_drainage_state_is_not_drained(monkeypatch, tmp_path):
     """Finding 6: the classified state must not be silently discarded -- a
-    non-"drained" verdict must surface as a warning."""
+    non-"drained" verdict must surface as a warning. Fase C2: tambien debe
+    agotar los reintentos configurados antes de rendirse."""
     import swmm_resilience.simulation.batch as batch_mod
 
     fake_inp = _FakeInp()
     monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
 
+    classify_calls = []
+
     def _fake_read(out_path, drain_down_hours, tail_window_hours):
         return {"n_report_steps": 3, "has_link_data": True}
 
     def _fake_classify(observables, **kwargs):
+        classify_calls.append(kwargs)
         return "not_drained", {
             "policy_version": "tail_window_v1", "state": "not_drained",
             "failed_checks": ["inflow"],
@@ -305,6 +311,7 @@ def test_run_batch_shapes_warns_when_drainage_state_is_not_drained(monkeypatch, 
             inflow_closure_tolerance_lps=0.01, drain_down_hours=6.0,
             drainage_inflow_tolerance_lps=0.01, drainage_flooding_tolerance_lps=0.02,
             drainage_storage_change_tolerance_m3=0.03, drainage_tail_window_hours=1.0,
+            drainage_extension_increment_hours=2.0, drainage_extension_max_retries=2,
         ),
         network=SimpleNamespace(inp_path=tmp_path / "base.inp"),
         factors=lambda: [1.0],
@@ -316,6 +323,15 @@ def test_run_batch_shapes_warns_when_drainage_state_is_not_drained(monkeypatch, 
         results = batch_mod.run_batch_shapes(config, shapes, {"1C": 2.0}, tmp_path / "run")
 
     assert len(results) == 1
+    # max_retries=2 -> intentos 0, 1, 2 = 3 llamadas a classify_drainage_state
+    assert len(classify_calls) == 3
+
+    manifest_path = tmp_path / "run" / "storm_notdrained" / "storm_notdrained_f1.000.drainage_state.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert len(payload["extension_log"]) == 3
+    assert [entry["attempt"] for entry in payload["extension_log"]] == [0, 1, 2]
+    assert payload["extension_log"][1]["drain_down_hours"] == pytest.approx(8.0)  # 6.0 + 1*2.0
+    assert payload["extension_log"][2]["drain_down_hours"] == pytest.approx(10.0)  # 6.0 + 2*2.0
 
 
 def test_run_batch_shapes_survives_an_unreadable_out_file(monkeypatch, tmp_path):
@@ -350,6 +366,7 @@ def test_run_batch_shapes_survives_an_unreadable_out_file(monkeypatch, tmp_path)
             inflow_closure_tolerance_lps=0.01, drain_down_hours=6.0,
             drainage_inflow_tolerance_lps=0.01, drainage_flooding_tolerance_lps=0.02,
             drainage_storage_change_tolerance_m3=0.03, drainage_tail_window_hours=1.0,
+            drainage_extension_increment_hours=2.0, drainage_extension_max_retries=2,
         ),
         network=SimpleNamespace(inp_path=tmp_path / "base.inp"),
         factors=lambda: [1.0],
@@ -372,3 +389,119 @@ def test_run_batch_shapes_survives_an_unreadable_out_file(monkeypatch, tmp_path)
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert payload["state"] == "unverified"
     assert "out_read_error" in payload["failed_checks"]
+
+
+def test_run_batch_shapes_retries_until_drained(monkeypatch, tmp_path):
+    """Fase C2: si el primer intento no drena pero uno posterior si, el
+    bucle debe parar ahi -- no agotar los reintentos innecesariamente."""
+    import swmm_resilience.simulation.batch as batch_mod
+
+    fake_inp = _FakeInp()
+    monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
+
+    states = iter(["not_drained", "drained"])
+
+    def _fake_read(out_path, drain_down_hours, tail_window_hours):
+        return {"n_report_steps": 3, "has_link_data": True}
+
+    def _fake_classify(observables, **kwargs):
+        state = next(states)
+        return state, {
+            "policy_version": "tail_window_v1", "state": state,
+            "failed_checks": [] if state == "drained" else ["inflow"],
+        }
+
+    class _FakeSimulation:
+        def __init__(self, inp_path):
+            self._inp_path = Path(inp_path)
+
+        def __enter__(self):
+            self._inp_path.with_suffix(".rpt").touch()
+            self._inp_path.with_suffix(".out").touch()
+            return iter([])
+
+        def __exit__(self, *exc):
+            return False
+
+    import pyswmm
+    monkeypatch.setattr(pyswmm, "Simulation", _FakeSimulation)
+    monkeypatch.setattr(batch_mod, "read_tail_window_observables", _fake_read)
+    monkeypatch.setattr(batch_mod, "classify_drainage_state", _fake_classify)
+
+    config = SimpleNamespace(
+        validation=SimpleNamespace(
+            inflow_closure_tolerance_lps=0.01, drain_down_hours=6.0,
+            drainage_inflow_tolerance_lps=0.01, drainage_flooding_tolerance_lps=0.02,
+            drainage_storage_change_tolerance_m3=0.03, drainage_tail_window_hours=1.0,
+            drainage_extension_increment_hours=2.0, drainage_extension_max_retries=2,
+        ),
+        network=SimpleNamespace(inp_path=tmp_path / "base.inp"),
+        factors=lambda: [1.0],
+    )
+    shape = [(0.0, 0.0), (0.05, 1.0), (0.1, 0.0)]
+    shapes = {"storm_retry_ok": shape}
+
+    results = batch_mod.run_batch_shapes(config, shapes, {"1C": 2.0}, tmp_path / "run")
+
+    assert len(results) == 1
+    manifest_path = tmp_path / "run" / "storm_retry_ok" / "storm_retry_ok_f1.000.drainage_state.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["state"] == "drained"
+    assert len(payload["extension_log"]) == 2  # paro en el intento 1 (drained), no llega a 2
+    assert payload["extension_log"][-1]["state"] == "drained"
+
+
+def test_run_batch_shapes_never_exceeds_max_retries(monkeypatch, tmp_path):
+    """Fase C2: con max_retries=0 no debe haber ningun reintento -- un solo
+    intento, igual que el comportamiento pre-C2."""
+    import swmm_resilience.simulation.batch as batch_mod
+
+    fake_inp = _FakeInp()
+    monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
+
+    classify_calls = []
+
+    def _fake_read(out_path, drain_down_hours, tail_window_hours):
+        return {"n_report_steps": 3, "has_link_data": True}
+
+    def _fake_classify(observables, **kwargs):
+        classify_calls.append(kwargs)
+        return "not_drained", {
+            "policy_version": "tail_window_v1", "state": "not_drained",
+            "failed_checks": ["inflow"],
+        }
+
+    class _FakeSimulation:
+        def __init__(self, inp_path):
+            self._inp_path = Path(inp_path)
+
+        def __enter__(self):
+            self._inp_path.with_suffix(".rpt").touch()
+            self._inp_path.with_suffix(".out").touch()
+            return iter([])
+
+        def __exit__(self, *exc):
+            return False
+
+    import pyswmm
+    monkeypatch.setattr(pyswmm, "Simulation", _FakeSimulation)
+    monkeypatch.setattr(batch_mod, "read_tail_window_observables", _fake_read)
+    monkeypatch.setattr(batch_mod, "classify_drainage_state", _fake_classify)
+
+    config = SimpleNamespace(
+        validation=SimpleNamespace(
+            inflow_closure_tolerance_lps=0.01, drain_down_hours=6.0,
+            drainage_inflow_tolerance_lps=0.01, drainage_flooding_tolerance_lps=0.02,
+            drainage_storage_change_tolerance_m3=0.03, drainage_tail_window_hours=1.0,
+            drainage_extension_increment_hours=2.0, drainage_extension_max_retries=0,
+        ),
+        network=SimpleNamespace(inp_path=tmp_path / "base.inp"),
+        factors=lambda: [1.0],
+    )
+    shape = [(0.0, 0.0), (0.05, 1.0), (0.1, 0.0)]
+    shapes = {"storm_no_retry": shape}
+
+    with pytest.warns(UserWarning, match="Estado de drenaje: not_drained"):
+        batch_mod.run_batch_shapes(config, shapes, {"1C": 2.0}, tmp_path / "run")
+
+    assert len(classify_calls) == 1
