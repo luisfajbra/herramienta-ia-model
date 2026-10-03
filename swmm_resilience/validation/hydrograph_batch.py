@@ -211,6 +211,7 @@ def run_batch_validation(
     factor_range: tuple[float, float] | None = None,
     csv_inflow_closure_mode: str = "strict",
     inflow_closure_tolerance_lps: float = 0.01,
+    max_continuity_error_pct: float = CONTINUITY_ERROR_WARN_PCT,
 ) -> dict:
     """Run batch validation of ML predictions against SWMM simulations.
 
@@ -247,6 +248,12 @@ def run_batch_validation(
     inflow_closure_tolerance_lps:
         Tolerance (L/s) below which a node's final inflow value is treated
         as already zero, for both the strict check and the close policy.
+    max_continuity_error_pct:
+        Routing continuity error (%) above which the SWMM reference for a
+        scenario is flagged as unreliable (warn-only here; the training
+        read path excludes such runs). Callers pass
+        ``config.validation.max_continuity_error_pct`` so this check and the
+        training-side exclusion share a single configured threshold.
 
     Returns
     -------
@@ -332,10 +339,10 @@ def run_batch_validation(
         t_parse_rpt = time.perf_counter() - t0
 
         continuity_pct = _read_continuity_error(rpt_path)
-        if continuity_pct is not None and abs(continuity_pct) > CONTINUITY_ERROR_WARN_PCT:
+        if continuity_pct is not None and abs(continuity_pct) > max_continuity_error_pct:
             warnings.warn(
                 f"[{scenario.scenario_id}] Error de continuidad SWMM "
-                f"{continuity_pct:.2f}% (> {CONTINUITY_ERROR_WARN_PCT}%): la "
+                f"{continuity_pct:.2f}% (> {max_continuity_error_pct}%): la "
                 "referencia de validación es poco confiable para este escenario.",
                 stacklevel=2,
             )

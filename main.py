@@ -562,6 +562,7 @@ def main():
                 factor_range=(config.simulation.factor_min, config.simulation.factor_max),
                 csv_inflow_closure_mode="close",  # forma generada (write_shape_validation_csv): no es CSV de usuario, siempre auto-cierra
                 inflow_closure_tolerance_lps=config.validation.inflow_closure_tolerance_lps,
+                max_continuity_error_pct=config.validation.max_continuity_error_pct,
             )
             cls = summary["classification"]
             vol = summary["volume"]
@@ -649,6 +650,7 @@ def main():
                 factor_range=(config.simulation.factor_min, config.simulation.factor_max),
                 csv_inflow_closure_mode="close",  # forma generada (write_shape_validation_csv): no es CSV de usuario, siempre auto-cierra
                 inflow_closure_tolerance_lps=config.validation.inflow_closure_tolerance_lps,
+                max_continuity_error_pct=config.validation.max_continuity_error_pct,
             )
             cls = summary["classification"]
             vol = summary["volume"]
@@ -778,6 +780,7 @@ def main():
                 factor_range=(config.simulation.factor_min, config.simulation.factor_max),
                 csv_inflow_closure_mode="close",  # forma generada (write_shape_validation_csv): no es CSV de usuario, siempre auto-cierra
                 inflow_closure_tolerance_lps=config.validation.inflow_closure_tolerance_lps,
+                max_continuity_error_pct=config.validation.max_continuity_error_pct,
             )
             cls = summary["classification"]
             vol = summary["volume"]
@@ -824,6 +827,10 @@ def main():
             inflow_closure_tolerance_lps = config.validation.inflow_closure_tolerance_lps
         except Exception:
             inflow_closure_tolerance_lps = 0.01
+        try:
+            max_continuity_error_pct = config.validation.max_continuity_error_pct
+        except Exception:
+            max_continuity_error_pct = 5.0
 
         from swmm_resilience.validation.hydrograph_batch import run_batch_validation
 
@@ -840,6 +847,7 @@ def main():
             factor_range=factor_range,
             csv_inflow_closure_mode=csv_inflow_closure_mode,
             inflow_closure_tolerance_lps=inflow_closure_tolerance_lps,
+            max_continuity_error_pct=max_continuity_error_pct,
         )
 
         print("\n" + "=" * 50)

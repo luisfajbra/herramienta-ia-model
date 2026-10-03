@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -523,6 +524,44 @@ def test_validate_base_inp_warns_on_ponding(monkeypatch, tmp_path):
         hydrograph_batch._validate_base_inp(
             tmp_path / "base.inp", tmp_path / "clf.joblib", False
         )
+
+
+def test_continuity_warning_uses_the_threshold_parameter(monkeypatch, tmp_path):
+    """Fase C2 / revision final (I4): el chequeo warn-only debe obedecer al
+    umbral recibido (config.validation.max_continuity_error_pct), no a la
+    constante de modulo CONTINUITY_ERROR_WARN_PCT = 5.0 -- si no, hay dos
+    numeros para la misma regla del spec y pueden divergir."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch, "_read_continuity_error", lambda rpt_path: 6.0
+    )
+
+    # 6.0 > 5.0 (la constante) pero <= 8.0 (el umbral configurado): sin warning.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        _run(tmp_path, csv_dir, max_continuity_error_pct=8.0)
+
+    # 6.0 > 3.0 (umbral configurado mas estricto que la constante): avisa.
+    with pytest.warns(UserWarning, match=r"Error de continuidad SWMM 6\.00% \(> 3"):
+        _run(tmp_path, csv_dir, max_continuity_error_pct=3.0)
+
+
+def test_continuity_warning_default_matches_the_module_constant(monkeypatch, tmp_path):
+    """Sin umbral explicito se mantiene el comportamiento historico (5.0)."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch, "_read_continuity_error", lambda rpt_path: 6.0
+    )
+
+    assert hydrograph_batch.CONTINUITY_ERROR_WARN_PCT == 5.0
+    with pytest.warns(UserWarning, match="Error de continuidad SWMM"):
+        _run(tmp_path, csv_dir)
 
 
 def test_read_continuity_error_parses_worst_value(tmp_path):
