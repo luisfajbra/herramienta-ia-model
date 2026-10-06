@@ -389,10 +389,13 @@ class PreparedDataset:
     quality: dict
 
     def __post_init__(self) -> None:
-        if tuple(self.X.columns) != FEATURE_COLUMNS_V17:
+        expected_feature_columns = tuple(
+            self.manifest.get("feature_columns", FEATURE_COLUMNS_V17)
+        )
+        if tuple(self.X.columns) != expected_feature_columns:
             raise ValueError(
                 "Las features no están en el orden del contrato "
-                f"{FEATURE_COLUMNS_V17}; recibido {tuple(self.X.columns)}"
+                f"{expected_feature_columns}; recibido {tuple(self.X.columns)}"
             )
         if tuple(self.keys.columns) != KEY_COLUMNS:
             raise ValueError(

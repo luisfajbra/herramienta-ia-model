@@ -33,6 +33,145 @@ def _build_sql_db(tmp_path, dataset: pd.DataFrame, name: str):
     return db_path
 
 
+def _csv_shaped_dataset_v17() -> pd.DataFrame:
+    """Same scenario grid as conftest's ``csv_shaped_dataset_six_factors``
+    fixture (6 distinct factor_mult values -- GroupKFold5 needs at least 5
+    groups), kept local so ``_build_sql_db_v4_21`` can backfill the matching
+    v17 rows (node_features/node_results) that ``backfill_tributary_features``
+    then attaches tributary features to via the same run_id/node_pk keys."""
+    rows = []
+    for shape_id in ("base", "storm_a"):
+        for factor in (1.0, 1.5, 2.0, 2.5, 3.0, 3.5):
+            for node_idx in range(4):
+                flooded = 1 if (node_idx < 2 and factor >= 2.0) else 0
+                rows.append(
+                    {
+                        "node_id": f"N{node_idx}",
+                        "elev_fondo": 100.0 + node_idx,
+                        "prof_max": 1.5,
+                        "n_tuberias_in": 1,
+                        "n_tuberias_out": 1,
+                        "diam_max_in": 0.2,
+                        "diam_max_out": 0.2,
+                        "pendiente_max_in": 0.01,
+                        "pendiente_out": 0.01,
+                        "base_inflow_lps": 5.0 + node_idx,
+                        "dist_outfall_m": 100.0 + node_idx * 10,
+                        "n_nodos_aguas_arriba": node_idx,
+                        "q_pico_acum_base": 10.0,
+                        "upstream_capacity_lps": 50.0,
+                        "coord_x": float(node_idx),
+                        "coord_y": float(node_idx * 2),
+                        "factor_mult": factor,
+                        "q_pico_nodo": 2.0 * factor,
+                        "q_pico_acum_escalado": 10.0 * factor,
+                        "duracion_horas": 3.0,
+                        "tiempo_al_pico_h": 0.7,
+                        "shape_id": shape_id,
+                        "vol_inundacion_m3": 50.0 * factor if flooded else 0.0,
+                        "inunda": flooded,
+                    }
+                )
+    return pd.DataFrame(rows)
+
+
+def _csv_shaped_dataset_v4_21() -> pd.DataFrame:
+    """A node_features_v4_21-shaped frame mirroring ``_csv_shaped_dataset_v17``'s
+    scenario grid (same node/shape/factor combinations -- 6 distinct
+    factor_mult values), so the same runs backfilled into
+    node_features/node_results via ``backfill_networks_and_runs`` can also
+    receive tributary features via ``backfill_tributary_features``."""
+    rows = []
+    for shape_id in ("base", "storm_a"):
+        for factor in (1.0, 1.5, 2.0, 2.5, 3.0, 3.5):
+            for node_idx in range(4):
+                flooded = 1 if (node_idx < 2 and factor >= 2.0) else 0
+                rows.append(
+                    {
+                        "node_id": f"N{node_idx}",
+                        "elev_fondo": 100.0 + node_idx,
+                        "prof_max": 1.5,
+                        "n_tuberias_in": 1,
+                        "n_tuberias_out": 1,
+                        "diam_max_in": 0.2,
+                        "diam_max_out": 0.2,
+                        "pendiente_max_in": 0.01,
+                        "pendiente_out": 0.01,
+                        "base_inflow_lps": 5.0 + node_idx,
+                        "dist_outfall_m": 100.0 + node_idx * 10,
+                        "n_nodos_aguas_arriba": node_idx,
+                        "q_pico_acum_base": 10.0,
+                        "upstream_capacity_lps": 50.0,
+                        "factor_mult": factor,
+                        "q_pico_nodo": 2.0 * factor,
+                        "q_pico_acum_escalado": 10.0 * factor,
+                        "volumen_local_integrado_m3": 1.0 * factor,
+                        "volumen_tributario_integrado_m3": 2.0 * factor,
+                        "duracion_efectiva_tributario_h": 1.5,
+                        "tiempo_primer_pico_tributario_h": 0.5,
+                        "tiempo_sobre_capacidad_h": 0.2 * factor if flooded else None,
+                        "integral_exceso_capacidad_m3": 0.3 * factor if flooded else None,
+                        "shape_id": shape_id,
+                        "vol_inundacion_m3": 50.0 * factor if flooded else 0.0,
+                        "inunda": flooded,
+                    }
+                )
+    return pd.DataFrame(rows)
+
+
+def _build_sql_db_v4_21(tmp_path):
+    """Build a fresh migrated database holding both node_features (v17) and
+    node_features_v4_21 (tributary contract) rows for the same runs, so
+    training_samples_v4_21 resolves. Mirrors ``_build_sql_db`` but also
+    calls ``backfill_tributary_features`` to populate node_features_v4_21."""
+    from swmm_resilience.database.connection import connect_managed_database
+    from swmm_resilience.database.csv_backfill import (
+        backfill_networks_and_runs,
+        backfill_tributary_features,
+    )
+    from swmm_resilience.database.migrations import apply_migrations
+
+    dataset_v17 = _csv_shaped_dataset_v17()
+    dataset_v4_21 = _csv_shaped_dataset_v4_21()
+
+    inp_path = tmp_path / "tabular_v4_21.inp"
+    inp_path.write_text("[TITLE]\nfixture network\n", encoding="utf-8")
+    db_path = tmp_path / "tabular_v4_21.sqlite3"
+    conn = connect_managed_database(db_path)
+    try:
+        apply_migrations(conn)
+        info = backfill_networks_and_runs(conn, dataset_v17, inp_path, "Fixture Network")
+        backfill_tributary_features(
+            conn,
+            dataset_v4_21,
+            info["run_id_by_key"],
+            info["node_pk_by_id"],
+            info["network_id"],
+        )
+    finally:
+        conn.close()
+    return db_path
+
+
+def test_prepare_dataset_reads_tabular_v4_21_when_requested(tmp_path):
+    from swmm_resilience.ml.bench.preprocess import prepare_dataset
+    from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V21, TABULAR_V4_21
+
+    db_path = _build_sql_db_v4_21(tmp_path)
+    prepared = prepare_dataset(
+        db_path,
+        protocols=("GroupKFold5",),
+        flood_threshold_m3=1.0,
+        output_dir=tmp_path / "prepared",
+        feature_columns=FEATURE_COLUMNS_V21,
+        feature_contract=TABULAR_V4_21,
+        view_name="training_samples_v4_21",
+        node_features_table="node_features_v4_21",
+    )
+    assert list(prepared.X.columns) == list(FEATURE_COLUMNS_V21)
+    assert "duracion_horas" not in prepared.X.columns
+
+
 @pytest.fixture
 def prepared(sql_training_db, tmp_path):
     return prepare_dataset(
@@ -229,12 +368,12 @@ def test_prepare_captures_readonly_snapshot_and_never_loads_source(
     seen_paths = []
     real_loader = preprocess_module.load_training_frame
 
-    def capture_loader(path, max_continuity_error_pct=None):
+    def capture_loader(path, max_continuity_error_pct=None, **kwargs):
         seen_paths.append(path)
         assert str(path) != str(sql_training_db)
         assert preprocess_module.Path(path).exists()
         return real_loader(
-            path, max_continuity_error_pct=max_continuity_error_pct
+            path, max_continuity_error_pct=max_continuity_error_pct, **kwargs
         )
 
     monkeypatch.setattr(preprocess_module, "load_training_frame", capture_loader)
@@ -267,7 +406,7 @@ def test_relevant_training_value_change_changes_logical_identity(
     monkeypatch.setattr(
         preprocess_module,
         "load_training_frame",
-        lambda _path, max_continuity_error_pct=None: changed,
+        lambda _path, max_continuity_error_pct=None, **kwargs: changed,
     )
     modified = prepare_dataset(
         sql_training_db,
@@ -387,7 +526,7 @@ def test_prepare_dataset_sorts_rows_even_when_source_frame_is_shuffled(
     monkeypatch.setattr(
         preprocess_module,
         "load_training_frame",
-        lambda db_path, max_continuity_error_pct=None: shuffled,
+        lambda db_path, max_continuity_error_pct=None, **kwargs: shuffled,
     )
 
     prepared = preprocess_module.prepare_dataset(

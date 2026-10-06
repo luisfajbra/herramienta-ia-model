@@ -173,6 +173,10 @@ def prepare_dataset(
     flood_threshold_m3: float,
     output_dir: Path | str,
     max_continuity_error_pct: float | None = None,
+    feature_columns: tuple[str, ...] = FEATURE_COLUMNS_V17,
+    feature_contract=TABULAR_V3_17,
+    view_name: str = "training_samples_v17",
+    node_features_table: str = "node_features",
 ) -> PreparedDataset:
     """Lee el frame de SQL y materializa un PreparedDataset en ``output_dir``.
 
@@ -180,31 +184,52 @@ def prepare_dataset(
     ``config.validation.max_continuity_error_pct``) excluye del banco los runs
     cuyo |continuity_error_pct| supera el umbral; ``None`` no excluye nada.
     Un ``continuity_error_pct`` NULL nunca excluye (misma regla que SQL).
+
+    ``feature_columns``/``feature_contract``/``view_name``/``node_features_table``
+    seleccionan el contrato de entrenamiento (default: tabular_v3_17, el
+    legado). Pasar FEATURE_COLUMNS_V21/TABULAR_V4_21/"training_samples_v4_21"/
+    "node_features_v4_21" para entrenar sobre el contrato tributario nuevo.
     """
     protocols = tuple(protocols)
     with _readonly_sqlite_snapshot(db_path) as snapshot_path:
         source_snapshot_sha256 = _sha256_file(snapshot_path)
         frame = load_training_frame(
-            snapshot_path, max_continuity_error_pct=max_continuity_error_pct
+            snapshot_path,
+            max_continuity_error_pct=max_continuity_error_pct,
+            view_name=view_name,
+            feature_columns=feature_columns,
+            feature_contract=feature_contract,
+            node_features_table=node_features_table,
         )
     frame = frame.sort_values(list(SORT_KEY)).reset_index(drop=True)
     training_frame_sha256 = _training_frame_sha256(frame)
 
     keys = frame.loc[:, list(KEY_COLUMNS)].copy()
-    X = TABULAR_V3_17.validate_frame(frame.loc[:, list(FEATURE_COLUMNS_V17)])
+    X = feature_contract.validate_frame(frame.loc[:, list(feature_columns)])
     y_clf = frame["inunda"].astype(int).rename("inunda")
     y_reg = frame["vol_inundacion_m3"].astype(float).rename("vol_inundacion_m3")
 
-    quality = build_quality_report(keys, X, y_clf, y_reg, flood_threshold_m3)
+    nullable_columns = frozenset(
+        item.name for item in feature_contract.definitions if item.nullable
+    )
+    quality = build_quality_report(
+        keys,
+        X,
+        y_clf,
+        y_reg,
+        flood_threshold_m3,
+        feature_columns=feature_columns,
+        nullable_columns=nullable_columns,
+    )
     folds = build_all_folds(keys, protocols)
     definitions = protocol_definitions(protocols)
 
     descriptor = {
-        "contract_id": TABULAR_V3_17.contract_id,
-        "feature_contract_sha256": TABULAR_V3_17.descriptor_sha256,
+        "contract_id": feature_contract.contract_id,
+        "feature_contract_sha256": feature_contract.descriptor_sha256,
         "run_ids": sorted(int(value) for value in keys["run_id"].unique()),
         "n_rows": int(len(frame)),
-        "feature_columns": list(FEATURE_COLUMNS_V17),
+        "feature_columns": list(feature_columns),
         "flood_threshold_m3": float(flood_threshold_m3),
         "sort_key": list(SORT_KEY),
         "protocols": list(protocols),
