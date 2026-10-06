@@ -102,19 +102,26 @@ def _fill_table(slide, rows: list[list[str]]) -> None:
     """Reescribe una tabla existente in-place con `rows` (incluye header).
 
     Si `rows` tiene mas filas que la tabla original, agrega filas clonando
-    el alto/estilo de la ultima fila de datos.
+    el alto/estilo de la ultima fila de datos. Si tiene menos, elimina las
+    filas sobrantes del final (si no, queda contenido viejo de la plantilla
+    donante colgando debajo de la tabla nueva).
     """
     for shape in slide.shapes:
         if shape.has_table:
             tbl = shape.table
+            tr_tag = "{http://schemas.openxmlformats.org/drawingml/2006/main}tr"
             existing_rows = len(tbl.rows)
             needed = len(rows)
             if needed > existing_rows:
-                last_tr = tbl._tbl.findall(".//{http://schemas.openxmlformats.org/drawingml/2006/main}tr")[-1]
+                last_tr = tbl._tbl.findall(f".//{tr_tag}")[-1]
                 for _ in range(needed - existing_rows):
                     new_tr = copy.deepcopy(last_tr)
                     last_tr.addnext(new_tr)
                     last_tr = new_tr
+            elif needed < existing_rows:
+                all_tr = tbl._tbl.findall(f".//{tr_tag}")
+                for extra_tr in all_tr[needed:]:
+                    extra_tr.getparent().remove(extra_tr)
             for r_idx, row_values in enumerate(rows):
                 for c_idx, value in enumerate(row_values):
                     if c_idx >= len(tbl.rows[r_idx].cells):
@@ -237,19 +244,31 @@ def main() -> None:
     _set_text(s, "MLSMFP  |", FOOTER_TEXT)
     _set_page_number(s, base_index + 5)
 
+    # --- Slide: Validación de features tributarias (tabular_v4_21) ---------
+    s = duplicate_slide(prs, donor_table_slide)
+    _set_text(s, "¿Vale la pena cambiar XGBoost?", "¿Valen la pena las features tributarias? — SÍ, validado")
+    _set_text(s, "Objetivo: inundación", "LeaveOneGroupOut por forma, mismas 150,240 filas, con y sin las 6 columnas nuevas")
+    _fill_table(s, [
+        ["Conjunto de features", "RMSE end-to-end", "Mejora"],
+        ["tabular_v3_17 (17 features actuales)", "81.95", "—"],
+        ["tabular_v4_21 (17 + 6 tributarias)", "59.07", "+27.9%"],
+        ["Conclusión", "Mejora real y grande, no marginal", "Migrar el contrato vale la pena"],
+    ])
+    _set_text(s, "MLSMFP  |", FOOTER_TEXT)
+    _set_page_number(s, base_index + 6)
+
     # --- Slide: Próximos pasos ----------------------------------------------
     s = duplicate_slide(prs, donor_table_slide)
     _set_text(s, "¿Vale la pena cambiar XGBoost?", "Próximos pasos")
     _set_text(s, "Objetivo: inundación", "Lo que queda en la lista de trabajo después de esta corrida")
     _fill_table(s, [
         ["#", "Pendiente", "Origen"],
-        ["1", "Configurar SVM para esta escala y sumarlo al ranking", "Benchmark"],
-        ["2", "Entrenar sobre tabular_v4_21 (features tributarias) y conectar ScenarioPredictor", "Fase B2"],
-        ["3", "config_7shapes.yaml desactualizado", "Auditoría Fase A"],
-        ["4", "Decisión de integración (merge a la rama real)", "Pospuesta"],
+        ["1", "Migrar a tabular_v4_21 en serio: fusionar al dataset, re-entrenar, re-correr el banco, reconectar ScenarioPredictor", "Validado hoy (+27.9%)"],
+        ["2", "Configurar SVM para esta escala y sumarlo al ranking", "Benchmark"],
+        ["3", "Decisión de integración (merge a la rama real)", "Pospuesta"],
     ])
     _set_text(s, "MLSMFP  |", FOOTER_TEXT)
-    _set_page_number(s, base_index + 6)
+    _set_page_number(s, base_index + 7)
 
     prs.save(str(OUTPUT))
     print(f"Guardado: {OUTPUT} ({len(prs.slides)} slides)")
