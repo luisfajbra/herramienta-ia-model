@@ -12,6 +12,7 @@ from ..extraction.dynamic_features import (
 )
 from ..simulation.hydrograph_shapes import apply_shape, get_shape_stats
 from ..simulation.swmm_api_io import load_inp
+from .contracts import TABULAR_V4_21
 from .trainer import FEATURE_COLS
 
 
@@ -123,7 +124,7 @@ def predict_network(factor: float, config: Config, models_dir: Path) -> pd.DataF
         .merge(tributary_df, on="node_id", how="left")
     )
 
-    X = merged[FEATURE_COLS]
+    X = TABULAR_V4_21.validate_frame(merged[FEATURE_COLS])
     inunda_pred = clf.predict(X)
     vol_pred = np.zeros(len(X))
     flood_mask = inunda_pred == 1

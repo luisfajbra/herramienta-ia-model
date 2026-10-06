@@ -15,6 +15,8 @@ import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
+import joblib
+
 from .train import load_candidate
 
 
@@ -35,6 +37,36 @@ def promote_candidate(
     candidate = load_candidate(candidate_dir)
     target = Path(models_dir)
     target.mkdir(parents=True, exist_ok=True)
+
+    existing_clf_path = target / "classifier.joblib"
+    existing_reg_path = target / "regressor.joblib"
+    if existing_clf_path.exists() and existing_reg_path.exists():
+        try:
+            existing_clf = joblib.load(existing_clf_path)
+            existing_reg = joblib.load(existing_reg_path)
+        except Exception as load_error:
+            raise RuntimeError(
+                f"No se pudo leer el modelo existente en {target} para verificar su "
+                f"contrato de features ({load_error}). Revisa manualmente el contenido "
+                f"de {target} antes de continuar -- promote_candidate() no sobreescribe "
+                "a ciegas un directorio que no puede inspeccionar."
+            ) from load_error
+        candidate_n_features = len(candidate.metadata.get("ordered_features") or [])
+        if candidate_n_features and (
+            existing_clf.n_features_in_ != candidate_n_features
+            or existing_reg.n_features_in_ != candidate_n_features
+        ):
+            raise RuntimeError(
+                f"El modelo activo en {target} tiene "
+                f"{existing_clf.n_features_in_}/{existing_reg.n_features_in_} features "
+                f"(clf/reg), pero el candidato en {candidate_dir} tiene "
+                f"{candidate_n_features} ({candidate.metadata.get('feature_contract_id', 'contrato desconocido')}). "
+                "promote_candidate() no puede sobreescribir silenciosamente un modelo "
+                "activo de otro contrato. Si de verdad quieres reemplazarlo, mueve o "
+                "borra classifier.joblib/regressor.joblib en "
+                f"{target} manualmente primero (puedes recuperarlos con "
+                "`git checkout -- outputs/models/` si te equivocas)."
+            )
 
     shutil.copy2(candidate.classifier_path, target / "classifier.joblib")
     shutil.copy2(candidate.regressor_path, target / "regressor.joblib")

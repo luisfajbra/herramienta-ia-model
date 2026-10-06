@@ -1082,6 +1082,31 @@ def main():
     # ── Pipeline completo (o parcial) ─────────────────────────────────────────
     use_existing_dataset = args.skip_extraction or args.only_ml
 
+    _clf_path = MODELS_DIR / "classifier.joblib"
+    _reg_path = MODELS_DIR / "regressor.joblib"
+    if _clf_path.exists() or _reg_path.exists():
+        import joblib
+        from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
+        _existing_clf = joblib.load(_clf_path) if _clf_path.exists() else None
+        _existing_reg = joblib.load(_reg_path) if _reg_path.exists() else None
+        _n_expected = len(FEATURE_COLUMNS_V17)
+        _mismatched = (
+            (_existing_clf is not None and _existing_clf.n_features_in_ != _n_expected)
+            or (_existing_reg is not None and _existing_reg.n_features_in_ != _n_expected)
+        )
+        if _mismatched:
+            parser.error(
+                f"El modelo activo en {MODELS_DIR} tiene "
+                f"{getattr(_existing_clf, 'n_features_in_', 'n/a')}/"
+                f"{getattr(_existing_reg, 'n_features_in_', 'n/a')} features (clf/reg), "
+                f"no {_n_expected} (contrato tabular_v3_17 que este modo "
+                "entrena). Este chequeo corre ANTES de la extraccion/simulacion para no "
+                "perder horas de computo: mueve o borra classifier.joblib/regressor.joblib "
+                f"en {MODELS_DIR} manualmente primero si de verdad quieres reemplazar el "
+                "modelo activo (`git checkout -- outputs/models/` los recupera si te "
+                "equivocas)."
+            )
+
     factors = config.factors()
     n_factors = len(factors)
     static_topo_df = None

@@ -22,6 +22,7 @@ from ..extraction.dynamic_features import (
 )
 from ..extraction.static_features import extract_static_features
 from ..extraction.topology import build_network_graph, compute_topology_features
+from ..ml.contracts import TABULAR_V4_21
 from ..ml.trainer import FEATURE_COLS
 from ..simulation.swmm_api_io import load_inp
 from ..validation.hydrograph_csv import HydrographScenario
@@ -152,7 +153,7 @@ class ScenarioPredictor:
             ]
         )
         merged = static_base.merge(dynamic_df, on="node_id", how="left")
-        X = merged[FEATURE_COLS]
+        X = TABULAR_V4_21.validate_frame(merged[FEATURE_COLS])
         t_features = time.perf_counter() - t0
 
         t0 = time.perf_counter()

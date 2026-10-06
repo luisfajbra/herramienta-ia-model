@@ -73,10 +73,10 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
 
     classifier_path = output_dir / "classifier.joblib"
     regressor_path = output_dir / "regressor.joblib"
-    if classifier_path.exists() and regressor_path.exists():
+    if classifier_path.exists() or regressor_path.exists():
         try:
-            existing_clf = joblib.load(classifier_path)
-            existing_reg = joblib.load(regressor_path)
+            existing_clf = joblib.load(classifier_path) if classifier_path.exists() else None
+            existing_reg = joblib.load(regressor_path) if regressor_path.exists() else None
         except Exception as load_error:
             raise RuntimeError(
                 f"No se pudo leer el modelo existente en {output_dir} para verificar "
@@ -85,13 +85,18 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
                 "sobreescribe a ciegas un directorio que no puede inspeccionar."
             ) from load_error
         n_expected = len(FEATURE_COLUMNS_V17)
-        if existing_clf.n_features_in_ != n_expected or existing_reg.n_features_in_ != n_expected:
+        mismatched = (
+            (existing_clf is not None and existing_clf.n_features_in_ != n_expected)
+            or (existing_reg is not None and existing_reg.n_features_in_ != n_expected)
+        )
+        if mismatched:
             raise RuntimeError(
                 f"El modelo activo en {output_dir} tiene "
-                f"{existing_clf.n_features_in_}/{existing_reg.n_features_in_} features "
-                f"(clf/reg), no {n_expected} (contrato tabular_v3_17). train_models() "
-                "(pipeline legacy / --only-ml) no puede sobreescribirlo silenciosamente. "
-                "Si de verdad quieres reemplazar el modelo activo por el legacy de 17 "
+                f"{getattr(existing_clf, 'n_features_in_', 'n/a')}/"
+                f"{getattr(existing_reg, 'n_features_in_', 'n/a')} features (clf/reg), "
+                f"no {n_expected} (contrato tabular_v3_17). train_models() (pipeline "
+                "legacy / --only-ml) no puede sobreescribirlo silenciosamente. Si de "
+                "verdad quieres reemplazar el modelo activo por el legacy de 17 "
                 "features, mueve o borra classifier.joblib y regressor.joblib en "
                 f"{output_dir} manualmente primero (puedes recuperarlos con "
                 "`git checkout -- outputs/models/` si te equivocas)."

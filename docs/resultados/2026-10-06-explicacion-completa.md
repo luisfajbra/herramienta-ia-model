@@ -447,6 +447,11 @@ el experimento original.
 
 Reproducible con: `venv/Scripts/python.exe scripts/comparar_contratos_xgboost.py`.
 
+**Advertencia:** este script, si la mejora se confirma (`delta > 0`),
+re-entrena y re-promueve el modelo final a `outputs/models/` --
+sobreescribe el modelo activo de producción. No es una comparación de
+solo lectura. Ejecútalo solo si de verdad quieres repetir la promoción.
+
 ### 11.2. Qué se hizo con la confirmación
 
 1. Se entrenó XGBoost final (clasificador + regresor) sobre el 100% de
@@ -484,11 +489,26 @@ Reproducible con: `venv/Scripts/python.exe scripts/comparar_contratos_xgboost.py
    `FEATURE_COLUMNS_V17` (igual que ya hace `trainer.train_models`), para
    no romperlo con la migración de `FEATURE_COLS` a 21 columnas — sigue
    leyendo únicamente del view SQL `training_samples_v17`.
+7. Se añadieron guardas de contrato de features en los 3 puntos que
+   escriben o leen `outputs/models/`: `trainer.py::train_models()` y
+   `bench/promote.py::promote_candidate()` se niegan a sobreescribir
+   un modelo activo de un contrato distinto al que están a punto de
+   escribir; `predict.py`/`scenario_predict.py` se niegan a cargar un
+   modelo cuyo número de features no coincide con el contrato de
+   inferencia vigente. Las tres fallan con un mensaje explícito, nunca
+   en silencio. `main.py --only-ml`/el pipeline por defecto ya no
+   funcionan contra el modelo `tabular_v4_21` promovido -- ver la nota
+   en el `README.md`.
 
 ### 11.3. Validación
 
-Suite completa del proyecto corrida tras la migración: 1038 passed, 3
-deselected (sin fallos). Se verificó además, con una llamada real (no
+Suite completa del proyecto corrida tras la migración (incluyendo los
+2 rounds de fixes de la tarea 7 y la ola de fixes de la revisión final de
+rama completa): 1039 passed, 0 failed, 3 deselected
+(`pytest tests/ -q --ignore=tests/desktop`). `tests/desktop` tiene una
+inestabilidad conocida y preexistente en corridas de suite completa
+(falla en un test distinto cada vez, pero pasa 7/7 siempre que corre
+solo) -- no relacionada con esta migración. Se verificó además, con una llamada real (no
 mockeada) a `predict_network` y a `ScenarioPredictor.predict_timed` contra
 el modelo promovido y la red real (`data/networks/chico_hydro-qx1/...`),
 que ambos caminos de inferencia producen volúmenes de inundación

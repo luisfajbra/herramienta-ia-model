@@ -54,7 +54,7 @@ def test_resilience_curve_reads_the_frame_from_sql(monkeypatch):
     assert curve_calls[0][1] == [1.0, 2.0]
 
 
-def test_only_ml_reads_the_frame_from_sql(monkeypatch):
+def test_only_ml_reads_the_frame_from_sql(monkeypatch, tmp_path):
     load_calls = []
     train_calls = []
     frame = base_shape_frame()
@@ -73,6 +73,12 @@ def test_only_ml_reads_the_frame_from_sql(monkeypatch):
     monkeypatch.setattr(
         main, "generate_feature_importance_plots", lambda clf, reg, out: None
     )
+    # F2's pre-flight contract check reads MODELS_DIR before anything else
+    # in this branch; point it at an empty tmp dir so it doesn't trip on
+    # whatever is in the real outputs/models/ (a 21-feature promoted model
+    # in this repo, which --only-ml must legitimately refuse -- that's
+    # covered separately, not what this test is about).
+    monkeypatch.setattr(main, "MODELS_DIR", tmp_path / "models")
     monkeypatch.setattr(sys, "argv", ["main.py", "--only-ml"])
 
     main.main()
@@ -389,11 +395,15 @@ def test_only_maps_errors_when_sql_has_no_samples(monkeypatch, capsys):
     assert "training_v17.sqlite3" in capsys.readouterr().err
 
 
-def test_only_ml_errors_when_sql_has_no_samples(monkeypatch, capsys):
+def test_only_ml_errors_when_sql_has_no_samples(monkeypatch, capsys, tmp_path):
     def fake_load(db_path):
         raise ValueError("No COMPLETE v17 training samples found")
 
     monkeypatch.setattr(main, "load_training_frame", fake_load)
+    # Same reasoning as test_only_ml_reads_the_frame_from_sql above: isolate
+    # this test from F2's pre-flight contract check against the real
+    # outputs/models/.
+    monkeypatch.setattr(main, "MODELS_DIR", tmp_path / "models")
     monkeypatch.setattr(sys, "argv", ["main.py", "--only-ml"])
 
     try:

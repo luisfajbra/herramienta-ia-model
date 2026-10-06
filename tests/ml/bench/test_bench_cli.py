@@ -156,6 +156,71 @@ def test_promotion_record_is_written_next_to_the_models(trained, tmp_path):
     assert record["family"] == "xgboost"
 
 
+class _StubModelWithFeatureCount:
+    """Stands in for a fitted sklearn Pipeline -- the guard only reads
+    n_features_in_, so this doesn't need to be a real fitted model."""
+
+    def __init__(self, n_features_in_):
+        self.n_features_in_ = n_features_in_
+
+
+def test_promote_refuses_to_overwrite_a_mismatched_contract_model(trained, tmp_path):
+    """F1: promote_candidate() must refuse to silently downgrade an active
+    model promoted under a different feature contract (same guard family as
+    trainer.py::train_models(), reproducing the reviewer's live scenario:
+    a 17-feature bench candidate promoted over a 21-feature active model)."""
+    import joblib
+
+    _, artifacts = trained
+    inp_path = tmp_path / "network.inp"
+    inp_path.write_text("[TITLE]\nred\n", encoding="utf-8")
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+
+    # Active model has 21 features; the candidate (the `trained` fixture,
+    # per train.py's hardcoded v17 metadata) has 17 -- a real mismatch.
+    joblib.dump(_StubModelWithFeatureCount(21), models_dir / "classifier.joblib")
+    joblib.dump(_StubModelWithFeatureCount(21), models_dir / "regressor.joblib")
+    clf_bytes_before = (models_dir / "classifier.joblib").read_bytes()
+    reg_bytes_before = (models_dir / "regressor.joblib").read_bytes()
+
+    with pytest.raises(RuntimeError, match=r"21.*17|17.*21"):
+        promote_candidate(artifacts.classifier_path.parent, models_dir, inp_path)
+
+    assert (models_dir / "classifier.joblib").read_bytes() == clf_bytes_before
+    assert (models_dir / "regressor.joblib").read_bytes() == reg_bytes_before
+
+
+def test_promote_still_works_when_models_dir_is_empty(trained, tmp_path):
+    """The new guard must not break the normal --bench-promote flow when
+    there is nothing promoted yet."""
+    _, artifacts = trained
+    inp_path = tmp_path / "network.inp"
+    inp_path.write_text("[TITLE]\nred\n", encoding="utf-8")
+    models_dir = tmp_path / "models"  # does not exist yet
+
+    record = promote_candidate(artifacts.classifier_path.parent, models_dir, inp_path)
+
+    assert (models_dir / "classifier.joblib").exists()
+    assert record["family"] == "xgboost"
+
+
+def test_promote_still_works_when_the_contract_matches(trained, tmp_path):
+    """Re-promoting over a model from the SAME contract (e.g. re-running
+    --bench-promote after a fresh bench cycle) must keep working."""
+    _, artifacts = trained
+    inp_path = tmp_path / "network.inp"
+    inp_path.write_text("[TITLE]\nred\n", encoding="utf-8")
+    models_dir = tmp_path / "models"
+
+    # First promotion establishes the active (17-feature) model...
+    promote_candidate(artifacts.classifier_path.parent, models_dir, inp_path)
+    # ...a second promotion of the SAME contract must not be refused.
+    record = promote_candidate(artifacts.classifier_path.parent, models_dir, inp_path)
+
+    assert record["family"] == "xgboost"
+
+
 def test_bench_flags_are_registered_in_the_cli():
     """La Task 15 extrae build_parser() de main.py; sin eso este test falla."""
     import main

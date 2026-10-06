@@ -16,6 +16,21 @@ import pytest
 
 from swmm_resilience.extraction import dynamic_features as dyn_mod
 from swmm_resilience.ml import predict as predict_mod
+from swmm_resilience.ml.contracts import FeatureContract, FeatureDefinition
+
+# predict_network() validates its feature frame against the real
+# TABULAR_V4_21 contract (F3, final-review fix wave) regardless of whatever
+# FEATURE_COLS this fixture stubs in below -- swap in a matching 2-column
+# stub contract so this test's deliberately-reduced FEATURE_COLS still
+# passes real FeatureContract.validate_frame() logic, rather than bypassing
+# it.
+_STUB_CONTRACT = FeatureContract(
+    "stub_duracion_tiempo_al_pico",
+    (
+        FeatureDefinition("duracion_horas", "h", "stub for this test"),
+        FeatureDefinition("tiempo_al_pico_h", "h", "stub for this test"),
+    ),
+)
 
 
 class _StubModel:
@@ -62,6 +77,7 @@ def captured_features(monkeypatch, tmp_path):
     monkeypatch.setattr(predict_mod, "load_inp", lambda p: {})
     monkeypatch.setattr(predict_mod, "build_network_graph", lambda inp: (nx.DiGraph(), set()))
     monkeypatch.setattr(predict_mod, "FEATURE_COLS", ["duracion_horas", "tiempo_al_pico_h"])
+    monkeypatch.setattr(predict_mod, "TABULAR_V4_21", _STUB_CONTRACT)
 
     models_dir = tmp_path / "models"
     models_dir.mkdir()
