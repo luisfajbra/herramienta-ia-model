@@ -126,7 +126,7 @@ def test_plot_shap_creates_summary_files(analysis_df, tmp_path):
 
     assert (tmp_path / "shap_classifier_summary.png").exists()
     assert (tmp_path / "shap_regressor_summary.png").exists()
-    assert (tmp_path / "shap_dependence_classifier_duracion_horas.png").exists()
-    assert (tmp_path / "shap_dependence_classifier_tiempo_al_pico_h.png").exists()
-    assert (tmp_path / "shap_dependence_regressor_duracion_horas.png").exists()
-    assert (tmp_path / "shap_dependence_regressor_tiempo_al_pico_h.png").exists()
+    assert (tmp_path / "shap_dependence_classifier_duracion_efectiva_tributario_h.png").exists()
+    assert (tmp_path / "shap_dependence_classifier_tiempo_primer_pico_tributario_h.png").exists()
+    assert (tmp_path / "shap_dependence_regressor_duracion_efectiva_tributario_h.png").exists()
+    assert (tmp_path / "shap_dependence_regressor_tiempo_primer_pico_tributario_h.png").exists()

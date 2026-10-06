@@ -394,3 +394,80 @@ evidencia real detrás en vez de ser una apuesta.
 - **OOF vs. in-sample**: in-sample es "predecir sobre datos que el modelo
   ya vio" (optimista); OOF es "predecir sobre datos que nunca vio"
   (honesto).
+
+## 11. Confirmación oficial y promoción a producción de `tabular_v4_21`
+
+Lo que la sección 8 dejó pendiente (los 4 puntos de 8.4) se completó en un
+plan de migración aparte (`docs/superpowers/plans/2026-10-06-migracion-tabular-v4-21.md`,
+tareas 1-7). Esta sección cierra el hallazgo con el resultado real, no el
+exploratorio.
+
+### 11.1. Resultado oficial (protocolo `LeaveOneShapeOut`, no `LeaveOneGroupOut`)
+
+Con las 6 features tributarias ya fusionadas al dataset persistido real
+(`node_features_v4_21` en SQLite, no calculadas al vuelo) y evaluadas con
+el protocolo **oficial** del banco (`LeaveOneShapeOut`, el mismo que usa
+el ranking de la sección 5 — no el `LeaveOneGroupOut` exploratorio de la
+sección 8):
+
+| Conjunto de features | RMSE end-to-end (`LeaveOneShapeOut`) |
+|---|---|
+| 17 features (`tabular_v3_17`, legado) | 78.0368 |
+| 21 features (`tabular_v4_21`, con tributarias) | **56.8088** |
+
+**Delta: +21.2280 (+27.20% de mejora).** Confirma, con la metodología
+definitiva y no con la exploratoria, el hallazgo de la sección 8 (que
+había sido +27.9% con `LeaveOneGroupOut` sobre un subconjunto distinto de
+filas). La mejora no fue un artefacto del protocolo más permiso usado en
+el experimento original.
+
+Reproducible con: `venv/Scripts/python.exe scripts/comparar_contratos_xgboost.py`.
+
+### 11.2. Qué se hizo con la confirmación
+
+1. Se entrenó XGBoost final (clasificador + regresor) sobre el 100% de
+   los datos de `tabular_v4_21` (no solo OOF) y se promovió a
+   `outputs/models/classifier.joblib` y `outputs/models/regressor.joblib`
+   — el directorio que usa producción. El modelo anterior (`tabular_v3_17`)
+   queda preservado íntegramente en el historial SQL (`trained_models`,
+   `node_features`), no en el archivo `.joblib` activo (que siempre refleja
+   "el modelo vigente", igual que cualquier `--bench-promote`).
+2. `FEATURE_COLS` en `swmm_resilience/ml/trainer.py` migró de las 17
+   features de `tabular_v3_17` a las 21 de `tabular_v4_21`.
+3. `ScenarioPredictor` (que ya calculaba las features tributarias desde
+   Fase B2 pero las descartaba) ahora las usa automáticamente a través de
+   `FEATURE_COLS` — sin cambios adicionales en su lógica, porque ya hacía
+   el merge correcto.
+4. Se encontró y corrigió, en el mismo trabajo, un consumidor adicional de
+   `FEATURE_COLS` que el plan no había anticipado explícitamente:
+   `swmm_resilience/ml/predict.py` (`predict_network`, usado por
+   `main.py --predict`/`--simulate`) solo calculaba las 4 columnas
+   dinámicas del contrato legado, nunca las 6 tributarias. Se migró para
+   reconstruir la serie propia de cada nodo a partir de la forma de
+   hidrograma del propio `.inp` (vía `apply_shape` + la misma
+   `compute_tributary_dynamic_features` que ya usa `ScenarioPredictor`) y
+   así calcular las 21 features también en ese camino de inferencia.
+5. Se verificó que el regresor, entrenado en espacio `log1p(vol)` (igual
+   que el legado), es consistente con que ambos caminos de inferencia
+   (`ScenarioPredictor` y `predict_network`) ya aplicaban `np.expm1(...)`
+   sobre la predicción cruda — esa parte no necesitó cambios, solo
+   verificación: no hubo ninguna sesión previa donde el regresor
+   entrenara en espacio lineal y la inferencia asumiera log1p (o
+   viceversa).
+6. Un consumidor legado y explícitamente desechable (`swmm_resilience/ml/evaluator.py`,
+   "Stack B", que se borra en un plan futuro) seguía anclado al contrato
+   `tabular_v3_17` vía `trainer.FEATURE_COLS`. Se lo fijó explícitamente a
+   `FEATURE_COLUMNS_V17` (igual que ya hace `trainer.train_models`), para
+   no romperlo con la migración de `FEATURE_COLS` a 21 columnas — sigue
+   leyendo únicamente del view SQL `training_samples_v17`.
+
+### 11.3. Validación
+
+Suite completa del proyecto corrida tras la migración: 1038 passed, 3
+deselected (sin fallos). Se verificó además, con una llamada real (no
+mockeada) a `predict_network` y a `ScenarioPredictor.predict_timed` contra
+el modelo promovido y la red real (`data/networks/chico_hydro-qx1/...`),
+que ambos caminos de inferencia producen volúmenes de inundación
+crecientes y plausibles (decenas a cientos de m³) a medida que aumenta el
+factor/caudal del escenario — sin errores de columnas faltantes ni
+volúmenes fuera de orden de magnitud por una inconsistencia log1p/expm1.

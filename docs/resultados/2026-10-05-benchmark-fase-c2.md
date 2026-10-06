@@ -165,7 +165,11 @@ protocolo más amable del ranking).
 - [x] `config_7shapes.yaml` desactualizado — eliminado (commit `6f4b202`):
       ninguna de las tolerancias/bloques agregados desde Fase A quedaban
       reflejados ahí y `promote: "auto"` ya era inválido.
-- [ ] Entrenar sobre el contrato `tabular_v4_21` (features tributarias,
-      Fase B2) y conectar `ScenarioPredictor` a ese modelo.
+- [x] Entrenar sobre el contrato `tabular_v4_21` (features tributarias,
+      Fase B2) y conectar `ScenarioPredictor` a ese modelo — hecho en el
+      plan de migración `2026-10-06-migracion-tabular-v4-21` (tarea 7):
+      confirmado +27.20% RMSE con el protocolo oficial `LeaveOneShapeOut`
+      (ver `docs/resultados/2026-10-06-explicacion-completa.md`, sección 11),
+      modelo XGBoost final promovido a `outputs/models/`.
 - [ ] Decisión de integración (merge a la rama real) — pospuesta por el
       usuario.

@@ -66,6 +66,31 @@ def main() -> None:
     print(f"\nDelta oficial (protocolo {PROTOCOL}): {delta:+.4f} ({pct:+.2f}%) "
           f"{'mejora' if delta > 0 else 'empeora o igual'}")
 
+    if delta > 0:
+        import joblib
+
+        from swmm_resilience.ml.bench.models.xgboost_family import build_classifier, build_regressor
+
+        print("\nMejora confirmada -- entrenando el modelo final sobre el 100% de tabular_v4_21...")
+        X = prepared_v21.X
+        y_clf = prepared_v21.y_clf.to_numpy()
+        y_reg = prepared_v21.y_reg.to_numpy()
+        n_neg, n_pos = int((y_clf == 0).sum()), int((y_clf == 1).sum())
+        scale_pos_weight = n_neg / n_pos if n_pos else 1.0
+
+        clf = build_classifier(dict(xgboost_spec.classifier), scale_pos_weight)
+        clf.fit(X, y_clf)
+        flooded = y_clf == 1
+        import numpy as np
+        reg = build_regressor(dict(xgboost_spec.regressor))
+        reg.fit(X.iloc[flooded], np.log1p(y_reg[flooded]))
+
+        models_dir = Path("outputs/models")
+        models_dir.mkdir(parents=True, exist_ok=True)
+        joblib.dump(clf, models_dir / "classifier.joblib")
+        joblib.dump(reg, models_dir / "regressor.joblib")
+        print(f"  Modelo tabular_v4_21 promovido a {models_dir}")
+
 
 if __name__ == "__main__":
     main()

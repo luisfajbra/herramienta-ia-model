@@ -35,6 +35,19 @@ def two_node_scenario():
 
 _NETWORK_NODES = ["J1", "J2", "J3"]  # J3 has no direct inflow in the scenario
 
+# Columns ScenarioPredictor computes dynamically (compute_scenario_dynamic_features
+# + compute_tributary_dynamic_features) and then merges on top of the static/topology
+# frame. A fixture that pre-fills these as dummy "static" data would collide with the
+# real computed columns during that merge (pandas suffixes them _x/_y), so they must
+# never be set on the fake full_df below -- mirrors production, where
+# extract_static_features/compute_topology_features never produce them either.
+_DYNAMIC_FEATURE_COLS = frozenset({
+    "q_pico_nodo", "q_pico_acum_escalado", "duracion_horas", "tiempo_al_pico_h",
+    "volumen_local_integrado_m3", "volumen_tributario_integrado_m3",
+    "duracion_efectiva_tributario_h", "tiempo_primer_pico_tributario_h",
+    "tiempo_sobre_capacidad_h", "integral_exceso_capacidad_m3",
+})
+
 
 def _make_full_df(node_ids: list[str]) -> pd.DataFrame:
     """Static + topology columns expected after compute_topology_features."""
@@ -44,7 +57,7 @@ def _make_full_df(node_ids: list[str]) -> pd.DataFrame:
     for i, nid in enumerate(node_ids):
         row = {"node_id": nid, "coord_x": float(i), "coord_y": float(i)}
         for col in FEATURE_COLS:
-            if col not in row:
+            if col not in row and col not in _DYNAMIC_FEATURE_COLS:
                 row[col] = float(i + 1)
         # Explicit base inflows: J1=10, J2=10, J3=0 (no direct inflow)
         row["base_inflow_lps"] = 10.0 if nid in ("J1", "J2") else 0.0
@@ -276,14 +289,27 @@ def test_compute_scenario_dynamic_features_has_shape_cols():
 
 def test_feature_cols_count():
     from swmm_resilience.ml.trainer import FEATURE_COLS
-    assert len(FEATURE_COLS) == 17
-    assert "duracion_horas" in FEATURE_COLS
-    assert "tiempo_al_pico_h" in FEATURE_COLS
+    assert len(FEATURE_COLS) == 21
+    # tabular_v4_21 is deliberately incompatible with v17, not a superset:
+    # duracion_horas/tiempo_al_pico_h are dropped in favor of six tributary
+    # features computed from the actual per-node series.
+    assert "duracion_horas" not in FEATURE_COLS
+    assert "tiempo_al_pico_h" not in FEATURE_COLS
+    assert "volumen_local_integrado_m3" in FEATURE_COLS
+    assert "volumen_tributario_integrado_m3" in FEATURE_COLS
+    assert "duracion_efectiva_tributario_h" in FEATURE_COLS
+    assert "tiempo_primer_pico_tributario_h" in FEATURE_COLS
+    assert "tiempo_sobre_capacidad_h" in FEATURE_COLS
+    assert "integral_exceso_capacidad_m3" in FEATURE_COLS
 
 
 def test_predict_timed_shape_features_vary_with_duration(monkeypatch, tmp_path):
     """Two scenarios with identical peaks but different durations must produce
-    different duracion_horas in the feature matrix passed to the model."""
+    different tributary-volume features in the feature matrix passed to the
+    model. duracion_horas itself is no longer a v4_21 feature (spec §6:
+    tabular_v4_21 is deliberately incompatible, not "17+6"), so the
+    duration signal now has to come through via the integrated-volume
+    features instead, which still depend on the full time series."""
     full_df = _make_full_df(_NETWORK_NODES)
     captured_Xs: list = []
 
@@ -331,10 +357,10 @@ def test_predict_timed_shape_features_vary_with_duration(monkeypatch, tmp_path):
     p5h.predict(scen_5h)
 
     assert len(captured_Xs) == 2
-    dur_2h = captured_Xs[0]["duracion_horas"].iloc[0]
-    dur_5h = captured_Xs[1]["duracion_horas"].iloc[0]
-    assert dur_2h == pytest.approx(2.0)
-    assert dur_5h == pytest.approx(5.0)
+    vol_2h = captured_Xs[0]["volumen_local_integrado_m3"].iloc[0]
+    vol_5h = captured_Xs[1]["volumen_local_integrado_m3"].iloc[0]
+    # Same peak (50 lps) held over a longer span integrates to more volume.
+    assert vol_5h > vol_2h > 0
 
 
 # ---------------------------------------------------------------------------

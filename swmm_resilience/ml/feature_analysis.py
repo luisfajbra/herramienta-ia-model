@@ -244,7 +244,12 @@ def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> No
     plt.savefig(out_dir / "shap_classifier_summary.png", dpi=150, bbox_inches="tight")
     plt.close()
 
-    for feat in ("duracion_horas", "tiempo_al_pico_h"):
+    # Las descriptoras temporales que mas importancia tenian bajo tabular_v3_17
+    # (duracion_horas, tiempo_al_pico_h) ya no existen en tabular_v4_21 --
+    # spec §6: contrato deliberadamente incompatible, no superset. Sus
+    # sucesoras conceptuales (duracion y tiempo-al-primer-pico de
+    # Q_tributario, calculadas desde la serie real por nodo) ocupan su lugar.
+    for feat in ("duracion_efectiva_tributario_h", "tiempo_primer_pico_tributario_h"):
         feat_idx = REPORT_FEATURE_COLS.index(feat)
         shap.dependence_plot(
             feat_idx,
@@ -287,7 +292,12 @@ def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> No
     plt.savefig(out_dir / "shap_regressor_summary.png", dpi=150, bbox_inches="tight")
     plt.close()
 
-    for feat in ("duracion_horas", "tiempo_al_pico_h"):
+    # Las descriptoras temporales que mas importancia tenian bajo tabular_v3_17
+    # (duracion_horas, tiempo_al_pico_h) ya no existen en tabular_v4_21 --
+    # spec §6: contrato deliberadamente incompatible, no superset. Sus
+    # sucesoras conceptuales (duracion y tiempo-al-primer-pico de
+    # Q_tributario, calculadas desde la serie real por nodo) ocupan su lugar.
+    for feat in ("duracion_efectiva_tributario_h", "tiempo_primer_pico_tributario_h"):
         feat_idx = REPORT_FEATURE_COLS.index(feat)
         shap.dependence_plot(
             feat_idx,

@@ -9,9 +9,9 @@ from xgboost import XGBClassifier, XGBRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from ..config import Config, ML_RANDOM_STATE
-from .contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
+from .contracts import FEATURE_COLUMNS_V17, FEATURE_COLUMNS_V21, TABULAR_V3_17
 
-FEATURE_COLS = list(FEATURE_COLUMNS_V17)  # removed in Plan D after consumers migrate
+FEATURE_COLS = list(FEATURE_COLUMNS_V21)
 
 
 def make_classifier(config: Config, scale_pos_weight: float) -> Pipeline:

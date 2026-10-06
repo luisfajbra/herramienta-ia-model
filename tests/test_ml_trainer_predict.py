@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 
 import joblib
+import networkx as nx
 import numpy as np
 import pandas as pd
 import pytest
@@ -118,12 +119,25 @@ def test_predict_network_uses_dataframe_features(monkeypatch, tmp_path, tiny_con
     joblib.dump(FakeRegressor(), models / "regressor.joblib")
     (models / "training_inp_hash.txt").write_text(predict._md5(cfg.network.inp_path), encoding="utf-8")
 
+    # Columns predict_network computes dynamically (compute_dynamic_features +
+    # compute_tributary_dynamic_features) must NOT be pre-filled here as if
+    # they were static, or the merge in predict_network collides with the
+    # real computed columns (pandas suffixes duplicates _x/_y and FEATURE_COLS
+    # lookup raises KeyError) -- same reasoning as test_scenario_predict.py's
+    # _DYNAMIC_FEATURE_COLS.
+    _dynamic_cols = {
+        "factor_mult", "q_pico_nodo", "q_pico_acum_escalado",
+        "duracion_horas", "tiempo_al_pico_h",
+        "volumen_local_integrado_m3", "volumen_tributario_integrado_m3",
+        "duracion_efectiva_tributario_h", "tiempo_primer_pico_tributario_h",
+        "tiempo_sobre_capacidad_h", "integral_exceso_capacidad_m3",
+    }
     static = pd.DataFrame(
         {
             "node_id": ["J1", "J2"],
             "coord_x": [0.0, 1.0],
             "coord_y": [0.0, 1.0],
-            **{col: [1.0, 2.0] for col in trainer.FEATURE_COLS if col not in {"factor_mult", "q_pico_nodo", "q_pico_acum_escalado"}},
+            **{col: [1.0, 2.0] for col in trainer.FEATURE_COLS if col not in _dynamic_cols},
         }
     )
 
@@ -149,6 +163,12 @@ def test_predict_network_uses_dataframe_features(monkeypatch, tmp_path, tiny_con
     monkeypatch.setattr(predict, "compute_topology_features", fake_compute_topology_features)
     monkeypatch.setattr(predict, "compute_dynamic_features", fake_compute_dynamic_features)
     monkeypatch.setattr(predict, "base_shape_stats", lambda inp: (3.0, 0.7))
+    # Tributary features: no real .inp/graph in this unit test, so stub the
+    # two lookups predict_network needs to reconstruct a node_series for
+    # compute_tributary_dynamic_features. An empty node_series/graph still
+    # exercises the real merge path (unlike a full FEATURE_COLS monkeypatch).
+    monkeypatch.setattr(predict, "load_inp", lambda p: {})
+    monkeypatch.setattr(predict, "build_network_graph", lambda inp: (nx.DiGraph(), set()))
 
     result = predict.predict_network(1.0, cfg, models)
 

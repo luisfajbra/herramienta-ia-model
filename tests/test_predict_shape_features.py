@@ -9,6 +9,7 @@ total flooded volume by up to 94%.
 
 from pathlib import Path
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 import pytest
@@ -36,6 +37,7 @@ def captured_features(monkeypatch, tmp_path):
             "node_id": ["N0", "N1"],
             "base_inflow_lps": [10.0, 5.0],
             "q_pico_acum_base": [10.0, 15.0],
+            "upstream_capacity_lps": [100.0, 100.0],
             "coord_x": [0.0, 1.0],
             "coord_y": [0.0, 1.0],
         }
@@ -52,6 +54,12 @@ def captured_features(monkeypatch, tmp_path):
     monkeypatch.setattr(predict_mod, "extract_static_features", lambda p: static)
     monkeypatch.setattr(predict_mod, "compute_topology_features", lambda df, p: df)
     monkeypatch.setattr(predict_mod, "base_shape_stats", lambda p: (4.25, 1.5))
+    # predict_network also reconstructs each node's own series (tabular_v4_21
+    # tributary features) from the .inp's own hydrograph via load_inp +
+    # build_network_graph; neither is exercised by this test (it targets the
+    # legacy duracion_horas/tiempo_al_pico_h path), so give both safe stubs.
+    monkeypatch.setattr(predict_mod, "load_inp", lambda p: {})
+    monkeypatch.setattr(predict_mod, "build_network_graph", lambda inp: (nx.DiGraph(), set()))
     monkeypatch.setattr(predict_mod, "FEATURE_COLS", ["duracion_horas", "tiempo_al_pico_h"])
 
     models_dir = tmp_path / "models"
