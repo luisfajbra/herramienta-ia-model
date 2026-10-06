@@ -146,6 +146,12 @@ protocolo más amable del ranking).
   - `bench_reports/` — ranking.json/csv crudos del banco
   - `tuning/xgboost/2db0578f875526cb_20261006T015644Z/study.json` — estudio
     Optuna completo (50 trials)
+  - `paridad/<familia>/` — gráficos de paridad OOF por familia (los mismos
+    usados en la presentación)
+- **Presentación**: `Presentacion_MLSMFP_05-10_resultados_fase_c2.pptx`
+  (versionada en git) — replica `Presentacion_MLSMFP_15-09_top5_resultados.pptx`
+  (30 slides originales intactas, verificado) + 6 slides nuevas con todo lo
+  de este informe.
 
 ## 6. Pendiente
 
@@ -153,5 +159,11 @@ protocolo más amable del ranking).
       sumarlo al ranking.
 - [x] Revisar la inestabilidad numérica de MLP — era cosmético, corregido
       (ver nota de la sección 3).
-- [ ] Generalizar mapas de paridad/inundación a las 5 familias (hoy
-      hardcodeados a XGBoost) — pedido del asesor.
+- [x] Generalizar mapas de paridad/inundación a las 5 familias — hecho para
+      las 4 ya entrenadas (XGBoost, Random Forest, Lineal, MLP), usando
+      predicciones OOF consistentes con el ranking. Falta SVM.
+- [ ] `config_7shapes.yaml` desactualizado (auditoría Fase A).
+- [ ] Entrenar sobre el contrato `tabular_v4_21` (features tributarias,
+      Fase B2) y conectar `ScenarioPredictor` a ese modelo.
+- [ ] Decisión de integración (merge a la rama real) — pospuesta por el
+      usuario.
