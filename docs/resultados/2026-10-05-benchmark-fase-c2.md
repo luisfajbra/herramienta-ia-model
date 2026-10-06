@@ -162,7 +162,9 @@ protocolo más amable del ranking).
 - [x] Generalizar mapas de paridad/inundación a las 5 familias — hecho para
       las 4 ya entrenadas (XGBoost, Random Forest, Lineal, MLP), usando
       predicciones OOF consistentes con el ranking. Falta SVM.
-- [ ] `config_7shapes.yaml` desactualizado (auditoría Fase A).
+- [x] `config_7shapes.yaml` desactualizado — eliminado (commit `6f4b202`):
+      ninguna de las tolerancias/bloques agregados desde Fase A quedaban
+      reflejados ahí y `promote: "auto"` ya era inválido.
 - [ ] Entrenar sobre el contrato `tabular_v4_21` (features tributarias,
       Fase B2) y conectar `ScenarioPredictor` a ese modelo.
 - [ ] Decisión de integración (merge a la rama real) — pospuesta por el
