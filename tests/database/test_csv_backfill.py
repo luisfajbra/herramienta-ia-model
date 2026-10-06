@@ -247,3 +247,71 @@ def test_backfill_leaves_continuity_error_pct_null_when_column_absent(tmp_path):
         "SELECT continuity_error_pct FROM runs WHERE run_id = ?", (run_id,)
     ).fetchone()
     assert row[0] is None
+
+
+def _synthetic_dataset_v4_21(n_nodes=8, factors=(0.5, 1.0, 1.5, 2.0, 2.5, 3.0), shapes=("base", "storm_a")):
+    rows = []
+    for shape_id in shapes:
+        for factor in factors:
+            for node_idx in range(n_nodes):
+                node_id = f"N{node_idx}"
+                flooded = 1 if (node_idx < 3 and factor >= 1.5) else 0
+                rows.append({
+                    "node_id": node_id,
+                    "elev_fondo": 100.0 + node_idx,
+                    "prof_max": 1.5,
+                    "n_tuberias_in": 1,
+                    "n_tuberias_out": 1,
+                    "diam_max_in": 0.2,
+                    "diam_max_out": 0.2,
+                    "pendiente_max_in": 0.01,
+                    "pendiente_out": 0.01,
+                    "base_inflow_lps": 5.0 + node_idx,
+                    "dist_outfall_m": 100.0 + node_idx * 10,
+                    "n_nodos_aguas_arriba": node_idx,
+                    "q_pico_acum_base": 10.0,
+                    "upstream_capacity_lps": 50.0,
+                    "coord_x": float(node_idx),
+                    "coord_y": float(node_idx * 2),
+                    "factor_mult": factor,
+                    "q_pico_nodo": 2.0 * factor,
+                    "q_pico_acum_escalado": 10.0 * factor,
+                    "volumen_local_integrado_m3": 1.0 * factor,
+                    "volumen_tributario_integrado_m3": 2.0 * factor,
+                    "duracion_efectiva_tributario_h": 1.5,
+                    "tiempo_primer_pico_tributario_h": 0.5,
+                    "tiempo_sobre_capacidad_h": None,
+                    "integral_exceso_capacidad_m3": None,
+                    "shape_id": shape_id,
+                    "vol_inundacion_m3": 50.0 * factor if flooded else 0.0,
+                    "inunda": flooded,
+                })
+    return pd.DataFrame(rows)
+
+
+def test_backfill_tributary_features_persists_the_21_feature_contract(tmp_path):
+    from swmm_resilience.database.connection import connect_managed_database
+    from swmm_resilience.database.migrations import apply_migrations
+    from swmm_resilience.database.csv_backfill import (
+        backfill_networks_and_runs, backfill_tributary_features,
+    )
+
+    dataset_v17 = _synthetic_dataset()
+    dataset_v21 = _synthetic_dataset_v4_21()
+
+    conn = connect_managed_database(tmp_path / "test.sqlite3")
+    apply_migrations(conn)
+    inp_path = tmp_path / "base.inp"
+    inp_path.write_bytes(b"fake inp bytes")
+
+    info = backfill_networks_and_runs(conn, dataset_v17, inp_path, "test-network")
+    inserted = backfill_tributary_features(
+        conn, dataset_v21, info["run_id_by_key"], info["node_pk_by_id"], info["network_id"],
+    )
+
+    assert inserted == len(dataset_v21)
+    row = conn.execute(
+        "SELECT volumen_local_integrado_m3, feature_contract_id FROM node_features_v4_21 LIMIT 1"
+    ).fetchone()
+    assert row is not None
+    assert row[1] == "tabular_v4_21"

@@ -946,6 +946,19 @@ def main():
         print(f"  network_id={info['network_id']}  nodos={len(info['node_pk_by_id'])}  "
               f"corridas={len(info['run_id_by_key'])}")
 
+        v4_21_path = Path("data/training/dataset_final_v4_21.csv")
+        if v4_21_path.exists():
+            from swmm_resilience.database.csv_backfill import backfill_tributary_features
+
+            df_v4_21 = pd.read_csv(v4_21_path)
+            n_v4_21 = backfill_tributary_features(
+                conn, df_v4_21, info["run_id_by_key"], info["node_pk_by_id"], info["network_id"],
+            )
+            print(f"  tabular_v4_21: {n_v4_21} filas de features tributarias persistidas")
+        else:
+            print(f"  AVISO: {v4_21_path} no existe -- corre scripts/migrar_dataset_v4_21.py primero "
+                  "si queres entrenar sobre tabular_v4_21")
+
         from swmm_resilience.database.training_queries import load_continuity_excluded
 
         excluded = load_continuity_excluded(

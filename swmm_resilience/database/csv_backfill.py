@@ -218,6 +218,79 @@ def backfill_networks_and_runs(
     }
 
 
+def backfill_tributary_features(
+    conn: sqlite3.Connection,
+    dataset_v4_21: pd.DataFrame,
+    run_id_by_key: dict,
+    node_pk_by_id: dict,
+    network_id: int,
+) -> int:
+    """Inserta las 21 features del contrato tabular_v4_21 en
+    node_features_v4_21, reusando los run_id/node_pk ya asignados por
+    backfill_networks_and_runs() para las mismas simulaciones -- las
+    features tributarias son features derivadas distintas de las mismas
+    corridas, no corridas nuevas.
+
+    Devuelve la cantidad de filas insertadas.
+    """
+    inserted = 0
+    scenario_cols = ["shape_id", "factor_mult"]
+    scenarios = dataset_v4_21.drop_duplicates(subset=scenario_cols)[scenario_cols]
+
+    rows = []
+    for srow in scenarios.itertuples(index=False):
+        key = (srow.shape_id, float(srow.factor_mult))
+        run_id = run_id_by_key.get(key)
+        if run_id is None:
+            continue
+        subset = dataset_v4_21[
+            (dataset_v4_21["shape_id"] == srow.shape_id)
+            & (abs(dataset_v4_21["factor_mult"] - srow.factor_mult) < 1e-9)
+        ]
+        for r in subset.itertuples(index=False):
+            node_pk = node_pk_by_id.get(r.node_id)
+            if node_pk is None:
+                continue
+            rows.append((
+                run_id, network_id, node_pk,
+                r.elev_fondo, r.prof_max, int(r.n_tuberias_in), int(r.n_tuberias_out),
+                r.diam_max_in if pd.notna(r.diam_max_in) else None,
+                r.diam_max_out if pd.notna(r.diam_max_out) else None,
+                r.pendiente_max_in if pd.notna(r.pendiente_max_in) else None,
+                r.pendiente_out if pd.notna(r.pendiente_out) else None,
+                r.base_inflow_lps,
+                r.dist_outfall_m if pd.notna(r.dist_outfall_m) else None,
+                int(r.n_nodos_aguas_arriba), r.q_pico_acum_base,
+                r.upstream_capacity_lps if pd.notna(r.upstream_capacity_lps) else None,
+                r.q_pico_nodo, r.q_pico_acum_escalado,
+                r.volumen_local_integrado_m3, r.volumen_tributario_integrado_m3,
+                r.duracion_efectiva_tributario_h, r.tiempo_primer_pico_tributario_h,
+                r.tiempo_sobre_capacidad_h if pd.notna(r.tiempo_sobre_capacidad_h) else None,
+                r.integral_exceso_capacidad_m3 if pd.notna(r.integral_exceso_capacidad_m3) else None,
+                "tabular_v4_21",
+            ))
+
+    conn.executemany(
+        """
+        INSERT INTO node_features_v4_21 (
+            run_id, network_id, node_pk, elev_fondo, prof_max,
+            n_tuberias_in, n_tuberias_out, diam_max_in, diam_max_out,
+            pendiente_max_in, pendiente_out, base_inflow_lps, dist_outfall_m,
+            n_nodos_aguas_arriba, q_pico_acum_base, upstream_capacity_lps,
+            q_pico_nodo, q_pico_acum_escalado,
+            volumen_local_integrado_m3, volumen_tributario_integrado_m3,
+            duracion_efectiva_tributario_h, tiempo_primer_pico_tributario_h,
+            tiempo_sobre_capacidad_h, integral_exceso_capacidad_m3,
+            feature_contract_id
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        """,
+        rows,
+    )
+    conn.commit()
+    inserted = len(rows)
+    return inserted
+
+
 def persist_training_run(
     conn: sqlite3.Connection,
     dataset: pd.DataFrame,
