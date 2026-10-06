@@ -483,18 +483,6 @@ def main():
         # train_models() call and never loaded from an external or untrusted source.
         clf_pipeline = joblib.load(clf_path)
         reg_pipeline = joblib.load(reg_path)
-        n_expected = len(ANALYSIS_FEATURE_COLS)
-        if clf_pipeline.n_features_in_ != n_expected or reg_pipeline.n_features_in_ != n_expected:
-            parser.error(
-                f"El modelo en {MODELS_DIR} fue entrenado con "
-                f"{clf_pipeline.n_features_in_}/{reg_pipeline.n_features_in_} features "
-                f"(clf/reg) pero --analyze-features opera sobre el contrato legacy "
-                f"tabular_v3_17 ({n_expected} features). El modelo activo fue promovido "
-                "con otro contrato (probablemente tabular_v4_21 via --bench-promote o la "
-                "migración). Borra outputs/models/promotion.json y ejecuta "
-                "python main.py --only-ml para entrenar un modelo tabular_v3_17 compatible "
-                "antes de usar --analyze-features."
-            )
         out_dir = Path("outputs/feature_analysis")
 
         print("\nAnálisis de features...")
@@ -511,7 +499,21 @@ def main():
             f"NSE={ablation_result['reduced']['regressor_oracle']['nse']:.3f}"
         )
         print("  3/3  SHAP...")
-        plot_shap(clf_pipeline, reg_pipeline, df_analysis, out_dir)
+        n_expected = len(ANALYSIS_FEATURE_COLS)
+        if clf_pipeline.n_features_in_ != n_expected or reg_pipeline.n_features_in_ != n_expected:
+            print(
+                f"        ADVERTENCIA: el modelo en {MODELS_DIR} fue entrenado con "
+                f"{clf_pipeline.n_features_in_}/{reg_pipeline.n_features_in_} features "
+                f"(clf/reg) pero --analyze-features opera sobre el contrato legacy "
+                f"tabular_v3_17 ({n_expected} features). El modelo activo no corresponde "
+                "al contrato tabular_v3_17 que --analyze-features espera. Entrena un "
+                "modelo compatible con python main.py --only-ml (primero mueve o borra "
+                "classifier.joblib/regressor.joblib en outputs/models/ si hace falta; "
+                "git checkout -- outputs/models/ los recupera si te equivocas). "
+                "Se omite el paso de SHAP."
+            )
+        else:
+            plot_shap(clf_pipeline, reg_pipeline, df_analysis, out_dir)
         print(f"\nResultados guardados en {out_dir}/")
         return
 

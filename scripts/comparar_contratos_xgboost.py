@@ -117,6 +117,15 @@ def main() -> None:
             ),
             encoding="utf-8",
         )
+
+        def _md5(path):
+            digest = hashlib.md5()
+            with open(path, "rb") as handle:
+                for chunk in iter(lambda: handle.read(8192), b""):
+                    digest.update(chunk)
+            return digest.hexdigest()
+
+        (models_dir / "training_inp_hash.txt").write_text(_md5(config.network.inp_path))
         print(f"  Modelo tabular_v4_21 promovido a {models_dir}")
 
 

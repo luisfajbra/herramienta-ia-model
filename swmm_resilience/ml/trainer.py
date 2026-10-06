@@ -71,17 +71,30 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
     """
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    promotion_path = output_dir / "promotion.json"
-    if promotion_path.exists():
-        existing = json.loads(promotion_path.read_text(encoding="utf-8"))
-        existing_contract = existing.get("feature_contract_id", TABULAR_V3_17.contract_id)
-        if existing_contract != TABULAR_V3_17.contract_id:
+    classifier_path = output_dir / "classifier.joblib"
+    regressor_path = output_dir / "regressor.joblib"
+    if classifier_path.exists() and regressor_path.exists():
+        try:
+            existing_clf = joblib.load(classifier_path)
+            existing_reg = joblib.load(regressor_path)
+        except Exception as load_error:
             raise RuntimeError(
-                f"outputs/models/ ya tiene un modelo promovido bajo el contrato "
-                f"'{existing_contract}' (no '{TABULAR_V3_17.contract_id}'). "
-                "train_models() (pipeline legacy / --only-ml) no puede sobreescribirlo "
-                "silenciosamente. Si de verdad quieres reemplazar el modelo activo por "
-                "el legacy de 17 features, borra outputs/models/promotion.json primero."
+                f"No se pudo leer el modelo existente en {output_dir} para verificar "
+                f"su contrato de features ({load_error}). Revisa manualmente el "
+                f"contenido de {output_dir} antes de continuar -- train_models() no "
+                "sobreescribe a ciegas un directorio que no puede inspeccionar."
+            ) from load_error
+        n_expected = len(FEATURE_COLUMNS_V17)
+        if existing_clf.n_features_in_ != n_expected or existing_reg.n_features_in_ != n_expected:
+            raise RuntimeError(
+                f"El modelo activo en {output_dir} tiene "
+                f"{existing_clf.n_features_in_}/{existing_reg.n_features_in_} features "
+                f"(clf/reg), no {n_expected} (contrato tabular_v3_17). train_models() "
+                "(pipeline legacy / --only-ml) no puede sobreescribirlo silenciosamente. "
+                "Si de verdad quieres reemplazar el modelo activo por el legacy de 17 "
+                "features, mueve o borra classifier.joblib y regressor.joblib en "
+                f"{output_dir} manualmente primero (puedes recuperarlos con "
+                "`git checkout -- outputs/models/` si te equivocas)."
             )
 
     X = TABULAR_V3_17.validate_frame(df.loc[:, FEATURE_COLUMNS_V17])
@@ -102,6 +115,7 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
     joblib.dump(reg, output_dir / "regressor.joblib")
     (output_dir / "training_inp_hash.txt").write_text(_md5(config.network.inp_path))
 
+    promotion_path = output_dir / "promotion.json"
     promotion_path.write_text(
         json.dumps(
             {

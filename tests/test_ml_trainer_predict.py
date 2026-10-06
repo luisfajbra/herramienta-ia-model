@@ -55,6 +55,36 @@ def test_train_models_writes_artifacts(tmp_path, tiny_config_factory, trainer_tr
     assert (tmp_path / "models" / "training_inp_hash.txt").exists()
 
 
+class _StubModelWithFeatureCount:
+    """Stands in for a fitted sklearn Pipeline -- the guard only reads
+    n_features_in_, so this doesn't need to be a real fitted model."""
+
+    def __init__(self, n_features_in_):
+        self.n_features_in_ = n_features_in_
+
+
+def test_train_models_refuses_to_overwrite_a_mismatched_contract_model(
+    tmp_path, tiny_config_factory, trainer_training_df
+):
+    """Permanent regression test for CRITICAL-2's redesigned guard: it must
+    derive truth from the already-tracked classifier.joblib/regressor.joblib
+    themselves (n_features_in_), not from the gitignored promotion.json."""
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    joblib.dump(_StubModelWithFeatureCount(21), models_dir / "classifier.joblib")
+    joblib.dump(_StubModelWithFeatureCount(21), models_dir / "regressor.joblib")
+    clf_bytes_before = (models_dir / "classifier.joblib").read_bytes()
+    reg_bytes_before = (models_dir / "regressor.joblib").read_bytes()
+
+    with pytest.raises(RuntimeError, match=r"21.*17|17.*21"):
+        trainer.train_models(trainer_training_df, tiny_config_factory(), models_dir)
+
+    # The guard must fire before any write -- the existing (mismatched)
+    # artifacts must be left byte-for-byte untouched.
+    assert (models_dir / "classifier.joblib").read_bytes() == clf_bytes_before
+    assert (models_dir / "regressor.joblib").read_bytes() == reg_bytes_before
+
+
 class RecordingRegressor:
     def __init__(self):
         self.fit_y = None
@@ -180,3 +210,24 @@ def test_predict_network_uses_dataframe_features(monkeypatch, tmp_path, tiny_con
     assert result.loc[result["node_id"] == "J1", "vol_pred_m3"].iloc[0] == 0.0
     assert result.loc[result["node_id"] == "J2", "inunda_pred"].iloc[0] == 1
     assert result.loc[result["node_id"] == "J2", "vol_pred_m3"].iloc[0] == pytest.approx(33.0)
+
+
+def test_predict_network_rejects_a_model_with_the_wrong_feature_count(monkeypatch, tmp_path, tiny_config_factory):
+    """Permanent regression test for predict.py's n_features_in_ guard."""
+    cfg = tiny_config_factory()
+    cfg.simulation = SimpleNamespace(factor_min=0.5, factor_max=2.0)
+    models = tmp_path / "models"
+    models.mkdir()
+    (models / "training_inp_hash.txt").write_text(predict._md5(cfg.network.inp_path), encoding="utf-8")
+
+    wrong_count = len(predict.FEATURE_COLS) - 1
+    mismatched_clf = _StubModelWithFeatureCount(wrong_count)
+    mismatched_reg = _StubModelWithFeatureCount(wrong_count)
+    monkeypatch.setattr(
+        predict.joblib,
+        "load",
+        lambda path: mismatched_clf if "classifier" in str(path) else mismatched_reg,
+    )
+
+    with pytest.raises(RuntimeError, match="features"):
+        predict.predict_network(1.0, cfg, models)

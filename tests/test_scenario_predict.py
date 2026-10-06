@@ -75,6 +75,8 @@ def _make_graph() -> nx.DiGraph:
 class _FakeClassifier:
     """Alternates 0/1 by row position; no predict_proba (tests fallback)."""
 
+    n_features_in_ = 21
+
     def predict(self, X):
         return np.array([i % 2 for i in range(len(X))], dtype=int)
 
@@ -82,11 +84,15 @@ class _FakeClassifier:
 class _FakeRegressor:
     """Returns log1p(10.0) for every row → expm1 gives 10.0."""
 
+    n_features_in_ = 21
+
     def predict(self, X):
         return np.full(len(X), np.log1p(10.0))
 
 
 class _FakeNegativeRegressor:
+    n_features_in_ = 21
+
     def predict(self, X):
         return np.full(len(X), -5.0)
 
@@ -162,6 +168,26 @@ def test_predict_returns_contract_columns(monkeypatch, two_node_scenario, tmp_pa
     }, f"Missing columns. Got: {list(result.columns)}"
 
 
+def test_init_rejects_a_model_with_the_wrong_feature_count(monkeypatch, tmp_path):
+    """Permanent regression test for ScenarioPredictor's n_features_in_ guard."""
+    class _WrongCountClassifier:
+        n_features_in_ = 20
+
+        def predict(self, X):
+            raise AssertionError("predict() should never be reached")
+
+    class _WrongCountRegressor:
+        n_features_in_ = 20
+
+        def predict(self, X):
+            raise AssertionError("predict() should never be reached")
+
+    with pytest.raises(RuntimeError, match="features"):
+        _make_predictor(
+            monkeypatch, tmp_path, clf=_WrongCountClassifier(), reg=_WrongCountRegressor()
+        )
+
+
 def test_predict_covers_all_network_junctions(monkeypatch, two_node_scenario, tmp_path):
     """Junctions without direct inflow (J3) must also be predicted."""
     predictor = _make_predictor(monkeypatch, tmp_path)
@@ -171,6 +197,8 @@ def test_predict_covers_all_network_junctions(monkeypatch, two_node_scenario, tm
 
 def test_predict_vol_clipped_to_zero(monkeypatch, two_node_scenario, tmp_path):
     class _AllFloodedClassifier:
+        n_features_in_ = 21
+
         def predict(self, X):
             return np.ones(len(X), dtype=int)
 
