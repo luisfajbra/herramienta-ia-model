@@ -130,7 +130,20 @@ class TorchMLPClassifier(ClassifierMixin, _TorchMLPBase):
         return self
 
     def predict_proba(self, X) -> np.ndarray:
-        positive = 1.0 / (1.0 + np.exp(-self._forward(X)))
+        # Sigmoide numericamente estable: 1/(1+exp(-x)) desborda exp() para
+        # logits muy negativos (red confiada en clases muy desbalanceadas).
+        # El resultado saturaba correctamente a 0.0 incluso con el overflow
+        # (nunca NaN), pero np.where() evalua las dos ramas sobre el array
+        # completo -- no corta la rama que desborda -- asi que hace falta
+        # indexado booleano real para evitar el RuntimeWarning sin cambiar
+        # ningun valor devuelto.
+        logits = self._forward(X)
+        positive = np.empty_like(logits, dtype=np.float64)
+        non_negative = logits >= 0
+        negative = ~non_negative
+        positive[non_negative] = 1.0 / (1.0 + np.exp(-logits[non_negative]))
+        exp_logits = np.exp(logits[negative])
+        positive[negative] = exp_logits / (1.0 + exp_logits)
         return np.column_stack([1.0 - positive, positive])
 
     def predict(self, X) -> np.ndarray:
