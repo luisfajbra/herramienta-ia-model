@@ -162,6 +162,7 @@ def _validate_selected_runs(
 def _validate_run_cardinality(
     conn: sqlite3.Connection,
     run_ids: tuple[int, ...] | None,
+    node_features_table: str = "node_features",
 ) -> None:
     run_filter, params = _run_id_selection(run_ids, column="run.run_id")
     rows = conn.execute(
@@ -171,7 +172,7 @@ def _validate_run_cardinality(
             run.node_count,
             (
                 SELECT COUNT(*)
-                FROM node_features AS feature
+                FROM {node_features_table} AS feature
                 WHERE feature.run_id = run.run_id
             ) AS feature_count,
             (
@@ -221,6 +222,7 @@ def _validate_run_cardinality(
 def _find_key_mismatches(
     conn: sqlite3.Connection,
     run_ids: tuple[int, ...] | None,
+    node_features_table: str = "node_features",
 ) -> list[sqlite3.Row]:
     run_filter, params = _run_id_selection(run_ids)
     return conn.execute(
@@ -235,7 +237,7 @@ def _find_key_mismatches(
                 'missing result' AS mismatch,
                 feature.run_id,
                 feature.node_pk
-            FROM node_features AS feature
+            FROM {node_features_table} AS feature
             JOIN selected_runs AS selected
                 ON selected.run_id = feature.run_id
             LEFT JOIN node_results AS result
@@ -252,7 +254,7 @@ def _find_key_mismatches(
             FROM node_results AS result
             JOIN selected_runs AS selected
                 ON selected.run_id = result.run_id
-            LEFT JOIN node_features AS feature
+            LEFT JOIN {node_features_table} AS feature
                 ON feature.run_id = result.run_id
                 AND feature.node_pk = result.node_pk
             WHERE feature.run_id IS NULL
@@ -270,13 +272,21 @@ def load_training_samples(
     conn: sqlite3.Connection,
     run_ids: list[int] | None = None,
     max_continuity_error_pct: float | None = None,
+    view_name: str = "training_samples_v17",
+    feature_columns: tuple[str, ...] = FEATURE_COLUMNS_V17,
+    feature_contract=TABULAR_V3_17,
+    node_features_table: str = "node_features",
 ) -> pd.DataFrame:
     normalized_run_ids = _normalize_run_ids(run_ids)
     run_filter, params = _run_id_selection(normalized_run_ids)
     with _stable_read_snapshot(conn):
         _validate_selected_runs(conn, normalized_run_ids)
-        _validate_run_cardinality(conn, normalized_run_ids)
-        mismatches = _find_key_mismatches(conn, normalized_run_ids)
+        _validate_run_cardinality(
+            conn, normalized_run_ids, node_features_table=node_features_table
+        )
+        mismatches = _find_key_mismatches(
+            conn, normalized_run_ids, node_features_table=node_features_table
+        )
         if mismatches:
             details = ", ".join(
                 f"{row[0]} ({row[1]}, {row[2]})" for row in mismatches
@@ -295,17 +305,17 @@ def load_training_samples(
                 " AND ABS(continuity_error_pct) > ?)"
             )
             continuity_params = [max_continuity_error_pct]
-        columns = IDENTITY_COLUMNS + FEATURE_COLUMNS_V17 + TARGET_COLUMNS
+        columns = IDENTITY_COLUMNS + tuple(feature_columns) + TARGET_COLUMNS
         sql = (
-            f"SELECT {', '.join(columns)} FROM training_samples_v17"
+            f"SELECT {', '.join(columns)} FROM {view_name}"
             f" WHERE 1 = 1{run_filter}{continuity_filter}"
             " ORDER BY run_id, node_id"
         )
         frame = pd.read_sql_query(sql, conn, params=params + continuity_params)
         if frame.empty:
-            raise ValueError("No COMPLETE v17 training samples found")
-        features = TABULAR_V3_17.validate_frame(
-            frame.loc[:, FEATURE_COLUMNS_V17]
+            raise ValueError(f"No COMPLETE {view_name} training samples found")
+        features = feature_contract.validate_frame(
+            frame.loc[:, list(feature_columns)]
         )
         targets = _validate_targets(frame.loc[:, TARGET_COLUMNS])
         return pd.concat(
@@ -399,6 +409,10 @@ def _check_single_snapshot(frame: pd.DataFrame) -> None:
 def load_training_frame(
     db_path: str | Path,
     max_continuity_error_pct: float | None = None,
+    view_name: str = "training_samples_v17",
+    feature_columns: tuple[str, ...] = FEATURE_COLUMNS_V17,
+    feature_contract=TABULAR_V3_17,
+    node_features_table: str = "node_features",
 ) -> pd.DataFrame:
     """Load every COMPLETE v17 training sample from the database at ``db_path``.
 
@@ -422,7 +436,12 @@ def load_training_frame(
     try:
         apply_migrations(conn)
         frame = load_training_samples(
-            conn, max_continuity_error_pct=max_continuity_error_pct
+            conn,
+            max_continuity_error_pct=max_continuity_error_pct,
+            view_name=view_name,
+            feature_columns=feature_columns,
+            feature_contract=feature_contract,
+            node_features_table=node_features_table,
         )
         _check_single_snapshot(frame)
         return frame

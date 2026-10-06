@@ -176,6 +176,67 @@ def _insert_result(conn, run_id, node_pk, *, network_id=1, inunda=0):
     )
 
 
+def _insert_feature_v4_21(conn, run_id, node_pk, *, network_id=1):
+    conn.execute(
+        """
+        INSERT INTO node_features_v4_21 (
+            run_id, network_id, node_pk, elev_fondo, prof_max,
+            n_tuberias_in, n_tuberias_out, diam_max_in, diam_max_out,
+            pendiente_max_in, pendiente_out, base_inflow_lps, dist_outfall_m,
+            n_nodos_aguas_arriba, q_pico_acum_base, upstream_capacity_lps,
+            q_pico_nodo, q_pico_acum_escalado,
+            volumen_local_integrado_m3, volumen_tributario_integrado_m3,
+            duracion_efectiva_tributario_h, tiempo_primer_pico_tributario_h,
+            tiempo_sobre_capacidad_h, integral_exceso_capacidad_m3,
+            feature_contract_id
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'tabular_v4_21')
+        """,
+        (
+            run_id, network_id, node_pk, 100.0, 1.5, 1, 1, 0.2, 0.2, 0.01, 0.01,
+            5.0, 100.0, 2, 10.0, 50.0, 2.0, 10.0,
+            1.0, 2.0, 1.5, 0.5, None, None,
+        ),
+    )
+
+
+def test_load_training_samples_reads_tabular_v4_21_when_requested(migrated_conn):
+    from swmm_resilience.database.training_queries import load_training_samples
+    from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V21, TABULAR_V4_21
+
+    conn = migrated_conn
+    _insert_network(conn)
+    _insert_node(conn, node_pk=1, node_id="N1")
+    _insert_scenario_and_run(conn, run_id=1)
+    _insert_feature_v4_21(conn, run_id=1, node_pk=1)
+    _insert_result(conn, run_id=1, node_pk=1, inunda=1)
+
+    frame = load_training_samples(
+        conn,
+        view_name="training_samples_v4_21",
+        feature_columns=FEATURE_COLUMNS_V21,
+        feature_contract=TABULAR_V4_21,
+        node_features_table="node_features_v4_21",
+    )
+    assert set(frame["run_id"]) == {1}
+    assert "volumen_local_integrado_m3" in frame.columns
+    assert "duracion_horas" not in frame.columns
+
+
+def test_load_training_samples_default_still_reads_v17(migrated_conn):
+    from swmm_resilience.database.training_queries import load_training_samples
+
+    conn = migrated_conn
+    _insert_network(conn)
+    _insert_node(conn, node_pk=1, node_id="N1")
+    _insert_scenario_and_run(conn, run_id=1)
+    _insert_feature(conn, run_id=1, node_pk=1)
+    _insert_result(conn, run_id=1, node_pk=1, inunda=1)
+
+    frame = load_training_samples(conn)  # sin parametros nuevos
+    assert set(frame["run_id"]) == {1}
+    assert "duracion_horas" in frame.columns
+
+
 def _target_validation_connection(*, inunda=1, vol_inundacion_m3=12.5):
     conn = sqlite3.connect(":memory:")
     conn.executescript(
