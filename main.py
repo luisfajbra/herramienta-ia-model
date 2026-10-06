@@ -458,6 +458,7 @@ def main():
     if args.analyze_features:
         import joblib
         from swmm_resilience.ml.feature_analysis import (
+            FEATURE_COLS as ANALYSIS_FEATURE_COLS,
             plot_correlation,
             run_ablation,
             plot_shap,
@@ -482,6 +483,18 @@ def main():
         # train_models() call and never loaded from an external or untrusted source.
         clf_pipeline = joblib.load(clf_path)
         reg_pipeline = joblib.load(reg_path)
+        n_expected = len(ANALYSIS_FEATURE_COLS)
+        if clf_pipeline.n_features_in_ != n_expected or reg_pipeline.n_features_in_ != n_expected:
+            parser.error(
+                f"El modelo en {MODELS_DIR} fue entrenado con "
+                f"{clf_pipeline.n_features_in_}/{reg_pipeline.n_features_in_} features "
+                f"(clf/reg) pero --analyze-features opera sobre el contrato legacy "
+                f"tabular_v3_17 ({n_expected} features). El modelo activo fue promovido "
+                "con otro contrato (probablemente tabular_v4_21 via --bench-promote o la "
+                "migración). Borra outputs/models/promotion.json y ejecuta "
+                "python main.py --only-ml para entrenar un modelo tabular_v3_17 compatible "
+                "antes de usar --analyze-features."
+            )
         out_dir = Path("outputs/feature_analysis")
 
         print("\nAnálisis de features...")
