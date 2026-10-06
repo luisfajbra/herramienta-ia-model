@@ -187,6 +187,9 @@ def test_persist_sql_writes_to_config_dataset_db_path(monkeypatch):
         csv_backfill_module, "persist_training_run", fake_persist_training_run
     )
     monkeypatch.setattr(
+        csv_backfill_module, "backfill_tributary_features", lambda *args, **kwargs: 0,
+    )
+    monkeypatch.setattr(
         training_queries_module, "load_continuity_excluded", lambda conn, pct: pd.DataFrame()
     )
     monkeypatch.setattr(sys, "argv", ["main.py", "--persist-sql"])
@@ -235,6 +238,9 @@ def _persist_sql_fakes(monkeypatch, csv_frame, captured):
     )
     monkeypatch.setattr(
         csv_backfill_module, "persist_training_run", fake_persist_training_run
+    )
+    monkeypatch.setattr(
+        csv_backfill_module, "backfill_tributary_features", lambda *args, **kwargs: 0,
     )
     monkeypatch.setattr(
         training_queries_module,
