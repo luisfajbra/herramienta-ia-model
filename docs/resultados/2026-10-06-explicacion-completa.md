@@ -264,6 +264,30 @@ Se eligió **OOF**, por consistencia. El resultado son gráficos de paridad
 (dispersión SWMM vs. predicho) para XGBoost, Random Forest, Lineal y MLP,
 guardados en `resultados_archivados/2026-10-05-benchmark-fase-c2/paridad/`.
 
+### 7.1. Qué es cada punto de esos gráficos (no es una corrida por punto)
+
+Por cada familia se generaron 3 archivos, y cada uno agrega las ~940
+corridas OOF de una forma distinta — ninguno grafica una corrida
+individual por punto:
+
+- **`parity_nodes_*`** (dispersión, **160 puntos** — uno por nodo de la
+  red): para cada nodo, se sumó el volumen real (SWMM) de *todas* las
+  corridas donde ese nodo participó, y lo mismo para el volumen predicho.
+  Un punto es "este nodo, acumulado a lo largo de toda la campaña de
+  simulaciones" — no una corrida puntual. Cerca de la diagonal `y=x` =
+  buen ajuste para ese nodo en general; lejos = ese nodo es un punto débil
+  del modelo.
+- **`parity_agg_*`** (dispersión, **un solo punto**): la suma total — todos
+  los nodos, todas las corridas, un número real contra un número
+  predicho. El resumen más agregado posible.
+- **`node_profile_*`** (barras, no dispersión): el mismo agregado por nodo
+  que `parity_nodes_*`, pero como barras SWMM vs. predicho lado a lado —
+  más fácil de leer "cuáles nodos específicos" si son pocos.
+
+Se eligió agregar por nodo (no por corrida) porque es lo estándar para
+juzgar "qué tan bien ajusta el modelo en general" — 940 puntos por corrida
+individual habría sido ilegible y no es como se suele presentar esto.
+
 ## 8. El hallazgo de features tributarias (`tabular_v4_21`)
 
 Este es el hallazgo más importante de esta sesión.
