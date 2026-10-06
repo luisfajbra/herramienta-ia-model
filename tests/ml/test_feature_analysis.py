@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from swmm_resilience.ml.trainer import FEATURE_COLS
+from swmm_resilience.ml.feature_analysis import FEATURE_COLS
 
 
 @pytest.fixture
@@ -101,8 +101,7 @@ def test_plot_shap_creates_summary_files(analysis_df, tmp_path):
     from sklearn.impute import SimpleImputer
     from sklearn.pipeline import Pipeline
     from xgboost import XGBClassifier, XGBRegressor
-    from swmm_resilience.ml.feature_analysis import plot_shap
-    from swmm_resilience.ml.trainer import FEATURE_COLS
+    from swmm_resilience.ml.feature_analysis import plot_shap, FEATURE_COLS
 
     X = analysis_df[FEATURE_COLS].values
     y_clf = analysis_df["inunda"].values
@@ -126,7 +125,7 @@ def test_plot_shap_creates_summary_files(analysis_df, tmp_path):
 
     assert (tmp_path / "shap_classifier_summary.png").exists()
     assert (tmp_path / "shap_regressor_summary.png").exists()
-    assert (tmp_path / "shap_dependence_classifier_duracion_efectiva_tributario_h.png").exists()
-    assert (tmp_path / "shap_dependence_classifier_tiempo_primer_pico_tributario_h.png").exists()
-    assert (tmp_path / "shap_dependence_regressor_duracion_efectiva_tributario_h.png").exists()
-    assert (tmp_path / "shap_dependence_regressor_tiempo_primer_pico_tributario_h.png").exists()
+    assert (tmp_path / "shap_dependence_classifier_duracion_horas.png").exists()
+    assert (tmp_path / "shap_dependence_classifier_tiempo_al_pico_h.png").exists()
+    assert (tmp_path / "shap_dependence_regressor_duracion_horas.png").exists()
+    assert (tmp_path / "shap_dependence_regressor_tiempo_al_pico_h.png").exists()

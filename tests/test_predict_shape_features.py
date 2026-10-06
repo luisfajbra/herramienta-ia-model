@@ -21,8 +21,9 @@ from swmm_resilience.ml import predict as predict_mod
 class _StubModel:
     """Records the feature frame it is asked to predict on."""
 
-    def __init__(self):
+    def __init__(self, n_features_in_=2):
         self.seen = []
+        self.n_features_in_ = n_features_in_
 
     def predict(self, X):
         self.seen.append(X.copy())
@@ -119,3 +120,35 @@ def test_base_shape_stats_reads_the_inp_timeseries(monkeypatch):
     monkeypatch.setattr(predict_mod, "load_inp", lambda p: {"TIMESERIES": {"t": _TS()}})
 
     assert predict_mod.base_shape_stats(Path("x.inp")) == (3.0, 1.5)
+
+
+def test_base_shape_series_and_normalized_base_shape_pin_tributary_reconstruction(monkeypatch):
+    """Pin _base_shape_series (raw pass-through) and _normalized_base_shape
+    (peak-normalized to 1.0) against a fake .inp with a real, non-empty
+    TIMESERIES -- the 6 tabular_v4_21 tributary columns depend on both, and
+    every other test in this file stubs load_inp to {}, which hides them
+    entirely (_normalized_base_shape always short-circuits to [])."""
+
+    class _TS:
+        data = [(0.0, 2.0), (1.0, 10.0), (2.0, 4.0)]
+
+    monkeypatch.setattr(predict_mod, "load_inp", lambda p: {"TIMESERIES": {"t": _TS()}})
+
+    raw = predict_mod._base_shape_series(Path("x.inp"))
+    assert raw == [(0.0, 2.0), (1.0, 10.0), (2.0, 4.0)]
+
+    normalized = predict_mod._normalized_base_shape(Path("x.inp"))
+    peak = max(v for _, v in raw)
+    assert normalized == [(t, v / peak) for t, v in raw]
+    # The peak point itself must land exactly at 1.0.
+    peak_t, peak_norm = next((t, v) for t, v in normalized if t == 1.0)
+    assert peak_norm == 1.0
+
+
+def test_normalized_base_shape_zero_peak_returns_empty(monkeypatch):
+    class _TS:
+        data = [(0.0, 0.0)]
+
+    monkeypatch.setattr(predict_mod, "load_inp", lambda p: {"TIMESERIES": {"t": _TS()}})
+
+    assert predict_mod._normalized_base_shape(Path("x.inp")) == []

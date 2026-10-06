@@ -9,8 +9,11 @@ import pandas as pd
 from sklearn.metrics import f1_score, roc_auc_score, r2_score
 from sklearn.model_selection import LeaveOneGroupOut
 
-from .trainer import FEATURE_COLS, make_classifier, make_regressor
+from .contracts import FEATURE_COLUMNS_V17
+from .trainer import make_classifier, make_regressor
 from ..visualization.labels import feature_display_name
+
+FEATURE_COLS = list(FEATURE_COLUMNS_V17)
 
 REPORT_EXCLUDED_FEATURES = {"n_tuberias_in", "n_tuberias_out"}
 REPORT_FEATURE_COLS = [
@@ -244,12 +247,11 @@ def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> No
     plt.savefig(out_dir / "shap_classifier_summary.png", dpi=150, bbox_inches="tight")
     plt.close()
 
-    # Las descriptoras temporales que mas importancia tenian bajo tabular_v3_17
-    # (duracion_horas, tiempo_al_pico_h) ya no existen en tabular_v4_21 --
-    # spec §6: contrato deliberadamente incompatible, no superset. Sus
-    # sucesoras conceptuales (duracion y tiempo-al-primer-pico de
-    # Q_tributario, calculadas desde la serie real por nodo) ocupan su lugar.
-    for feat in ("duracion_efectiva_tributario_h", "tiempo_primer_pico_tributario_h"):
+    # This module (Stack B, like ml/evaluator.py) always operates on the
+    # legacy tabular_v3_17 contract (FEATURE_COLS above is pinned to
+    # FEATURE_COLUMNS_V17) -- duracion_horas/tiempo_al_pico_h are the two
+    # most important temporal descriptors under that contract.
+    for feat in ("duracion_horas", "tiempo_al_pico_h"):
         feat_idx = REPORT_FEATURE_COLS.index(feat)
         shap.dependence_plot(
             feat_idx,
@@ -292,12 +294,9 @@ def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> No
     plt.savefig(out_dir / "shap_regressor_summary.png", dpi=150, bbox_inches="tight")
     plt.close()
 
-    # Las descriptoras temporales que mas importancia tenian bajo tabular_v3_17
-    # (duracion_horas, tiempo_al_pico_h) ya no existen en tabular_v4_21 --
-    # spec §6: contrato deliberadamente incompatible, no superset. Sus
-    # sucesoras conceptuales (duracion y tiempo-al-primer-pico de
-    # Q_tributario, calculadas desde la serie real por nodo) ocupan su lugar.
-    for feat in ("duracion_efectiva_tributario_h", "tiempo_primer_pico_tributario_h"):
+    # Same reasoning as the classifier block above: this module is pinned to
+    # tabular_v3_17, so duracion_horas/tiempo_al_pico_h are the relevant pair.
+    for feat in ("duracion_horas", "tiempo_al_pico_h"):
         feat_idx = REPORT_FEATURE_COLS.index(feat)
         shap.dependence_plot(
             feat_idx,

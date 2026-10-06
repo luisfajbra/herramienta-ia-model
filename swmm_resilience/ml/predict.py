@@ -77,6 +77,14 @@ def predict_network(factor: float, config: Config, models_dir: Path) -> pd.DataF
     clf = joblib.load(models_dir / "classifier.joblib")
     reg = joblib.load(models_dir / "regressor.joblib")
 
+    if clf.n_features_in_ != len(FEATURE_COLS) or reg.n_features_in_ != len(FEATURE_COLS):
+        raise RuntimeError(
+            f"El modelo en '{models_dir}' espera {clf.n_features_in_}/{reg.n_features_in_} "
+            f"features (clf/reg) pero FEATURE_COLS tiene {len(FEATURE_COLS)}. "
+            "El modelo activo no corresponde al contrato de features actual -- "
+            "vuelve a promoverlo (--bench-promote o el script de migración correspondiente)."
+        )
+
     stored_hash = (models_dir / "training_inp_hash.txt").read_text().strip()
     if _md5(config.network.inp_path) != stored_hash:
         raise ValueError(

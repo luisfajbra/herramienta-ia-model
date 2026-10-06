@@ -43,6 +43,8 @@ def promote_candidate(
     record = {
         "family": candidate.family,
         "prep_id": candidate.metadata["prep_id"],
+        "feature_contract_id": candidate.metadata.get("feature_contract_id", "tabular_v3_17"),
+        "ordered_features": candidate.metadata.get("ordered_features"),
         "classifier_sha256": candidate.metadata["classifier_sha256"],
         "regressor_sha256": candidate.metadata["regressor_sha256"],
         "source_dir": str(Path(candidate_dir).resolve()),

@@ -63,6 +63,14 @@ class ScenarioPredictor:
         self.reg = joblib.load(reg_path)
         self.model_load_s = time.perf_counter() - t0
 
+        if self.clf.n_features_in_ != len(FEATURE_COLS) or self.reg.n_features_in_ != len(FEATURE_COLS):
+            raise RuntimeError(
+                f"El modelo en '{clf_path.parent}' espera {self.clf.n_features_in_}/{self.reg.n_features_in_} "
+                f"features (clf/reg) pero FEATURE_COLS tiene {len(FEATURE_COLS)}. "
+                "El modelo activo no corresponde al contrato de features actual -- "
+                "vuelve a promoverlo (--bench-promote o el script de migración correspondiente)."
+            )
+
         t0 = time.perf_counter()
         static_df = extract_static_features(inp_path)
         self.full_df = compute_topology_features(static_df, inp_path)

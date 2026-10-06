@@ -99,12 +99,16 @@ def test_train_models_fits_regressor_on_contract_validated_frame(
 
 
 class FakeClassifier:
+    n_features_in_ = len(trainer.FEATURE_COLS)
+
     def predict(self, X):
         assert list(X.columns) == trainer.FEATURE_COLS
         return pd.Series([0, 1])
 
 
 class FakeRegressor:
+    n_features_in_ = len(trainer.FEATURE_COLS)
+
     def predict(self, X):
         assert list(X.columns) == trainer.FEATURE_COLS
         return np.log1p([33.0])

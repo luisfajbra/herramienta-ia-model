@@ -10,6 +10,7 @@ Uso:
 
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 
@@ -89,6 +90,33 @@ def main() -> None:
         models_dir.mkdir(parents=True, exist_ok=True)
         joblib.dump(clf, models_dir / "classifier.joblib")
         joblib.dump(reg, models_dir / "regressor.joblib")
+
+        import hashlib
+        from datetime import datetime, timezone
+
+        def _sha256(path):
+            digest = hashlib.sha256()
+            with open(path, "rb") as handle:
+                for chunk in iter(lambda: handle.read(8192), b""):
+                    digest.update(chunk)
+            return digest.hexdigest()
+
+        (models_dir / "promotion.json").write_text(
+            json.dumps(
+                {
+                    "family": "xgboost",
+                    "feature_contract_id": TABULAR_V4_21.contract_id,
+                    "ordered_features": list(FEATURE_COLUMNS_V21),
+                    "classifier_sha256": _sha256(models_dir / "classifier.joblib"),
+                    "regressor_sha256": _sha256(models_dir / "regressor.joblib"),
+                    "source": "scripts/comparar_contratos_xgboost.py (migracion tabular_v4_21, delta confirmado)",
+                    "promoted_at_utc": datetime.now(timezone.utc).isoformat(),
+                },
+                indent=2,
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
         print(f"  Modelo tabular_v4_21 promovido a {models_dir}")
 
 

@@ -2,8 +2,10 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from pathlib import Path
 
-from .trainer import FEATURE_COLS
+from .contracts import FEATURE_COLUMNS_V17
 from ..visualization.labels import feature_display_name
+
+FEATURE_COLS = list(FEATURE_COLUMNS_V17)
 
 REPORT_EXCLUDED_FEATURES = {"n_tuberias_in", "n_tuberias_out"}
 
