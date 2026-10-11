@@ -46,6 +46,21 @@ def test_boundary_band_splits_false_negatives_by_true_volume():
     assert int(band.iloc[0]["fn_total"]) == int(band["fn_en_banda_1_2m3"].iloc[0] + band["fn_fuera_de_banda"].iloc[0])
 
 
+def test_tables_do_not_depend_on_the_order_models_are_given():
+    from scripts.informe_evaluacion import build_tables
+
+    prepared = _prepared()
+    oof_b = perfect_oof(prepared)
+    oof_b.loc[oof_b["sample_idx"] == 0, "y_pred_clf"] = 0
+
+    first = build_tables(prepared, {"z_modelo": perfect_oof(prepared), "a_modelo": oof_b}, 1.0)
+    second = build_tables(prepared, {"a_modelo": oof_b, "z_modelo": perfect_oof(prepared)}, 1.0)
+
+    for name in first:
+        pd.testing.assert_frame_equal(first[name], second[name])
+    assert first["matriz_confusion"]["modelo"].iloc[0] == "a_modelo"
+
+
 def test_main_reads_the_prepared_dir_and_oof_root_given_and_writes_four_csvs(tmp_path, monkeypatch):
     import scripts.informe_evaluacion as informe
 

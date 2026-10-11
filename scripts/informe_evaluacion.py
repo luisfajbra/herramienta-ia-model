@@ -48,9 +48,11 @@ def build_tables(prepared, oof_by_name: dict, flood_threshold_m3: float) -> dict
     volume = prepared.y_reg.to_numpy()
     comparison, confusion, band, by_shape = [], [], [], []
 
-    for name, oof in oof_by_name.items():
+    # Orden fijo (modelo, protocolo, forma) para que los CSV no dependan del
+    # orden en que llegan los OOF (dict del script vs. glob del disco).
+    for name, oof in sorted(oof_by_name.items()):
         scored = _scored(prepared, oof)
-        for protocol, block in scored.items():
+        for protocol, block in sorted(scored.items()):
             comparison.append(
                 {
                     "modelo": name,
@@ -68,7 +70,7 @@ def build_tables(prepared, oof_by_name: dict, flood_threshold_m3: float) -> dict
                 }
             )
             confusion.append({"modelo": name, "protocolo": protocol, **block["confusion_matrix"]})
-            for shape, entry in block["by_shape"].items():
+            for shape, entry in sorted(block["by_shape"].items()):
                 by_shape.append({"modelo": name, "protocolo": protocol, "forma": shape, **entry})
 
             subset = oof[oof["protocol"] == protocol]
