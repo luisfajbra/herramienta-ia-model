@@ -99,9 +99,14 @@ def _reject_duplicate_cells(cells: pd.DataFrame, columns: list[str], where: str)
         )
 
 
-def _reject_nan_volumes(volumes: np.ndarray, where: str) -> None:
-    if np.isnan(volumes).any():
-        raise ValueError(f"{where}: hay volúmenes NaN en las filas de entrenamiento.")
+def _reject_nan_volumes(volumes: np.ndarray, labels: np.ndarray, where: str) -> None:
+    """``labels``: etiqueta (serie o forma|nodo) de cada fila de entrenamiento."""
+    bad = np.isnan(volumes)
+    if bad.any():
+        names = sorted(set(labels[bad]))[:5]
+        raise ValueError(
+            f"{where}: hay volúmenes NaN en las filas de entrenamiento; series: {names}."
+        )
 
 
 def _interpolacion_factor_fold(
@@ -112,7 +117,7 @@ def _interpolacion_factor_fold(
     factors = _factors(prepared)
     volumes = prepared.y_reg.to_numpy(dtype=float)
 
-    _reject_nan_volumes(volumes[train_idx], where)
+    _reject_nan_volumes(volumes[train_idx], series[train_idx], where)
     train_factors = np.unique(factors[train_idx])
     n_factors = len(train_factors)
     table = pd.DataFrame(
@@ -156,13 +161,9 @@ def _interpolacion_factor_fold(
     )
 
     has_low, has_high = low >= 0, high < n_factors
-    empty = ~(has_low | has_high)
-    if empty.any():
-        names = sorted(set(series[test_idx][empty]))
-        raise ValueError(
-            f"{where}: las series {names[:5]} no tienen ningún valor de entrenamiento "
-            "en este fold; no se puede interpolar."
-        )
+    # Toda serie de la matriz tiene algún factor de train (los NaN y las series sin
+    # train ya se rechazaron), así que siempre existe un vecino inferior o superior.
+    assert (has_low | has_high).all(), f"{where}: serie sin vecinos de entrenamiento"
 
     low_c = np.clip(low, 0, n_factors - 1)
     high_c = np.clip(high, 0, n_factors - 1)
@@ -246,7 +247,11 @@ def _forma_mas_cercana_fold(
     factors = _factors(prepared)
     volumes = prepared.y_reg.to_numpy(dtype=float)
 
-    _reject_nan_volumes(volumes[train_idx], where)
+    _reject_nan_volumes(
+        volumes[train_idx],
+        np.char.add(np.char.add(shapes[train_idx], "|"), nodes[train_idx]),
+        where,
+    )
     train_shapes = sorted(set(shapes[train_idx]))
     train_table = table.loc[train_shapes]
     mean = train_table.mean()
@@ -308,7 +313,8 @@ def baseline_oof(
 
     ``shape_descriptors`` (índice = shape_id) solo lo usa la referencia de forma
     más cercana; ver el docstring del módulo. El frame lleva
-    ``attrs["n_rows"]`` y ``attrs["fallback_rows"]`` (definición en el docstring).
+    ``attrs["n_rows"]`` y ``attrs["fallback_rows"]``: totales sumados sobre todos
+    los protocolos aplicables y todos sus folds (definición en el docstring).
     """
     if name not in BASELINES:
         raise ValueError(f"Referencia desconocida: {name!r}. Opciones: {BASELINES}")

@@ -296,16 +296,25 @@ def _volume(node, factor):
 
 
 def test_interpolation_uses_the_series_own_neighbours_when_a_middle_factor_is_missing():
-    # N0 no tiene la celda f=3.0; N1 sí. Retenido f=2.0: el entrenamiento a nivel de
-    # fold tiene {1,3,4,5}, pero N0 interpola entre 1.0 y 4.0 (pesos 2/3 y 1/3).
-    prepared = make_prepared(_grid_rows(_volume, omit={("N0", 3.0)}), ["LOSO"])
+    # N0 (no lineal: f^2) no tiene la celda f=3.0; N1 (10*f) sí. Con f=2.0 retenido el
+    # entrenamiento a nivel de fold es {1,3,4,5}, pero N0 sólo tiene {1,4,5}: debe
+    # interpolar entre 1.0 y 4.0. Al ser no lineal, otro par de vecinos (p. ej. 1 y 5
+    # da 7) o leer el valor retenido (4) dan un número distinto.
+    def volume(node, factor):
+        return factor ** 2 if node == "N0" else 10.0 * factor
+
+    prepared = make_prepared(_grid_rows(volume, omit={("N0", 3.0)}), ["LOSO"])
 
     predicted = _predictions(prepared, baseline_oof(prepared, INTERPOLACION_FACTOR, 1.0))
 
-    assert predicted[("N0", 2.0)] == pytest.approx(10.0 + (1.0 / 3.0) * (40.0 - 10.0))  # 1 y 4 -> 20
-    assert predicted[("N1", 2.0)] == pytest.approx(1.0 + 0.5 * (9.0 - 1.0))              # 1 y 3 -> 5
-    # N1 con la malla completa no cambia; N0 con f=4.0 retenido usa 2.0 y 5.0
-    assert predicted[("N0", 4.0)] == pytest.approx(20.0 + (2.0 / 3.0) * (50.0 - 20.0))   # 40
+    # f=2 entre (1, 1) y (4, 16): peso (2-1)/(4-1) = 1/3 -> 1 + (1/3) * (16 - 1) = 6
+    assert predicted[("N0", 2.0)] == pytest.approx(1.0 + (2.0 - 1.0) / (4.0 - 1.0) * (16.0 - 1.0))
+    assert predicted[("N0", 2.0)] == pytest.approx(6.0)
+    # f=4 retenido: N0 sólo tiene {1,2,5}; entre (2, 4) y (5, 25): 4 + (2/3) * 21 = 18
+    assert predicted[("N0", 4.0)] == pytest.approx(4.0 + (4.0 - 2.0) / (5.0 - 2.0) * (25.0 - 4.0))
+    assert predicted[("N0", 4.0)] == pytest.approx(18.0)
+    # N1 (malla completa) usa 1 y 3: 10 + 0.5 * (30 - 10) = 20
+    assert predicted[("N1", 2.0)] == pytest.approx(20.0)
 
 
 def test_interpolation_falls_back_to_one_side_when_an_end_factor_is_missing():
@@ -340,7 +349,7 @@ def test_interpolation_reports_nan_volumes_in_train():
     rows[0]["vol"] = float("nan")
     prepared = make_prepared(rows, ["LOSO"])
 
-    with pytest.raises(ValueError, match="NaN"):
+    with pytest.raises(ValueError, match=r"volúmenes NaN.*s\|N0"):
         baseline_oof(prepared, INTERPOLACION_FACTOR, 1.0)
 
 
