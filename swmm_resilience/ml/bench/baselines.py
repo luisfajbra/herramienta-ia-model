@@ -100,6 +100,17 @@ def _interpolacion_factor_fold(
     return matrix[rows, low] * (1.0 - weight) + matrix[rows, high] * weight
 
 
+def _reject_nan(has_nan: pd.DataFrame, where: str) -> None:
+    """``has_nan``: booleanos (forma x descriptor). Falla nombrando formas y columnas."""
+    if has_nan.to_numpy().any():
+        shapes = [str(shape) for shape in has_nan.index[has_nan.any(axis=1)]]
+        columns = [str(col) for col in has_nan.columns[has_nan.any(axis=0)]]
+        raise ValueError(
+            f"{where} tiene NaN en los descriptores de forma; formas: {shapes}; "
+            f"columnas: {columns}."
+        )
+
+
 def _resolve_shape_descriptors(
     prepared: PreparedDataset, shape_descriptors: pd.DataFrame | None
 ) -> pd.DataFrame:
@@ -108,13 +119,22 @@ def _resolve_shape_descriptors(
     if shape_descriptors is not None:
         table = shape_descriptors.copy()
         table.index = table.index.astype(str)
+        if table.index.has_duplicates:
+            duplicated = sorted(set(table.index[table.index.duplicated()]))
+            raise ValueError(
+                f"shape_descriptors tiene formas duplicadas en el índice: {duplicated}."
+            )
+        if table.shape[1] == 0:
+            raise ValueError("shape_descriptors no tiene ninguna columna (sin columnas).")
         missing = sorted(set(shapes) - set(table.index))
         if missing:
             raise ValueError(
                 "shape_descriptors no cubre todas las formas del dataset; faltan: "
                 f"{missing}"
             )
-        return table.astype(float)
+        table = table.astype(float)
+        _reject_nan(table.loc[sorted(set(shapes))].isna(), "shape_descriptors")
+        return table
     if not all(column in prepared.X.columns for column in _SHAPE_DESCRIPTORS):
         raise BaselineNotApplicable(
             f"{FORMA_MAS_CERCANA} no aplica: el contrato de features de este "
@@ -125,6 +145,10 @@ def _resolve_shape_descriptors(
         {"shape": shapes, **{c: prepared.X[c].to_numpy(dtype=float) for c in _SHAPE_DESCRIPTORS}}
     )
     grouped = descriptors.groupby("shape")[list(_SHAPE_DESCRIPTORS)]
+    _reject_nan(
+        descriptors[list(_SHAPE_DESCRIPTORS)].isna().groupby(descriptors["shape"]).any(),
+        "prepared.X",
+    )
     if (grouped.nunique() > 1).any().any():
         raise ValueError(
             "baseline_forma_mas_cercana: las features de forma no son constantes dentro de una forma."

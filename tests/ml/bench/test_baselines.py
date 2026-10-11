@@ -233,3 +233,42 @@ def test_interpolation_does_not_need_shape_columns_in_x():
     predicted = _predictions(prepared, baseline_oof(prepared, INTERPOLACION_FACTOR, 1.0))
 
     assert predicted[("N0", 3.0)] == pytest.approx(30.0)
+
+
+def test_descriptor_table_with_nan_is_rejected_naming_shape_and_column():
+    prepared = _three_tied_shapes()
+    descriptors = pd.DataFrame(
+        {"d1": [0.0, np.nan, 2.0], "d2": [0.0, 1.0, 2.0]}, index=["A", "B", "C"]
+    )
+
+    with pytest.raises(ValueError, match=r"NaN.*'B'.*'d1'|NaN.*B.*d1"):
+        baseline_oof(prepared, FORMA_MAS_CERCANA, 1.0, shape_descriptors=descriptors)
+
+
+def test_descriptor_table_with_duplicate_shapes_is_rejected_naming_them():
+    prepared = _three_tied_shapes()
+    descriptors = pd.DataFrame(
+        {"d1": [0.0, 1.0, 2.0, 3.0]}, index=["A", "B", "C", "C"]
+    )
+
+    with pytest.raises(ValueError, match=r"duplicad.*'C'|duplicad.*\bC\b"):
+        baseline_oof(prepared, FORMA_MAS_CERCANA, 1.0, shape_descriptors=descriptors)
+
+
+def test_descriptor_table_without_columns_is_rejected():
+    prepared = _three_tied_shapes()
+    descriptors = pd.DataFrame(index=["A", "B", "C"])
+
+    with pytest.raises(ValueError, match="sin columnas"):
+        baseline_oof(prepared, FORMA_MAS_CERCANA, 1.0, shape_descriptors=descriptors)
+
+
+def test_nan_in_the_shape_features_of_x_is_rejected_naming_shape_and_column():
+    prepared = _three_tied_shapes()
+    X = prepared.X.copy()
+    rows_b = prepared.keys.index[prepared.keys["shape_id"] == "B"]
+    X.loc[rows_b[0], "tiempo_al_pico_h"] = np.nan   # solo una fila de la forma B
+    prepared = dataclasses.replace(prepared, X=X)
+
+    with pytest.raises(ValueError, match=r"NaN.*B.*tiempo_al_pico_h"):
+        baseline_oof(prepared, FORMA_MAS_CERCANA, 1.0)
