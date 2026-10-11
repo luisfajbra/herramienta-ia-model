@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import json
 import math
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+
+from .schemas import PROTOCOL_INTERPRETATION, PreparedDataset
 
 
 def _json_safe(obj):
@@ -37,6 +40,56 @@ def _json_safe(obj):
     return obj
 
 
+def write_metrics_files(
+    metrics_by_name: dict[str, dict], output_dir: Path | str, prefix: str = "metrics_"
+) -> dict[str, Path]:
+    """Escribe un JSON estricto por nombre (familia o referencia)."""
+    directory = Path(output_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    written: dict[str, Path] = {}
+    for name, metrics in metrics_by_name.items():
+        path = directory / f"{prefix}{name}.json"
+        path.write_text(
+            json.dumps(_json_safe(metrics), indent=2, ensure_ascii=False, allow_nan=False),
+            encoding="utf-8",
+        )
+        written[f"{prefix}{name}"] = path
+    return written
+
+
+def write_oof(oof: pd.DataFrame, root: Path | str, prep_id: str, name: str) -> Path:
+    """Guarda las predicciones fuera de fold en ``<root>/<prep_id>/<name>.parquet``."""
+    directory = Path(root) / prep_id
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{name}.parquet"
+    oof.to_parquet(path, index=False)
+    return path
+
+
+def write_provenance(
+    output_dir: Path | str,
+    prepared: PreparedDataset,
+    families: dict[str, dict],
+    baselines: list[str],
+) -> Path:
+    """``provenance.json``: qué dataset, qué hiperparámetros y qué mide cada protocolo."""
+    directory = Path(output_dir)
+    directory.mkdir(parents=True, exist_ok=True)
+    record = {
+        "prep_id": prepared.prep_id,
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "protocol_interpretation": dict(PROTOCOL_INTERPRETATION),
+        "families": families,
+        "baselines": list(baselines),
+    }
+    path = directory / "provenance.json"
+    path.write_text(
+        json.dumps(_json_safe(record), indent=2, ensure_ascii=False, allow_nan=False),
+        encoding="utf-8",
+    )
+    return path
+
+
 def write_reports(
     metrics_by_family: dict[str, dict],
     ranking: pd.DataFrame,
@@ -50,16 +103,7 @@ def write_reports(
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
 
-    written: dict[str, Path] = {}
-    for family, metrics in metrics_by_family.items():
-        path = directory / f"metrics_{family}.json"
-        path.write_text(
-            json.dumps(
-                _json_safe(metrics), indent=2, ensure_ascii=False, allow_nan=False
-            ),
-            encoding="utf-8",
-        )
-        written[f"metrics_{family}"] = path
+    written: dict[str, Path] = write_metrics_files(metrics_by_family, directory)
 
     ranking_json = directory / "ranking.json"
     ranking_json.write_text(

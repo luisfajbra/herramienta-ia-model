@@ -151,3 +151,57 @@ def test_allow_nan_false_would_have_raised_on_the_old_unsanitized_payload():
     payload = {"auc_roc": float("nan")}
     with pytest.raises(ValueError):
         json.dumps(payload, allow_nan=False)
+
+
+import json
+
+from swmm_resilience.ml.bench.reports import (
+    write_metrics_files,
+    write_oof,
+    write_provenance,
+)
+from tests.ml.bench.prepared_factory import make_prepared, perfect_oof
+
+
+def _tiny_prepared():
+    rows = [
+        dict(shape_id="s", node_id="N0", factor_mult=f, vol=10.0 * f,
+             duracion_horas=1.0, tiempo_al_pico_h=0.5)
+        for f in (1.0, 2.0, 3.0)
+    ]
+    return make_prepared(rows, ["LOSO"])
+
+
+def test_write_metrics_files_uses_the_given_prefix_and_strict_json(tmp_path):
+    metrics = {"baseline_x": {"LOSO": {"classifier": {"f1": float("nan")}}}}
+
+    paths = write_metrics_files(metrics, tmp_path)
+
+    written = json.loads((tmp_path / "metrics_baseline_x.json").read_text(encoding="utf-8"))
+    assert written["LOSO"]["classifier"]["f1"] is None
+    assert paths["metrics_baseline_x"] == tmp_path / "metrics_baseline_x.json"
+
+
+def test_write_oof_stores_one_parquet_per_name_under_the_prep_id(tmp_path):
+    prepared = _tiny_prepared()
+    oof = perfect_oof(prepared)
+
+    path = write_oof(oof, tmp_path, prepared.prep_id, "xgboost")
+
+    assert path == tmp_path / prepared.prep_id / "xgboost.parquet"
+    assert pd.read_parquet(path).shape == oof.shape
+
+
+def test_write_provenance_records_prep_id_params_baselines_and_protocol_meaning(tmp_path):
+    prepared = _tiny_prepared()
+    families = {"xgboost": {"classifier": {"max_depth": 3}, "regressor": {"max_depth": 4}}}
+
+    path = write_provenance(tmp_path, prepared, families, ["baseline_interpolacion_factor"])
+
+    record = json.loads(path.read_text(encoding="utf-8"))
+    assert path.name == "provenance.json"
+    assert record["prep_id"] == prepared.prep_id
+    assert record["families"]["xgboost"]["classifier"] == {"max_depth": 3}
+    assert record["baselines"] == ["baseline_interpolacion_factor"]
+    assert "generated_at_utc" in record
+    assert "LOSO" in record["protocol_interpretation"]

@@ -134,11 +134,21 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _run_bench(args, config) -> None:
+    from swmm_resilience.ml.bench.baselines import (
+        BASELINES,
+        BaselineNotApplicable,
+        evaluate_baseline,
+    )
     from swmm_resilience.ml.bench.evaluate import evaluate_candidate
     from swmm_resilience.ml.bench.preprocess import prepare_dataset, resolve_prepared
     from swmm_resilience.ml.bench.promote import promote_candidate
     from swmm_resilience.ml.bench.ranking import RankingCriterion, rank_candidates
-    from swmm_resilience.ml.bench.reports import write_reports
+    from swmm_resilience.ml.bench.reports import (
+        write_metrics_files,
+        write_oof,
+        write_provenance,
+        write_reports,
+    )
     from swmm_resilience.ml.bench.train import train_candidate
 
     if config.bench is None:
@@ -149,6 +159,7 @@ def _run_bench(args, config) -> None:
     prepared_dir = BENCH_ROOT / "prepared"
     candidates_dir = BENCH_ROOT / "candidates"
     reports_dir = BENCH_ROOT / "reports"
+    oof_dir = BENCH_ROOT / "oof"
 
     run_all = args.bench
     families = (
@@ -204,9 +215,23 @@ def _run_bench(args, config) -> None:
         metrics_by_family = {}
         for family in families:
             spec = config.bench.families[family]
-            _, metrics = evaluate_candidate(prepared, family, spec.classifier, spec.regressor)
+            oof, metrics = evaluate_candidate(prepared, family, spec.classifier, spec.regressor)
             metrics_by_family[family] = metrics
+            write_oof(oof, oof_dir, prepared.prep_id, family)
             print(f"  {family} evaluado")
+
+        baseline_metrics = {}
+        for baseline in BASELINES:
+            try:
+                baseline_oof_frame, metrics = evaluate_baseline(
+                    prepared, baseline, config.dataset.flood_threshold_m3
+                )
+            except BaselineNotApplicable as exc:
+                print(f"  {baseline}: omitida ({exc})")
+                continue
+            baseline_metrics[baseline] = metrics
+            write_oof(baseline_oof_frame, oof_dir, prepared.prep_id, baseline)
+            print(f"  {baseline} evaluada")
 
         criterion = RankingCriterion(
             primary_metric=config.bench.ranking.primary_metric,
@@ -216,6 +241,19 @@ def _run_bench(args, config) -> None:
         ranking_protocol = config.bench.protocols[0]
         ranking = rank_candidates(metrics_by_family, criterion, ranking_protocol)
         write_reports(metrics_by_family, ranking, reports_dir)
+        write_metrics_files(baseline_metrics, reports_dir)
+        write_provenance(
+            reports_dir,
+            prepared,
+            {
+                family: {
+                    "classifier": config.bench.families[family].classifier,
+                    "regressor": config.bench.families[family].regressor,
+                }
+                for family in families
+            },
+            sorted(baseline_metrics),
+        )
         print(f"Ranking calculado sobre el protocolo: {ranking_protocol}")
         print(ranking.to_string(index=False))
 

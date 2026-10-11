@@ -474,6 +474,36 @@ def test_full_bench_run_writes_ranking_without_promoting(
     assert not (tmp_path / "outputs" / "bench" / "tuning").exists()
 
 
+def test_bench_evaluate_persists_oof_baselines_and_provenance(
+    sql_training_db, tmp_path, monkeypatch
+):
+    import main
+
+    inp_path = tmp_path / "network.inp"
+    inp_path.write_text("[TITLE]\nred\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(
+        inp_path=inp_path, db_path=sql_training_db,
+        families=["xgboost"], promote="none",
+    )
+
+    main._run_bench(_make_args(bench=True, models="xgboost"), config)
+
+    bench_root = tmp_path / "outputs" / "bench"
+    prep_id = next((bench_root / "prepared").iterdir()).name
+    assert (bench_root / "oof" / prep_id / "xgboost.parquet").exists()
+    assert (bench_root / "oof" / prep_id / "baseline_interpolacion_factor.parquet").exists()
+    assert (bench_root / "reports" / "metrics_baseline_interpolacion_factor.json").exists()
+    # LOSO por factor: la referencia por forma no aplica y se omite
+    assert not (bench_root / "oof" / prep_id / "baseline_forma_mas_cercana.parquet").exists()
+
+    provenance = json.loads((bench_root / "reports" / "provenance.json").read_text(encoding="utf-8"))
+    assert provenance["prep_id"] == prep_id
+    assert provenance["families"]["xgboost"]["classifier"] == TINY
+    assert provenance["baselines"] == ["baseline_interpolacion_factor"]
+    assert not (tmp_path / "outputs" / "models").exists()
+
+
 # ── --bench-tune ─────────────────────────────────────────────────────────
 
 
