@@ -8,8 +8,8 @@ consulta que interpola entre factores vecinos ya rinde muy bien.
 
 - ``baseline_interpolacion_factor``: para una fila (forma, nodo, factor)
   retenida, interpola linealmente el volumen de la misma forma y nodo entre
-  los factores vecinos del entrenamiento (en los extremos, el vecino más
-  cercano). Aplica a los protocolos agrupados por ``factor_mult``.
+  el factor de entrenamiento inferior y el superior más cercanos. Aplica a
+  los protocolos agrupados por ``factor_mult``.
 - ``baseline_forma_mas_cercana``: para una fila (forma retenida, nodo,
   factor), toma el volumen del mismo nodo y factor en la forma de
   entrenamiento más cercana en los descriptores de forma estandarizados.
@@ -18,6 +18,31 @@ consulta que interpola entre factores vecinos ya rinde muy bien.
   pasa, de ``duracion_horas`` y ``tiempo_al_pico_h`` en ``prepared.X``
   (contrato tabular_v3_17); contratos sin esas columnas, como tabular_v4_21,
   exigen ``shape_descriptors`` y, sin ella, la referencia no aplica.
+
+Mallas incompletas. El filtro de continuidad puede retirar celdas (forma,
+factor) del dataset evaluado, así que la malla (forma, nodo, factor) no es
+completa y las referencias se puntúan sobre exactamente las filas que ven los
+modelos. Reglas de respaldo (solo usan filas de entrenamiento del fold):
+
+- Interpolación: cada serie (forma|nodo) usa SUS PROPIOS factores de
+  entrenamiento disponibles. Interpola entre el inferior y el superior más
+  cercanos de esa serie; si solo existe un lado, usa el vecino disponible
+  (igual que en los extremos). Falla (ValueError, nombrando la serie) solo si
+  la serie no tiene ningún valor de entrenamiento en el fold.
+- Forma más cercana: las formas de entrenamiento se ordenan por distancia
+  (desempate estable por identificador de forma) y cada fila usa la más
+  cercana que TENGA la celda (nodo, factor); recorre el ranking hacia abajo.
+  Falla solo si ninguna forma de entrenamiento tiene esa celda. Las
+  estadísticas de estandarización son solo de las formas de entrenamiento.
+
+Diagnóstico de respaldo: el frame que devuelve ``baseline_oof`` lleva
+``attrs["n_rows"]`` (filas OOF) y ``attrs["fallback_rows"]`` (filas que
+usaron una fuente no primaria). Definición, interpolación: filas cuyo par de
+factores de entrenamiento de la serie difiere del par que habría usado con la
+malla completa del fold (los factores de entrenamiento del fold inmediatamente
+inferior y superior a ``f``; en los extremos de la malla del fold solo hay un
+lado y eso NO cuenta como respaldo). Forma más cercana: filas que usaron una
+forma distinta de la más cercana.
 
 La etiqueta predicha es ``volumen_predicho >= flood_threshold_m3`` y la
 "probabilidad" es esa misma etiqueta (0/1): el AUC-ROC de una referencia sin
@@ -62,42 +87,95 @@ def _factors(prepared: PreparedDataset) -> np.ndarray:
     return prepared.keys["factor_mult"].to_numpy(dtype=float).round(_FACTOR_DECIMALS)
 
 
+def _reject_duplicate_cells(cells: pd.DataFrame, columns: list[str], where: str) -> None:
+    duplicated = cells.duplicated(columns, keep=False)
+    if duplicated.any():
+        examples = [
+            tuple(row)
+            for row in cells.loc[duplicated, columns].drop_duplicates().head(3).to_numpy()
+        ]
+        raise ValueError(
+            f"{where}: hay celdas duplicadas en el train {columns}; ejemplos: {examples}."
+        )
+
+
+def _reject_nan_volumes(volumes: np.ndarray, where: str) -> None:
+    if np.isnan(volumes).any():
+        raise ValueError(f"{where}: hay volúmenes NaN en las filas de entrenamiento.")
+
+
 def _interpolacion_factor_fold(
     prepared: PreparedDataset, train_idx: np.ndarray, test_idx: np.ndarray
-) -> np.ndarray:
+) -> tuple[np.ndarray, int]:
+    where = INTERPOLACION_FACTOR
     series = np.char.add(np.char.add(_shape_ids(prepared), "|"), _node_ids(prepared))
     factors = _factors(prepared)
     volumes = prepared.y_reg.to_numpy(dtype=float)
 
+    _reject_nan_volumes(volumes[train_idx], where)
     train_factors = np.unique(factors[train_idx])
+    n_factors = len(train_factors)
     table = pd.DataFrame(
         {"series": series[train_idx], "factor": factors[train_idx], "vol": volumes[train_idx]}
     )
+    _reject_duplicate_cells(table, ["series", "factor"], where)
     wide = table.pivot(index="series", columns="factor", values="vol").reindex(
         columns=train_factors
     )
-    if wide.isna().any().any():
-        raise ValueError(
-            "baseline_interpolacion_factor: hay series (forma, nodo) sin todos los "
-            "factores de entrenamiento; no se puede interpolar."
-        )
+    matrix = wide.to_numpy(dtype=float)
+    available = ~np.isnan(matrix)
+
     row_of = pd.Series(np.arange(len(wide)), index=wide.index)
     rows = row_of.reindex(series[test_idx])
     if rows.isna().any():
+        missing = sorted(set(series[test_idx][rows.isna().to_numpy()]))
         raise ValueError(
-            "baseline_interpolacion_factor: una serie (forma, nodo) del test no está en el train."
+            f"{where}: las series {missing[:5]} del test no tienen ningún valor de "
+            "entrenamiento en este fold."
         )
     rows = rows.to_numpy(dtype=int)
-    matrix = wide.to_numpy(dtype=float)
+
+    # Posición (por serie) del último/primer factor disponible a la izquierda/derecha;
+    # -1 y n_factors significan "no existe".
+    positions = np.arange(n_factors)
+    last_at_or_before = np.maximum.accumulate(np.where(available, positions, -1), axis=1)
+    first_at_or_after = np.minimum.accumulate(
+        np.where(available, positions, n_factors)[:, ::-1], axis=1
+    )[:, ::-1]
 
     f_test = factors[test_idx]
-    position = np.searchsorted(train_factors, f_test)
-    low = np.clip(position - 1, 0, len(train_factors) - 1)
-    high = np.clip(position, 0, len(train_factors) - 1)
-    f_low, f_high = train_factors[low], train_factors[high]
-    span = f_high - f_low
-    weight = np.divide(f_test - f_low, span, out=np.zeros_like(f_test), where=span > 0)
-    return matrix[rows, low] * (1.0 - weight) + matrix[rows, high] * weight
+    position = np.searchsorted(train_factors, f_test)      # primer factor de train >= f
+    below = position - 1                                    # último factor de train < f
+    expected_low = np.where(below >= 0, below, -1)
+    expected_high = np.where(position < n_factors, position, n_factors)
+    low = np.where(below >= 0, last_at_or_before[rows, np.clip(below, 0, None)], -1)
+    high = np.where(
+        position < n_factors,
+        first_at_or_after[rows, np.clip(position, None, n_factors - 1)],
+        n_factors,
+    )
+
+    has_low, has_high = low >= 0, high < n_factors
+    empty = ~(has_low | has_high)
+    if empty.any():
+        names = sorted(set(series[test_idx][empty]))
+        raise ValueError(
+            f"{where}: las series {names[:5]} no tienen ningún valor de entrenamiento "
+            "en este fold; no se puede interpolar."
+        )
+
+    low_c = np.clip(low, 0, n_factors - 1)
+    high_c = np.clip(high, 0, n_factors - 1)
+    f_low, f_high = train_factors[low_c], train_factors[high_c]
+    v_low, v_high = matrix[rows, low_c], matrix[rows, high_c]
+    both = has_low & has_high
+    span = np.where(both, f_high - f_low, 1.0)
+    weight = np.where(both, (f_test - f_low) / span, 0.0)
+    interpolated = v_low * (1.0 - weight) + v_high * weight
+    predicted = np.where(both, interpolated, np.where(has_low, v_low, v_high))
+
+    fallback = int(((low != expected_low) | (high != expected_high)).sum())
+    return predicted, fallback
 
 
 def _reject_nan(has_nan: pd.DataFrame, where: str) -> None:
@@ -161,42 +239,63 @@ def _forma_mas_cercana_fold(
     train_idx: np.ndarray,
     test_idx: np.ndarray,
     table: pd.DataFrame,
-) -> np.ndarray:
+) -> tuple[np.ndarray, int]:
+    where = FORMA_MAS_CERCANA
     shapes = _shape_ids(prepared)
     nodes = _node_ids(prepared)
     factors = _factors(prepared)
     volumes = prepared.y_reg.to_numpy(dtype=float)
 
+    _reject_nan_volumes(volumes[train_idx], where)
     train_shapes = sorted(set(shapes[train_idx]))
-    test_shapes = sorted(set(shapes[test_idx]))
     train_table = table.loc[train_shapes]
     mean = train_table.mean()
     std = train_table.std(ddof=0).replace(0.0, 1.0)
     z_train = (train_table - mean) / std
 
-    nearest = {}
+    # Ranking de formas de entrenamiento por distancia, estable por id de forma.
+    test_shapes, inverse = np.unique(shapes[test_idx], return_inverse=True)
+    ranking = []
     for shape in test_shapes:
         z_shape = (table.loc[shape] - mean) / std
         distance = np.sqrt(((z_train - z_shape) ** 2).sum(axis=1))
-        nearest[shape] = distance.idxmin()
+        ranking.append(distance.sort_values(kind="stable").index.to_numpy())
+    ranking = np.array(ranking, dtype=object)
 
-    index = pd.MultiIndex.from_arrays(
-        [shapes[train_idx], nodes[train_idx], factors[train_idx]]
+    cells = pd.DataFrame(
+        {"shape": shapes[train_idx], "node": nodes[train_idx], "factor": factors[train_idx]}
     )
-    lookup_table = pd.Series(volumes[train_idx], index=index)
-    if lookup_table.index.has_duplicates:
-        raise ValueError(
-            "baseline_forma_mas_cercana: hay (forma, nodo, factor) duplicados en el train."
+    _reject_duplicate_cells(cells, ["shape", "node", "factor"], where)
+    lookup = pd.Series(volumes[train_idx], index=pd.MultiIndex.from_frame(cells))
+
+    test_nodes, test_factors = nodes[test_idx], factors[test_idx]
+    predicted = np.full(len(test_idx), np.nan)
+    used_rank = np.full(len(test_idx), -1)
+    for rank in range(len(train_shapes)):
+        pending = np.flatnonzero(np.isnan(predicted))
+        if pending.size == 0:
+            break
+        wanted = pd.MultiIndex.from_arrays(
+            [ranking[inverse[pending], rank], test_nodes[pending], test_factors[pending]]
         )
-    wanted = pd.MultiIndex.from_arrays(
-        [[nearest[shape] for shape in shapes[test_idx]], nodes[test_idx], factors[test_idx]]
-    )
-    predicted = lookup_table.reindex(wanted)
-    if predicted.isna().any():
+        found = lookup.reindex(wanted).to_numpy(dtype=float)
+        hit = ~np.isnan(found)
+        predicted[pending[hit]] = found[hit]
+        used_rank[pending[hit]] = rank
+
+    pending = np.flatnonzero(np.isnan(predicted))
+    if pending.size:
+        examples = sorted(
+            {
+                (str(shapes[test_idx][i]), str(test_nodes[i]), float(test_factors[i]))
+                for i in pending
+            }
+        )[:3]
         raise ValueError(
-            "baseline_forma_mas_cercana: la forma vecina no tiene todos los (nodo, factor) del test."
+            f"{where}: ninguna forma de entrenamiento tiene la celda (nodo, factor) "
+            f"requerida; ejemplos (forma, nodo, factor): {examples}."
         )
-    return predicted.to_numpy(dtype=float)
+    return predicted, int((used_rank > 0).sum())
 
 
 def baseline_oof(
@@ -208,7 +307,8 @@ def baseline_oof(
     """Frame OOF de la referencia ``name`` para los protocolos donde aplica.
 
     ``shape_descriptors`` (índice = shape_id) solo lo usa la referencia de forma
-    más cercana; ver el docstring del módulo.
+    más cercana; ver el docstring del módulo. El frame lleva
+    ``attrs["n_rows"]`` y ``attrs["fallback_rows"]`` (definición en el docstring).
     """
     if name not in BASELINES:
         raise ValueError(f"Referencia desconocida: {name!r}. Opciones: {BASELINES}")
@@ -227,12 +327,14 @@ def baseline_oof(
             return _forma_mas_cercana_fold(prepared, train_idx, test_idx, table)
 
     records = []
+    fallback_rows = 0
     for (protocol, fold_id), chunk in prepared.folds.groupby(["protocol", "fold_id"]):
         if protocol not in protocols:
             continue
         train_idx = chunk.loc[chunk["split"] == "train", "sample_idx"].to_numpy()
         test_idx = chunk.loc[chunk["split"] == "test", "sample_idx"].to_numpy()
-        volume = predict_fold(prepared, train_idx, test_idx)
+        volume, fold_fallback = predict_fold(prepared, train_idx, test_idx)
+        fallback_rows += fold_fallback
         flooded = (volume >= flood_threshold_m3).astype(int)
         records.append(
             pd.DataFrame(
@@ -247,7 +349,10 @@ def baseline_oof(
                 columns=list(OOF_COLUMNS),
             )
         )
-    return pd.concat(records, ignore_index=True)
+    oof = pd.concat(records, ignore_index=True)
+    oof.attrs["n_rows"] = int(len(oof))
+    oof.attrs["fallback_rows"] = int(fallback_rows)
+    return oof
 
 
 def evaluate_baseline(
