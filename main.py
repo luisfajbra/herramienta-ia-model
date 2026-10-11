@@ -565,6 +565,10 @@ def main():
                 f"ejecuta el pipeline completo primero ({load_error})"
             )
 
+        from swmm_resilience.visualization.labels import print_in_sample_banner
+
+        print_in_sample_banner()
+
         from swmm_resilience.simulation.hydrograph_shapes import load_all_shapes
         from swmm_resilience.validation.hydrograph_csv import write_shape_validation_csv
         from swmm_resilience.validation.hydrograph_batch import run_batch_validation

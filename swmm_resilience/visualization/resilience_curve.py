@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .labels import add_in_sample_note
+
 
 def _plot_single(ax, x, y, color, marker, title):
     ax.plot(x, y, color=color, marker=marker, linewidth=2)
@@ -33,6 +35,7 @@ def plot_resilience_curve(df: pd.DataFrame, output_dir: Path) -> tuple[Path, Pat
     fig, ax = plt.subplots(figsize=(10, 6))
     _plot_single(ax, df["factor"], df["resilience_ml"],
                  "#e07b39", "s", "Resilience Curve - ML Prediction")
+    add_in_sample_note(fig)
     fig.savefig(path_ml, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"ML resilience curve saved: {path_ml}")

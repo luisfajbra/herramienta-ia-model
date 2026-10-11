@@ -10,7 +10,7 @@ import pandas as pd
 
 from ..analysis.model_comparison import compute_volume_metrics
 from .flood_map import plot_flood_map
-from .labels import format_node_label
+from .labels import add_in_sample_note, format_node_label
 from .runtime_caption import format_runtime_text
 
 _SYMLOG_THRESH = 1.0  # m³
@@ -278,6 +278,7 @@ def plot_factor_comparison(
     ax.legend()
     fig.tight_layout()
     profile_path = output_dir / f"volume_by_node_factor_{factor:.2f}.png"
+    add_in_sample_note(fig)
     fig.savefig(profile_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
@@ -296,6 +297,7 @@ def plot_factor_comparison(
     ax.grid(True, alpha=0.3)
     ax.legend()
     parity_path = output_dir / f"parity_factor_{factor:.2f}.png"
+    add_in_sample_note(fig)
     fig.savefig(parity_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 

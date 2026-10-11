@@ -5,6 +5,28 @@ from __future__ import annotations
 import re
 
 
+IN_SAMPLE_NOTE = (
+    "In-sample: the model was trained on these scenarios; this is not an independent validation."
+)
+IN_SAMPLE_BANNER = (
+    "[EN MUESTRA] Estos escenarios (formas y factores) se usaron para entrenar el modelo; "
+    "las métricas no son una validación independiente."
+)
+
+
+def add_in_sample_note(fig) -> None:
+    """Pie de figura que avisa que el modelo ya vio estos escenarios."""
+    fig.text(
+        0.5, 0.005, IN_SAMPLE_NOTE,
+        ha="center", va="bottom", fontsize=8, color="#7a7a7a", style="italic",
+    )
+
+
+def print_in_sample_banner() -> None:
+    """Imprime el aviso de que las métricas siguientes son en muestra."""
+    print(f"\n{IN_SAMPLE_BANNER}")
+
+
 FEATURE_DISPLAY_NAMES = {
     "elev_fondo": "Invert Elevation",
     "prof_max": "Maximum Depth in Manhole shaft",
