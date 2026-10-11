@@ -117,3 +117,66 @@ def test_provenance_records_dataset_params_versions_and_timings():
     assert "config.yaml" in record["xgboost_params_note"]
     assert "Optuna" in record["xgboost_params_note"]
     assert record["protocols"] == ["LeaveOneShapeOut"]
+    assert record["complete"] is False
+    assert record["baseline_fallback"] == {}
+
+
+def test_provenance_records_baseline_fallback_counters_and_completion():
+    from scripts.ejecutar_evaluacion_v4_21 import build_provenance
+
+    prepared = make_prepared(_rows(), ["LeaveOneShapeOut"])
+    counters = {"baseline_forma_mas_cercana": {"n_rows": 8, "fallback_rows": 2, "fallback_share": 0.25}}
+
+    record = build_provenance(
+        prepared,
+        contract_id="tabular_v4_21",
+        flood_threshold_m3=1.0,
+        max_continuity_error_pct=5.0,
+        xgboost_params={},
+        baselines=["baseline_forma_mas_cercana"],
+        shape_descriptors_source="x",
+        stage_seconds={},
+        git_commit="abc",
+        baseline_fallback=counters,
+        complete=True,
+    )
+
+    assert record["baseline_fallback"] == counters
+    assert record["complete"] is True
+
+
+def test_baseline_counters_read_the_oof_attrs_and_compute_the_share():
+    from scripts.ejecutar_evaluacion_v4_21 import baseline_counters
+
+    oof = pd.DataFrame({"sample_idx": range(4)})
+    oof.attrs["n_rows"] = 4
+    oof.attrs["fallback_rows"] = 1
+
+    assert baseline_counters(oof) == {"n_rows": 4, "fallback_rows": 1, "fallback_share": 0.25}
+
+
+def test_baseline_counters_fail_without_the_attrs():
+    from scripts.ejecutar_evaluacion_v4_21 import baseline_counters
+
+    with pytest.raises(ValueError, match="fallback_rows"):
+        baseline_counters(pd.DataFrame({"sample_idx": [0]}))
+
+
+def test_persist_stage_writes_the_oof_parquet_and_the_metrics_json(tmp_path):
+    import json
+
+    from scripts.ejecutar_evaluacion_v4_21 import persist_stage
+    from tests.ml.bench.prepared_factory import perfect_oof
+
+    prepared = make_prepared(_rows(), ["LeaveOneShapeOut"])
+    oof = perfect_oof(prepared)
+
+    paths = persist_stage(
+        "xgboost", oof, {"LeaveOneShapeOut": {"rmse": float("nan")}}, prepared.prep_id,
+        oof_root=tmp_path / "oof", runs_dir=tmp_path / "runs",
+    )
+
+    assert paths["oof"] == tmp_path / "oof" / prepared.prep_id / "xgboost.parquet"
+    assert paths["metrics"] == tmp_path / "runs" / "metrics_xgboost.json"
+    assert len(pd.read_parquet(paths["oof"])) == len(oof)
+    assert json.loads(paths["metrics"].read_text(encoding="utf-8")) == {"LeaveOneShapeOut": {"rmse": None}}

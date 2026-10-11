@@ -13,8 +13,11 @@ Qué hace, en orden:
    referencia de forma más cercana (el contrato v4_21 no los incluye).
 3. Evalúa XGBoost con los hiperparámetros de ``config.yaml``
    (``bench.families.xgboost``, sin tuning de Optuna) y las dos referencias.
-4. Escribe los OOF en ``outputs/bench/oof/<prep_id>/``, las métricas y la
-   procedencia en ``docs/auditoria/correcciones/datos/runs/`` y las cuatro
+4. En cuanto termina cada etapa escribe su OOF en
+   ``outputs/bench/oof/<prep_id>/`` y sus métricas en
+   ``docs/auditoria/correcciones/datos/runs/``, y reescribe ahí
+   ``provenance.json`` (``complete`` = False hasta el final; incluye los
+   contadores de respaldo de cada referencia). Al final escribe las cuatro
    tablas del informe en ``docs/auditoria/correcciones/datos/``.
 
 Nunca escribe en ``outputs/models``, ``outputs/bench/reports``,
@@ -64,6 +67,43 @@ XGBOOST_PARAMS_NOTE = (
     "(bench.families.xgboost), no los del modelo ajustado con Optuna: esta corrida "
     "mide el protocolo y las métricas, no el modelo promovido."
 )
+BASELINE_FALLBACK_NOTE = (
+    "n_rows y fallback_rows suman todas las filas OOF de los protocolos donde aplica "
+    "la referencia; fallback_rows cuenta las filas que no usaron su fuente primaria "
+    "porque el filtro de continuidad dejó huecos en la malla (forma, factor). "
+    "Definición exacta en swmm_resilience/ml/bench/baselines.py."
+)
+
+
+def baseline_counters(oof: pd.DataFrame) -> dict:
+    """``n_rows``/``fallback_rows`` de ``oof.attrs`` y su proporción."""
+    missing = [key for key in ("n_rows", "fallback_rows") if key not in oof.attrs]
+    if missing:
+        raise ValueError(f"El OOF de la referencia no trae attrs {missing}.")
+    n_rows = int(oof.attrs["n_rows"])
+    fallback_rows = int(oof.attrs["fallback_rows"])
+    return {
+        "n_rows": n_rows,
+        "fallback_rows": fallback_rows,
+        "fallback_share": fallback_rows / n_rows if n_rows else float("nan"),
+    }
+
+
+def persist_stage(
+    name: str,
+    oof: pd.DataFrame,
+    metrics: dict,
+    prep_id: str,
+    *,
+    oof_root: Path | str,
+    runs_dir: Path | str,
+) -> dict[str, Path]:
+    """Escribe el OOF y las métricas de una etapa en cuanto termina."""
+    from swmm_resilience.ml.bench.reports import write_metrics_files, write_oof
+
+    oof_path = write_oof(oof, oof_root, prep_id, name)
+    metrics_path = write_metrics_files({name: metrics}, runs_dir)[f"metrics_{name}"]
+    return {"oof": oof_path, "metrics": metrics_path}
 
 
 def shape_descriptors_from_frames(keys: pd.DataFrame, X: pd.DataFrame) -> pd.DataFrame:
@@ -139,9 +179,13 @@ def build_provenance(
     shape_descriptors_source: str,
     stage_seconds: dict,
     git_commit: str,
+    baseline_fallback: dict | None = None,
+    complete: bool = False,
 ) -> dict:
+    """Registro de procedencia. ``complete`` es False mientras falten etapas."""
     manifest = prepared.manifest
     return {
+        "complete": bool(complete),
         "prep_id": prepared.prep_id,
         "feature_contract_id": contract_id,
         "n_features": int(prepared.X.shape[1]),
@@ -157,6 +201,8 @@ def build_provenance(
         "xgboost_params": xgboost_params,
         "xgboost_params_note": XGBOOST_PARAMS_NOTE,
         "baselines": list(baselines),
+        "baseline_fallback": dict(baseline_fallback or {}),
+        "baseline_fallback_note": BASELINE_FALLBACK_NOTE,
         "shape_descriptors_source": shape_descriptors_source,
         "stage_seconds": dict(stage_seconds),
         "git_commit": git_commit,
@@ -191,7 +237,6 @@ def main() -> int:
     )
     from swmm_resilience.ml.bench.evaluate import evaluate_candidate
     from swmm_resilience.ml.bench.preprocess import prepare_dataset
-    from swmm_resilience.ml.bench.reports import write_metrics_files, write_oof
     from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V21, TABULAR_V4_21
 
     config = load_config(str(REPO_ROOT / "config.yaml"))
@@ -231,18 +276,57 @@ def main() -> int:
     check_same_shapes(descriptors, prepared.keys)
     print(f"  descriptores de forma: {len(descriptors)} formas desde {SHAPE_SOURCE_DIR.as_posix()}")
 
-    oof_by_name, metrics_by_name = {}, {}
-    oof_by_name["xgboost"], metrics_by_name["xgboost"] = _stage(
+    fallback: dict[str, dict] = {}
+
+    def save_provenance(complete: bool) -> None:
+        # Se reescribe tras cada etapa: si una etapa tardía falla, lo ya
+        # persistido sigue teniendo su procedencia (con complete=False).
+        record = build_provenance(
+            prepared,
+            contract_id=TABULAR_V4_21.contract_id,
+            flood_threshold_m3=threshold,
+            max_continuity_error_pct=continuity,
+            xgboost_params=xgboost_params,
+            baselines=list(BASELINES),
+            shape_descriptors_source=SHAPE_SOURCE_DIR.as_posix(),
+            stage_seconds=stage_seconds,
+            git_commit=git_commit,
+            baseline_fallback=fallback,
+            complete=complete,
+        )
+        record["oof_dir"] = (OOF_ROOT / prepared.prep_id).as_posix()
+        record["prepared_dir"] = (PREPARED_DIR / prepared.prep_id).as_posix()
+        path = REPO_ROOT / RUNS_DIR / "provenance.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(_json_safe(record), indent=2, ensure_ascii=False, allow_nan=False),
+            encoding="utf-8",
+        )
+
+    def persist(name: str, oof: pd.DataFrame, metrics: dict) -> None:
+        persist_stage(
+            name, oof, metrics, prepared.prep_id,
+            oof_root=REPO_ROOT / OOF_ROOT, runs_dir=REPO_ROOT / RUNS_DIR,
+        )
+        oof_by_name[name] = oof
+        save_provenance(complete=False)
+
+    oof_by_name: dict[str, pd.DataFrame] = {}
+    save_provenance(complete=False)
+    persist(
         "xgboost",
-        stage_seconds,
-        evaluate_candidate,
-        prepared,
-        "xgboost",
-        xgboost_params["classifier"],
-        xgboost_params["regressor"],
+        *_stage(
+            "xgboost",
+            stage_seconds,
+            evaluate_candidate,
+            prepared,
+            "xgboost",
+            xgboost_params["classifier"],
+            xgboost_params["regressor"],
+        ),
     )
     for baseline in BASELINES:
-        oof_by_name[baseline], metrics_by_name[baseline] = _stage(
+        oof, metrics = _stage(
             baseline,
             stage_seconds,
             evaluate_baseline,
@@ -251,10 +335,9 @@ def main() -> int:
             threshold,
             shape_descriptors=descriptors if baseline == FORMA_MAS_CERCANA else None,
         )
-
-    for name, oof in oof_by_name.items():
-        write_oof(oof, REPO_ROOT / OOF_ROOT, prepared.prep_id, name)
-    write_metrics_files(metrics_by_name, REPO_ROOT / RUNS_DIR)
+        fallback[baseline] = baseline_counters(oof)
+        print(f"  {baseline}: {fallback[baseline]}", flush=True)
+        persist(baseline, oof, metrics)
 
     tables = _stage("build_tables", stage_seconds, build_tables, prepared, oof_by_name, threshold)
     confusion = tables["matriz_confusion"]
@@ -262,24 +345,7 @@ def main() -> int:
     if not (totals == len(prepared.keys)).all():
         raise AssertionError(f"La matriz de confusión no suma n_rows:\n{confusion}")
     write_tables(tables, REPO_ROOT / DATA_DIR)
-
-    record = build_provenance(
-        prepared,
-        contract_id=TABULAR_V4_21.contract_id,
-        flood_threshold_m3=threshold,
-        max_continuity_error_pct=continuity,
-        xgboost_params=xgboost_params,
-        baselines=list(BASELINES),
-        shape_descriptors_source=SHAPE_SOURCE_DIR.as_posix(),
-        stage_seconds=stage_seconds,
-        git_commit=git_commit,
-    )
-    record["oof_dir"] = (OOF_ROOT / prepared.prep_id).as_posix()
-    record["prepared_dir"] = (PREPARED_DIR / prepared.prep_id).as_posix()
-    (REPO_ROOT / RUNS_DIR / "provenance.json").write_text(
-        json.dumps(_json_safe(record), indent=2, ensure_ascii=False, allow_nan=False),
-        encoding="utf-8",
-    )
+    save_provenance(complete=True)
 
     with pd.option_context("display.width", 200, "display.max_columns", 20):
         print(tables["comparacion_protocolos"].drop(columns=["que_mide"]).to_string(index=False))
