@@ -245,3 +245,32 @@ def test_shape_breakdown_entry_f1_and_error_are_nan_without_positives():
     )
     assert np.isnan(entry["f1"])
     assert np.isnan(entry["error_vol_pct"])
+
+
+def test_pooled_metrics_are_nan_when_the_pool_has_no_positives_at_all():
+    result = pooled_classifier_metrics(
+        [np.array([0, 0])], [np.array([0, 0])], [np.array([0.1, 0.1])]
+    )
+    assert np.isnan(result["precision"])
+    assert np.isnan(result["recall"])
+    assert np.isnan(result["f1"])
+    assert result["specificity"] == pytest.approx(1.0)
+    assert np.isnan(result["auc_roc"])
+
+
+def test_pooled_precision_is_nan_but_recall_and_f1_are_zero_without_predicted_positives():
+    result = pooled_classifier_metrics(
+        [np.array([1, 0])], [np.array([0, 0])], [np.array([0.2, 0.1])]
+    )
+    assert np.isnan(result["precision"])
+    assert result["recall"] == pytest.approx(0.0)
+    assert result["f1"] == pytest.approx(0.0)
+
+
+def test_pooled_precision_recall_f1_are_zero_with_only_a_false_positive():
+    result = pooled_classifier_metrics(
+        [np.array([1, 0])], [np.array([0, 1])], [np.array([0.2, 0.9])]
+    )
+    assert result["precision"] == pytest.approx(0.0)
+    assert result["recall"] == pytest.approx(0.0)
+    assert result["f1"] == pytest.approx(0.0)

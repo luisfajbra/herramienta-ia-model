@@ -117,7 +117,10 @@ def pooled_classifier_metrics(true_parts: list, pred_parts: list, prob_parts: li
     y_true = np.concatenate([np.asarray(part) for part in true_parts])
     y_pred = np.concatenate([np.asarray(part) for part in pred_parts])
     y_prob = np.concatenate([np.asarray(part) for part in prob_parts])
-    result = classifier_metrics(y_true, y_pred, y_prob)
+    # precision/recall/F1 con NaN donde no están definidos (como por fold);
+    # ``classifier_metrics`` rellena con 0 y solo aporta el AUC.
+    result = fold_classifier_metrics(y_true, y_pred)
+    result["auc_roc"] = classifier_metrics(y_true, y_pred, y_prob)["auc_roc"]
     counts = confusion_counts(y_true, y_pred)
     negatives = counts["tn"] + counts["fp"]
     result["specificity"] = counts["tn"] / negatives if negatives else float("nan")
@@ -145,10 +148,10 @@ def fold_classifier_metrics(y_true, y_pred) -> dict:
 def summarize_fold_metrics(folds: list) -> dict:
     """Dispersión entre folds de precisión, recall y F1, ignorando los NaN."""
     summary = {}
+    nan = float("nan")
     for key in ("precision", "recall", "f1"):
         values = np.array([fold[key] for fold in folds], dtype=float)
         valid = values[~np.isnan(values)]
-        nan = float("nan")
         summary[key] = {
             "mean": float(valid.mean()) if valid.size else nan,
             "min": float(valid.min()) if valid.size else nan,
