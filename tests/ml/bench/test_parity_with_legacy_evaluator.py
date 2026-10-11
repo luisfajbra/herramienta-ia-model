@@ -57,16 +57,16 @@ def _run_both_sides(db_path, tmp_path, method: str):
 
 
 def _assert_top_level_shape(legacy: dict, bench: dict) -> None:
-    """Las claves de primer nivel coinciden y ninguna sub-dict viene vacia.
+    """Las claves del legado están en el banco y ninguna sub-dict viene vacía.
 
-    Sin esto la puerta podria 'pasar' comparando diccionarios vacios contra
-    diccionarios vacios: tanto _mean_metrics([]) como
-    _pooled_regressor_oracle_metrics([]) devuelven {} por diseno.
+    El banco añade claves nuevas (matriz de confusión, agregados, por forma);
+    la paridad se exige sobre las del legado. La métrica de clasificador del
+    legado se compara contra ``classifier_legacy_mean_zero_fill``.
     """
     assert set(legacy) == TOP_LEVEL_KEYS, (
         f"claves de primer nivel del legacy: {sorted(legacy)}"
     )
-    assert set(bench) == TOP_LEVEL_KEYS, (
+    assert set(bench) >= TOP_LEVEL_KEYS, (
         f"claves de primer nivel del banco: {sorted(bench)}"
     )
     for level in sorted(TOP_LEVEL_KEYS):
@@ -78,6 +78,9 @@ def _assert_top_level_shape(legacy: dict, bench: dict) -> None:
             f"banco[{level!r}] esta vacio: la evaluacion del banco no produjo nada "
             "y la paridad no significaria nada."
         )
+    assert bench["classifier_legacy_mean_zero_fill"], (
+        "classifier_legacy_mean_zero_fill vacio: no hay con que comparar el clasificador legado."
+    )
 
 
 def _assert_metrics_match(legacy: dict, bench: dict, level: str) -> None:
@@ -107,7 +110,9 @@ def test_xgboost_candidate_reproduces_the_legacy_loso_metrics(sql_training_db, t
     legacy, bench = _run_both_sides(sql_training_db, tmp_path, "LOSO")
 
     _assert_top_level_shape(legacy, bench)
-    _assert_metrics_match(legacy["classifier"], bench["classifier"], "classifier")
+    _assert_metrics_match(
+        legacy["classifier"], bench["classifier_legacy_mean_zero_fill"], "classifier"
+    )
     _assert_metrics_match(
         legacy["regressor_oracle"], bench["regressor_oracle"], "regressor_oracle"
     )
@@ -130,9 +135,23 @@ def test_groupkfold5_parity_on_a_six_factor_dataset(sql_training_db_six_factors,
     legacy, bench = _run_both_sides(sql_training_db_six_factors, tmp_path, "GroupKFold5")
 
     _assert_top_level_shape(legacy, bench)
-    _assert_metrics_match(legacy["classifier"], bench["classifier"], "classifier")
+    _assert_metrics_match(
+        legacy["classifier"], bench["classifier_legacy_mean_zero_fill"], "classifier"
+    )
     _assert_metrics_match(
         legacy["regressor_oracle"], bench["regressor_oracle"], "regressor_oracle"
     )
     _assert_metrics_match(legacy["end_to_end"], bench["end_to_end"], "end_to_end")
     _assert_by_factor_matches(legacy, bench)
+
+
+def test_the_new_classifier_value_is_pooled_and_differs_from_the_legacy_mean(
+    sql_training_db, tmp_path
+):
+    """El valor principal ya no es la media por fold: es el agregado del protocolo."""
+    _, bench = _run_both_sides(sql_training_db, tmp_path, "LOSO")
+
+    matrix = bench["confusion_matrix"]
+    assert matrix["tp"] + matrix["fn"] > 0, "el fixture debe tener filas inundadas"
+    expected_f1 = 2 * matrix["tp"] / (2 * matrix["tp"] + matrix["fp"] + matrix["fn"])
+    assert bench["classifier"]["f1"] == pytest.approx(expected_f1)

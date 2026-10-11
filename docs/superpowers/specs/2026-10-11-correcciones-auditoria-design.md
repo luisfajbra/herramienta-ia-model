@@ -34,12 +34,12 @@ Módulo nuevo `ml/bench/baselines.py`. Cada referencia recibe un `PreparedDatase
 
 ### 2.3 Agregación de métricas del clasificador (M-03)
 Para cada protocolo:
-- `classifier` (cifra principal) = métricas calculadas sobre todas las filas de test concatenadas del protocolo, más la matriz de confusión agregada `confusion = {tn, fp, fn, tp}` y `specificity`.
+- `classifier` (cifra principal) = métricas calculadas sobre todas las filas de test concatenadas del protocolo, más `specificity`. La matriz de confusión agregada `confusion_matrix = {tn, fp, fn, tp}` es una clave de primer nivel separada (no anidada en `classifier`).
 - `classifier_per_fold` = estadísticos de dispersión entre folds (`min`, `median`, `max`, `mean`) de precisión, recall y F1, calculados solo sobre folds donde la métrica está definida. En un fold sin positivos reales, recall y F1 son **NaN**, no 0. Se reporta `n_folds_undefined`.
 - `classifier_legacy_mean_zero_fill` = el valor antiguo (media por fold con `zero_division=0`), conservado con nombre explícito para poder citar el antes y el después.
 - El criterio de desempate `classifier.f1` del ranking pasa a leer el valor agregado.
 - El test de paridad con `ml/evaluator.py` se ajusta para comparar contra `classifier_legacy_mean_zero_fill`: la paridad con el código legado sigue demostrada, y el valor nuevo se prueba aparte.
-- `regressor_oracle` y `end_to_end` no cambian de definición en esta fase. Se añade a `end_to_end` el error relativo del volumen total (`vol_total_error_pct`).
+- `regressor_oracle` y `end_to_end` no cambian de definición en esta fase. Se añade un bloque nuevo `end_to_end_pooled` (RMSE, MAE, volumen total real y predicho y `vol_total_error_pct`, calculados sobre el pool de todos los folds); `end_to_end` conserva exactamente las claves del evaluador legado porque el test de paridad lo exige.
 
 ### 2.4 Desglose por forma (M-02)
 `score_predictions` añade `by_shape` por protocolo: para cada `shape_id` en el test, `n_positivos`, `f1`, `rmse_vol`, `vol_real_m3`, `vol_pred_m3` y `error_vol_pct`. Solo tiene sentido en `LeaveOneShapeOut` (una forma por fold), pero se calcula para cualquier protocolo. Si `shape_id` no está en `prepared.keys`, `by_shape` queda vacío.

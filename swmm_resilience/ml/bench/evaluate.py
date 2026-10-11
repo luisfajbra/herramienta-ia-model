@@ -18,9 +18,15 @@ import pandas as pd
 
 from .metrics import (
     classifier_metrics,
+    confusion_counts,
     end_to_end_metrics,
+    end_to_end_pooled_metrics,
+    fold_classifier_metrics,
     mean_metrics,
+    pooled_classifier_metrics,
     pooled_regressor_metrics,
+    shape_breakdown_entry,
+    summarize_fold_metrics,
 )
 from .schemas import OOF_COLUMNS, PreparedDataset
 
@@ -29,7 +35,9 @@ class ProvenanceMismatchError(ValueError):
     """Las predicciones no corresponden a este PreparedDataset."""
 
 
-def _validate_oof(prepared: PreparedDataset, oof: pd.DataFrame) -> None:
+def _validate_oof(
+    prepared: PreparedDataset, oof: pd.DataFrame, protocols=None
+) -> None:
     missing = [column for column in OOF_COLUMNS if column not in oof.columns]
     if missing:
         raise ValueError(f"Al frame OOF le faltan columnas: {missing}")
@@ -42,6 +50,8 @@ def _validate_oof(prepared: PreparedDataset, oof: pd.DataFrame) -> None:
         )
 
     expected = prepared.folds[prepared.folds["split"] == "test"]
+    if protocols is not None:
+        expected = expected[expected["protocol"].isin(list(protocols))]
     expected_keys = set(
         map(tuple, expected[["protocol", "fold_id", "sample_idx"]].itertuples(index=False))
     )
@@ -59,6 +69,7 @@ def score_predictions(
     prepared: PreparedDataset,
     oof: pd.DataFrame,
     provenance: dict,
+    protocols=None,
 ) -> dict:
     """Puntúa predicciones out-of-fold contra ``prepared``.
 
@@ -66,23 +77,40 @@ def score_predictions(
     generaron. Sin esa verificación se podrían comparar números de datasets
     distintos sin notarlo, que es el modo de fallo silencioso que este
     diseño existe para cerrar.
+
+    ``protocols`` restringe la cobertura exigida al frame OOF (una referencia
+    sin aprendizaje puede aplicar solo a algunos protocolos). Por defecto se
+    exigen todos los del PreparedDataset.
+
+    Por protocolo devuelve:
+    - ``classifier``: métricas AGREGADAS sobre todas las filas de test (cifra
+      principal) y ``confusion_matrix`` agregada.
+    - ``classifier_per_fold``: dispersión entre folds, con NaN donde no está definido.
+    - ``classifier_legacy_mean_zero_fill``: la media por fold con ``zero_division=0``
+      (definición anterior, conservada para citar el antes y el después).
+    - ``regressor_oracle``, ``end_to_end``, ``by_factor``: sin cambios.
+    - ``end_to_end_pooled`` y ``by_shape``: agregado de nivel 3 y desglose por forma.
     """
     if provenance.get("prep_id") != prepared.prep_id:
         raise ProvenanceMismatchError(
             f"prep_id de las predicciones ({provenance.get('prep_id')!r}) no coincide "
             f"con el del dataset ({prepared.prep_id!r}). No son comparables."
         )
-    _validate_oof(prepared, oof)
+    _validate_oof(prepared, oof, protocols)
 
     y_clf = prepared.y_clf.to_numpy()
     y_reg = prepared.y_reg.to_numpy()
     factors = prepared.keys["factor_mult"].to_numpy()
+    shapes = prepared.keys["shape_id"].astype(str).to_numpy()
 
     results: dict = {}
     for protocol, protocol_oof in oof.groupby("protocol"):
-        classifier_folds, e2e_folds = [], []
+        classifier_folds, fold_stats, e2e_folds = [], [], []
         oracle_true, oracle_pred = [], []
+        pool_true, pool_pred, pool_prob = [], [], []
+        pool_vol_true, pool_vol_routed = [], []
         by_factor: dict[str, list] = {}
+        by_shape_parts: dict[str, dict[str, list]] = {}
 
         for _, fold_oof in protocol_oof.groupby("fold_id"):
             idx = fold_oof["sample_idx"].to_numpy()
@@ -92,6 +120,10 @@ def score_predictions(
             yr_pred = fold_oof["y_pred_reg"].to_numpy()
 
             classifier_folds.append(classifier_metrics(yc_true, yc_pred, yc_prob))
+            fold_stats.append(fold_classifier_metrics(yc_true, yc_pred))
+            pool_true.append(yc_true)
+            pool_pred.append(yc_pred)
+            pool_prob.append(yc_prob)
 
             flooded = yc_true == 1
             if flooded.sum():
@@ -100,6 +132,8 @@ def score_predictions(
 
             routed = np.where(yc_pred == 1, yr_pred, 0.0)
             e2e_folds.append(end_to_end_metrics(yr_true, routed, yc_true, yc_pred))
+            pool_vol_true.append(yr_true)
+            pool_vol_routed.append(routed)
 
             for factor in np.unique(factors[idx]):
                 mask = factors[idx] == factor
@@ -115,11 +149,37 @@ def score_predictions(
                     }
                 )
 
+            for shape in np.unique(shapes[idx]):
+                mask = shapes[idx] == shape
+                parts = by_shape_parts.setdefault(
+                    str(shape),
+                    {"yc_true": [], "yc_pred": [], "vol_true": [], "vol_routed": []},
+                )
+                parts["yc_true"].append(yc_true[mask])
+                parts["yc_pred"].append(yc_pred[mask])
+                parts["vol_true"].append(yr_true[mask])
+                parts["vol_routed"].append(routed[mask])
+
+        all_true = np.concatenate(pool_true)
+        all_pred = np.concatenate(pool_pred)
         results[protocol] = {
-            "classifier": mean_metrics(classifier_folds),
+            "classifier": pooled_classifier_metrics(pool_true, pool_pred, pool_prob),
+            "confusion_matrix": confusion_counts(all_true, all_pred),
+            "classifier_per_fold": summarize_fold_metrics(fold_stats),
+            "classifier_legacy_mean_zero_fill": mean_metrics(classifier_folds),
             "regressor_oracle": pooled_regressor_metrics(oracle_true, oracle_pred),
             "end_to_end": mean_metrics(e2e_folds),
+            "end_to_end_pooled": end_to_end_pooled_metrics(pool_vol_true, pool_vol_routed),
             "by_factor": {key: mean_metrics(value) for key, value in by_factor.items()},
+            "by_shape": {
+                shape: shape_breakdown_entry(
+                    np.concatenate(parts["yc_true"]),
+                    np.concatenate(parts["yc_pred"]),
+                    np.concatenate(parts["vol_true"]),
+                    np.concatenate(parts["vol_routed"]),
+                )
+                for shape, parts in by_shape_parts.items()
+            },
         }
     return results
 
