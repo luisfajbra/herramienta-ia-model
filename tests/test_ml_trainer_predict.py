@@ -11,6 +11,20 @@ from swmm_resilience.ml import trainer
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17, FeatureContractError
 
 
+def _write_promotion_record(models_dir):
+    """promotion.json coherente con los joblib del fixture (los crea si faltan)."""
+    import hashlib
+    import json
+
+    record = {}
+    for name, field in (("classifier", "classifier_sha256"), ("regressor", "regressor_sha256")):
+        path = models_dir / f"{name}.joblib"
+        if not path.exists():
+            path.write_bytes(f"stub-{name}".encode())
+        record[field] = hashlib.sha256(path.read_bytes()).hexdigest()
+    (models_dir / "promotion.json").write_text(json.dumps(record), encoding="utf-8")
+
+
 def test_train_models_rejects_dataset_without_flooded_rows(tmp_path, tiny_config_factory, trainer_training_df):
     df = trainer_training_df.copy()
     df["inunda"] = 0
@@ -151,6 +165,7 @@ def test_predict_network_uses_dataframe_features(monkeypatch, tmp_path, tiny_con
     models.mkdir()
     joblib.dump(FakeClassifier(), models / "classifier.joblib")
     joblib.dump(FakeRegressor(), models / "regressor.joblib")
+    _write_promotion_record(models)
     (models / "training_inp_hash.txt").write_text(predict._md5(cfg.network.inp_path), encoding="utf-8")
 
     # Columns predict_network computes dynamically (compute_dynamic_features +
@@ -218,6 +233,7 @@ def test_predict_network_rejects_a_model_with_the_wrong_feature_count(monkeypatc
     cfg.simulation = SimpleNamespace(factor_min=0.5, factor_max=2.0)
     models = tmp_path / "models"
     models.mkdir()
+    _write_promotion_record(models)
     (models / "training_inp_hash.txt").write_text(predict._md5(cfg.network.inp_path), encoding="utf-8")
 
     wrong_count = len(predict.FEATURE_COLS) - 1

@@ -111,3 +111,50 @@ def test_importing_predict_does_not_load_torch():
         [sys.executable, "-c", code], cwd=REPO_ROOT, capture_output=True, text=True
     )
     assert result.returncode == 0, result.stderr
+
+
+def _artifact_dir(tmp_path):
+    """Layout de ``ml/train.py``: manifest.json + <task>_<modelo>.joblib, sin promotion.json."""
+    clf = b"classification-bytes"
+    reg = b"regression-bytes"
+    (tmp_path / "classification_Logistic.joblib").write_bytes(clf)
+    (tmp_path / "regression_Ridge.joblib").write_bytes(reg)
+    (tmp_path / "unused_other.txt").write_text("x", encoding="utf-8")
+    manifest = json.dumps(
+        {"latest": {"classification": "Logistic", "regression": "Ridge"}}
+    ).encode("utf-8")
+    (tmp_path / "manifest.json").write_bytes(manifest)
+    return tmp_path, {
+        "manifest.json": _sha(manifest),
+        "classification_Logistic.joblib": _sha(clf),
+        "regression_Ridge.joblib": _sha(reg),
+    }
+
+
+def test_provenance_without_a_record_hashes_the_artifact_files(tmp_path):
+    models, expected = _artifact_dir(tmp_path)
+    info = model_provenance(models)
+    assert info["family"] == "desconocida"
+    assert info["artifact_sha256"] == expected
+
+
+def test_provenance_of_a_missing_or_empty_dir_has_no_artifact_hashes(tmp_path):
+    assert model_provenance(tmp_path / "nope")["artifact_sha256"] == {}
+    assert model_provenance(tmp_path)["artifact_sha256"] == {}
+
+
+def test_provenance_with_a_record_keeps_its_original_keys(tmp_path):
+    info = model_provenance(_models_dir(tmp_path))
+    assert "artifact_sha256" not in info
+
+
+def test_predict_network_warns_and_proceeds_without_promotion_json(tmp_path):
+    from types import SimpleNamespace
+    from swmm_resilience.ml.predict import predict_network
+
+    models = _models_dir(tmp_path, record=False)
+    # Pasa la verificación (solo avisa) y falla después, al cargar los joblib falsos.
+    with pytest.warns(UserWarning, match="promotion.json"):
+        with pytest.raises(Exception) as excinfo:
+            predict_network(1.0, SimpleNamespace(), models)
+    assert not isinstance(excinfo.value, ModelProvenanceError)

@@ -18,7 +18,7 @@ from pathlib import Path
 
 import joblib
 
-from .train import load_candidate
+from .train import _sha256, load_candidate
 
 
 def _md5(path: Path) -> str:
@@ -31,14 +31,6 @@ def _md5(path: Path) -> str:
 
 class ModelProvenanceError(RuntimeError):
     """Los modelos de ``models_dir`` no coinciden con lo declarado en promotion.json."""
-
-
-def _sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with open(path, "rb") as handle:
-        for chunk in iter(lambda: handle.read(8192), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 _PROMOTION_ARTIFACTS = (
@@ -91,13 +83,42 @@ def assert_promotion_consistent(models_dir: Path | str) -> dict:
     return result
 
 
+def _artifact_files_sha256(models_dir: Path) -> dict:
+    """SHA-256 de los archivos que definen el modelo de un directorio sin promotion.json.
+
+    Cubre los dos formatos: el de ``ml/train.py`` (``manifest.json`` + los
+    ``<task>_<modelo>.joblib`` que su ``latest`` referencia) y el clásico
+    (``classifier.joblib`` / ``regressor.joblib``). Sin ninguno de los dos,
+    todos los ``*.joblib`` del directorio. No es recursivo.
+    """
+    if not models_dir.is_dir():
+        return {}
+    names: set[str] = set()
+    manifest_path = models_dir / "manifest.json"
+    if manifest_path.exists():
+        names.add("manifest.json")
+        latest = json.loads(manifest_path.read_text(encoding="utf-8")).get("latest", {})
+        for task, model_name in latest.items():
+            names.add(f"{task}_{str(model_name).replace(' ', '_')}.joblib")
+    names.update(artifact for artifact, _ in _PROMOTION_ARTIFACTS)
+    names = {name for name in names if (models_dir / name).is_file()}
+    if not any(name.endswith(".joblib") for name in names):
+        names.update(path.name for path in models_dir.glob("*.joblib"))
+    return {name: _sha256(models_dir / name) for name in sorted(names)}
+
+
 def model_provenance(models_dir: Path | str) -> dict:
-    """Resumen de procedencia del modelo activo, para estamparlo junto a las figuras."""
+    """Resumen de procedencia del modelo activo, para estamparlo junto a las figuras.
+
+    Sin ``promotion.json`` la familia es ``desconocida`` y ``artifact_sha256``
+    registra los SHA-256 de los archivos del modelo realmente presentes.
+    """
     record_path = Path(models_dir) / "promotion.json"
     if not record_path.exists():
         return {
             "family": "desconocida", "feature_contract_id": None,
             "classifier_sha256": None, "regressor_sha256": None, "prep_id": None,
+            "artifact_sha256": _artifact_files_sha256(Path(models_dir)),
         }
     record = json.loads(record_path.read_text(encoding="utf-8"))
     return {

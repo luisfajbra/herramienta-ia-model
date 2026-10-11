@@ -30,6 +30,7 @@ from swmm_resilience.extraction.topology import build_network_graph, compute_top
 from swmm_resilience.ml.evaluator import evaluate_models
 from swmm_resilience.ml.feature_importance import generate_feature_importance_plots
 from swmm_resilience.ml.predict import predict_network
+from swmm_resilience.visualization.runner import write_figure_provenance
 from swmm_resilience.simulation.runner import run_simulation_simple
 from swmm_resilience.ml.trainer import train_models
 from swmm_resilience.visualization.flood_map import (
@@ -449,6 +450,7 @@ def main():
         print("\nResiliencia por factor:")
         print(result.to_string(index=False))
         plot_resilience_curve(result, METRICS_DIR)
+        write_figure_provenance(METRICS_DIR, MODELS_DIR)
         return
 
     # ── Modo: curva de volumen de inundación ─────────────────────────────────
@@ -468,6 +470,7 @@ def main():
         print(result.to_string(index=False))
         plot_flood_volume_curve(result, METRICS_DIR)
         plot_flood_volume_combined(result, METRICS_DIR)
+        write_figure_provenance(METRICS_DIR, MODELS_DIR)
         return
 
     # -- Modo: comparacion SWMM vs XGBoost por factor -------------------------
@@ -487,6 +490,7 @@ def main():
             models_dir=MODELS_DIR,
             output_dir=output_dir,
         )
+        write_figure_provenance(output_dir, MODELS_DIR)
         print(f"\nGraficas generadas ({len(paths)}):")
         for path in paths:
             print(f"  {path}")

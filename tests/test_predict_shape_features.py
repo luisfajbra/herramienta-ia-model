@@ -45,6 +45,20 @@ class _StubModel:
         return np.zeros(len(X), dtype=int)
 
 
+def _write_promotion_record(models_dir):
+    """promotion.json coherente con los joblib del fixture (los crea si faltan)."""
+    import hashlib
+    import json
+
+    record = {}
+    for name, field in (("classifier", "classifier_sha256"), ("regressor", "regressor_sha256")):
+        path = models_dir / f"{name}.joblib"
+        if not path.exists():
+            path.write_bytes(f"stub-{name}".encode())
+        record[field] = hashlib.sha256(path.read_bytes()).hexdigest()
+    (models_dir / "promotion.json").write_text(json.dumps(record), encoding="utf-8")
+
+
 @pytest.fixture
 def captured_features(monkeypatch, tmp_path):
     """Run predict_network against stubs and hand back the features it built."""
@@ -81,6 +95,7 @@ def captured_features(monkeypatch, tmp_path):
 
     models_dir = tmp_path / "models"
     models_dir.mkdir()
+    _write_promotion_record(models_dir)
     (models_dir / "training_inp_hash.txt").write_text("hash", newline="\n")
 
     config = type(

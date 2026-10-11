@@ -582,3 +582,76 @@ def test_unsorted_shuffle_changes_metrics_without_the_canonical_sort(
         pd.testing.assert_frame_equal(
             sorted_original.reset_index(drop=True), sorted_shuffled.reset_index(drop=True)
         )
+
+
+def _stub_curve_frame(factors):
+    return pd.DataFrame(
+        {
+            "factor": list(factors),
+            "resilience_swmm": [1.0] * len(factors),
+            "resilience_ml": [1.0] * len(factors),
+        }
+    )
+
+
+def _promoted_models(tmp_path):
+    import json
+
+    models = tmp_path / "models"
+    models.mkdir()
+    (models / "promotion.json").write_text(
+        json.dumps({"family": "xgboost", "classifier_sha256": "aa", "regressor_sha256": "bb",
+                    "feature_contract_id": "tabular_v4_21", "prep_id": "p"}),
+        encoding="utf-8",
+    )
+    return models
+
+
+@pytest.mark.parametrize(
+    "flag, curve_fn, plot_fns, subdir",
+    [
+        ("--resilience-curve", "compute_resilience_curve", ["plot_resilience_curve"], ""),
+        (
+            "--flood-volume-curve",
+            "compute_flood_volume_curve",
+            ["plot_flood_volume_curve", "plot_flood_volume_combined"],
+            "",
+        ),
+    ],
+)
+def test_curve_figures_are_stamped_with_the_models_provenance(
+    monkeypatch, tmp_path, flag, curve_fn, plot_fns, subdir
+):
+    import json
+
+    metrics = tmp_path / "metrics"
+    monkeypatch.setattr(main, "MODELS_DIR", _promoted_models(tmp_path))
+    monkeypatch.setattr(main, "METRICS_DIR", metrics)
+    monkeypatch.setattr(main, "load_training_frame", lambda db: base_shape_frame())
+    monkeypatch.setattr(main, curve_fn, lambda df, factors, config, models_dir: _stub_curve_frame(factors))
+    for name in plot_fns:
+        monkeypatch.setattr(main, name, lambda result, out: None)
+    monkeypatch.setattr(sys, "argv", ["main.py", flag])
+
+    main.main()
+
+    record = json.loads((metrics / subdir / "provenance.json").read_text(encoding="utf-8"))
+    assert record["classifier_sha256"] == "aa"
+
+
+def test_factor_comparison_figures_are_stamped_with_the_models_provenance(monkeypatch, tmp_path):
+    import json
+
+    metrics = tmp_path / "metrics"
+    monkeypatch.setattr(main, "MODELS_DIR", _promoted_models(tmp_path))
+    monkeypatch.setattr(main, "METRICS_DIR", metrics)
+    monkeypatch.setattr(main, "load_training_frame", lambda db: base_shape_frame())
+    monkeypatch.setattr(main, "generate_factor_comparisons", lambda **kwargs: [])
+    monkeypatch.setattr(sys, "argv", ["main.py", "--factor-comparison"])
+
+    main.main()
+
+    record = json.loads(
+        (metrics / "factor_comparison" / "provenance.json").read_text(encoding="utf-8")
+    )
+    assert record["family"] == "xgboost"
