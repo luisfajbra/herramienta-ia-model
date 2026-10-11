@@ -247,3 +247,34 @@ def sql_training_db_six_shapes(
     finally:
         conn.close()
     return db_path
+
+
+_REAL_METRICS_DIR = Path(__file__).resolve().parents[1] / "outputs" / "metrics"
+
+
+def _snapshot(directory: Path) -> dict:
+    return {
+        str(path): (path.stat().st_size, path.stat().st_mtime_ns)
+        for path in directory.rglob("*")
+        if path.is_file()
+    }
+
+
+@pytest.fixture(autouse=True)
+def _tests_must_not_write_the_real_outputs_metrics():
+    """Una prueba que escribe en outputs/metrics real falsea figuras y procedencia."""
+    if not _REAL_METRICS_DIR.is_dir():
+        before = None
+    else:
+        before = _snapshot(_REAL_METRICS_DIR)
+    yield
+    if not _REAL_METRICS_DIR.is_dir():
+        return
+    after = _snapshot(_REAL_METRICS_DIR)
+    if before is None:
+        before = {}
+    changed = sorted(path for path in after if before.get(path) != after[path])
+    assert not changed, (
+        "La prueba escribio en el outputs/metrics real (aislala con "
+        f"monkeypatch de main.METRICS_DIR / MODELS_DIR): {changed}"
+    )

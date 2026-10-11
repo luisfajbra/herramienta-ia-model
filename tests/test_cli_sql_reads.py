@@ -24,7 +24,8 @@ def base_shape_frame() -> pd.DataFrame:
     )
 
 
-def test_resilience_curve_reads_the_frame_from_sql(monkeypatch):
+def test_resilience_curve_reads_the_frame_from_sql(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "METRICS_DIR", tmp_path / "metrics")
     load_calls = []
     curve_calls = []
 
@@ -440,7 +441,8 @@ def test_only_maps_reads_the_frame_from_sql(monkeypatch, tmp_path):
     assert load_calls == [config.dataset.db_path]
 
 
-def test_flood_volume_curve_reads_the_frame_from_sql(monkeypatch):
+def test_flood_volume_curve_reads_the_frame_from_sql(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "METRICS_DIR", tmp_path / "metrics")
     load_calls = []
     curve_calls = []
 
