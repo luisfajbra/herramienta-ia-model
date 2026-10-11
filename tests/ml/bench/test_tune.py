@@ -103,6 +103,15 @@ def test_sample_params_does_not_collide_between_classifier_and_regressor_in_the_
     assert set(reg_params) == set(SEARCH_SPACES["xgboost"]["regressor"])
 
 
+def test_svm_search_space_matches_the_approximate_rbf_estimators():
+    assert set(SEARCH_SPACES["svm"]["classifier"]) == {
+        "gamma", "n_components", "alpha"
+    }
+    assert set(SEARCH_SPACES["svm"]["regressor"]) == {
+        "gamma", "n_components", "alpha", "epsilon"
+    }
+
+
 @pytest.fixture
 def prepared_six_shapes(sql_training_db_six_shapes, tmp_path):
     return prepare_dataset(

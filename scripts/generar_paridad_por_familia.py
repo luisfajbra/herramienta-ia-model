@@ -6,7 +6,7 @@ numeros ya reportados -- no es un ajuste optimista sobre el 100% de los datos.
 
 Uso:
     venv/Scripts/python.exe scripts/generar_paridad_por_familia.py \
-        --models xgboost,random_forest,linear,mlp \
+        --models xgboost,random_forest,linear,svm,mlp \
         --prep-id 2db0578f875526cb \
         --out-dir outputs/bench/reports/paridad
 """

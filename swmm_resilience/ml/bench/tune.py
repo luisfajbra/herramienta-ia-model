@@ -91,11 +91,14 @@ SEARCH_SPACES: dict[str, dict[str, dict[str, tuple]]] = {
     },
     "svm": {
         "classifier": {
-            "C": ("float_log", 1e-2, 100.0),
-            "gamma": ("categorical", ["scale", "auto"]),
+            "gamma": ("float_log", 1e-3, 1.0),
+            "n_components": ("int", 100, 400),
+            "alpha": ("float_log", 1e-6, 1e-2),
         },
         "regressor": {
-            "C": ("float_log", 1e-2, 100.0),
+            "gamma": ("float_log", 1e-3, 1.0),
+            "n_components": ("int", 100, 400),
+            "alpha": ("float_log", 1e-6, 1e-2),
             "epsilon": ("float", 0.01, 1.0),
         },
     },

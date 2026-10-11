@@ -94,7 +94,10 @@ def train_candidate(
         "prep_id": prepared.prep_id,
         "classifier_params": classifier_params,
         "regressor_params": regressor_params,
-        "preprocessing": family.preprocessing_descriptor(classifier_params),
+        "preprocessing": {
+            "classifier": family.preprocessing_descriptor(classifier_params),
+            "regressor": family.preprocessing_descriptor(regressor_params),
+        },
         "ordered_features": list(FEATURE_COLUMNS_V17),
         "feature_contract_id": TABULAR_V3_17.contract_id,
         "feature_contract_sha256": TABULAR_V3_17.descriptor_sha256,

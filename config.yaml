@@ -61,7 +61,7 @@ bench:
     tie_breakers:
       - {metric: "classifier.f1", direction: "maximize"}
       - {metric: "regressor_oracle.nse", direction: "maximize"}
-  promote: "none"
+  promote: "xgboost"
   tuning:
     n_trials: 50
     n_splits: 5
@@ -88,11 +88,11 @@ bench:
       regressor: {alpha: 1.0}
     svm:
       enabled: true
-      # Justificacion: C=10 y kernel RBF son los valores que usaba el stack
-      # legacy (ML_MODEL_CONFIGS.svr_rbf), conservados para que los numeros
-      # sean comparables con lo ya reportado.
-      classifier: {C: 10.0, kernel: "rbf", gamma: "scale"}
-      regressor: {C: 10.0, kernel: "rbf", epsilon: 0.1}
+      # Aproximacion escalable del kernel RBF: Nystroem evita el costo
+      # cuadratico/cubico de SVC/SVR y SGD conserva costo lineal por epoca.
+      # gamma~=1/17 reproduce "scale" tras estandarizar las 17 features del banco.
+      classifier: {gamma: 0.05, n_components: 200, alpha: 0.0001, max_iter: 2000, tol: 0.001}
+      regressor: {gamma: 0.05, n_components: 200, alpha: 0.0001, epsilon: 0.1, max_iter: 2000, tol: 0.001}
     mlp:
       enabled: true
       # Justificacion: dos capas ocultas (64, 32) sobre 17 features es una

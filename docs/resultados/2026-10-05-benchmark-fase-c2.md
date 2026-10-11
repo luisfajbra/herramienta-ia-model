@@ -40,15 +40,24 @@ había probado con fixtures.
 - **Entrenamiento legacy (XGBoost vía `--persist-sql`)**: 5920 de 160,000
   filas (37 corridas × 160 nodos) descartadas por el mismo filtro.
 
-## 3. Ranking del banco de 5 familias — SVM excluido de esta corrida
+## 3. Ranking final del banco de 5 familias
 
-**SVM (kernel RBF) se excluyó de esta corrida.** Con ~154,000 filas de
-entrenamiento, sklearn's SVC/SVR con kernel RBF escala O(n²)-O(n³): la primera
-corrida completa (`--bench` con las 5 familias) acumuló **1 día 15+ horas de
-CPU activo** sin terminar la etapa de evaluación (70 folds × 2 por familia) y
-se canceló. Queda pendiente configurar SVM para este volumen de datos (kernel
-lineal, submuestreo, o un SVM aproximado) antes de incluirlo en una
-comparación final.
+El SVM RBF exacto de sklearn se reemplazó por una aproximación escalable:
+`StandardScaler` → `Nystroem(kernel="rbf", n_components=200)` →
+`SGDClassifier`/`SGDRegressor`. El clasificador usa `loss="log_loss"` para
+mantener `predict_proba` sin el calibrado interno de `SVC(probability=True)`.
+Esta configuración conserva una frontera no lineal tipo RBF, pero su costo
+crece aproximadamente de forma lineal con las filas. Científicamente debe
+reportarse como **aproximación de kernel RBF con Nystroem + SGD**: el
+clasificador usa regresión logística sobre el mapeo RBF y el regresor usa
+pérdida insensible a epsilon. La clave interna `svm` se conserva solo por
+compatibilidad con el registro del banco.
+
+Un fold real de `LeaveOneShapeOut` (150,240 filas de entrenamiento y 3,840 de
+prueba) tardó **11.2 s** en ajustar clasificador y regresor y producir las
+predicciones. La corrida de entrenamiento y evaluación completa terminó en
+aproximadamente **9 minutos**; la versión exacta anterior había acumulado más
+de 1 día y 15 horas de CPU sin terminar.
 
 Ranking sobre el protocolo `LeaveOneShapeOut` (criterio primario:
 `end_to_end.rmse_vol_todos_nodos`, menor es mejor):
@@ -57,13 +66,15 @@ Ranking sobre el protocolo `LeaveOneShapeOut` (criterio primario:
 |------|---------|---------------------------|------------------|----------------------|
 | 1 | **XGBoost** | **78.04** | 0.979 | 0.815 |
 | 2 | MLP | 99.61 | 0.977 | 0.631 |
-| 3 | Random Forest | 185.46 | 0.890 | 0.277 |
-| 4 | Lineal | 201.18 | 0.817 | 0.071 |
-| — | SVM | *(no evaluado en esta corrida)* | — | — |
+| 3 | Kernel RBF aproximado (Nystroem + SGD) | 155.21 | 0.843 | 0.530 |
+| 4 | Random Forest | 185.46 | 0.890 | 0.277 |
+| 5 | Lineal | 201.18 | 0.817 | 0.071 |
 
 **XGBoost gana con margen claro**: 22% mejor RMSE que el segundo lugar (MLP),
 y el NSE del regresor oracle (0.815) es muchísimo más sólido que el de MLP
-(0.631).
+(0.631). La familia `svm` reconfigurada queda tercera: reduce el RMSE de
+Random Forest en 16% y el del modelo lineal en 23%, aunque su F1 es menor que
+el de Random Forest.
 
 Dataset evaluado: 154,080 filas (160,000 − 5,920 excluidas por continuidad),
 46,225 inundadas.
@@ -142,6 +153,7 @@ protocolo más amable del ranking).
   `resultados_archivados/2026-10-05-benchmark-fase-c2/`
   - `mapas/` — 980 mapas de inundación (SWMM vs. predicción, por forma y factor)
   - `ranking_4_familias.csv`
+  - `ranking_5_familias.csv` — ranking final con la familia `svm` reconfigurada
   - `continuity_excluded.csv`
   - `bench_reports/` — ranking.json/csv crudos del banco
   - `tuning/xgboost/2db0578f875526cb_20261006T015644Z/study.json` — estudio
@@ -155,13 +167,14 @@ protocolo más amable del ranking).
 
 ## 6. Pendiente
 
-- [ ] Configurar SVM para que corra en tiempo razonable a esta escala y
-      sumarlo al ranking.
+- [x] Reconfigurar la familia `svm` para que corra en tiempo razonable a esta
+      escala y sumarla al ranking — Nystroem RBF + SGD, tercera con RMSE
+      155.21.
 - [x] Revisar la inestabilidad numérica de MLP — era cosmético, corregido
       (ver nota de la sección 3).
 - [x] Generalizar mapas de paridad/inundación a las 5 familias — hecho para
-      las 4 ya entrenadas (XGBoost, Random Forest, Lineal, MLP), usando
-      predicciones OOF consistentes con el ranking. Falta SVM.
+      XGBoost, Random Forest, Lineal, MLP y la familia `svm` reconfigurada,
+      usando predicciones OOF consistentes con el ranking.
 - [x] `config_7shapes.yaml` desactualizado — eliminado (commit `6f4b202`):
       ninguna de las tolerancias/bloques agregados desde Fase A quedaban
       reflejados ahí y `promote: "auto"` ya era inválido.

@@ -92,3 +92,8 @@ data/networks/**/*.ini
 
 # Salidas de validacion generadas
 validation_output/
+
+# Archivo local de resultados pesados (mapas, CSVs grandes) para informe/presentacion.
+# Se conserva en disco a proposito, nunca se commitea (son binarios grandes
+# reproducibles desde outputs/ con el pipeline).
+resultados_archivados/

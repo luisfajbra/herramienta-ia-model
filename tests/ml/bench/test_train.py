@@ -40,7 +40,48 @@ def test_metadata_records_the_prep_id_and_feature_order(prepared, tmp_path):
     assert len(metadata["classifier_sha256"]) == 64
     assert len(metadata["regressor_sha256"]) == 64
     assert "library_versions" in metadata
-    assert metadata["preprocessing"]["imputer"] == "median"
+    assert metadata["preprocessing"]["classifier"]["imputer"] == "median"
+    assert metadata["preprocessing"]["regressor"]["imputer"] == "median"
+
+
+def test_svm_metadata_records_each_tasks_kernel_mapping(prepared, tmp_path):
+    classifier_params = {
+        "gamma": 0.05,
+        "n_components": 4,
+        "alpha": 1e-4,
+        "max_iter": 2000,
+        "tol": 1e-3,
+    }
+    regressor_params = {
+        "gamma": 0.2,
+        "n_components": 6,
+        "alpha": 1e-4,
+        "epsilon": 0.1,
+        "max_iter": 2000,
+        "tol": 1e-3,
+    }
+
+    artifacts = train_candidate(
+        prepared,
+        "svm",
+        classifier_params,
+        regressor_params,
+        tmp_path / "candidates",
+    )
+    metadata = json.loads(artifacts.metadata_path.read_text(encoding="utf-8"))
+
+    assert metadata["preprocessing"]["classifier"]["kernel_approx"] == {
+        "method": "Nystroem",
+        "kernel": "rbf",
+        "gamma": 0.05,
+        "n_components": 4,
+    }
+    assert metadata["preprocessing"]["regressor"]["kernel_approx"] == {
+        "method": "Nystroem",
+        "kernel": "rbf",
+        "gamma": 0.2,
+        "n_components": 6,
+    }
 
 
 def test_the_saved_classifier_predicts_on_the_contract_features(prepared, tmp_path):

@@ -120,7 +120,7 @@ Con Fase C2 cerrada, corrimos el pipeline completo por primera vez:
 Todo esto corrió sin errores de código — la única sorpresa fue de tiempo
 (ver sección 4).
 
-## 4. El problema de SVM (y por qué lo dejamos pendiente)
+## 4. El problema de SVM y cómo se resolvió
 
 El banco de 5 familias incluye SVM (Support Vector Machine) con kernel
 RBF. SVM con ese kernel tiene una propiedad matemática importante: su
@@ -130,24 +130,27 @@ eso lo vuelve extremadamente lento — la primera vez que lo dejamos correr,
 acumuló **más de un día y medio de tiempo de CPU activo sin terminar**, y
 lo cancelamos.
 
-**Esto no es un bug.** Es una limitación conocida y documentada de cómo
-funciona SVM con kernel RBF a esta escala de datos. La solución no es
-"arreglarlo" sino **configurarlo distinto** para este volumen: por ejemplo,
-usar un kernel lineal en vez de RBF, entrenar sobre una muestra en vez de
-todos los datos, o usar una variante aproximada de SVM pensada para
-datasets grandes. Ninguna de esas opciones se implementó todavía — quedó
-en la lista de pendientes.
+**Esto no era un bug.** Era una limitación conocida de SVM con kernel RBF a
+esta escala. Se resolvió aproximando ese kernel con `Nystroem`: el método
+crea 200 características que representan la forma no lineal del RBF y luego
+entrena modelos SGD rápidos sobre ellas. El clasificador usa regresión
+logística por SGD para entregar las probabilidades que necesita el banco; el
+regresor usa pérdida insensible a epsilon, análoga a la idea de SVR.
 
-Por eso el benchmark que sí corrimos tiene **4 familias, no 5** (XGBoost,
-Random Forest, Lineal, MLP) — SVM quedó deliberadamente afuera de esta
-ronda, no se perdió por accidente.
+El resultado se denomina **aproximación de kernel RBF con Nystroem + SGD**.
+El clasificador es una regresión logística sobre ese mapeo RBF, no un SVM de
+margen; el regresor sí conserva la pérdida insensible a epsilon propia de
+SVR. La clave interna sigue llamándose `svm` para no romper el banco. Puede
+usar las 154,080 filas: un fold completo tardó 11.2 segundos y la corrida de
+entrenamiento más los 70 folds terminó en cerca de 9 minutos.
 
-## 5. El benchmark de 4 familias — resultados y qué significan
+## 5. El benchmark de 5 familias — resultados y qué significan
 
 | Familia | RMSE volumen | F1 clasificador | NSE regresor |
 |---|---|---|---|
 | **XGBoost** (ganador) | **78.04** | 0.979 | 0.815 |
 | MLP | 99.61 | 0.977 | 0.631 |
+| Kernel RBF aproximado (Nystroem + SGD) | 155.21 | 0.843 | 0.530 |
 | Random Forest | 185.46 | 0.890 | 0.277 |
 | Lineal | 201.18 | 0.817 | 0.071 |
 
@@ -159,7 +162,7 @@ ronda, no se perdió por accidente.
   **Menor es mejor.** Es la métrica principal — la que define quién gana.
 - **F1 clasificador**: qué tan bien el modelo adivina *si* un nodo se va a
   inundar o no (sin importar cuánto). Va de 0 a 1, **mayor es mejor**. Los
-  cuatro modelos son razonablemente buenos en esto (todos por encima de
+  cinco modelos son razonablemente buenos en esto (todos por encima de
   0.8) — la diferencia real entre ellos está en el volumen, no en el
   "¿se inunda sí o no?".
 - **NSE regresor** (Nash-Sutcliffe Efficiency): qué tan bien el modelo
@@ -170,14 +173,17 @@ ronda, no se perdió por accidente.
   trivial.
 
 **Cómo se evaluó:** con el protocolo `LeaveOneShapeOut` — para cada una de
-las 39 formas de hidrograma, se entrena el modelo con las otras 38 formas y
-se predice sobre la que quedó afuera, repitiendo 39 veces. Esto simula
+las 39 formas de hidrograma más la forma base, se entrena el modelo con los
+otros 39 grupos y se predice sobre el que quedó afuera, repitiendo 40 veces.
+Esto simula
 honestamente "¿qué tan bien predeciría el modelo una tormenta que nunca vio
 antes?" — es más exigente (y más realista) que simplemente medir qué tan
 bien el modelo recuerda los datos con los que se entrenó.
 
 **Conclusión:** XGBoost gana con margen claro (22% mejor RMSE que el
-segundo lugar). No fue un empate reñido.
+segundo lugar). La familia `svm` reconfigurada queda tercera: mejora el RMSE
+de Random Forest en 16% y el del modelo lineal en 23%, pero no cambia la
+familia ganadora.
 
 ### 5.1. El caso MLP — investigado y cerrado
 
@@ -261,8 +267,9 @@ caminos:
   honesta, consistente con los números ya reportados.
 
 Se eligió **OOF**, por consistencia. El resultado son gráficos de paridad
-(dispersión SWMM vs. predicho) para XGBoost, Random Forest, Lineal y MLP,
-guardados en `resultados_archivados/2026-10-05-benchmark-fase-c2/paridad/`.
+(dispersión SWMM vs. predicho) para XGBoost, Random Forest, Lineal, MLP y la
+familia `svm` reconfigurada con Nystroem + SGD, guardados en
+`resultados_archivados/2026-10-05-benchmark-fase-c2/paridad/`.
 
 ### 7.1. Qué es cada punto de esos gráficos (no es una corrida por punto)
 
