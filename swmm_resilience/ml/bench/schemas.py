@@ -59,6 +59,20 @@ PROTOCOL_GROUP_COLUMNS = {
     "LeaveOneShapeOut": "shape_id",
 }
 
+PROTOCOL_INTERPRETATION = {
+    "LOSO": (
+        "Interpolación entre factores: se retiene un factor de intensidad completo; "
+        "todas las formas de hidrograma siguen presentes en el entrenamiento."
+    ),
+    "GroupKFold5": (
+        "Interpolación entre factores en 5 bloques retenidos; todas las formas de "
+        "hidrograma siguen presentes en el entrenamiento."
+    ),
+    "LeaveOneShapeOut": (
+        "Generalización a formas de hidrograma no vistas: se retiene una forma completa."
+    ),
+}
+
 PREP_ID_DESCRIPTOR_FIELDS = (
     "contract_id",
     "feature_contract_sha256",
