@@ -35,14 +35,14 @@ Módulo nuevo `ml/bench/baselines.py`. Cada referencia recibe un `PreparedDatase
 ### 2.3 Agregación de métricas del clasificador (M-03)
 Para cada protocolo:
 - `classifier` (cifra principal) = métricas calculadas sobre todas las filas de test concatenadas del protocolo, más `specificity`. La matriz de confusión agregada `confusion_matrix = {tn, fp, fn, tp}` es una clave de primer nivel separada (no anidada en `classifier`).
-- `classifier_per_fold` = estadísticos de dispersión entre folds (`min`, `median`, `max`, `mean`) de precisión, recall y F1, calculados solo sobre folds donde la métrica está definida. En un fold sin positivos reales, recall y F1 son **NaN**, no 0. Se reporta `n_folds_undefined`.
+- `classifier_per_fold` = estadísticos de dispersión entre folds (`min`, `median`, `max`, `mean`) de precisión, recall y F1, calculados solo sobre folds donde la métrica está definida. En un fold sin positivos reales, recall y F1 son **NaN**, no 0. Se reporta `n_undefined`.
 - `classifier_legacy_mean_zero_fill` = el valor antiguo (media por fold con `zero_division=0`), conservado con nombre explícito para poder citar el antes y el después.
 - El criterio de desempate `classifier.f1` del ranking pasa a leer el valor agregado.
 - El test de paridad con `ml/evaluator.py` se ajusta para comparar contra `classifier_legacy_mean_zero_fill`: la paridad con el código legado sigue demostrada, y el valor nuevo se prueba aparte.
 - `regressor_oracle` y `end_to_end` no cambian de definición en esta fase. Se añade un bloque nuevo `end_to_end_pooled` (RMSE, MAE, volumen total real y predicho y `vol_total_error_pct`, calculados sobre el pool de todos los folds); `end_to_end` conserva exactamente las claves del evaluador legado porque el test de paridad lo exige.
 
 ### 2.4 Desglose por forma (M-02)
-`score_predictions` añade `by_shape` por protocolo: para cada `shape_id` en el test, `n_positivos`, `f1`, `rmse_vol`, `vol_real_m3`, `vol_pred_m3` y `error_vol_pct`. Solo tiene sentido en `LeaveOneShapeOut` (una forma por fold), pero se calcula para cualquier protocolo. Si `shape_id` no está en `prepared.keys`, `by_shape` queda vacío.
+`score_predictions` añade `by_shape` por protocolo: para cada `shape_id` en el test, `n_rows`, `n_positives`, `f1`, `rmse_vol`, `vol_real_m3`, `vol_pred_m3` y `error_vol_pct`. Solo tiene sentido en `LeaveOneShapeOut` (una forma por fold), pero se calcula para cualquier protocolo.
 
 ### 2.5 Persistencia de predicciones fuera de fold (M-08/T-19)
 `_run_bench` conserva el primer elemento que devuelve `evaluate_candidate` y lo escribe en `outputs/bench/oof/<prep_id>/<familia>.parquet`. Los JSON de métricas incorporan un bloque `provenance` con `prep_id`, `family`, los hiperparámetros usados y la fecha UTC. Las referencias de 2.2 se persisten igual bajo la familia `baseline_*`.
@@ -89,7 +89,7 @@ Con esos números el usuario decide entre:
 ## 4. Pruebas
 
 Cada cambio nace de una prueba que falla (TDD) y cierra con la suite completa en verde. Pruebas clave:
-- La agregación: un predictor perfecto da F1 = 1,0 agregado; en un fold sin positivos el recall del fold es NaN y `n_folds_undefined` lo cuenta; la matriz de confusión suma el número de filas.
+- La agregación: un predictor perfecto da F1 = 1,0 agregado; en un fold sin positivos el recall del fold es NaN y `n_undefined` lo cuenta; la matriz de confusión suma el número de filas.
 - Las referencias: la interpolación sobre una función lineal conocida reproduce exactamente los valores omitidos; la forma más cercana elige la forma esperada en un caso mínimo; el frame OOF cumple `_validate_oof`.
 - `by_shape`: error relativo calculado a mano en un caso de 2 formas.
 - `verify_promotion`: coincide, no coincide y falta `promotion.json`.

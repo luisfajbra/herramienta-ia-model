@@ -10,6 +10,7 @@ from swmm_resilience.ml.bench.schemas import (
     PreparedDataset,
 )
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
+from tests.ml.bench.prepared_factory import make_prepared, perfect_oof
 
 
 @pytest.fixture
@@ -432,9 +433,6 @@ def test_each_protocol_is_scored_from_its_own_predictions_not_pooled():
     assert result["GroupKFold5"]["classifier"]["f1"] == pytest.approx(0.0)
 
 
-from tests.ml.bench.prepared_factory import make_prepared, perfect_oof
-
-
 def _loso_with_an_empty_fold():
     """3 factores en LOSO; el factor 1.0 no tiene ninguna fila inundada."""
     rows = []
@@ -508,15 +506,34 @@ def test_a_false_negative_and_a_false_positive_show_up_in_the_confusion_matrix()
     assert result["classifier"]["precision"] == pytest.approx(4 / 5)
 
 
-def test_score_predictions_can_be_restricted_to_some_protocols():
-    prepared = _loso_with_an_empty_fold()
+def test_protocols_restricts_the_coverage_required_from_the_oof_frame():
+    """Dataset con dos protocolos y un OOF que cubre solo LOSO.
+
+    Sin ``protocols`` faltan los folds de LeaveOneShapeOut y se rechaza; con
+    ``protocols=("LOSO",)`` solo se exige y se puntua LOSO.
+    """
+    rows = []
+    for shape in ("A", "B"):
+        for factor in (1.0, 2.0):
+            for node, vol in zip(["N0", "N1"], [0.0, 10.0 * factor]):
+                rows.append(
+                    dict(shape_id=shape, node_id=node, factor_mult=factor, vol=vol,
+                         duracion_horas=3.0, tiempo_al_pico_h=0.7)
+                )
+    prepared = make_prepared(rows, ["LOSO", "LeaveOneShapeOut"])
     oof = perfect_oof(prepared)
-    # el frame solo cubre LOSO, pero el dataset declara LOSO únicamente: sin restricción pasa
-    assert "LOSO" in score_predictions(prepared, oof, {"prep_id": prepared.prep_id})
+    oof = oof[oof["protocol"] == "LOSO"].reset_index(drop=True)
+    assert set(oof["protocol"]) == {"LOSO"}
+    assert set(prepared.folds["protocol"]) == {"LOSO", "LeaveOneShapeOut"}
+
+    with pytest.raises(ValueError, match="faltan"):
+        score_predictions(prepared, oof, {"prep_id": prepared.prep_id})
+
     restricted = score_predictions(
         prepared, oof, {"prep_id": prepared.prep_id}, protocols=("LOSO",)
     )
     assert set(restricted) == {"LOSO"}
+    assert "classifier" in restricted["LOSO"]
 
 
 def test_by_shape_and_pooled_end_to_end_use_the_routed_volume():
