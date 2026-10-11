@@ -89,7 +89,9 @@ def test_run_outputs_are_allowed(tmp_path, relative):
 def test_provenance_records_dataset_params_versions_and_timings():
     from scripts.ejecutar_evaluacion_v4_21 import build_provenance
 
-    prepared = make_prepared(_rows(), ["LeaveOneShapeOut"])
+    # Malla 2 formas x 2 factores con un hueco: falta el run (B, 2.0).
+    rows = [row for row in _rows() if not (row["shape_id"] == "B" and row["factor_mult"] == 2.0)]
+    prepared = make_prepared(rows, ["LeaveOneShapeOut"])
     params = {"classifier": {"n_estimators": 200}, "regressor": {"n_estimators": 200}}
 
     record = build_provenance(
@@ -102,8 +104,13 @@ def test_provenance_records_dataset_params_versions_and_timings():
         shape_descriptors_source="outputs/bench/prepared/x",
         stage_seconds={"prepare": 1.5, "xgboost": 2.0},
         git_commit="abc123",
+        git_dirty=True,
     )
 
+    assert record["n_runs"] == 3
+    assert record["n_runs_full_grid"] == 4
+    assert record["n_missing_cells"] == 1
+    assert record["git_dirty"] is True
     assert record["prep_id"] == prepared.prep_id
     assert record["feature_contract_id"] == "tabular_v4_21"
     assert record["n_features"] == prepared.X.shape[1]

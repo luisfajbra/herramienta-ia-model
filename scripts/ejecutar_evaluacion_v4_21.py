@@ -30,7 +30,6 @@ from __future__ import annotations
 import fnmatch
 import json
 import platform
-import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -42,7 +41,12 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.informe_evaluacion import build_tables, write_tables  # noqa: E402
+from scripts.informe_evaluacion import (  # noqa: E402
+    build_tables,
+    git_state,
+    grid_counts,
+    write_tables,
+)
 from swmm_resilience.ml.bench.reports import _json_safe  # noqa: E402
 
 SHAPE_DESCRIPTOR_COLUMNS = ("duracion_horas", "tiempo_al_pico_h")
@@ -179,6 +183,7 @@ def build_provenance(
     shape_descriptors_source: str,
     stage_seconds: dict,
     git_commit: str,
+    git_dirty: bool | None = None,
     baseline_fallback: dict | None = None,
     complete: bool = False,
 ) -> dict:
@@ -193,6 +198,7 @@ def build_provenance(
         "n_rows": int(len(prepared.keys)),
         "n_shapes": int(prepared.keys["shape_id"].nunique()),
         "n_factors": int(prepared.keys["factor_mult"].nunique()),
+        **grid_counts(prepared.keys),
         "protocols": sorted(prepared.folds["protocol"].unique()),
         "flood_threshold_m3": float(flood_threshold_m3),
         "max_continuity_error_pct": max_continuity_error_pct,
@@ -206,17 +212,11 @@ def build_provenance(
         "shape_descriptors_source": shape_descriptors_source,
         "stage_seconds": dict(stage_seconds),
         "git_commit": git_commit,
+        "git_dirty": git_dirty,
         "versions": _versions(),
         "generated_at_utc": datetime.now(timezone.utc).isoformat(),
         "script": "scripts/ejecutar_evaluacion_v4_21.py",
     }
-
-
-def _git_commit() -> str:
-    result = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=REPO_ROOT, capture_output=True, text=True, check=True
-    )
-    return result.stdout.strip()
 
 
 def _stage(name: str, stage_seconds: dict, func, *args, **kwargs):
@@ -249,7 +249,7 @@ def main() -> int:
     continuity = config.validation.max_continuity_error_pct
     for directory in (PREPARED_DIR, OOF_ROOT, DATA_DIR, RUNS_DIR):
         ensure_allowed_output(directory)
-    git_commit = _git_commit()
+    git = git_state()
     stage_seconds: dict[str, float] = {}
 
     prepared = _stage(
@@ -290,7 +290,8 @@ def main() -> int:
             baselines=list(BASELINES),
             shape_descriptors_source=SHAPE_SOURCE_DIR.as_posix(),
             stage_seconds=stage_seconds,
-            git_commit=git_commit,
+            git_commit=git["git_commit"],
+            git_dirty=git["git_dirty"],
             baseline_fallback=fallback,
             complete=complete,
         )
