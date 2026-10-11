@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import warnings
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,6 +27,86 @@ def _md5(path: Path) -> str:
         for chunk in iter(lambda: handle.read(8192), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+class ModelProvenanceError(RuntimeError):
+    """Los modelos de ``models_dir`` no coinciden con lo declarado en promotion.json."""
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as handle:
+        for chunk in iter(lambda: handle.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+_PROMOTION_ARTIFACTS = (
+    ("classifier.joblib", "classifier_sha256"),
+    ("regressor.joblib", "regressor_sha256"),
+)
+
+
+def verify_promotion(models_dir: Path | str) -> dict:
+    """Compara los SHA-256 de los modelos con los de ``promotion.json``.
+
+    ``status``: ``verified`` (coinciden), ``mismatch`` (alguno difiere o falta) o
+    ``no_record`` (no hay ``promotion.json``; no se puede afirmar ni negar nada).
+    """
+    target = Path(models_dir)
+    record_path = target / "promotion.json"
+    if not record_path.exists():
+        return {"status": "no_record", "ok": None, "discrepancies": []}
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    discrepancies = []
+    for artifact, field in _PROMOTION_ARTIFACTS:
+        path = target / artifact
+        actual = _sha256(path) if path.exists() else None
+        expected = record.get(field)
+        if actual != expected:
+            discrepancies.append({"artifact": artifact, "expected": expected, "actual": actual})
+    status = "mismatch" if discrepancies else "verified"
+    return {"status": status, "ok": not discrepancies, "discrepancies": discrepancies}
+
+
+def assert_promotion_consistent(models_dir: Path | str) -> dict:
+    """Falla si los modelos no son los declarados; avisa si no hay registro."""
+    result = verify_promotion(models_dir)
+    if result["status"] == "mismatch":
+        detail = "; ".join(
+            f"{d['artifact']}: esperado {d['expected']}, actual {d['actual']}"
+            for d in result["discrepancies"]
+        )
+        raise ModelProvenanceError(
+            f"Los modelos en {models_dir} no coinciden con promotion.json ({detail}). "
+            "Los resultados no se pueden atribuir al candidato promovido. Vuelve a "
+            "promover o regenera los modelos antes de predecir."
+        )
+    if result["status"] == "no_record":
+        warnings.warn(
+            f"No hay promotion.json en {models_dir}: no se puede verificar la procedencia del modelo.",
+            UserWarning,
+            stacklevel=2,
+        )
+    return result
+
+
+def model_provenance(models_dir: Path | str) -> dict:
+    """Resumen de procedencia del modelo activo, para estamparlo junto a las figuras."""
+    record_path = Path(models_dir) / "promotion.json"
+    if not record_path.exists():
+        return {
+            "family": "desconocida", "feature_contract_id": None,
+            "classifier_sha256": None, "regressor_sha256": None, "prep_id": None,
+        }
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    return {
+        "family": record.get("family"),
+        "feature_contract_id": record.get("feature_contract_id"),
+        "classifier_sha256": record.get("classifier_sha256"),
+        "regressor_sha256": record.get("regressor_sha256"),
+        "prep_id": record.get("prep_id"),
+    }
 
 
 def promote_candidate(

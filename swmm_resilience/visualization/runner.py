@@ -27,10 +27,12 @@ Output structure
 from __future__ import annotations
 
 import argparse
+import json
 import platform
 import sqlite3
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ..config import DEFAULT_DB_FILE, DEFAULT_MODEL_ARTIFACTS_DIR, NETWORKS_DIR
@@ -98,6 +100,23 @@ def _global_vmax(db_path: Path) -> float:
     return _global_volume_vmax(db_path)
 
 
+# ── figure provenance ─────────────────────────────────────────────────────────
+
+def write_figure_provenance(output_dir: Path | str, models_dir: Path | str) -> Path:
+    """Registra qué modelo produjo las figuras de este directorio."""
+    # Import perezoso: promote arrastra bench.train -> registry -> torch.
+    from ..ml.bench.promote import model_provenance
+
+    record = {
+        **model_provenance(models_dir),
+        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    path = Path(output_dir) / "provenance.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
 # ── on-demand ML map ──────────────────────────────────────────────────────────
 
 def generate_ml_map(
@@ -142,6 +161,7 @@ def generate_ml_map(
         vmax_global=vmax,
     )
     print(f"[OK]   {out}")
+    write_figure_provenance(out_dir, artifacts_dir)
 
     if open_after:
         _open_image(out)
@@ -231,6 +251,7 @@ def run(
         multipliers = [float(r[0]) for r in rows]
 
         if multipliers:
+            ml_generated = 0
             ml_runs = load_all_ml(inp, multipliers, artifacts_dir)
             for mult, node_data in ml_runs:
                 out = _ml_plots_dir(network_dir) / f"flood_map_qx{mult:.2f}_ml.png"
@@ -247,6 +268,11 @@ def run(
                 )
                 print(f"[OK]   {out.name}")
                 generated += 1
+                ml_generated += 1
+            # Solo si se escribió alguna figura ML nueva: si todas se omitieron
+            # (skip_existing) provenance.json seguiría describiendo al modelo anterior.
+            if ml_generated:
+                write_figure_provenance(_ml_plots_dir(network_dir), artifacts_dir)
 
     print(f"\n{generated} figure(s) generated for {network_name}.")
 

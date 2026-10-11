@@ -75,6 +75,10 @@ def predict_network(factor: float, config: Config, models_dir: Path) -> pd.DataF
     Validates that the current .inp matches the one used at training time (MD5 hash).
     Returns DataFrame: node_id, inunda_pred, vol_pred_m3, coord_x, coord_y
     """
+    # Import perezoso: promote arrastra bench.train -> registry -> torch.
+    from .bench.promote import assert_promotion_consistent
+
+    assert_promotion_consistent(models_dir)
     clf = joblib.load(models_dir / "classifier.joblib")
     reg = joblib.load(models_dir / "regressor.joblib")
 
