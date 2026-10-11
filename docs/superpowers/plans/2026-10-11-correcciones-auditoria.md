@@ -16,7 +16,7 @@
 - Trabajar en el worktree `C:\Users\lf.fajardo\Downloads\Tesis\herramienta-ia-model\.claude\worktrees\optuna-tuning-familia-ganadora`, rama `worktree-optuna-tuning-familia-ganadora` (publicada como `fix/cierre-auditoria-hidrogramas-20260927`). **No** hacer `cd` al checkout principal ni editar archivos allí.
 - Intérprete: `..\..\..\venv\Scripts\python.exe` (relativo al worktree). Todos los comandos `pytest` se ejecutan como `..\..\..\venv\Scripts\python.exe -m pytest <ruta> -q -p no:cacheprovider --basetemp=<carpeta temporal fuera del repo>`.
 - TDD: cada prueba nueva debe fallar por la ausencia del comportamiento antes de modificar producción.
-- Línea base de la suite completa: **1.058 passed, 0 failed** (commit `1ecca50`). Al cerrar cada tarea, la suite completa debe seguir en verde (los tests que cambien deliberadamente se listan en la tarea).
+- Línea base de la suite completa: **1.049 passed, 0 failed** (commit `1ecca50`). Al cerrar cada tarea, la suite completa debe seguir en verde (los tests que cambien deliberadamente se listan en la tarea).
 - No cambiar `promote: "xgboost"` de `config.yaml`. No escribir en `outputs/models/`, ni borrar o sobrescribir artefactos de `outputs/` existentes. Los resultados nuevos van a rutas nuevas.
 - No tocar `main` ni el checkout principal. Un commit por tarea. El push a `origin fix/cierre-auditoria-hidrogramas-20260927` lo hace el coordinador al cerrar cada bloque, no los subagentes.
 - Convenciones del banco: mensajes y comentarios en español; nombres de código en el estilo del módulo vecino. Cada commit termina con la línea `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.

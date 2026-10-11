@@ -18,7 +18,7 @@
 | D-04/H-06 resolución de la etiqueta | Abierto (`flood_threshold_m3: 1.0` = resolución del `.rpt`) |
 | OOF no persistido | Abierto (`main.py`, `_run_bench`: `_, metrics = evaluate_candidate(...)`) |
 
-Línea base de tests antes de empezar: **1.058 passed, 0 failed** (commit `1ecca50`).
+Línea base de tests antes de empezar: **1.049 passed, 0 failed** (commit `1ecca50`).
 
 ## 2. Decisiones de diseño
 
