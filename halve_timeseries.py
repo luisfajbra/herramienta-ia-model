@@ -1,38 +1,68 @@
+"""Divide por 2 los valores de [TIMESERIES] de un .inp de SWMM.
+
+Uso (explícito, nunca al importar):
+    python halve_timeseries.py --src <entrada.inp> --dst <salida.inp> [--force]
+
+Se usó una vez para derivar la red Qx1 a partir de Qx2. El destino NO se
+sobrescribe sin ``--force``: una versión anterior de este script escribía sobre
+el .inp base de producción al importarse (hallazgo V-07 de la auditoría).
+"""
+
+from __future__ import annotations
+
+import argparse
 import re
+from pathlib import Path
 
-SRC = r"data\networks\chico_hydro-qx2\SWMM - Chico (PVC) Prueba 5 - Qx2.00.inp"
-DST = r"data\networks\chico_hydro-qx1\SWMM - Chico (PVC) Prueba 1 - Qx1.00.inp"
 
-in_timeseries = False
-out_lines = []
+def halve_timeseries(src, dst, force: bool = False) -> int:
+    """Escribe en ``dst`` una copia de ``src`` con los valores de [TIMESERIES] a la mitad.
 
-with open(SRC, "r", encoding="utf-8") as f:
-    for line in f:
-        stripped = line.rstrip("\n")
+    Devuelve cuántos valores se dividieron.
+    """
+    src, dst = Path(src), Path(dst)
+    if src.resolve() == dst.resolve():
+        raise ValueError("El origen y el destino son el mismo archivo.")
+    if dst.exists() and not force:
+        raise FileExistsError(f"{dst} ya existe; usa force=True (--force) para sobrescribirlo.")
 
-        # Detect section headers
-        if re.match(r"^\[", stripped):
-            in_timeseries = stripped.strip() == "[TIMESERIES]"
+    in_timeseries = False
+    out_lines: list[str] = []
+    halved = 0
+    with open(src, "r", encoding="utf-8") as handle:
+        for line in handle:
+            stripped = line.rstrip("\n")
+            if re.match(r"^\[", stripped):
+                in_timeseries = stripped.strip() == "[TIMESERIES]"
+                out_lines.append(stripped + "\n")
+                continue
+            if in_timeseries and stripped and not stripped.startswith(";;"):
+                parts = stripped.split()
+                try:
+                    value = float(parts[-1]) / 2
+                    last_token = stripped.rsplit(None, 1)[-1]
+                    prefix = stripped[: stripped.rfind(last_token)]
+                    stripped = prefix + f"{value:.3f}"
+                    halved += 1
+                except ValueError:
+                    pass  # la última columna no es un número: la línea queda igual
             out_lines.append(stripped + "\n")
-            continue
 
-        # Inside TIMESERIES: halve the value on data lines
-        if in_timeseries and stripped and not stripped.startswith(";;"):
-            parts = stripped.split()
-            try:
-                parts[-1] = f"{float(parts[-1]) / 2:.3f}"
-                # Rebuild preserving original whitespace layout:
-                # Name(col0) + optional Date + Time + Value
-                # Simplest: rejoin with original spacing by replacing last token
-                last_token = stripped.rsplit(None, 1)[-1]
-                prefix = stripped[: stripped.rfind(last_token)]
-                stripped = prefix + parts[-1]
-            except ValueError:
-                pass  # leave line unchanged if last token is not a number
+    with open(dst, "w", encoding="utf-8") as handle:
+        handle.writelines(out_lines)
+    return halved
 
-        out_lines.append(stripped + "\n")
 
-with open(DST, "w", encoding="utf-8") as f:
-    f.writelines(out_lines)
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--src", required=True, type=Path)
+    parser.add_argument("--dst", required=True, type=Path)
+    parser.add_argument("--force", action="store_true")
+    args = parser.parse_args(argv)
+    count = halve_timeseries(args.src, args.dst, force=args.force)
+    print(f"Listo: {count} valores divididos. Escrito en: {args.dst}")
+    return 0
 
-print(f"Done. Written to: {DST}")
+
+if __name__ == "__main__":
+    raise SystemExit(main())
