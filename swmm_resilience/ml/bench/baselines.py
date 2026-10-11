@@ -12,8 +12,12 @@ consulta que interpola entre factores vecinos ya rinde muy bien.
   cercano). Aplica a los protocolos agrupados por ``factor_mult``.
 - ``baseline_forma_mas_cercana``: para una fila (forma retenida, nodo,
   factor), toma el volumen del mismo nodo y factor en la forma de
-  entrenamiento más cercana en (``duracion_horas``, ``tiempo_al_pico_h``)
-  estandarizados. Aplica a los protocolos agrupados por ``shape_id``.
+  entrenamiento más cercana en los descriptores de forma estandarizados.
+  Aplica a los protocolos agrupados por ``shape_id``. Los descriptores salen
+  de ``shape_descriptors`` (tabla indexada por ``shape_id``) o, si no se
+  pasa, de ``duracion_horas`` y ``tiempo_al_pico_h`` en ``prepared.X``
+  (contrato tabular_v3_17); contratos sin esas columnas, como tabular_v4_21,
+  exigen ``shape_descriptors`` y, sin ella, la referencia no aplica.
 
 La etiqueta predicha es ``volumen_predicho >= flood_threshold_m3`` y la
 "probabilidad" es esa misma etiqueta (0/1): el AUC-ROC de una referencia sin
@@ -96,14 +100,27 @@ def _interpolacion_factor_fold(
     return matrix[rows, low] * (1.0 - weight) + matrix[rows, high] * weight
 
 
-def _forma_mas_cercana_fold(
-    prepared: PreparedDataset, train_idx: np.ndarray, test_idx: np.ndarray
-) -> np.ndarray:
+def _resolve_shape_descriptors(
+    prepared: PreparedDataset, shape_descriptors: pd.DataFrame | None
+) -> pd.DataFrame:
+    """Tabla (forma -> descriptores numéricos) para la referencia de forma más cercana."""
     shapes = _shape_ids(prepared)
-    nodes = _node_ids(prepared)
-    factors = _factors(prepared)
-    volumes = prepared.y_reg.to_numpy(dtype=float)
-
+    if shape_descriptors is not None:
+        table = shape_descriptors.copy()
+        table.index = table.index.astype(str)
+        missing = sorted(set(shapes) - set(table.index))
+        if missing:
+            raise ValueError(
+                "shape_descriptors no cubre todas las formas del dataset; faltan: "
+                f"{missing}"
+            )
+        return table.astype(float)
+    if not all(column in prepared.X.columns for column in _SHAPE_DESCRIPTORS):
+        raise BaselineNotApplicable(
+            f"{FORMA_MAS_CERCANA} no aplica: el contrato de features de este "
+            f"PreparedDataset no incluye los descriptores de forma {_SHAPE_DESCRIPTORS} "
+            "y no se pasó shape_descriptors."
+        )
     descriptors = pd.DataFrame(
         {"shape": shapes, **{c: prepared.X[c].to_numpy(dtype=float) for c in _SHAPE_DESCRIPTORS}}
     )
@@ -112,7 +129,19 @@ def _forma_mas_cercana_fold(
         raise ValueError(
             "baseline_forma_mas_cercana: las features de forma no son constantes dentro de una forma."
         )
-    table = grouped.first()
+    return grouped.first()
+
+
+def _forma_mas_cercana_fold(
+    prepared: PreparedDataset,
+    train_idx: np.ndarray,
+    test_idx: np.ndarray,
+    table: pd.DataFrame,
+) -> np.ndarray:
+    shapes = _shape_ids(prepared)
+    nodes = _node_ids(prepared)
+    factors = _factors(prepared)
+    volumes = prepared.y_reg.to_numpy(dtype=float)
 
     train_shapes = sorted(set(shapes[train_idx]))
     test_shapes = sorted(set(shapes[test_idx]))
@@ -147,9 +176,16 @@ def _forma_mas_cercana_fold(
 
 
 def baseline_oof(
-    prepared: PreparedDataset, name: str, flood_threshold_m3: float
+    prepared: PreparedDataset,
+    name: str,
+    flood_threshold_m3: float,
+    shape_descriptors: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Frame OOF de la referencia ``name`` para los protocolos donde aplica."""
+    """Frame OOF de la referencia ``name`` para los protocolos donde aplica.
+
+    ``shape_descriptors`` (índice = shape_id) solo lo usa la referencia de forma
+    más cercana; ver el docstring del módulo.
+    """
     if name not in BASELINES:
         raise ValueError(f"Referencia desconocida: {name!r}. Opciones: {BASELINES}")
     protocols = _applicable_protocols(prepared, name)
@@ -158,9 +194,13 @@ def baseline_oof(
         raise BaselineNotApplicable(
             f"{name} no aplica a ningún protocolo de este PreparedDataset ({available})."
         )
-    predict_fold = (
-        _interpolacion_factor_fold if name == INTERPOLACION_FACTOR else _forma_mas_cercana_fold
-    )
+    if name == INTERPOLACION_FACTOR:
+        predict_fold = _interpolacion_factor_fold
+    else:
+        table = _resolve_shape_descriptors(prepared, shape_descriptors)
+
+        def predict_fold(prepared, train_idx, test_idx):
+            return _forma_mas_cercana_fold(prepared, train_idx, test_idx, table)
 
     records = []
     for (protocol, fold_id), chunk in prepared.folds.groupby(["protocol", "fold_id"]):
@@ -187,10 +227,13 @@ def baseline_oof(
 
 
 def evaluate_baseline(
-    prepared: PreparedDataset, name: str, flood_threshold_m3: float
+    prepared: PreparedDataset,
+    name: str,
+    flood_threshold_m3: float,
+    shape_descriptors: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, dict]:
     """Produce el OOF de la referencia y lo puntúa como a cualquier candidato."""
-    oof = baseline_oof(prepared, name, flood_threshold_m3)
+    oof = baseline_oof(prepared, name, flood_threshold_m3, shape_descriptors)
     protocols = tuple(sorted(oof["protocol"].unique()))
     metrics = score_predictions(
         prepared, oof, {"prep_id": prepared.prep_id}, protocols=protocols

@@ -1,3 +1,5 @@
+import dataclasses
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -139,3 +141,95 @@ def test_every_protocol_has_an_interpretation():
     for protocol in ("LOSO", "GroupKFold5", "LeaveOneShapeOut"):
         assert PROTOCOL_INTERPRETATION[protocol]
     assert set(BASELINES) == {INTERPOLACION_FACTOR, FORMA_MAS_CERCANA}
+
+
+_SHAPE_COLUMNS = ["duracion_horas", "tiempo_al_pico_h"]
+
+
+def _without_shape_columns(prepared):
+    X = prepared.X.drop(columns=_SHAPE_COLUMNS)
+    return dataclasses.replace(
+        prepared, X=X, manifest={**prepared.manifest, "feature_columns": list(X.columns)}
+    )
+
+
+def _three_tied_shapes():
+    rows = (
+        _linear_rows("A", factors=(1.0, 2.0), scale=5.0)
+        + _linear_rows("B", factors=(1.0, 2.0), scale=7.0)
+        + _linear_rows("C", factors=(1.0, 2.0), scale=100.0)
+    )
+    return make_prepared(rows, ["LeaveOneShapeOut"])
+
+
+def _borrowed(prepared, oof):
+    keys = prepared.keys.loc[oof["sample_idx"]]
+    table = oof.assign(
+        shape=keys["shape_id"].to_numpy(),
+        node=keys["node_id"].to_numpy(),
+        factor=keys["factor_mult"].to_numpy(),
+    )
+    return table.set_index(["shape", "node", "factor"])["y_pred_reg"]
+
+
+def test_explicit_shape_descriptors_override_the_features_in_x():
+    prepared = _three_tied_shapes()   # X: las tres formas con descriptores idénticos
+    descriptors = pd.DataFrame(
+        {"d1": [0.0, 10.0, 11.0], "d2": [0.0, 0.0, 0.0]}, index=["A", "B", "C"]
+    )
+    # A: la más cercana es B; B: la más cercana es C; C: la más cercana es B
+    oof = baseline_oof(prepared, FORMA_MAS_CERCANA, 1.0, shape_descriptors=descriptors)
+    table = _borrowed(prepared, oof)
+
+    assert table[("A", "N0", 2.0)] == pytest.approx(10.0 * 2.0 * 7.0)     # volumen de B
+    assert table[("B", "N0", 2.0)] == pytest.approx(10.0 * 2.0 * 100.0)   # volumen de C
+    assert table[("C", "N0", 2.0)] == pytest.approx(10.0 * 2.0 * 7.0)     # volumen de B
+
+
+def test_explicit_descriptors_can_make_the_closest_shape_differ_from_the_tie_break():
+    prepared = _three_tied_shapes()
+    # Con X idéntico el desempate daría siempre la primera forma de entrenamiento.
+    descriptors = pd.DataFrame(
+        {"d1": [0.0, 50.0, 1.0]}, index=["A", "B", "C"]
+    )
+    table = _borrowed(prepared, baseline_oof(
+        prepared, FORMA_MAS_CERCANA, 1.0, shape_descriptors=descriptors))
+
+    assert table[("C", "N0", 2.0)] == pytest.approx(10.0 * 2.0 * 5.0)     # C -> A
+    assert table[("A", "N0", 2.0)] == pytest.approx(10.0 * 2.0 * 100.0)   # A -> C
+    assert table[("B", "N0", 2.0)] == pytest.approx(10.0 * 2.0 * 100.0)   # B -> C
+
+
+def test_nearest_shape_without_shape_columns_in_x_is_not_applicable():
+    prepared = _without_shape_columns(_three_tied_shapes())
+
+    with pytest.raises(BaselineNotApplicable, match="shape_descriptors"):
+        baseline_oof(prepared, FORMA_MAS_CERCANA, 1.0)
+
+
+def test_nearest_shape_without_shape_columns_in_x_works_with_explicit_descriptors():
+    prepared = _without_shape_columns(_three_tied_shapes())
+    descriptors = pd.DataFrame({"d1": [0.0, 50.0, 1.0]}, index=["A", "B", "C"])
+
+    oof, metrics = evaluate_baseline(
+        prepared, FORMA_MAS_CERCANA, 1.0, shape_descriptors=descriptors
+    )
+
+    assert set(oof["protocol"]) == {"LeaveOneShapeOut"}
+    assert set(metrics["LeaveOneShapeOut"]["by_shape"]) == {"A", "B", "C"}
+
+
+def test_descriptor_table_missing_a_shape_is_rejected():
+    prepared = _three_tied_shapes()
+    descriptors = pd.DataFrame({"d1": [0.0, 1.0]}, index=["A", "B"])
+
+    with pytest.raises(ValueError, match="C"):
+        baseline_oof(prepared, FORMA_MAS_CERCANA, 1.0, shape_descriptors=descriptors)
+
+
+def test_interpolation_does_not_need_shape_columns_in_x():
+    prepared = _without_shape_columns(make_prepared(_linear_rows(), ["LOSO"]))
+
+    predicted = _predictions(prepared, baseline_oof(prepared, INTERPOLACION_FACTOR, 1.0))
+
+    assert predicted[("N0", 3.0)] == pytest.approx(30.0)
