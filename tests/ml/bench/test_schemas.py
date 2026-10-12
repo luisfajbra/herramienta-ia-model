@@ -482,3 +482,12 @@ def test_non_contiguous_index_is_rejected():
             manifest=prepared.manifest,
             quality=prepared.quality,
         )
+
+
+def test_groupkfold5_interpretation_describes_interleaved_factor_groups():
+    from swmm_resilience.ml.bench.schemas import PROTOCOL_INTERPRETATION
+
+    text = PROTOCOL_INTERPRETATION["GroupKFold5"]
+    assert "intercalados" in text
+    assert "ningún pliegue retiene dos factores contiguos" in text
+    assert "bloques" not in text

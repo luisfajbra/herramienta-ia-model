@@ -186,4 +186,8 @@ def test_persist_stage_writes_the_oof_parquet_and_the_metrics_json(tmp_path):
     assert paths["oof"] == tmp_path / "oof" / prepared.prep_id / "xgboost.parquet"
     assert paths["metrics"] == tmp_path / "runs" / "metrics_xgboost.json"
     assert len(pd.read_parquet(paths["oof"])) == len(oof)
-    assert json.loads(paths["metrics"].read_text(encoding="utf-8")) == {"LeaveOneShapeOut": {"rmse": None}}
+    assert json.loads(paths["metrics"].read_text(encoding="utf-8")) == {
+        "metrics_definition": "classifier_pooled_v2",
+        "prep_id": prepared.prep_id,
+        "LeaveOneShapeOut": {"rmse": None},
+    }

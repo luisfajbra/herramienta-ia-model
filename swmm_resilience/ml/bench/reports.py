@@ -40,17 +40,36 @@ def _json_safe(obj):
     return obj
 
 
+METRICS_DEFINITION = "classifier_pooled_v2"
+
+
 def write_metrics_files(
-    metrics_by_name: dict[str, dict], output_dir: Path | str, prefix: str = "metrics_"
+    metrics_by_name: dict[str, dict],
+    output_dir: Path | str,
+    prefix: str = "metrics_",
+    prep_id: str | None = None,
 ) -> dict[str, Path]:
-    """Escribe un JSON estricto por nombre (familia o referencia)."""
+    """Escribe un JSON estricto por nombre (familia o referencia).
+
+    Cada archivo lleva dos claves de marca al nivel superior, antes de los
+    bloques por protocolo: ``metrics_definition`` (la definición vigente del
+    clasificador: agregado del pool + dispersión por fold) y, si se conoce,
+    ``prep_id``. Así, un ``metrics_*.json`` viejo que sobrevive a una corrida
+    parcial (``--models``) se distingue de uno nuevo. Las marcas solo existen
+    en disco: ``rank_candidates`` consume las métricas en memoria y ningún
+    lector de estos archivos itera sus claves de primer nivel.
+    """
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
     written: dict[str, Path] = {}
     for name, metrics in metrics_by_name.items():
         path = directory / f"{prefix}{name}.json"
+        marker: dict = {"metrics_definition": METRICS_DEFINITION}
+        if prep_id is not None:
+            marker["prep_id"] = prep_id
+        payload = {**marker, **metrics}
         path.write_text(
-            json.dumps(_json_safe(metrics), indent=2, ensure_ascii=False, allow_nan=False),
+            json.dumps(_json_safe(payload), indent=2, ensure_ascii=False, allow_nan=False),
             encoding="utf-8",
         )
         written[f"{prefix}{name}"] = path
@@ -71,6 +90,7 @@ def write_provenance(
     prepared: PreparedDataset,
     families: dict[str, dict],
     baselines: list[str],
+    baselines_failed: list[str] | None = None,
 ) -> Path:
     """``provenance.json``: qué dataset, qué hiperparámetros y qué mide cada protocolo."""
     directory = Path(output_dir)
@@ -81,6 +101,7 @@ def write_provenance(
         "protocol_interpretation": dict(PROTOCOL_INTERPRETATION),
         "families": families,
         "baselines": list(baselines),
+        "baselines_failed": list(baselines_failed or []),
     }
     path = directory / "provenance.json"
     path.write_text(
@@ -94,6 +115,7 @@ def write_reports(
     metrics_by_family: dict[str, dict],
     ranking: pd.DataFrame,
     output_dir: Path | str,
+    prep_id: str | None = None,
 ) -> dict[str, Path]:
     """Escribe un JSON por familia más el ranking en JSON y CSV.
 
@@ -103,7 +125,9 @@ def write_reports(
     directory = Path(output_dir)
     directory.mkdir(parents=True, exist_ok=True)
 
-    written: dict[str, Path] = write_metrics_files(metrics_by_family, directory)
+    written: dict[str, Path] = write_metrics_files(
+        metrics_by_family, directory, prep_id=prep_id
+    )
 
     ranking_json = directory / "ranking.json"
     ranking_json.write_text(

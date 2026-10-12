@@ -106,7 +106,9 @@ def persist_stage(
     from swmm_resilience.ml.bench.reports import write_metrics_files, write_oof
 
     oof_path = write_oof(oof, oof_root, prep_id, name)
-    metrics_path = write_metrics_files({name: metrics}, runs_dir)[f"metrics_{name}"]
+    metrics_path = write_metrics_files({name: metrics}, runs_dir, prep_id=prep_id)[
+        f"metrics_{name}"
+    ]
     return {"oof": oof_path, "metrics": metrics_path}
 
 

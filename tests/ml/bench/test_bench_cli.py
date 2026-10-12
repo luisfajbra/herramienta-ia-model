@@ -567,3 +567,117 @@ def test_bench_tune_writes_a_study_and_touches_neither_models_nor_ranking(
 
     assert not (tmp_path / "outputs" / "models").exists()
     assert not (tmp_path / "outputs" / "bench" / "reports" / "ranking.csv").exists()
+
+
+# ── baselines fallidas / umbral del manifiesto ───────────────────────────
+
+
+def test_a_failing_baseline_does_not_lose_the_ranking_or_the_family_metrics(
+    sql_training_db, tmp_path, monkeypatch, capsys
+):
+    import main
+    from swmm_resilience.ml.bench import baselines
+
+    def broken_baseline(prepared, name, threshold, *args, **kwargs):
+        raise ValueError("la referencia se rompio")
+
+    monkeypatch.setattr(baselines, "evaluate_baseline", broken_baseline)
+    inp_path = tmp_path / "network.inp"
+    inp_path.write_text("[TITLE]\nred\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(
+        inp_path=inp_path, db_path=sql_training_db,
+        families=["xgboost"], promote="none",
+    )
+
+    main._run_bench(_make_args(bench=True, models="xgboost"), config)  # must not raise
+
+    reports = tmp_path / "outputs" / "bench" / "reports"
+    assert (reports / "ranking.csv").exists()
+    assert (reports / "ranking.json").exists()
+    assert (reports / "metrics_xgboost.json").exists()
+    assert "falló" in capsys.readouterr().out
+    provenance = json.loads((reports / "provenance.json").read_text(encoding="utf-8"))
+    assert provenance["baselines"] == []
+    assert "baseline_interpolacion_factor" in provenance["baselines_failed"]
+
+
+def test_metrics_files_written_by_the_bench_are_stamped_with_the_prep_id(
+    sql_training_db, tmp_path, monkeypatch
+):
+    import main
+
+    inp_path = tmp_path / "network.inp"
+    inp_path.write_text("[TITLE]\nred\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(
+        inp_path=inp_path, db_path=sql_training_db,
+        families=["xgboost"], promote="none",
+    )
+
+    main._run_bench(_make_args(bench=True, models="xgboost"), config)
+
+    reports = tmp_path / "outputs" / "bench" / "reports"
+    prep_id = next((tmp_path / "outputs" / "bench" / "prepared").iterdir()).name
+    for name in ("metrics_xgboost.json", "metrics_baseline_interpolacion_factor.json"):
+        written = json.loads((reports / name).read_text(encoding="utf-8"))
+        assert written["metrics_definition"] == "classifier_pooled_v2"
+        assert written["prep_id"] == prep_id
+
+
+def test_baselines_use_the_manifest_threshold_and_warn_when_config_differs(
+    sql_training_db, tmp_path, monkeypatch, capsys
+):
+    import main
+    from swmm_resilience.ml.bench import baselines
+
+    inp_path = tmp_path / "network.inp"
+    inp_path.write_text("[TITLE]\nred\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(
+        inp_path=inp_path, db_path=sql_training_db,
+        families=["xgboost"], promote="none",
+    )
+    main._run_bench(_make_args(bench_prepare=True), config)  # manifiesto con 1.0
+
+    config.dataset.flood_threshold_m3 = 5.0
+    seen = []
+    real = baselines.evaluate_baseline
+
+    def spy(prepared, name, threshold, *args, **kwargs):
+        seen.append(threshold)
+        return real(prepared, name, threshold, *args, **kwargs)
+
+    monkeypatch.setattr(baselines, "evaluate_baseline", spy)
+    main._run_bench(_make_args(bench_evaluate=True, models="xgboost"), config)
+
+    assert seen and set(seen) == {1.0}
+    assert "umbral" in capsys.readouterr().out
+
+
+def test_baselines_fail_clearly_when_the_manifest_has_no_threshold(
+    sql_training_db, tmp_path, monkeypatch
+):
+    import main
+    from swmm_resilience.ml.bench import preprocess
+
+    inp_path = tmp_path / "network.inp"
+    inp_path.write_text("[TITLE]\nred\n", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(
+        inp_path=inp_path, db_path=sql_training_db,
+        families=["xgboost"], promote="none",
+    )
+    main._run_bench(_make_args(bench_prepare=True), config)
+
+    real = preprocess.resolve_prepared
+
+    def without_threshold(*args, **kwargs):
+        prepared = real(*args, **kwargs)
+        prepared.manifest.pop("flood_threshold_m3", None)
+        return prepared
+
+    monkeypatch.setattr(preprocess, "resolve_prepared", without_threshold)
+
+    with pytest.raises(SystemExit, match="flood_threshold_m3"):
+        main._run_bench(_make_args(bench_evaluate=True, models="xgboost"), config)

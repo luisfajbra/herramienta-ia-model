@@ -213,6 +213,21 @@ def _run_bench(args, config) -> None:
 
     ranking = None
     if run_all or args.bench_evaluate:
+        manifest_threshold = prepared.manifest.get("flood_threshold_m3")
+        if manifest_threshold is None:
+            raise SystemExit(
+                "El manifiesto del PreparedDataset no tiene flood_threshold_m3; "
+                "las referencias no pueden etiquetar inundacion. "
+                "Corre `python main.py --bench-prepare` para regenerarlo."
+            )
+        baseline_threshold = float(manifest_threshold)
+        if baseline_threshold != float(config.dataset.flood_threshold_m3):
+            print(
+                f"AVISO: el umbral de inundacion del config ({config.dataset.flood_threshold_m3}) "
+                f"difiere del del PreparedDataset ({baseline_threshold}); las referencias "
+                "usan el del PreparedDataset para etiquetar igual que `inunda`."
+            )
+
         metrics_by_family = {}
         for family in families:
             spec = config.bench.families[family]
@@ -221,19 +236,6 @@ def _run_bench(args, config) -> None:
             write_oof(oof, oof_dir, prepared.prep_id, family)
             print(f"  {family} evaluado")
 
-        baseline_metrics = {}
-        for baseline in BASELINES:
-            try:
-                baseline_oof_frame, metrics = evaluate_baseline(
-                    prepared, baseline, config.dataset.flood_threshold_m3
-                )
-            except BaselineNotApplicable as exc:
-                print(f"  {baseline}: omitida ({exc})")
-                continue
-            baseline_metrics[baseline] = metrics
-            write_oof(baseline_oof_frame, oof_dir, prepared.prep_id, baseline)
-            print(f"  {baseline} evaluada")
-
         criterion = RankingCriterion(
             primary_metric=config.bench.ranking.primary_metric,
             primary_direction=config.bench.ranking.primary_direction,
@@ -241,8 +243,29 @@ def _run_bench(args, config) -> None:
         )
         ranking_protocol = config.bench.protocols[0]
         ranking = rank_candidates(metrics_by_family, criterion, ranking_protocol)
-        write_reports(metrics_by_family, ranking, reports_dir)
-        write_metrics_files(baseline_metrics, reports_dir)
+        write_reports(metrics_by_family, ranking, reports_dir, prep_id=prepared.prep_id)
+
+        # Las referencias van DESPUES de escribir ranking y metricas de las
+        # familias: si una falla, las horas de computo de las familias no se
+        # pierden.
+        baseline_metrics = {}
+        baselines_failed = []
+        for baseline in BASELINES:
+            try:
+                baseline_oof_frame, metrics = evaluate_baseline(
+                    prepared, baseline, baseline_threshold
+                )
+            except BaselineNotApplicable as exc:
+                print(f"  {baseline}: omitida ({exc})")
+                continue
+            except ValueError as exc:
+                print(f"  {baseline} falló: {exc}")
+                baselines_failed.append(baseline)
+                continue
+            baseline_metrics[baseline] = metrics
+            write_oof(baseline_oof_frame, oof_dir, prepared.prep_id, baseline)
+            print(f"  {baseline} evaluada")
+        write_metrics_files(baseline_metrics, reports_dir, prep_id=prepared.prep_id)
         write_provenance(
             reports_dir,
             prepared,
@@ -254,6 +277,7 @@ def _run_bench(args, config) -> None:
                 for family in families
             },
             sorted(baseline_metrics),
+            sorted(baselines_failed),
         )
         print(f"Ranking calculado sobre el protocolo: {ranking_protocol}")
         print(ranking.to_string(index=False))

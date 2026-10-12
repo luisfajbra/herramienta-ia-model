@@ -65,8 +65,9 @@ PROTOCOL_INTERPRETATION = {
         "todas las formas de hidrograma siguen presentes en el entrenamiento."
     ),
     "GroupKFold5": (
-        "Interpolación entre factores en 5 bloques retenidos; todas las formas de "
-        "hidrograma siguen presentes en el entrenamiento."
+        "Interpolación entre factores en 5 grupos de factores intercalados; ningún "
+        "pliegue retiene dos factores contiguos; todas las formas siguen presentes "
+        "en el entrenamiento."
     ),
     "LeaveOneShapeOut": (
         "Generalización a formas de hidrograma no vistas: se retiene una forma completa."

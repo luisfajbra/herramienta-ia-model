@@ -1,11 +1,13 @@
 """Las tres capas de métricas del banco.
 
-Replican literalmente las de ml/evaluator.py, incluida su asimetría de
-agregación: las métricas del clasificador y las de end-to-end se PROMEDIAN
-entre folds, mientras que las del regresor-oracle se calculan sobre el POOL
-concatenado de todos los folds. Esa diferencia cambia los números y hoy es
-invisible en el código original; aquí queda documentada y es lo que el test
-de paridad comprueba.
+Parten de las de ml/evaluator.py, pero el clasificador ya no se promedia por
+fold. La cifra principal (``classifier``) se calcula sobre el POOL
+concatenado de todos los folds, igual que el regresor-oracle y end-to-end;
+la dispersión por fold (``classifier_per_fold``) deja NaN donde precisión,
+recall o F1 no están definidos, y la media por fold con ``zero_division=0``
+del código original se conserva aparte (``classifier_legacy_mean_zero_fill``)
+solo para la paridad con ``ml/evaluator.py`` (hallazgo M-03 de la auditoría:
+esa media cuenta como 0 los folds sin inundaciones reales y rebaja el F1).
 """
 
 from __future__ import annotations

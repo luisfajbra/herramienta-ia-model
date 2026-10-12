@@ -205,3 +205,42 @@ def test_write_provenance_records_prep_id_params_baselines_and_protocol_meaning(
     assert record["baselines"] == ["baseline_interpolacion_factor"]
     assert "generated_at_utc" in record
     assert "LOSO" in record["protocol_interpretation"]
+
+
+def test_metrics_files_carry_the_definition_marker_and_the_prep_id(tmp_path):
+    metrics = {"xgboost": {"LOSO": {"classifier": {"f1": 0.9}}}}
+
+    write_metrics_files(metrics, tmp_path, prep_id="abc123")
+
+    written = json.loads((tmp_path / "metrics_xgboost.json").read_text(encoding="utf-8"))
+    assert written["metrics_definition"] == "classifier_pooled_v2"
+    assert written["prep_id"] == "abc123"
+    assert written["LOSO"]["classifier"]["f1"] == 0.9
+
+
+def test_metrics_files_omit_the_prep_id_when_unknown_but_keep_the_marker(tmp_path):
+    write_metrics_files({"x": {"LOSO": {}}}, tmp_path)
+
+    written = json.loads((tmp_path / "metrics_x.json").read_text(encoding="utf-8"))
+    assert written["metrics_definition"] == "classifier_pooled_v2"
+    assert "prep_id" not in written
+
+
+def test_write_reports_passes_the_prep_id_to_the_metrics_files(tmp_path):
+    metrics = {"xgboost": _metrics(3.0)}
+    ranking = rank_candidates(metrics, CRITERION, protocol="LOSO")
+
+    write_reports(metrics, ranking, tmp_path, prep_id="abc123")
+
+    written = json.loads((tmp_path / "metrics_xgboost.json").read_text(encoding="utf-8"))
+    assert written["prep_id"] == "abc123"
+
+
+def test_the_marker_does_not_leak_into_the_in_memory_metrics_or_the_ranking(tmp_path):
+    metrics = {"xgboost": _metrics(3.0)}
+    ranking = rank_candidates(metrics, CRITERION, protocol="LOSO")
+
+    write_reports(metrics, ranking, tmp_path, prep_id="abc123")
+
+    assert "metrics_definition" not in metrics["xgboost"]
+    assert list(ranking["family"]) == ["xgboost"]

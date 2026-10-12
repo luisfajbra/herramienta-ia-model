@@ -72,6 +72,6 @@ def test_print_in_sample_banner_emits_the_banner(capsys):
 
 
 def test_the_evaluate_shapes_branch_prints_the_in_sample_banner():
-    source = Path("main.py").read_text(encoding="utf-8")
+    source = (Path(__file__).resolve().parents[2] / "main.py").read_text(encoding="utf-8")
     branch = source.split("if args.evaluate_shapes:", 1)[1].split("load_all_shapes", 1)[0]
     assert "print_in_sample_banner()" in branch
