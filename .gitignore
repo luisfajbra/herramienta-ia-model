@@ -65,6 +65,7 @@ ml_outputs/
 !outputs/models/classifier.joblib
 !outputs/models/regressor.joblib
 !outputs/models/training_inp_hash.txt
+!outputs/models/promotion.json
 *.csv
 !data/hydrographs/*.csv
 !data/hydrograph_shapes/*.csv
