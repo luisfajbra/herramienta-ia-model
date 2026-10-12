@@ -272,7 +272,7 @@ El anexo 04 traza **117 ítems** de las auditorías previas y de los documentos 
 2. Las condiciones iniciales de los conductos (`InitFlow`) son las del `.inp` base y no cambian con el factor ni la forma (H-01).
 3. La inundación es el volumen que reporta SWMM por nodo, con **resolución de 1 m³**; la etiqueta es `volumen ≥ 1 m³` (H-06, D-04).
 
-   > **Nota de corrección (2026-10-11, spike D-04):** en la muestra re-simulada (una red, 13 escenarios con desborde), "volumen reportado ≥ 1 m³" es consistente con un umbral efectivo de ≈ 0,5 m³ sobre el volumen continuo, acotado a (0,4988; 0,5002] m³. Los desbordes menores cuentan como "no inunda".
+   > **Nota de corrección (2026-10-11, spike D-04):** en la muestra re-simulada (una red, 17 escenarios simulados, 15 con desborde; la cota del umbral se calculó en los 15 con registro por nodo, 13 con desborde), "volumen reportado ≥ 1 m³" es consistente con un umbral efectivo de ≈ 0,5 m³ sobre el volumen continuo, acotado a (0,4988; 0,5002] m³. Los desbordes menores cuentan como "no inunda".
 
 4. El tramo final del hidrograma se extiende con un punto de caudal cero 6 h después del último dato, lo que puede crear una rampa (H-05).
 5. Las formas se normalizan por pico; el modelo no recibe el volumen del evento (H-02).

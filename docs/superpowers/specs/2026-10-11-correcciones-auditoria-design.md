@@ -45,10 +45,10 @@ Para cada protocolo:
 `score_predictions` añade `by_shape` por protocolo: para cada `shape_id` en el test, `n_rows`, `n_positives`, `f1`, `rmse_vol`, `vol_real_m3`, `vol_pred_m3` y `error_vol_pct`. Solo tiene sentido en `LeaveOneShapeOut` (una forma por fold), pero se calcula para cualquier protocolo.
 
 ### 2.5 Persistencia de predicciones fuera de fold (M-08/T-19)
-`_run_bench` conserva el primer elemento que devuelve `evaluate_candidate` y lo escribe en `outputs/bench/oof/<prep_id>/<familia>.parquet`. Los JSON de métricas incorporan un bloque `provenance` con `prep_id`, `family`, los hiperparámetros usados y la fecha UTC. Las referencias de 2.2 se persisten igual bajo la familia `baseline_*`.
+`_run_bench` conserva el primer elemento que devuelve `evaluate_candidate` y lo escribe en `outputs/bench/oof/<prep_id>/<familia>.parquet`. La procedencia (`prep_id`, hiperparámetros por familia, fecha UTC, referencias evaluadas y fallidas) se escribe en un `provenance.json` aparte en `outputs/bench/reports/`, no dentro de cada JSON de métricas; cada `metrics_*.json` lleva solo dos claves de marca al nivel superior: `metrics_definition` (`classifier_pooled_v2`) y `prep_id`, para distinguir archivos de corridas parciales con definiciones distintas. Las referencias de 2.2 se persisten igual bajo la familia `baseline_*`.
 
 ### 2.6 Figuras y salidas en muestra (V-01)
-Los títulos y leyendas de `resilience_curve`, `flood_volume_curve` y la comparación por factor añaden "(en muestra)" y una nota al pie: "El modelo fue entrenado con estos escenarios; no es validación". `--evaluate-shapes` imprime un aviso en la cabecera de su salida. Las versiones fuera de muestra derivables de las predicciones del paso 2.5 quedan como mejora opcional, fuera de esta fase.
+Las figuras de `resilience_curve`, `flood_volume_curve` y la comparación por factor añaden una nota al pie (los títulos y leyendas no cambian, a propósito, porque otras pruebas los verifican): "El modelo fue entrenado con estos escenarios; no es validación". `--evaluate-shapes` imprime un aviso en la cabecera de su salida. Las versiones fuera de muestra derivables de las predicciones del paso 2.5 quedan como mejora opcional, fuera de esta fase.
 
 ### 2.7 `halve_timeseries.py` (V-07)
 Se convierte en una función `halve_timeseries(src, dst, force=False)` con `main()` bajo `if __name__ == "__main__"` y argumentos explícitos `--src` y `--dst`. Se niega a sobrescribir un `dst` existente sin `force`. Importar el módulo no tiene efectos. No se borra el archivo.
@@ -78,7 +78,7 @@ Con esos números el usuario decide entre:
 | `swmm_resilience/ml/bench/metrics.py` | Agregación agregada, dispersión por fold, matriz de confusión |
 | `swmm_resilience/ml/bench/evaluate.py` | `score_predictions` con las métricas nuevas y `by_shape` |
 | `swmm_resilience/ml/bench/schemas.py` | `PROTOCOL_INTERPRETATION` |
-| `swmm_resilience/ml/bench/reports.py` | Bloque `provenance`, descripción del protocolo |
+| `swmm_resilience/ml/bench/reports.py` | `provenance.json` aparte, marcas `metrics_definition`/`prep_id` en cada JSON de métricas, descripción del protocolo |
 | `swmm_resilience/ml/bench/ranking.py` / `config.yaml` | Ruta del desempate `classifier.f1` hacia el valor agregado |
 | `swmm_resilience/ml/bench/promote.py`, `swmm_resilience/ml/predict.py` | `verify_promotion` y su uso |
 | `swmm_resilience/visualization/*.py`, `swmm_resilience/analysis/*.py`, `main.py` | Rótulos en muestra, OOF, aviso en `--evaluate-shapes`, `provenance.json` |

@@ -169,7 +169,7 @@ No cambian ninguna cifra; se registran para no perderlas.
 
 ## 9. Seguimiento: correcciones pendientes en otros documentos
 
-Este commit corrige en `03` el conteo de escenarios (17 simulados, 15 con desborde; 15 con registro por nodo, 13 con desborde) y la cota de cuantización de §7.6 (≤ 0,51 m³, por el nodo `8C`, que difiere en 0,508 m³). Las mismas cifras aparecen en notas fechadas de otros documentos, que esta ronda **no** toca:
+Este commit corrige en `03` el conteo de escenarios (17 simulados, 15 con desborde; 15 con registro por nodo, 13 con desborde) y la cota de cuantización de §7.6 (≤ 0,51 m³, por el nodo `8C`, que difiere en 0,508 m³). Las mismas cifras aparecían en notas fechadas de otros documentos. **Las cuatro primeras filas se aplicaron en la ola final de correcciones** (texto de las notas corregido a "17 escenarios simulados, 15 con desborde" y "≤ 0,51 m³"); las dos últimas siguen sin tocarse a propósito:
 
 | Documento y línea | Texto actual | Corrección sugerida |
 |---|---|---|
@@ -179,6 +179,8 @@ Este commit corrige en `03` el conteo de escenarios (17 simulados, 15 con desbor
 | `../anexos/01-hidraulica-swmm.md`, l. 113 (nota de H-06) | "(≤ 0,5 m³ por debajo de 100 m³)" | "(≤ 0,51 m³)" |
 | `../2026-10-10-auditoria-completa.md`, l. 215 (decisión 4, "banda 1–2 m³") | Sin precisar que es solo el entero 1 | Ya listado como no aplicado en 03 §8.1 |
 | `03-resolucion-de-la-etiqueta.md`, Apéndice, `s09_notas.py` | Contiene el texto original de las notas | Se deja igual: es el registro del script que se ejecutó |
+
+Pendiente tras la ola final: la columna `que_mide` de `datos/comparacion_protocolos.csv` conserva el texto anterior de `PROTOCOL_INTERPRETATION["GroupKFold5"]` ("5 bloques retenidos"), porque el CSV está trazado por hash en `tables_provenance.json` y no se regeneró. La redacción vigente es "Interpolación entre factores en 5 grupos de factores intercalados; ningún pliegue retiene dos factores contiguos; todas las formas siguen presentes en el entrenamiento." Regenerar el CSV y `tables_provenance.json` con `scripts/informe_evaluacion.py` cuando se vuelva a ejecutar la corrida.
 
 ---
 
@@ -211,7 +213,7 @@ Del registro de ejecución (no versionado), las que afectan a la lectura de las 
 >
 > **Agregación de métricas.** Las métricas de clasificación se calculan sobre la matriz de confusión agregada. Promediar por pliegue asignando F1 = 0 a los pliegues sin inundaciones reducía el F1 de LOSO de 0,9667 a 0,7379, y daba 0,80 a un predictor perfecto; la aparente diferencia entre protocolos era un efecto de esa agregación.
 >
-> **Trazabilidad.** Las predicciones fuera de pliegue se guardan por fila con la huella SHA-256 de cada archivo, de modo que todas las tablas pueden reconstruirse sin reentrenar; las figuras evaluadas sobre datos de entrenamiento se rotulan como ajuste en muestra, y la predicción con el modelo promovido se detiene si sus archivos no coinciden con el registro de promoción.
+> **Trazabilidad.** Las predicciones fuera de pliegue se guardan por fila con la huella SHA-256 de cada archivo, de modo que todas las tablas pueden reconstruirse sin reentrenar; las figuras evaluadas sobre datos de entrenamiento se rotulan como ajuste en muestra, y la predicción con el modelo promovido se detiene si existe el registro de promoción (`promotion.json`, versionado junto a los modelos) y sus archivos no coinciden con él; si el registro falta, solo se advierte.
 >
 > **Pendiente.** La etiqueta de inundación usa el volumen del reporte de SWMM, con resolución de 1 m³; en re-simulaciones de control equivale a un umbral de ≈ 0,5 m³ sobre el volumen continuo. Si se mantiene esa definición y se declara como supuesto (opción recomendada) o se re-simulan las 1000 corridas es una decisión aún abierta; la segunda cambiaría todas las cifras anteriores. Tampoco se han evaluado aún el modelo ajustado ni las demás familias con este protocolo.
 

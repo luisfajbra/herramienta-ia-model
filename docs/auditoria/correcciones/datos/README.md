@@ -19,7 +19,7 @@ citado debe salir de aquí y poder rastrearse con `tables_provenance.json`.
   factores) × 160 nodos. El filtro de continuidad (|error| ≤ 5 %) deja fuera
   37 celdas (forma, factor). Una fila está inundada si su volumen es ≥ 1 m³.
 
-  > **Nota de corrección (2026-10-11, spike D-04):** el volumen es el del `.rpt`, con resolución de 1 m³. En la muestra re-simulada (una red, 13 escenarios con desborde), "≥ 1 m³" es consistente con un umbral efectivo de ≈ 0,5 m³ de volumen continuo, acotado a (0,4988; 0,5002] m³. Ver `../03-resolucion-de-la-etiqueta.md`.
+  > **Nota de corrección (2026-10-11, spike D-04):** el volumen es el del `.rpt`, con resolución de 1 m³. En la muestra re-simulada (una red, 17 escenarios simulados, 15 con desborde; la cota del umbral se calculó en los 15 con registro por nodo, 13 con desborde), "≥ 1 m³" es consistente con un umbral efectivo de ≈ 0,5 m³ de volumen continuo, acotado a (0,4988; 0,5002] m³. Ver `../03-resolucion-de-la-etiqueta.md`.
 
 - **Protocolos:**
   - `LOSO` y `GroupKFold5` agrupan por factor de intensidad, así que miden
