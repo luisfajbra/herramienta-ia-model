@@ -18,6 +18,9 @@ citado debe salir de aquí y poder rastrearse con `tables_provenance.json`.
   `ca706e27654e0cf5`. Son 154 080 filas: 963 de los 1000 runs (40 formas × 25
   factores) × 160 nodos. El filtro de continuidad (|error| ≤ 5 %) deja fuera
   37 celdas (forma, factor). Una fila está inundada si su volumen es ≥ 1 m³.
+
+  > **Nota de corrección (2026-10-11, spike D-04):** el volumen es el del `.rpt`, con resolución de 1 m³. En la muestra re-simulada (una red, 13 escenarios con desborde), "≥ 1 m³" es consistente con un umbral efectivo de ≈ 0,5 m³ de volumen continuo, acotado a (0,4988; 0,5002] m³. Ver `../03-resolucion-de-la-etiqueta.md`.
+
 - **Protocolos:**
   - `LOSO` y `GroupKFold5` agrupan por factor de intensidad, así que miden
     **interpolación entre factores**: todas las formas siguen en el

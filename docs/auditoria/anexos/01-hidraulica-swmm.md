@@ -110,6 +110,8 @@
   - El nodo `2I` en `base` f = 3: "Hours Flooded 0.01, Max Rate 11.67 LPS, Volume 0.000", es decir, desborda pero queda etiquetado como 0.
 - **Recomendación:** tomar el volumen continuo (`flooding_volume` de PySWMM o la integración del `.out`), documentar el umbral como volumen continuo y hacer un análisis de sensibilidad del umbral (0, 0.5, 1, 5 m³) en las métricas. El regresor en log1p es especialmente sensible en el rango de 1–5 m³.
 
+  > **Nota de corrección (2026-10-11, spike D-04):** queda descartada la "integración del `.out`" con el `REPORT_STEP` actual de 3 min. Se aleja del volumen continuo hasta 9,5 m³ por nodo, más que la cuantización del `.rpt` (≤ 0,5 m³ por debajo de 100 m³). Si se quiere el volumen continuo, la fuente es `flooding_volume` de pyswmm. Ver `../correcciones/03-resolucion-de-la-etiqueta.md`.
+
 #### H-07 🟡 — Parser de texto de respaldo lee la columna equivocada
 
 - **Dónde:** `labels.py:75-86`. La línea 79 toma `float(parts[-1])` como volumen. En SWMM 5.2 la tabla tiene siempre la columna final **"Maximum Ponded Depth (Meters)"**, también con `ALLOW_PONDING NO` (ver el encabezado en `d04`). La docstring supone que esa columna solo aparece con ponding.

@@ -138,6 +138,8 @@ Se aceptan con la evidencia del anexo, pero no se reprodujeron por separado: H-0
 | T-05 | 🟠 | Si falta `FLOW_UNITS` en el `.inp`, la guarda pasa en silencio (SWMM asume CFS) | Error de unidades de 28,3× | 04 |
 | T-06 | 🟠 | La inferencia no valida el contrato de features que sí usa el entrenamiento | Un NaN obligatorio se imputaría sin aviso | 04 |
 
+> **Nota de corrección (2026-10-11, spike D-04):** en la fila D-04, atribuir los 72 casos a "ruido de redondeo" es solo parcialmente correcto. Se re-simularon 12: en los 12 el volumen continuo baja, en 7 con bajadas ≥ 0,3 m³ y en 2 con bajadas < 0,1 m³ (casos de borde). Las otras 60 no se verificaron. Ver `correcciones/03-resolucion-de-la-etiqueta.md` §4.1.
+
 ### 4.2 Moderados (resumen; detalle en los anexos)
 
 | Área | IDs y tema |
@@ -185,6 +187,8 @@ Predicciones fuera de fold regeneradas por el auditor con `evaluate_candidate()`
 
 Lectura: en LeaveOneShapeOut ningún falso negativo supera 67 m³ y el 88 % tiene 2 m³ o menos. Esos casos son los de la banda 1–2 m³ de la etiqueta, que por D-04 son inestables por construcción: no deben leerse como un fallo del modelo.
 
+> **Nota de corrección (2026-10-11, spike D-04):** "inestables por construcción" exagera. En la muestra re-simulada, la etiqueta es una función determinista del volumen continuo, sin ruido, con un umbral efectivo en (0,4988; 0,5002] m³. Lo que sí se midió es que la banda `V_rpt = 1` (volumen continuo de ≈ 0,5 a 1,5 m³) es la más próxima al umbral y concentra 333 de los 380 FN. Que esa cercanía explique los FN es una interpretación. Ver `correcciones/03-resolucion-de-la-etiqueta.md` §6.
+
 ### 6.3 Propuesta
 
 1. **Modelos:** una matriz por cada familia elegida (tras el tuning) y por protocolo, con **LeaveOneShapeOut como cifra principal** y LOSO/GroupKFold5 solo como referencia de interpolación (M-01).
@@ -196,6 +200,9 @@ Lectura: en LeaveOneShapeOut ningún falso negativo supera 67 m³ y el 88 % tien
    - recall y precisión por fold con **NaN** (no 0) cuando el fold no tiene positivos (corrige M-03);
    - una segunda matriz que separe la banda limítrofe (volumen real de 1 a 2 m³) del resto, por D-04/H-06;
    - la matriz por forma para las formas fuera de rango (`shape_ultra_short_impulse`, F1 0,844; `common_bogota`, 0,906).
+
+   > **Nota de corrección (2026-10-11, spike D-04):** con la resolución de 1 m³, el único volumen reportado en [1, 2) m³ es el entero 1, que corresponde a un volumen continuo de ≈ 0,5 a 1,5 m³. La matriz por banda está en `correcciones/03-resolucion-de-la-etiqueta.md` §6.1.
+
 5. **Barrido de umbral** de 0,2 a 0,8 como análisis de sensibilidad, pero con el umbral de operación elegido **en un CV interno**, nunca sobre las predicciones que se reportan.
 
 ### 6.4 Decisiones que tienes que tomar
@@ -227,6 +234,9 @@ Solo es una propuesta de orden; no se ha modificado nada.
 8. Decidir cómo representar el volumen del evento en las features (M-02, H-02). Es una decisión de investigación, no un parche.
 9. Medir la sensibilidad a `InitFlow = 0` y al "drenaje" de 6 h con un subconjunto de re-simulaciones (H-01, H-05).
 10. Leer el volumen inundado con mayor resolución que el `.rpt` y revisar el umbral (H-06, D-04).
+
+    > **Nota de corrección (2026-10-11, spike D-04):** con el `REPORT_STEP` actual (3 min), la integral de la serie `flooding` del `.out` **no** es una fuente de mayor resolución: se aleja del volumen continuo hasta 9,5 m³ por nodo, y hasta 0,89 m³ incluso con 5 s. La única fuente medida que da el volumen continuo es `node.statistics['flooding_volume']` de pyswmm. El spike recomienda la ruta A (declarar, sin re-simular). Ver `correcciones/03-resolucion-de-la-etiqueta.md`.
+
 11. Guardar el error de continuidad y la evidencia SWMM en la BD (H-04, D-02, D-03).
 12. Reforzar los triggers de proveniencia y la atomicidad de `--persist-sql` (D-01, D-06).
 13. Cerrar las 8 mutaciones sin test (T-03).
@@ -261,6 +271,9 @@ El anexo 04 traza **117 ítems** de las auditorías previas y de los documentos 
 1. La red se simula con **onda dinámica** (`DYNWAVE`), paso de rutina de 5 s y hidrograma de entrada espacialmente **uniforme y sincrónico** en todos los nodos (H-03).
 2. Las condiciones iniciales de los conductos (`InitFlow`) son las del `.inp` base y no cambian con el factor ni la forma (H-01).
 3. La inundación es el volumen que reporta SWMM por nodo, con **resolución de 1 m³**; la etiqueta es `volumen ≥ 1 m³` (H-06, D-04).
+
+   > **Nota de corrección (2026-10-11, spike D-04):** en la muestra re-simulada (una red, 13 escenarios con desborde), "volumen reportado ≥ 1 m³" es consistente con un umbral efectivo de ≈ 0,5 m³ sobre el volumen continuo, acotado a (0,4988; 0,5002] m³. Los desbordes menores cuentan como "no inunda".
+
 4. El tramo final del hidrograma se extiende con un punto de caudal cero 6 h después del último dato, lo que puede crear una rampa (H-05).
 5. Las formas se normalizan por pico; el modelo no recibe el volumen del evento (H-02).
 6. La capacidad usada es la de los conductos **aguas arriba** (H-08).

@@ -71,6 +71,13 @@ Resumen por severidad: **🔴 0 · 🟠 4 · 🟡 9 · 🔵 8** (21 hallazgos).
 | **D-21** | 🔵 MENOR | features topológicas (extracción) | El nodo `108C` tiene `n_tuberias_out=1` y `diam_max_out=0,7`, pero `pendiente_out=NULL`. Es una incoherencia de la feature. | 1000 filas (0,6 %). Pasa el contrato porque `pendiente_out` es *nullable*. | D06. | Revisar el tipo del enlace de salida de `108C` (probablemente vierte a un *outfall* o no es conducto) y documentarlo. |
 | **D-22** | 🔵 MENOR | `tests/database/` | Cobertura: 208 tests verdes, pero **ninguno** cubre: `UPDATE runs.scenario_id` o `config_sha256` sobre runs fijados (D-01), `scenario_inflows` fijado, fallo de `persist_training_run` a mitad (D-06), re-ejecución con el mismo CSV, `reset_db` sobre v17 (D-08), `create_schema` legacy sobre v17 (D-09), migración disparada por una lectura (D-05) ni dependencia del EOL (D-10). `test_backfill_reuses_existing_network_on_rerun` usa escenarios **disjuntos**, así que no prueba la idempotencia real. | La cobertura de triggers 002-005 es amplia (más de 4.000 líneas de tests), pero los caminos operativos reales (CLI) están poco probados. | `grep "UPDATE runs" tests/database` → sin resultados. | Añadir tests de regresión para D-01, D-05, D-06, D-08 y D-09. |
 
+> **Nota de corrección (2026-10-11, spike D-04):** ver `../correcciones/03-resolucion-de-la-etiqueta.md`. Sobre **D-04**:
+>
+> 1. "Son ruido de redondeo" no se sostiene en general. En la muestra re-simulada (una red, 13 escenarios con desborde), el volumen del `.rpt` es una función monótona del volumen continuo, así que toda transición 1→0 exige que el volumen continuo baje. De las 72 transiciones se re-simularon 12, y en las 12 el volumen continuo baja: 7 con bajadas ≥ 0,3 m³ (entre ellas las 4 con 2 m³), 3 con bajadas de 0,1 a 0,3 m³ y 2 con bajadas < 0,1 m³ (casos de borde alrededor de 0,5 m³). Las otras 60 no se verificaron.
+> 2. "El umbral no filtra nada distinto del redondeo": en la muestra, la etiqueta es determinista y equivale a un volumen continuo ≥ t, con t en (0,4988; 0,5002] m³. Sí filtra desbordes reales menores de ≈ 0,5 m³: 106 de los 414 nodos con desborde en 6 escenarios de control, con un máximo de 0,499 m³. Es una cuantización determinista, no ruido.
+> 3. "Leer el volumen desde el `.out` binario" queda descartado con el `REPORT_STEP` actual de 3 min: la integral del `.out` se aleja del volumen continuo hasta 9,5 m³ por nodo. La fuente adecuada es la estadística `node.statistics['flooding_volume']` de pyswmm.
+> 4. Un "umbral con margen (5-10 m³)" no elimina la banda limítrofe, solo la desplaza. Elegir el umbral es una decisión semántica pendiente del autor y no corrige la resolución.
+
 ---
 
 ## 3. Lo que está bien (verificado)

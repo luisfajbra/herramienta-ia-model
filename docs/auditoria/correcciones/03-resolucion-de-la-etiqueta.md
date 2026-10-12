@@ -1,12 +1,17 @@
 # Corrección 03 — Resolución del volumen de inundación y semántica de la etiqueta (D-04 / H-06)
 
 - **Fecha:** 2026-10-11
-- **Tipo:** *spike* acotado. Es una investigación cuyo producto es este documento con cifras y una recomendación. No se modificó código del proyecto, ni `config.yaml`, ni `data/`, ni `outputs/`. Ningún artefacto construido se conserva.
+- **Tipo:** *spike* acotado. Es una investigación cuyo producto es este documento con cifras y una recomendación. No se modificó código del proyecto, ni `config.yaml`, ni `data/`, ni `outputs/`. En el repositorio solo entran este documento y las notas de corrección fechadas de §8.1. Los scripts y las copias de `.inp`, `.rpt` y `.out` quedan solo en el scratchpad de la sesión (§9), que es temporal. Por eso el código completo de los scripts va en el Apéndice.
 - **Rama:** `worktree-optuna-tuning-familia-ganadora` (base `6e8579b`, con cambios sin commitear de otra fase que no se tocaron). Los números de línea de `main.py` se refieren al árbol de trabajo.
 - **Motor y librerías (venv del proyecto):** pyswmm 2.1.0, swmm-toolkit 0.17.0, swmm-api 0.4.73.
 - **Red:** `data/networks/chico_hydro-qx1/SWMM - Chico (PVC) Prueba 1 - Qx1.00.inp` (`FLOW_UNITS LPS`, `DYNWAVE`, `ROUTING_STEP` 5 s, `REPORT_STEP` 3 min, `ALLOW_PONDING NO`).
 - **Datos de evaluación:** PreparedDataset `ca706e27654e0cf5` (`outputs/bench/prepared_v4_21/`) y OOF de `outputs/bench/oof/ca706e27654e0cf5/` (154 080 filas por protocolo), leídos solo en lectura.
-- **Simulaciones SWMM:** 9 en total (6 de control en `s01`, 1 con `REPORT_STEP` de 5 s en `s02` y 2 de verificación en `s06`). Todas sobre copias en el scratchpad, armadas con las mismas funciones del pipeline.
+- **Simulaciones SWMM:** 18 en total, todas sobre copias en el scratchpad y armadas con las mismas funciones del pipeline:
+  - 6 de control (`s01`);
+  - 1 con `REPORT_STEP` de 5 s (`s02`);
+  - 2 de verificación (`s06`);
+  - 9 añadidas en la ronda de correcciones (`s07`).
+- **Alcance de toda afirmación cuantitativa:** una sola red, con 15 escenarios simulados de los que 13 tienen desborde. Cualquier generalización más allá de eso es inferencia y se señala como tal.
 - **Regla de citas:** cada cifra lleva entre corchetes el script que la produjo (§9). Lo que no se midió se marca como **no verificado**.
 
 ---
@@ -14,12 +19,13 @@
 ## 1. Resumen
 
 1. La etiqueta actual es `inunda = (V_rpt ≥ 1 m³)`, donde `V_rpt` es el *Total Flood Volume* del `.rpt`. Ese volumen se imprime en 10⁶ L con 3 decimales, es decir, con resolución de 1 m³.
-2. Para volúmenes menores de 100 m³, `V_rpt` es **exactamente** el redondeo al entero del volumen continuo que SWMM acumula en cada paso de cálculo (852 de 852 nodos). La etiqueta actual coincide en 960 de 960 casos nodo-escenario con `V_continuo ≥ 0,5 m³` [s05]. No hay ruido de etiqueta: el umbral es nítido, pero está en 0,5 m³ continuos y no en 1 m³.
-3. La fuente correcta del volumen continuo es `pyswmm` (`node.statistics['flooding_volume']`), que no añade costo. La integral de la serie `flooding` del `.out` **no sirve** con el `REPORT_STEP` actual de 3 min: el error llega a 9,3 m³ por nodo. Con un `REPORT_STEP` de 5 s el error baja a 0,89 m³, pero sigue siendo peor que el del propio `.rpt` [s01, s02].
-4. En los 6 escenarios de control, pasar a `V_continuo ≥ 1 m³` cambia 21 etiquetas, todas de 1 a 0. Pasar a `V_continuo > 0` cambia 106, todas de 0 a 1 [s01].
-5. Re-simular las 1000 corridas cuesta unos **17 min de SWMM** (unos 20 min con la extracción) [s03]. El costo real está en la cadena posterior (dataset, SQL, prep_id, banco, Optuna, tablas y validación) y en volver a trazar todas las cifras de la tesis.
-6. En LeaveOneShapeOut, 333 de los 380 falsos negativos de XGBoost tienen `V_rpt = 1` (volumen continuo entre 0,5 y 1,5 m³). Si se excluyen esas 1894 filas, el F1 agregado pasa de 0,9817 a 0,9847 y el recall de 0,9918 a 0,9989 [s04].
-7. **Recomendación: ruta A.** Se mantiene la resolución y el umbral actuales, se declaran como supuesto (umbral efectivo de 0,5 m³ continuos) y se reporta la matriz de confusión con la banda separada. La ruta B solo conviene si se re-simula por otra causa (H-01 InitFlow, H-05). En ese caso, capturar el volumen continuo tiene costo marginal casi nulo.
+2. En 15 escenarios simulados (13 con desborde), `V_rpt` coincide con el redondeo al entero del volumen continuo que SWMM acumula en cada paso de cálculo en 1407 de los 1408 casos con 0 < V < 100 m³. Hay 13 casos (8C con 83,5 m³ y 12 nodos con más de 283 m³) en los que `V_rpt` queda **por debajo** del valor de la API, entre 0,5 y 0,86 m³; su origen está **no verificado**. La etiqueta actual coincide con `V_cont ≥ t` en los 2400 casos nodo-escenario (874 son nodos secos triviales) para cualquier umbral t en el intervalo (0,4988; 0,5002] m³ [s05, s08]. Es una **cuantización determinista, no ruido**: el umbral nominal de 1 m³ funciona como un umbral de ≈ 0,5 m³ de volumen continuo.
+3. Si se quiere el volumen continuo, la fuente es `pyswmm` (`node.statistics['flooding_volume']`), que no añade costo apreciable. La integral de la serie `flooding` del `.out` **no sirve** con el `REPORT_STEP` actual de 3 min: se aleja del volumen continuo hasta 9,5 m³ por nodo (\|out − API\|) y del `.rpt` hasta 9,3 m³. Con un `REPORT_STEP` de 5 s, la diferencia máxima frente a la API baja a 0,89 m³ (mediana 0,039). Eso es peor que el `.rpt` en el máximo (0,49) pero mejor en la mediana (0,27) [s01, s02].
+4. En los 6 escenarios de control, pasar a `V_cont ≥ 1 m³` cambia 21 etiquetas, todas de 1 a 0. Pasar a `V_cont > 0` cambia 106, todas de 0 a 1 [s01].
+5. Re-simular las 1000 corridas cuesta unos **17 min de SWMM**. Sumando la construcción del `.inp`, la lectura de etiquetas y la del drenaje, sin ensamblar features, son unos 20 min. Es una extrapolación con incertidumbre (§5.1) [s03]. El costo real está en la cadena posterior (dataset, SQL, prep_id, banco, Optuna, tablas y validación) y en volver a trazar todas las cifras de la tesis.
+6. En LeaveOneShapeOut, 333 de los 380 falsos negativos de XGBoost tienen `V_rpt = 1`, es decir, volumen continuo de unos 0,5 a 1,5 m³. Si se excluyen esas 1894 filas, el F1 agregado pasa de 0,9817 a 0,9847 y el recall de 0,9918 a 0,9989 [s04]. En esas filas, el error absoluto mediano del regresor (1,18 m³) duplica el error máximo de cuantización (0,5 m³) [s08].
+7. Se re-simularon 12 de los 72 casos de "deja de inundar al subir el factor". En los 12 el volumen continuo baja de verdad, pero en 2 baja menos de 0,1 m³ y en 3 entre 0,1 y 0,3 m³ [s06, s07] (§4.1).
+8. **Recomendación: ruta A.** Se mantiene la resolución y el umbral actuales, se declaran como supuesto (umbral efectivo de ≈ 0,5 m³ continuos) y se reporta la matriz de confusión con la banda separada. La ruta B solo conviene si el autor decide regenerar el dataset completo por otra causa. En ese caso, capturar el volumen continuo tiene costo marginal casi nulo (§7).
 
 ---
 
@@ -93,8 +99,8 @@ Diferencias absolutas en m³, calculadas sobre los nodos con desborde según alg
 
 **Lectura:**
 
-- **rpt frente a API.** Para volúmenes menores de 100 m³, `V_rpt` es exactamente `round(V_API)` en 852 de 852 nodos. Solo 12 nodos, todos con más de 283 m³, difieren en más de 0,5 m³ (máximo 0,857 m³, relativo ≤ 0,18 %) [s05]. El origen de esas 12 diferencias en volúmenes grandes es **no verificado**. No afectan la etiqueta.
-- **El `.out` no es una fuente de mayor resolución con la configuración actual.** SWMM escribe allí valores instantáneos cada `REPORT_STEP` = 180 s (60 a 380 registros por corrida; el primero a los 3 min [s01]). Integrar esos valores pierde los desbordes cortos: en `shape_ultra_short_impulse` el error llega a 9,5 m³ por nodo (344 % relativo en un nodo con V ≥ 1 m³). Usar `out ≥ 1` en vez del `.rpt` cambiaría 30 etiquetas en los 6 escenarios [s01].
+- **rpt frente a API.** En los 6 escenarios de `s01` (960 casos nodo-escenario: 546 nodos secos, 306 con 0 < V < 100 m³ y 108 con V ≥ 100 m³), `V_rpt = round(V_API)` en los 306 casos con 0 < V < 100 m³ [s05, s08]. En 12 de los 108 casos con V ≥ 100 m³ (todos de más de 283 m³), `V_rpt` queda **por debajo** del valor de la API, entre 0,51 y 0,86 m³ (relativo ≤ 0,18 %). En esos 12 casos `V_rpt = floor(V_API)`, lo que parece un truncamiento o una diferencia entre acumuladores; el origen está **no verificado**. En los 9 escenarios de `s07` aparece un caso más del mismo tipo con un volumen menor: `8C`, `rare_extreme` f = 4,6, con V_API = 83,508 y V_rpt = 83 [s08]. Ninguna de estas diferencias afecta la etiqueta.
+- **El `.out` no es una fuente de mayor resolución con la configuración actual.** SWMM escribe allí valores instantáneos cada `REPORT_STEP` = 180 s (60 a 380 registros por corrida; el primero a los 3 min [s01]). Integrar esos valores pierde los desbordes cortos. En `shape_ultra_short_impulse`, la integral del `.out` se aleja del volumen continuo (API) hasta 9,5 m³ por nodo, un error relativo de 344 % frente a V_API en un nodo con V ≥ 1 m³. Frente al `.rpt`, la diferencia llega a 9,3 m³. Usar `out ≥ 1` en vez del `.rpt` cambiaría 30 etiquetas en los 6 escenarios [s01].
 - **Prueba con `REPORT_STEP` = 5 s** (`shape_ultra_short_impulse` f = 5, 1 corrida) [s02]:
 
 | Fuente frente a API | máx (m³) | mediana (m³) |
@@ -103,7 +109,7 @@ Diferencias absolutas en m³, calculadas sobre los nodos con desborde según alg
 | out con `REPORT_STEP` 180 s | 9,535 | 0,575 |
 | rpt | 0,494 | 0,270 |
 
-  Con 5 s el `.out` pasa de 0,89 a 31,8 MB (4680 registros) y aun así cambia 1 etiqueta frente a la API. Cambiar `REPORT_STEP` no altera el cálculo: la API y el `.rpt` quedan idénticos a los de `s01` (diferencia ≤ 3,6·10⁻¹⁵ m³).
+  Con 5 s el `.out` pasa de 0,89 a 31,8 MB (4680 registros) y aun así cambia 1 etiqueta frente a la API. En el máximo sigue peor que el `.rpt` (0,891 frente a 0,494 m³), pero en la mediana es mejor (0,039 frente a 0,270 m³). Cambiar `REPORT_STEP` no altera el cálculo: la API y el `.rpt` quedan idénticos a los de `s01` (diferencia ≤ 3,6·10⁻¹⁵ m³).
 - **`.rpt` con más decimales:** SWMM no ofrece ninguna opción para cambiar el formato del *Node Flooding Summary*. **No verificado** en el código fuente C. En los `.rpt` generados la columna tiene siempre 3 decimales.
 - **Conclusión de fuente:** si se quiere el volumen continuo, la fuente es `pyswmm` `node.statistics['flooding_volume']`. Ya se usa en el venv (anexo 01, V-04 y d11) y leerla al final del bucle cuesta ≤ 0,023 s por corrida [s03].
 
@@ -125,22 +131,58 @@ Las reglas son: (i) actual, `V_rpt ≥ 1`; (ii) `V_continuo ≥ 1`; (iii) `V_con
 
 **Lectura:**
 
-- Todos los cambios (i)→(ii) son de 1 a 0 y coinciden exactamente con los nodos con `V_cont` en [0,5; 1). Todos los cambios (i)→(iii) son de 0 a 1 y coinciden con los nodos con `V_cont` en (0; 0,5). La regla actual equivale, en 960 de 960 casos, a `V_cont ≥ 0,5 m³` [s05].
+- Todos los cambios (i)→(ii) son de 1 a 0 y coinciden con los nodos con `V_cont` en [0,5; 1). Todos los cambios (i)→(iii) son de 0 a 1 y coinciden con los nodos con `V_cont` en (0; 0,5) [s01].
+- **Alcance y cota del umbral efectivo [s05, s08].** Se busca el intervalo de umbrales t para los que `(V_rpt ≥ 1) ⇔ (V_cont ≥ t)` se cumple en todos los casos simulados. La cota inferior es el mayor V_cont con etiqueta 0 y la superior, el menor V_cont con etiqueta 1. Los casos con 0 < V < 100 m³ son los únicos informativos para el umbral; los nodos secos y los grandes lo cumplen de forma trivial.
+
+| Conjunto | Escenarios (con desborde) | Casos nodo-escenario | Secos | 0 < V < 100 m³ | V ≥ 100 m³ | Discrepancias de etiqueta | Umbral efectivo t |
+|---|---|---|---|---|---|---|---|
+| `s01` | 6 (4) | 960 | 546 | 306 | 108 | 0 | (0,4988; 0,5142] |
+| `s07` | 9 (9) | 1440 | 328 | 1102 | 10 | 0 | (0,4987; 0,5002] |
+| `s01` + `s07` | 15 (13) | 2400 | 874 | 1408 | 118 | 0 | **(0,4988; 0,5002]** |
+
+  `s06` lo confirma con un dato que no quedó guardado por nodo: `66I` vale 0,5002 m³ con etiqueta 1. La repetición independiente del revisor, sobre otros 3 escenarios, dio una cota de (0,4643; 0,5262] (no re-ejecutada aquí). Es más ancha, pero compatible: su intersección con la nuestra sigue siendo (0,4988; 0,5002]. Todo esto vale para **una red y 13 escenarios con desborde**. Que el umbral efectivo sea ≈ 0,5 m³ en el resto del dataset es una inferencia: el mecanismo es el redondeo a 3 decimales del `.rpt`, pero se midió solo en esa muestra.
 - Los desbordes que hoy quedan con etiqueta 0 son pequeños: máximo 0,499 m³, mediana 0,153 m³, suma de 20,3 m³ en los 4 escenarios con desborde [s05]. En estos controles representan entre el 6 % y el 41 % de los nodos que desbordan. La auditoría informó entre 27 % y 57 % en otros escenarios (f = 1,6 y 2,0, más cerca del inicio de la inundación). Esa cifra viene del anexo 01 (`d11`) y no se volvió a verificar aquí.
 - El volumen positivo mínimo que ve la API es 0,0027 m³. La regla (iii) es sensible a esas trazas: con `V_cont > 0,01` habría 412 positivos en vez de 414.
-- **Proyección al dataset (estimación, no verificada):** en los controles, 21 de los 28 nodos con `V_rpt = 1` tienen `V_cont < 1` (rango de 0,514 a 1,455 m³), y 0 de los 7 nodos con `V_rpt = 2`. Si esa proporción (75 %, con n = 28) se mantuviera, la regla (ii) pasaría a 0 unas 1400 de las 1894 filas con `V_rpt = 1` (≈ 3 % de los positivos). La regla (iii) pasaría a 1 alrededor del 32 % de los nodos secos de los escenarios con desborde (106 de 332 en los controles). Ninguna de las dos proyecciones se midió sobre el dataset completo.
+- **Proyección al dataset (estimación, no verificada):** en los controles hay 28 nodos con `V_rpt = 1`, con V_cont entre 0,514 y 1,455 m³ en el conjunto de los 28. De ellos, 21 tienen `V_cont < 1`. De los 7 nodos con `V_rpt = 2`, ninguno. Si esa proporción (21/28 = 75 %, IC95 % de Wilson [56,6 %; 87,3 %]) se mantuviera, la regla (ii) pasaría a 0 unas 1420 de las 1894 filas con `V_rpt = 1` (intervalo de 1073 a 1654 filas), es decir, el 3,1 % de los 46 225 positivos (de 2,3 % a 3,6 %) [s08]. El intervalo supone que los 28 nodos son una muestra representativa, cosa que no son (4 escenarios). La regla (iii) pasaría a 1 alrededor del 32 % de los nodos secos de los escenarios con desborde (106 de 332 en los controles). Ninguna de las dos proyecciones se midió sobre el dataset completo.
 
-### 4.1 La no monotonía con el factor no es ruido de redondeo [s06]
+### 4.1 Los 72 casos "deja de inundar al subir el factor" [s06, s07]
 
-El anexo 03 (D-04) reporta 72 casos de "deja de inundar al subir el factor", todos con 1–2 m³, y los atribuye a ruido de redondeo. Se re-simularon `common_bogota` f = 3,4 y 3,6 (BD = rpt en 160 de 160 nodos en ambas):
+El anexo 03 (D-04) reporta 72 transiciones de la BD (misma forma y nodo, `inunda = 1` a f y `inunda = 0` a f + 0,2): 68 con `V_rpt = 1` y 4 con `V_rpt = 2`. Las atribuye a "ruido de redondeo".
 
-| Nodo | V_rpt f = 3,4 | V_cont f = 3,4 | V_rpt f = 3,6 | V_cont f = 3,6 |
-|---|---|---|---|---|
-| `107C` | 1 | 0,8623 | 0 | 0,0000 |
-| `52C` | 1 | 0,8675 | 0 | 0,0197 |
-| `66I` | 1 | 0,5002 | 0 | 0,4663 |
+**Lo deducido (sin simular).** En los casos medidos, `V_rpt` es una función monótona no decreciente de `V_cont`: el redondeo, o el truncamiento en los casos grandes. Por lo tanto, toda transición 1 → 0 de la etiqueta exige que el volumen **continuo** baje entre f y f + 0,2. El redondeo puede exponer una bajada, pero no crearla. Lo que el redondeo sí determina es si una bajada pequeña cruza el umbral: una bajada de 0,03 m³ alrededor de 0,5 m³ cambia la etiqueta, y la misma bajada alrededor de 10 m³ no.
 
-En 11 de los 117 nodos que desbordan a f = 3,4, el volumen **continuo** baja al pasar a f = 3,6. La no monotonía es hidráulica: el desborde se redistribuye entre nodos al aumentar la carga. El redondeo no puede crearla, porque redondear es una función monótona. Lo único que hace el umbral es dejarla a la vista. Con un umbral continuo de 1 m³, `107C` y `52C` dejarían de ser casos no monótonos, pero aparecerían otros alrededor de 1 m³. Esto corrige la interpretación de D-04 del anexo 03.
+**Lo medido.** Se re-simularon 12 de las 72 transiciones: 3 en `s06` y 9 en `s07`. Esta ronda pedía hasta 8 transiciones nuevas; `rare_extreme` 4,0 → 4,2 entró sin simulación adicional, porque comparte corridas con los pares vecinos. Se cubren 3 formas (`common_bogota`, `rare_extreme` y `shape_ultra_short_impulse`) y 7 pares de factores, incluidos los 4 casos con `V_rpt = 2`. Las 60 restantes **no se re-simularon (no verificado)**. En todas las corridas, la BD coincide con el `.rpt` replicado en 160 de 160 nodos.
+
+| Forma | f → f + 0,2 | Nodo | V_rpt antes | V_cont antes | V_rpt después | V_cont después | Bajada de V_cont (m³) |
+|---|---|---|---|---|---|---|---|
+| `common_bogota` | 3,4 → 3,6 | `107C` | 1 | 0,8623 | 0 | 0,0000 | 0,862 |
+| `common_bogota` | 3,4 → 3,6 | `52C` | 1 | 0,8675 | 0 | 0,0197 | 0,848 |
+| `common_bogota` | 3,4 → 3,6 | `66I` | 1 | 0,5002 | 0 | 0,4663 | 0,034 |
+| `common_bogota` | 4,4 → 4,6 | `51C` | 1 | 0,8617 | 0 | 0,3936 | 0,468 |
+| `rare_extreme` | 3,8 → 4,0 | `16I` | 1 | 0,5516 | 0 | 0,4738 | 0,078 |
+| `rare_extreme` | 3,8 → 4,0 | `40I` | 1 | 0,5221 | 0 | 0,4202 | 0,102 |
+| `rare_extreme` | 3,8 → 4,0 | `51C` | 2 | 2,1310 | 0 | 0,2586 | 1,872 |
+| `rare_extreme` | 4,0 → 4,2 | `66I` | 1 | 0,6192 | 0 | 0,4561 | 0,163 |
+| `rare_extreme` | 4,2 → 4,4 | `40C` | 2 | 2,4388 | 0 | 0,1498 | 2,289 |
+| `rare_extreme` | 4,4 → 4,6 | `16I` | 1 | 0,6038 | 0 | 0,4372 | 0,167 |
+| `rare_extreme` | 4,4 → 4,6 | `51C` | 2 | 2,3164 | 0 | 0,2789 | 2,037 |
+| `shape_ultra_short_impulse` | 4,4 → 4,6 | `40C` | 2 | 1,7461 | 0 | 0,0000 | 1,746 |
+
+**Distribución medida (n = 12):**
+
+| Bajada de V_cont | Casos |
+|---|---|
+| ≥ 0,3 m³ | 7 (los 4 con `V_rpt = 2` y 3 con `V_rpt = 1`) |
+| Entre 0,1 y 0,3 m³ | 3 |
+| < 0,1 m³ | 2 (`66I` 0,034 y `16I` 0,078) |
+
+En los 12 casos el volumen continuo baja de verdad, pero solo en 7 la bajada es grande frente al umbral.
+
+**Lectura:**
+
+- La explicación del anexo 03 es **parcialmente correcta**. En 5 de los 12 casos (los de bajada < 0,3 m³) el volumen continuo pasa de poco más a poco menos de 0,5 m³. Esos casos son de borde: una variación pequeña que el umbral convierte en un cambio de etiqueta. En los otros 7, la bajada es grande y no tiene relación con la resolución.
+- La causa física de las bajadas no se investigó. Que el desborde se redistribuya entre nodos al aumentar la carga es una **interpretación no verificada**.
+- **Con un umbral continuo de 1 m³ [s07].** En los 6 pares de `s07`, la regla actual produce 9 transiciones no monótonas y la regla `V_cont ≥ 1` produce 5. De esas 5, 4 son los mismos nodos con `V_rpt = 2` (`51C` dos veces y `40C` dos veces) y 1 es nueva: `12C` en `rare_extreme` 4,0 → 4,2, que baja de ≥ 1 a < 1 m³ sin cambiar su `V_rpt`. En el par `common_bogota` 3,4 → 3,6 de `s06`, la regla `V_cont ≥ 1` no produce ningún caso (0 transiciones). Es decir: cambiar el umbral reduce estos casos en la muestra, pero no los elimina, y aparecen otros nuevos alrededor del nuevo umbral.
 
 ---
 
@@ -166,7 +208,9 @@ En 11 de los 117 nodos que desbordan a f = 3,4, el volumen **continuo** baja al 
 | Solo SWMM | 0,142 s + 0,0726 s/h | 1010 s ≈ **16,8 min** |
 | Corrida completa | 0,366 s + 0,0720 s/h | 1226 s ≈ **20,4 min** |
 
-- No incluye los reintentos por drenaje de `run_batch_shapes` (hasta 2 extensiones de +2 h). En el peor caso el tiempo se triplicaría (≈ 1 h). Cuántas corridas reintentarían: **no verificado**.
+- **Alcance de "corrida completa":** construcción del `.inp`, SWMM, lectura de etiquetas y lectura del drenaje. No incluye el ensamblado de features, el dataset ni la escritura en la BD.
+- **Incertidumbre de la extrapolación:** el ajuste usa 6 corridas con solo 4 horizontes distintos (3; 6,5; 6,75 y 19 h). Las dos corridas de 19 h difieren en un 18 % (1,656 frente a 1,398 s). Las cifras de 16,8 y 20,4 min deben leerse como un orden de magnitud (decenas de minutos), no como estimaciones precisas.
+- No incluye los reintentos por drenaje de `run_batch_shapes` (hasta 2 extensiones de +2 h cada una). Cuántas corridas reintentarían está **no verificado**. Una cota superior gruesa, sin medir, es que cada corrida se simule 3 veces con horizontes más largos, lo que llevaría el total a algo más del triple (del orden de 1 h).
 - Son tiempos de pared en este equipo, en serie y con un solo proceso.
 
 ### 5.2 Qué habría que rehacer después de re-simular (no se ejecutó nada)
@@ -180,7 +224,7 @@ En 11 de los 117 nodos que desbordan a f = 3,4, el volumen **continuo** baja al 
 | 5 | Nuevo PreparedDataset (nuevo `prep_id`) y re-evaluación `scripts/ejecutar_evaluacion_v4_21.py` + `scripts/informe_evaluacion.py` | 330 s según `runs/provenance.json` (88 preparación + 194 XGBoost + 28 referencias + 20 tablas) |
 | 6 | Volver a correr el tuning con Optuna de la familia ganadora (rama actual) y la promoción | No medido |
 | 7 | Re-ejecutar la validación fuera de muestra (`--evaluate-validation-shapes`), que etiqueta con la misma regla | No medido |
-| 8 | Actualizar todas las tablas y cifras de `docs/auditoria/correcciones/datos/` y de la tesis | Trabajo editorial; no medido |
+| 8 | Regenerar todas las tablas de `docs/auditoria/correcciones/datos/` (`comparacion_protocolos.csv`, `matriz_confusion.csv`, `banda_limitrofe.csv`, `por_forma.csv`, `runs/*.json`). Quedarían invalidados `datos/tables_provenance.json` (hashes de OOF y CSV, prep_id) y `datos/README.md` (prep_id `ca706e27654e0cf5`, definición de la etiqueta, comandos). También habría que actualizar este documento y las cifras de la tesis | Trabajo editorial; no medido |
 
 El cuello de botella no es SWMM, sino los pasos 1 y 4–8 y el riesgo de desalinear la trazabilidad ya construida (D-01, D-06).
 
@@ -194,8 +238,8 @@ La matriz reconstruida desde los OOF coincide con `matriz_confusion.csv` en los 
 
 | Volumen real (`.rpt`) | Etiqueta real | n | Predicho 0 | Predicho 1 |
 |---|---|---|---|---|
-| 0 (V_cont < 0,5) | 0 | 107 855 | 106 526 (TN) | 1329 (FP) |
-| [1, 2) = exactamente 1 (V_cont en [0,5; 1,5)) | 1 | 1894 | 333 (FN) | 1561 (TP) |
+| 0 (V_cont < ≈ 0,5) | 0 | 107 855 | 106 526 (TN) | 1329 (FP) |
+| [1, 2) = solo el entero 1 (V_cont ≈ [0,5; 1,5)) | 1 | 1894 | 333 (FN) | 1561 (TP) |
 | [2, 5) | 1 | 2416 | 34 (FN) | 2382 (TP) |
 | [5, 100) | 1 | 18 035 | 13 (FN) | 18 022 (TP) |
 | ≥ 100 | 1 | 23 880 | 0 (FN) | 23 880 (TP) |
@@ -220,12 +264,33 @@ En los otros protocolos de XGBoost, los FN en la banda son 443 de 879 (LOSO) y 4
 **Matices obligatorios al reportar la exclusión:**
 
 - **La exclusión es asimétrica.** Solo puede quitar el lado positivo de la frontera (`V_rpt = 1`). El lado negativo (desbordes de 0 a 0,5 m³) queda mezclado con los nodos secos en `V_rpt = 0` y no se puede separar sin el volumen continuo. Por eso la exclusión infla el recall y deja la precisión casi igual (0,9718 → 0,9709). Debe presentarse como análisis de sensibilidad, no como la métrica principal.
-- **Los FP también son de frontera.** De los 1329 FP de LeaveOneShapeOut, el regresor predice menos de 2 m³ en 578 y menos de 5 m³ en 1127. La probabilidad media del clasificador en los FN de la banda es 0,241.
+- **Muchos FP también están cerca de la frontera.** De los 1329 FP de LeaveOneShapeOut, el regresor predice menos de 2 m³ en 578 y menos de 5 m³ en 1127. `y_pred_reg` es la predicción del regresor sobre todas las filas de test, no la enrutada por el clasificador (`evaluate._fit_predict_fold`). La probabilidad media del clasificador en los FN de la banda es 0,241.
 - Los FN de la banda se concentran en formas fuera de rango o de transición: `new_hydrograph` 77, `rare_extreme` 27, `shape_ultra_short_impulse` 27, `common_bogota` 26 y `shape_flash_flood_urban` 20.
 
 ### 6.3 Lo que sugiere la ruta B para las métricas (no verificado)
 
-Con etiquetas continuas `V_cont ≥ 1`, unas 1400 filas de la banda pasarían a negativas (proyección de §4). Eso movería la frontera, pero no la eliminaría: seguiría habiendo una banda de nodos con V_cont cerca de 1 m³ que el modelo confunde, ahora sin ninguna cuantización que la explique. Sin reentrenar no se puede saber si el F1 sube o baja. Una evaluación de los OOF actuales contra etiquetas reetiquetadas no tendría sentido, porque el modelo se entrenó con la otra frontera. La concentración de FN en la banda se explica por la cercanía al umbral, no por la resolución: según §4 la etiqueta actual es una función exacta del volumen continuo.
+Con etiquetas continuas `V_cont ≥ 1`, unas 1070 a 1650 filas de la banda pasarían a negativas (proyección de §4). Eso movería la frontera, pero no la eliminaría. Es una **interpretación** esperar que siga habiendo una banda de nodos con V_cont cerca de 1 m³ difícil de clasificar. Sin reentrenar no se puede saber si el F1 sube o baja. Evaluar los OOF actuales contra etiquetas reetiquetadas no tendría sentido, porque el modelo se entrenó con la otra frontera.
+
+Que los FN se concentren en la banda es compatible con que la dificultad venga de la cercanía al umbral. En la muestra medida, la etiqueta actual es una función determinista del volumen continuo (§4), así que la cuantización no añade ruido a la etiqueta. No se demostró que esa sea la causa: es una **interpretación**.
+
+### 6.4 Efecto sobre el regresor [s08]
+
+El objetivo de regresión (`vol_inundacion_m3`) también está cuantizado a enteros. El error de cuantización es como máximo ±0,5 m³, es decir, ±50 % a 1 m³ y ±10 % a 5 m³. Para ver si ese error pesa frente al error del modelo, se midió el error de XGBoost en LeaveOneShapeOut sobre las filas inundadas con volumen real pequeño, usando los OOF guardados (`y_pred_reg`, predicción del regresor en todas las filas de test).
+
+| Volumen real (m³) | n | \|error\| mediana (m³) | \|error\| media (m³) | p90 (m³) | Error relativo mediano | Sesgo medio (m³) | Filas con \|error\| ≤ 0,5 m³ | Error máximo de cuantización relativo |
+|---|---|---|---|---|---|---|---|---|
+| = 1 | 1894 | 1,181 | 2,002 | 4,702 | 1,18 | +1,94 | 30,6 % | 0,50 |
+| = 2 | 969 | 1,821 | 2,839 | 6,955 | 0,91 | +2,73 | 20,0 % | 0,25 |
+| [1, 5] | 4925 | 1,626 | 2,828 | 6,882 | 0,77 | +2,57 | 22,0 % | 0,50 |
+| [3, 5] | 2062 | 2,035 | 3,581 | 9,045 | 0,52 | +3,07 | 15,0 % | 0,17 |
+| [5, 20] | 6372 | 3,866 | 6,356 | 15,162 | 0,36 | +3,33 | 7,1 % | 0,10 |
+| [20, 100] | 12 059 | 13,853 | 19,909 | 44,067 | 0,31 | +3,74 | 2,0 % | 0,03 |
+
+**Lectura (interpretación):**
+
+- En el rango de 1 a 5 m³, el error absoluto mediano del modelo (1,6 m³) es más de 3 veces el error máximo de cuantización (0,5 m³). Solo el 22 % de las filas cae dentro de ±0,5 m³.
+- Además, el modelo **sobreestima** de forma sistemática (sesgo de +2 a +3 m³). Eso no se explica por una cuantización simétrica de ±0,5 m³.
+- En este rango, el error del regresor está dominado por el modelo y no por la resolución de la etiqueta. Un objetivo continuo reduciría como mucho un componente de ≤ 0,5 m³ por fila, y no se puede saber cuánto de ese componente aprovecharía el modelo sin reentrenar.
 
 ---
 
@@ -235,33 +300,60 @@ Con etiquetas continuas `V_cont ≥ 1`, unas 1400 filas de la banda pasarían a 
 
 **Razones:**
 
-1. **La etiqueta actual no tiene ruido.** Es `V_cont ≥ 0,5 m³` exacta en 960 de 960 casos [s05]. El problema de D-04/H-06 es de **semántica** (el umbral nominal de 1 m³ es en realidad de 0,5 m³ continuos), y se resuelve declarándolo, sin tocar los datos.
-2. **La ruta B no elimina el fenómeno que motivó el hallazgo.** Los FN en la banda de 1–2 m³ son el efecto natural de cualquier frontera. Con un umbral continuo de 1 m³ la frontera se desplaza unos 0,5 m³ y cambia la etiqueta de aproximadamente el 3 % de los positivos (proyección). La no monotonía con el factor también es hidráulica, no de redondeo (§4.1).
-3. **Relación costo/beneficio.** SWMM es barato (unos 17 min), pero la ruta B obliga a rehacer el dataset, la BD, el `prep_id`, el banco, Optuna, la validación y todas las cifras ya trazadas de la tesis (§5.2). Todo eso para un cambio de definición que la ruta A expresa sin costo.
-4. **Condición que invierte la recomendación.** Si el autor decide re-simular por H-01 (InitFlow fijo a factor 1, el hallazgo 🟠 con mayor efecto en volúmenes) o por H-05, entonces **sí** conviene incorporar la ruta B en esa misma re-simulación. Capturar `node.statistics['flooding_volume']` cuesta ≤ 0,023 s por corrida. Habría que guardar las dos columnas (`vol_rpt_m3` y `vol_continuo_m3`) y definir la etiqueta sobre el volumen continuo, con el umbral elegido de forma explícita.
-5. **Fuente descartada.** En ningún caso debe usarse la integral del `.out` con `REPORT_STEP` = 3 min: su error (hasta 9,5 m³) es mayor que la cuantización que se quiere corregir [s01, s02].
+1. **La etiqueta actual es una cuantización determinista, no ruido.** En la muestra (una red, 13 escenarios con desborde, 2400 casos nodo-escenario de los que 1408 son informativos) es `V_cont ≥ t` con t en (0,4988; 0,5002] m³, sin ninguna discrepancia [s05, s08]. El problema de D-04/H-06 es de **semántica**: el umbral nominal de 1 m³ funciona como ≈ 0,5 m³ continuos. Se resuelve declarándolo, sin tocar los datos.
+2. **La ruta B no elimina el fenómeno que motivó el hallazgo.** Con un umbral continuo de 1 m³, la frontera se desplaza unos 0,5 m³ y cambia la etiqueta de entre el 2,3 % y el 3,6 % de los positivos (proyección, §4). Que los FN de la banda reflejen la dificultad propia de cualquier frontera es una **interpretación**: ningún reentrenamiento lo comprobó. Las transiciones no monótonas se redujeron, pero no desaparecieron, con `V_cont ≥ 1` en los pares re-simulados: 5 en lugar de 9, una de ellas nueva (§4.1).
+3. **El regresor tampoco lo justifica.** En las filas de 1 a 5 m³, el error mediano del modelo (1,6 m³) y su sesgo (+2,6 m³) superan claramente el error máximo de cuantización (0,5 m³) (§6.4).
+4. **Relación costo/beneficio.** SWMM es barato (del orden de 17 a 20 min), pero la ruta B obliga a rehacer el dataset, la BD, el `prep_id`, el banco, Optuna, la validación y todas las cifras ya trazadas de la tesis (§5.2). Todo eso para un cambio de definición que la ruta A expresa sin costo.
+5. **Condición que invierte la recomendación (hipótesis condicional).** Solo si el autor decide **regenerar el dataset completo** por otra causa, conviene incorporar la ruta B en esa misma regeneración. Capturar `node.statistics['flooding_volume']` cuesta ≤ 0,023 s por corrida. Habría que guardar las dos columnas (`vol_rpt_m3` y `vol_continuo_m3`) y definir la etiqueta con un umbral elegido de forma explícita.
+   - Una de esas causas posibles es H-01 (InitFlow fijo a factor 1). Su impacto es la cifra del auditor (anexo 01) y **no se re-simuló aquí**. Además, H-01 comparte la severidad 🟠 con H-02, que no exige re-simular.
+   - El informe consolidado propone para H-01 y H-05 una re-simulación de un **subconjunto**, para medir sensibilidad, y no la regeneración de las 1000 corridas.
+   - Una re-simulación de un subconjunto **no** activa la ruta B: no cambia las etiquetas del dataset. Sí permitiría, sin costo adicional, registrar el volumen continuo en ese subconjunto y ampliar la muestra de §4.
+6. **Fuente descartada.** No debe usarse la integral del `.out` con `REPORT_STEP` = 3 min. Se aleja del volumen continuo hasta 9,5 m³ por nodo, mucho más que la cuantización que se quiere corregir (≤ 0,5 m³ por debajo de 100 m³) [s01, s02].
 
 **Costo de cada ruta:**
 
 | Ruta | Simulaciones | Código | Re-evaluación | Cifras de la tesis |
 |---|---|---|---|---|
 | A | 0 | Ninguno obligatorio. Opcional: añadir la tabla de §6.1 a `scripts/informe_evaluacion.py` (ya existe `banda_limitrofe.csv`). Recomendable aparte: corregir H-07 (parser de respaldo), que no cambia datos | Ninguna: §6 sale de los OOF existentes | Solo agregar la declaración y la matriz por banda |
-| B | 1000 (≈ 17–20 min, hasta ≈ 1 h con reintentos) | Captura del volumen continuo en 3 rutas, más tests | Dataset, BD, `prep_id`, banco (≈ 5,5 min), Optuna, validación | Todas las de evaluación |
+| B | 1000 (del orden de 17–20 min; con reintentos por drenaje, no verificado) | Captura del volumen continuo en 3 rutas, más tests | Dataset, BD, `prep_id`, banco (≈ 5,5 min), Optuna, validación | Todas las de evaluación |
 
 ---
 
 ## 8. Decisión pendiente del autor
 
-1. **Elegir la ruta A o la B.** La recomendación es A, salvo que se re-simule por H-01/H-05; en ese caso, B dentro de esa misma re-simulación.
-2. **Redacción del umbral (ruta A).** Mantener "≥ 1 m³ del `.rpt`" y declarar que equivale a "≥ 0,5 m³ de volumen continuo", o enunciar directamente el umbral como 0,5 m³ continuos. Los datos son los mismos en ambos casos.
-3. **Métrica principal frente a sensibilidad.** Confirmar que la métrica principal sigue siendo la matriz completa (F1 0,9817 en LeaveOneShapeOut), que la matriz por banda (§6.1) se reporta siempre y que la exclusión de la banda (§6.2) va solo como sensibilidad, con la advertencia de asimetría.
+1. **Elegir la ruta A o la B.** La recomendación es A, salvo que se decida regenerar el dataset completo por otra causa (§7.5); en ese caso, B dentro de esa misma regeneración.
+2. **Redacción del umbral (ruta A).** Mantener "≥ 1 m³ del `.rpt`" y declarar que es consistente con "≈ 0,5 m³ de volumen continuo", o enunciar el umbral directamente como ≈ 0,5 m³ continuos. Los datos son los mismos en ambos casos.
+3. **Métrica principal frente a sensibilidad.** Confirmar tres cosas:
+   - la métrica principal sigue siendo la matriz completa (F1 0,9817 en LeaveOneShapeOut);
+   - la matriz por banda (§6.1) se reporta siempre;
+   - la exclusión de la banda (§6.2) va solo como sensibilidad, con la advertencia de asimetría.
 4. **Ruta B: umbral continuo.** Si se elige B, decidir el umbral (0,5, 1 o 5 m³, o un barrido de sensibilidad como propone H-06) **antes** de mirar las métricas.
-5. **Corrección de D-04 en el anexo 03.** Decidir si se corrige la atribución de los 72 casos no monótonos a "ruido de redondeo" (§4.1).
-6. **H-07.** Corregir el parser de respaldo (lectura por encabezado y fallo explícito). Es independiente de la ruta elegida.
+5. **H-07.** Corregir el parser de respaldo (lectura por encabezado y fallo explícito). Es independiente de la ruta elegida.
+6. **Revisar las notas de corrección aplicadas** a los documentos anteriores (§8.1) y decidir si su texto se integra en la versión final de la auditoría.
 
-### 8.1 Texto para la tesis (ruta A)
+### 8.1 Correcciones a documentos anteriores
 
-> La variable objetivo de clasificación se define a partir del volumen desbordado por nodo que reporta SWMM 5.2 en la tabla *Node Flooding Summary* del archivo de reporte (`.rpt`). Esa tabla expresa el volumen en 10⁶ L con tres decimales, por lo que la resolución del volumen disponible es de 1 m³. Un nodo se etiqueta como inundado (`inunda = 1`) si su volumen reportado es de al menos 1 m³. Se comprobó, mediante re-simulaciones de control en las que se comparó el volumen reportado con el volumen que SWMM acumula en cada paso de cálculo, que el valor del reporte es el redondeo al entero de ese volumen continuo. En consecuencia, la regla equivale exactamente a un umbral de 0,5 m³ sobre el volumen continuo, y los desbordes menores de 0,5 m³ (cuya mediana fue 0,15 m³ en los escenarios de control) se consideran no inundación. La etiqueta es, por tanto, una función determinista del volumen simulado, sin ruido de redondeo. Sin embargo, como en todo problema con umbral, los casos con volumen cercano al umbral son los más difíciles de clasificar: en la validación por forma retenida (LeaveOneShapeOut), 333 de los 380 falsos negativos de XGBoost corresponden a nodos con volumen reportado de 1 m³ (volumen continuo entre 0,5 y 1,5 m³). Por ello, además de la matriz de confusión agregada, se informa la matriz separada por clase de volumen real y, como análisis de sensibilidad, las métricas sin esa banda (F1 de 0,9817 con todas las filas y de 0,9847 sin la banda). Esta sensibilidad excluye solo el lado positivo de la frontera, porque los desbordes de 0 a 0,5 m³ no se distinguen de los nodos secos en los datos disponibles.
+Se aplicaron en el mismo commit que esta revisión, como notas fechadas añadidas sin reescribir el texto original (script `s09_notas.py`).
+
+| Documento y lugar | Afirmación original | Corrección | Estado |
+|---|---|---|---|
+| `anexos/03-datos-persistencia-sql.md`, fila D-04 (l. 54; nota tras la tabla) | "Son ruido de redondeo y de cálculo en el borde, no física" | 12 de las 72 transiciones re-simuladas. En las 12 baja el volumen continuo: 7 con bajadas ≥ 0,3 m³ y 2 con bajadas < 0,1 m³ (borde). Las otras 60 están sin verificar | Aplicada |
+| Ídem | "el umbral no filtra nada distinto del redondeo del informe" | Cuantización determinista equivalente a `V_cont ≥ t`, t ∈ (0,4988; 0,5002]. Filtra desbordes reales < ≈ 0,5 m³ | Aplicada |
+| Ídem | "leer el volumen desde el `.out` binario, que no está redondeado" | Descartado con `REPORT_STEP` de 3 min (hasta 9,5 m³ de error). La fuente es la estadística de pyswmm | Aplicada |
+| Ídem | "umbral con margen sobre la resolución (p. ej. 5-10 m³)" | Desplaza la banda, no la elimina. El umbral es una decisión semántica | Aplicada |
+| `2026-10-10-auditoria-completa.md` l. 125, fila D-04 (nota tras la tabla 4.1) | "72 casos … ruido de redondeo" | Ídem: parcialmente correcto, 12 re-simulados | Aplicada |
+| Ídem l. 186 | "inestables por construcción" | Etiqueta determinista. La relación de los FN con la cercanía al umbral es una interpretación | Aplicada |
+| Ídem l. 197 | "banda limítrofe (volumen real de 1 a 2 m³)" | El único entero en [1, 2) es 1, que corresponde a V_cont ≈ [0,5; 1,5) | Aplicada |
+| Ídem l. 229, ítem 10 | "Leer el volumen inundado con mayor resolución que el `.rpt`" | La integral del `.out` no es mejor fuente con el `REPORT_STEP` actual; solo la estadística de la API | Aplicada |
+| Ídem l. 263, supuesto 3 | "la etiqueta es `volumen ≥ 1 m³`" | Se añade el umbral efectivo de ≈ 0,5 m³ continuos, acotado | Aplicada |
+| `anexos/01-hidraulica-swmm.md` l. 111, recomendación de H-06 | "o la integración del `.out`" | Descartada con el `REPORT_STEP` actual | Aplicada |
+| `correcciones/datos/README.md` l. 20 | "Una fila está inundada si su volumen es ≥ 1 m³" | Se añade el umbral efectivo de ≈ 0,5 m³ continuos | Aplicada |
+| `2026-10-10-auditoria-completa.md` l. 215 (decisión 4: "¿Se trata aparte la banda 1–2 m³?") | Usa "banda 1–2 m³" sin precisar que es solo el entero 1 | Misma aclaración que en l. 197 | **No aplicada**: fuera del alcance autorizado en esta ronda. La nota de l. 197 la cubre |
+| `anexos/01-hidraulica-swmm.md` H-06 "Qué pasa" y tabla de resumen; `anexos/03` l. 195 | "≥ 1 m³ equivale a ≥ 0,5 m³ continuo"; conteo de 72 transiciones | Revisadas: son coherentes con lo medido. No requieren corrección | — |
+
+### 8.2 Texto para la tesis (ruta A)
+
+> La variable objetivo de clasificación se define a partir del volumen desbordado por nodo que reporta SWMM 5.2 en la tabla *Node Flooding Summary* del archivo de reporte (`.rpt`). Esa tabla expresa el volumen en 10⁶ L con tres decimales, por lo que la resolución del volumen disponible es de 1 m³. Un nodo se etiqueta como inundado (`inunda = 1`) si su volumen reportado es de al menos 1 m³. En re-simulaciones de control sobre la misma red (15 escenarios, 13 de ellos con desborde) se comparó el volumen reportado con el volumen que SWMM acumula en cada paso de cálculo. En los nodos con desbordes menores de 100 m³, el valor del reporte coincidió con el redondeo al entero de ese volumen continuo, salvo un caso de 83,5 m³. En algunos nodos con volúmenes grandes el reporte quedó hasta 0,86 m³ por debajo, por una causa no identificada que no afecta la etiqueta. En consecuencia, en esa muestra la regla es consistente con un umbral de ≈ 0,5 m³ sobre el volumen continuo, acotado al intervalo (0,4988; 0,5002] m³. Los desbordes menores de ese umbral (mediana de 0,15 m³ en los escenarios de control) se consideran no inundación. La etiqueta es, por tanto, una cuantización determinista del volumen simulado, no una fuente de ruido. Que ese comportamiento se mantenga en todo el dataset es una inferencia basada en el mecanismo de redondeo del reporte y no se verificó caso por caso. Los nodos con volumen cercano al umbral son, además, los más difíciles de clasificar: en la validación por forma retenida (LeaveOneShapeOut), 333 de los 380 falsos negativos de XGBoost corresponden a nodos con volumen reportado de 1 m³ (volumen continuo de aproximadamente 0,5 a 1,5 m³). Por ello, además de la matriz de confusión agregada, se informa la matriz separada por clase de volumen real y, como análisis de sensibilidad, las métricas sin esa banda (F1 de 0,9817 con todas las filas y de 0,9847 sin la banda). Esta sensibilidad excluye solo el lado positivo de la frontera, porque los desbordes de 0 a 0,5 m³ no se distinguen de los nodos secos en los datos disponibles.
 
 ---
 
@@ -277,8 +369,11 @@ Todos están en el scratchpad de la sesión (`<scratch>` = `C:/Users/LF409F~1.FA
 | `s04_oof_banda.py` | `<py> s04_oof_banda.py <repo>` | 0 | Matriz por banda y métricas con y sin banda desde los OOF (`s04_metricas.csv`, `s04_matriz_por_banda.csv`) |
 | `s05_equivalencia.py` | `<py> s05_equivalencia.py` | 0 | Equivalencia `rpt ≥ 1` ⇔ `V_cont ≥ 0,5`; `rpt = round(V_cont)` |
 | `s06_no_monotonia.py` | `<py> s06_no_monotonia.py <repo>` | 2 | Casos no monótonos de `common_bogota` f = 3,4 → 3,6 con volumen continuo |
+| `s07_no_monotonia_ampliada.py` | `<py> s07_no_monotonia_ampliada.py <repo>` | 9 | 9 transiciones más (incluidos los 4 casos con 2 m³); transiciones con `V_cont ≥ 1` (`s07_nodos.csv`, `s07_transiciones.csv`) |
+| `s08_cota_y_regresor.py` | `<py> s08_cota_y_regresor.py <repo>` | 0 | Desglose de casos y cota del umbral efectivo; error del regresor por banda desde los OOF; IC de Wilson |
+| `s09_notas.py` | `<py> s09_notas.py <repo>` | 0 | Inserta las notas de corrección de §8.1 en los documentos anteriores (escritura solo en `docs/auditoria/`) |
 
-Orden de ejecución: `s01` → `s02` → `s03` → `s04` → `s05` → `s06`. `s02`, `s03`, `s04` y `s05` leen salidas de `s01`. Total: 9 simulaciones SWMM, cada una de menos de 2 s.
+Orden de ejecución: `s01` → `s02` → `s03` → `s04` → `s05` → `s06` → `s07` → `s08` → `s09`. `s02`, `s03`, `s04`, `s05` y `s08` leen salidas de `s01` (y `s08` también de `s07`). Total: 18 simulaciones SWMM, cada una de menos de 2 s.
 
 ---
 
@@ -698,4 +793,195 @@ print("nodos con etiqueta 1 a f=3.4 y 0 a f=3.6:", list(cand))
 print(pd.DataFrame({"rpt_3.4": a.rpt[cand], "cont_3.4": a.api[cand].round(4), "rpt_3.6": b.rpt[cand], "cont_3.6": b.api[cand].round(4)}).to_string())
 dec = (b.api < a.api) & (a.api > 0)
 print("nodos cuyo volumen continuo BAJA de f=3.4 a f=3.6:", int(dec.sum()), "de", int((a.api > 0).sum()), "con desborde a f=3.4")
+```
+
+### `s07_no_monotonia_ampliada.py`
+
+```python
+"""Spike D-04, ronda de correcciones: re-simula mas transiciones 'deja de inundar al subir el factor'
+(las 72 de la BD: inunda=1 a f y vol<1 a f+0.2, misma forma y nodo) y mide el volumen continuo
+(pyswmm node.statistics['flooding_volume']) antes y despues. 9 corridas SWMM sobre copias en ./runs:
+  rare_extreme f = 3.8, 4.0, 4.2, 4.4, 4.6  (transiciones 3.8->4.0, 4.0->4.2, 4.2->4.4, 4.4->4.6)
+  shape_ultra_short_impulse f = 4.4, 4.6     (4.4->4.6)
+  common_bogota f = 4.4, 4.6                 (4.4->4.6)
+Incluye los 4 casos con vol .rpt = 2.0. Tambien guarda todos los nodos (s07_nodos.csv) para acotar el
+umbral efectivo y contar transiciones no monotonas con el umbral continuo de 1 m3.
+Uso: python s07_no_monotonia_ampliada.py <repo>   (desde spike_d04)"""
+import sys, warnings
+from pathlib import Path
+warnings.filterwarnings("ignore")
+repo = Path(sys.argv[1]).resolve(); sys.path.insert(0, str(repo))
+import pandas as pd
+from pyswmm import Simulation, Nodes
+from swmm_resilience.simulation.hydrograph_shapes import load_shape, apply_shape
+from swmm_resilience.simulation.inflow_closure import apply_closure_policy
+from swmm_resilience.simulation.timeseries_scenario import write_scenario_inp
+from swmm_resilience.validation.hydrograph_csv import HydrographScenario
+from swmm_resilience.extraction.static_features import extract_static_features
+from swmm_resilience.extraction.labels import extract_labels
+INP = repo / "data/networks/chico_hydro-qx1/SWMM - Chico (PVC) Prueba 1 - Qx1.00.inp"
+PREP = repo / "outputs/bench/prepared_v4_21/ca706e27654e0cf5"
+static = extract_static_features(INP); nodes = static.node_id.astype(str).tolist()
+base_inflows = dict(zip(static.node_id.astype(str), static.base_inflow_lps))
+db = pd.concat([pd.read_parquet(PREP / "keys.parquet")[["shape_id", "factor_mult", "node_id"]],
+                pd.read_parquet(PREP / "targets.parquet")], axis=1)
+db["f5"] = (db.factor_mult * 5).round().astype(int)
+
+PLAN = {"rare_extreme": [3.8, 4.0, 4.2, 4.4, 4.6], "shape_ultra_short_impulse": [4.4, 4.6], "common_bogota": [4.4, 4.6]}
+res = {}
+for sid, fs in PLAN.items():
+    shape = load_shape(repo / "data/hydrograph_shapes" / f"{sid}.csv")
+    for f in fs:
+        sc = HydrographScenario(f"{sid}_f{f:.3f}", apply_shape(shape, base_inflows, f), [t for t, _ in shape], shape[-1][0])
+        sc, _ = apply_closure_policy(sc, 0.01)
+        p = write_scenario_inp(INP, sc, Path("runs"), drain_down_hours=6.0)
+        api = {}
+        with Simulation(str(p)) as sim:
+            for _ in sim:
+                pass
+            for n in Nodes(sim):
+                if n.is_junction():
+                    api[n.nodeid] = n.statistics["flooding_volume"]
+        lab = extract_labels(p.with_suffix(".rpt"), nodes, 1.0).set_index("node_id")
+        bd = db[(db.shape_id == sid) & (db.f5 == round(f * 5))].set_index("node_id").vol_inundacion_m3
+        d = pd.DataFrame({"vol_rpt": lab.vol_inundacion_m3, "vol_api": pd.Series(api), "vol_bd": bd.reindex(lab.index)})
+        res[(sid, f)] = d
+        print(f"{sid} f={f}: BD==rpt en {int((d.vol_bd == d.vol_rpt).sum())}/160; suma rpt={d.vol_rpt.sum():.0f}", flush=True)
+
+allnodes = pd.concat({k: v for k, v in res.items()}, names=["shape_id", "factor", "node_id"]).reset_index()
+allnodes.to_csv("s07_nodos.csv", index=False)
+
+rows, nm_cont = [], []
+for sid, fs in PLAN.items():
+    for f1, f2 in zip(fs[:-1], fs[1:]):
+        a, b = res[(sid, f1)], res[(sid, f2)]
+        for n in a.index[(a.vol_bd >= 1) & (b.vol_bd < 1)]:  # transiciones de la BD
+            rows.append(dict(shape_id=sid, f1=f1, f2=f2, node_id=n, rpt_f1=a.vol_rpt[n], cont_f1=a.vol_api[n],
+                             rpt_f2=b.vol_rpt[n], cont_f2=b.vol_api[n], caida=a.vol_api[n] - b.vol_api[n]))
+        m = (a.vol_api >= 1) & (b.vol_api < 1)
+        nm_cont.append(dict(shape_id=sid, f1=f1, f2=f2, transiciones_rpt=int(((a.vol_rpt >= 1) & (b.vol_rpt < 1)).sum()),
+                            transiciones_cont_ge1=int(m.sum()), nodos=list(a.index[m]),
+                            nodos_cont_baja=int(((b.vol_api < a.vol_api) & (a.vol_api > 0)).sum()),
+                            nodos_desbordan_f1=int((a.vol_api > 0).sum())))
+t = pd.DataFrame(rows); t.to_csv("s07_transiciones.csv", index=False)
+pd.set_option("display.width", 250)
+print(t.round(4).to_string(index=False))
+print("n transiciones re-simuladas:", len(t), " caida>=0.3:", int((t.caida >= 0.3).sum()), " caida<0.1:", int((t.caida < 0.1).sum()),
+      " 0.1<=caida<0.3:", int(((t.caida >= 0.1) & (t.caida < 0.3)).sum()))
+print(pd.DataFrame(nm_cont).to_string(index=False))
+```
+
+### `s08_cota_y_regresor.py`
+
+```python
+"""Spike D-04, ronda de correcciones (sin simular):
+(1) Alcance de la equivalencia rpt = round(V_cont): desglose de los casos nodo-escenario (secos, 0<V<100, >=100)
+    y cota del umbral efectivo t tal que (V_rpt >= 1) <=> (V_cont >= t), con s01 (6 escenarios) y s07 (9 escenarios).
+(2) Efecto de la cuantizacion sobre el regresor: OOF de XGBoost en LeaveOneShapeOut (solo lectura), filas con
+    volumen real en [1, 5] m3.
+(3) Intervalo de Wilson al 95 % para la proporcion 21/28 de s01.
+Uso: python s08_cota_y_regresor.py <repo>   (desde spike_d04, despues de s01 y s07)"""
+import sys
+from pathlib import Path
+import numpy as np, pandas as pd
+repo = Path(sys.argv[1]).resolve()
+
+# (1) alcance y cota
+s01 = pd.read_csv("s01_nodos.csv")[["shape_id", "factor", "node_id", "vol_rpt", "vol_api"]]
+s07 = pd.read_csv("s07_nodos.csv")[["shape_id", "factor", "node_id", "vol_rpt", "vol_api"]]
+for name, d in [("s01", s01), ("s07", s07), ("s01+s07", pd.concat([s01, s07]))]:
+    seco = d.vol_api == 0; mid = (d.vol_api > 0) & (d.vol_api < 100); big = d.vol_api >= 100
+    neg = d[d.vol_rpt < 1]; pos = d[d.vol_rpt >= 1]
+    lo = neg.vol_api.max(); hi = pos.vol_api.min()
+    print(f"[{name}] casos={len(d)} escenarios={d.groupby(['shape_id','factor']).ngroups} con desborde={int((d.groupby(['shape_id','factor']).vol_api.max()>0).sum())}; "
+          f"secos={int(seco.sum())} 0<V<100={int(mid.sum())} V>=100={int(big.sum())}; "
+          f"rpt!=round(V) en 0<V<100: {int((d.vol_rpt[mid] != np.round(d.vol_api[mid])).sum())}; "
+          f"en V>=100: {int((d.vol_rpt[big] != np.round(d.vol_api[big])).sum())} de {int(big.sum())}; "
+          f"cota umbral: ({lo:.4f}, {hi:.4f}]  [max V_cont con etiqueta 0, min V_cont con etiqueta 1]")
+    b = d[big]; e = b.vol_rpt - b.vol_api
+    print(f"    V>=100: rpt-api min={e.min():.3f} max={e.max():.3f}; nodos con rpt-api < -0.5: {int((e < -0.5).sum())}; "
+          f"con rpt-api > +0.5: {int((e > 0.5).sum())}; floor(api)==rpt en esos: "
+          f"{int((np.floor(b.vol_api[e < -0.5]) == b.vol_rpt[e < -0.5]).sum())}")
+
+# (2) regresor
+PREP = repo / "outputs/bench/prepared_v4_21/ca706e27654e0cf5"
+tg = pd.read_parquet(PREP / "targets.parquet"); tg["sample_idx"] = np.arange(len(tg))
+o = pd.read_parquet(repo / "outputs/bench/oof/ca706e27654e0cf5/xgboost.parquet")
+o = o[o.protocol == "LeaveOneShapeOut"].merge(tg, on="sample_idx")
+print("\n[regresor] y_pred_reg = expm1 de la prediccion del regresor sobre TODAS las filas de test (evaluate._fit_predict_fold)")
+for lo_, hi_ in [(1, 1), (2, 2), (1, 5), (3, 5), (5, 20), (20, 100)]:
+    m = (o.vol_inundacion_m3 >= lo_) & (o.vol_inundacion_m3 <= hi_) & (o.inunda == 1)
+    x = o[m]; ae = (x.y_pred_reg - x.vol_inundacion_m3).abs(); re_ = ae / x.vol_inundacion_m3
+    sesgo = (x.y_pred_reg - x.vol_inundacion_m3).mean()
+    print(f"  V real en [{lo_},{hi_}] (n={len(x)}): |err| mediana={ae.median():.3f} media={ae.mean():.3f} p90={ae.quantile(.9):.3f}; "
+          f"rel mediana={re_.median():.3f} media={re_.mean():.3f}; sesgo medio={sesgo:+.3f}; "
+          f"frac |err|<=0.5: {(ae <= 0.5).mean():.3f}; cuantizacion max relativa = {0.5/lo_:.2f}")
+
+# (3) Wilson
+k, n, z = 21, 28, 1.959964
+p = k / n; den = 1 + z**2 / n; c = (p + z**2 / (2 * n)) / den; h = z * np.sqrt(p * (1 - p) / n + z**2 / (4 * n**2)) / den
+lo_w, hi_w = c - h, c + h
+print(f"\n[Wilson] {k}/{n}={p:.3f}; IC95 % = [{lo_w:.3f}, {hi_w:.3f}] -> filas de 1894: [{lo_w*1894:.0f}, {hi_w*1894:.0f}] "
+      f"(punto {p*1894:.0f}); % de 46 225 positivos: [{100*lo_w*1894/46225:.1f}, {100*hi_w*1894/46225:.1f}] (punto {100*p*1894/46225:.1f})")
+```
+
+### `s09_notas.py`
+
+```python
+"""Inserta (sin reescribir texto existente) las notas de correccion fechadas del spike D-04 en los documentos
+de auditoria anteriores. Cada insercion se ancla al texto exacto de la linea previa y conserva el fin de linea.
+Uso: python s09_notas.py <repo>"""
+import sys
+from pathlib import Path
+repo = Path(sys.argv[1]).resolve()
+P = "> **Nota de corrección (2026-10-11, spike D-04):** "
+
+NOTES = [
+ ("docs/auditoria/anexos/03-datos-persistencia-sql.md", "| **D-22** |", "", [
+  P + "ver `../correcciones/03-resolucion-de-la-etiqueta.md`. Sobre **D-04**:",
+  ">",
+  "> 1. \"Son ruido de redondeo\" no se sostiene en general. En la muestra re-simulada (una red, 13 escenarios con desborde), el volumen del `.rpt` es una función monótona del volumen continuo, así que toda transición 1→0 exige que el volumen continuo baje. De las 72 transiciones se re-simularon 12, y en las 12 el volumen continuo baja: 7 con bajadas ≥ 0,3 m³ (entre ellas las 4 con 2 m³), 3 con bajadas de 0,1 a 0,3 m³ y 2 con bajadas < 0,1 m³ (casos de borde alrededor de 0,5 m³). Las otras 60 no se verificaron.",
+  "> 2. \"El umbral no filtra nada distinto del redondeo\": en la muestra, la etiqueta es determinista y equivale a un volumen continuo ≥ t, con t en (0,4988; 0,5002] m³. Sí filtra desbordes reales menores de ≈ 0,5 m³: 106 de los 414 nodos con desborde en 6 escenarios de control, con un máximo de 0,499 m³. Es una cuantización determinista, no ruido.",
+  "> 3. \"Leer el volumen desde el `.out` binario\" queda descartado con el `REPORT_STEP` actual de 3 min: la integral del `.out` se aleja del volumen continuo hasta 9,5 m³ por nodo. La fuente adecuada es la estadística `node.statistics['flooding_volume']` de pyswmm.",
+  "> 4. Un \"umbral con margen (5-10 m³)\" no elimina la banda limítrofe, solo la desplaza. Elegir el umbral es una decisión semántica pendiente del autor y no corrige la resolución.",
+ ]),
+ ("docs/auditoria/2026-10-10-auditoria-completa.md", "| T-06 | 🟠 |", "", [
+  P + "en la fila D-04, atribuir los 72 casos a \"ruido de redondeo\" es solo parcialmente correcto. Se re-simularon 12: en los 12 el volumen continuo baja, en 7 con bajadas ≥ 0,3 m³ y en 2 con bajadas < 0,1 m³ (casos de borde). Las otras 60 no se verificaron. Ver `correcciones/03-resolucion-de-la-etiqueta.md` §4.1.",
+ ]),
+ ("docs/auditoria/2026-10-10-auditoria-completa.md", "Lectura: en LeaveOneShapeOut ningún falso negativo supera 67 m³", "", [
+  P + "\"inestables por construcción\" exagera. En la muestra re-simulada, la etiqueta es una función determinista del volumen continuo, sin ruido, con un umbral efectivo en (0,4988; 0,5002] m³. Lo que sí se midió es que la banda `V_rpt = 1` (volumen continuo de ≈ 0,5 a 1,5 m³) es la más próxima al umbral y concentra 333 de los 380 FN. Que esa cercanía explique los FN es una interpretación. Ver `correcciones/03-resolucion-de-la-etiqueta.md` §6.",
+ ]),
+ ("docs/auditoria/2026-10-10-auditoria-completa.md", "   - la matriz por forma para las formas fuera de rango", "   ", [
+  P + "con la resolución de 1 m³, el único volumen reportado en [1, 2) m³ es el entero 1, que corresponde a un volumen continuo de ≈ 0,5 a 1,5 m³. La matriz por banda está en `correcciones/03-resolucion-de-la-etiqueta.md` §6.1.",
+ ]),
+ ("docs/auditoria/2026-10-10-auditoria-completa.md", "10. Leer el volumen inundado con mayor resolución que el `.rpt`", "    ", [
+  P + "con el `REPORT_STEP` actual (3 min), la integral de la serie `flooding` del `.out` **no** es una fuente de mayor resolución: se aleja del volumen continuo hasta 9,5 m³ por nodo, y hasta 0,89 m³ incluso con 5 s. La única fuente medida que da el volumen continuo es `node.statistics['flooding_volume']` de pyswmm. El spike recomienda la ruta A (declarar, sin re-simular). Ver `correcciones/03-resolucion-de-la-etiqueta.md`.",
+ ]),
+ ("docs/auditoria/2026-10-10-auditoria-completa.md", "3. La inundación es el volumen que reporta SWMM por nodo, con **resolución de 1 m³**", "   ", [
+  P + "en la muestra re-simulada (una red, 13 escenarios con desborde), \"volumen reportado ≥ 1 m³\" es consistente con un umbral efectivo de ≈ 0,5 m³ sobre el volumen continuo, acotado a (0,4988; 0,5002] m³. Los desbordes menores cuentan como \"no inunda\".",
+ ]),
+ ("docs/auditoria/anexos/01-hidraulica-swmm.md", "- **Recomendación:** tomar el volumen continuo (`flooding_volume` de PySWMM o la integración del `.out`)", "  ", [
+  P + "queda descartada la \"integración del `.out`\" con el `REPORT_STEP` actual de 3 min. Se aleja del volumen continuo hasta 9,5 m³ por nodo, más que la cuantización del `.rpt` (≤ 0,5 m³ por debajo de 100 m³). Si se quiere el volumen continuo, la fuente es `flooding_volume` de pyswmm. Ver `../correcciones/03-resolucion-de-la-etiqueta.md`.",
+ ]),
+ ("docs/auditoria/correcciones/datos/README.md", "  37 celdas (forma, factor). Una fila está inundada si su volumen es ≥ 1 m³.", "  ", [
+  P + "el volumen es el del `.rpt`, con resolución de 1 m³. En la muestra re-simulada (una red, 13 escenarios con desborde), \"≥ 1 m³\" es consistente con un umbral efectivo de ≈ 0,5 m³ de volumen continuo, acotado a (0,4988; 0,5002] m³. Ver `../03-resolucion-de-la-etiqueta.md`.",
+ ]),
+]
+
+for rel, anchor, indent, lines in NOTES:
+    path = repo / rel
+    raw = path.read_bytes().decode("utf-8")
+    eol = "\r\n" if "\r\n" in raw else "\n"
+    L = raw.split(eol)
+    idx = [i for i, l in enumerate(L) if l.startswith(anchor)]
+    assert len(idx) == 1, (rel, anchor, idx)
+    i = idx[0]
+    if any("spike D-04" in l for l in L[i + 1:i + 4]):
+        print("ya existe:", rel, anchor[:40]); continue
+    block = [""] + [indent + l if l else indent.rstrip() for l in lines]
+    if i + 1 < len(L) and L[i + 1].strip() != "":
+        block = block + [""]
+    L[i + 1:i + 1] = block
+    path.write_bytes(eol.join(L).encode("utf-8"))
+    print(f"insertada: {rel} tras la linea {i + 1} (eol={'CRLF' if eol == chr(13)+chr(10) else 'LF'})")
 ```
