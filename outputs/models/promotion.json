@@ -1,0 +1,31 @@
+{
+  "family": "xgboost",
+  "feature_contract_id": "tabular_v4_21",
+  "ordered_features": [
+    "elev_fondo",
+    "prof_max",
+    "n_tuberias_in",
+    "n_tuberias_out",
+    "diam_max_in",
+    "diam_max_out",
+    "pendiente_max_in",
+    "pendiente_out",
+    "base_inflow_lps",
+    "dist_outfall_m",
+    "n_nodos_aguas_arriba",
+    "q_pico_acum_base",
+    "upstream_capacity_lps",
+    "q_pico_nodo",
+    "q_pico_acum_escalado",
+    "volumen_local_integrado_m3",
+    "volumen_tributario_integrado_m3",
+    "duracion_efectiva_tributario_h",
+    "tiempo_primer_pico_tributario_h",
+    "tiempo_sobre_capacidad_h",
+    "integral_exceso_capacidad_m3"
+  ],
+  "classifier_sha256": "a7bb8f8f08f86deba0a99dfc8009e516e4e0a5843050601335a2ea8cd8a3589f",
+  "regressor_sha256": "162154754b305b8d911bb1dd9c9b4ac09a738abac8cf9088aa950f8da363cb62",
+  "source": "scripts/comparar_contratos_xgboost.py (migracion tabular_v4_21, delta confirmado)",
+  "promoted_at_utc": "2026-10-06T18:43:39.619997+00:00"
+}
