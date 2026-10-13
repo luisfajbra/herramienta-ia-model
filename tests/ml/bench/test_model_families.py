@@ -3,6 +3,7 @@ import json
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.impute import SimpleImputer
 from sklearn.kernel_approximation import Nystroem
 from sklearn.linear_model import SGDClassifier, SGDRegressor
@@ -117,7 +118,7 @@ def test_preprocessing_descriptor_is_json_serialisable(name):
     assert json.dumps(descriptor)
     expected_keys = {"imputer", "scaler", "pca"}
     if name == "svm":
-        expected_keys.add("kernel_approx")
+        expected_keys |= {"kernel_approx", "model_type", "loss", "probability_calibration"}
     assert set(descriptor) == expected_keys
 
 
@@ -157,8 +158,10 @@ def test_svm_uses_an_approximate_rbf_mapping_with_linear_time_solvers():
         assert kernel.gamma == pytest.approx(0.05)
         assert kernel.n_components == 8
 
-    assert isinstance(classifier.named_steps["model"], SGDClassifier)
-    assert classifier.named_steps["model"].loss == "log_loss"
+    calibrated = classifier.named_steps["model"]
+    assert isinstance(calibrated, CalibratedClassifierCV)
+    assert isinstance(calibrated.estimator, SGDClassifier)
+    assert calibrated.estimator.loss == "hinge"
     assert isinstance(regressor.named_steps["model"], SGDRegressor)
     assert regressor.named_steps["model"].loss == "epsilon_insensitive"
 
@@ -183,7 +186,10 @@ def test_class_weight_is_used_where_scale_pos_weight_does_not_exist():
     class_weight_families = ("linear", "svm")
     for name in class_weight_families:
         pipeline = get_family(name).build_classifier(TINY_PARAMS[name], scale_pos_weight=4.0)
-        weights = pipeline.named_steps["model"].class_weight
+        model = pipeline.named_steps["model"]
+        if name == "svm":  # el SGD hinge va envuelto por la calibracion de Platt
+            model = model.estimator
+        weights = model.class_weight
         assert weights == {0: 1.0, 1: pytest.approx(4.0)}
 
 

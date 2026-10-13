@@ -1,16 +1,23 @@
-"""Familia ``svm`` compatible: mapeo RBF de Nystroem y optimización SGD.
+"""Familia ``svm``: SVM APROXIMADO (mapeo RBF de Nystroem + SVM lineal).
 
-SVC/SVR con kernel RBF exacto no es viable para los ~154 000 registros del
-banco. Nystroem conserva una representación no lineal tipo RBF con un número
-fijo de componentes; los estimadores SGD que siguen escalan linealmente con
-el número de filas. ``log_loss`` mantiene ``predict_proba``, requerido por el
-evaluador para calcular AUC-ROC. Por ello el clasificador es regresión
-logística con kernel aproximado, no un SVM de margen; el nombre interno se
-conserva para mantener compatible el registro del banco.
+El clasificador es un SVM lineal de margen (pérdida ``hinge``, optimizada con
+SGD) sobre el mapeo RBF aproximado de Nystroem, con calibración de Platt
+(``CalibratedClassifierCV(method="sigmoid", cv=3)``) para obtener
+``predict_proba``, requerido por el evaluador para el AUC-ROC; es lo que con
+kernel exacto hacía ``SVC(probability=True)``. El regresor es un SVR lineal
+(pérdida ε-insensible) sobre el mismo mapeo.
+
+El SVC/SVR exacto con kernel RBF no es viable para los ~154 000 registros del
+banco (costo O(n²)-O(n³)): la corrida del 2026-10-05 acumuló más de 1.5 días
+de CPU sin terminar. Nystroem fija el número de componentes y los solvers SGD
+escalan linealmente con las filas. No es un SVM de kernel exacto: el nombre
+interno ``svm`` se conserva sólo por compatibilidad con el registro y el
+espacio de Optuna; el descriptor lo declara como ``svm_aproximado_nystroem``.
 """
 
 from __future__ import annotations
 
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.impute import SimpleImputer
 from sklearn.kernel_approximation import Nystroem
 from sklearn.linear_model import SGDClassifier, SGDRegressor
@@ -56,12 +63,14 @@ def build_classifier(params: dict, scale_pos_weight: float) -> Pipeline:
     kernel_settings, model_settings = _partition_settings(
         params, _CLASSIFIER_DEFAULTS, exclude={"epsilon"}
     )
-    model = SGDClassifier(
+    # Margen lineal (hinge) sobre el mapeo RBF; Platt da las probabilidades.
+    margin_svm = SGDClassifier(
         **model_settings,
-        loss="log_loss",
+        loss="hinge",
         class_weight={0: 1.0, 1: float(scale_pos_weight)},
         random_state=ML_RANDOM_STATE,
     )
+    model = CalibratedClassifierCV(estimator=margin_svm, method="sigmoid", cv=3)
     return Pipeline(
         [
             ("imputer", SimpleImputer(strategy="median")),
@@ -90,10 +99,18 @@ def build_regressor(params: dict) -> Pipeline:
 
 
 def preprocessing_descriptor(params: dict) -> dict:
+    """Describe el preprocesado y el tipo de modelo.
+
+    ``train.py`` llama a esta función con los parámetros del clasificador y
+    con los del regresor; sólo estos últimos llevan ``epsilon``, y así se
+    distingue la pérdida declarada (``hinge`` + Platt vs ε-insensible).
+    """
+    is_regressor = "epsilon" in params
     kernel_settings, _ = _partition_settings(
         params, _CLASSIFIER_DEFAULTS, exclude={"epsilon"}
     )
-    return {
+    descriptor = {
+        "model_type": "svm_aproximado_nystroem",
         "imputer": "median",
         "scaler": "standard",
         "kernel_approx": {
@@ -103,3 +120,9 @@ def preprocessing_descriptor(params: dict) -> dict:
         },
         "pca": None,
     }
+    if is_regressor:
+        descriptor["loss"] = "epsilon_insensitive"
+    else:
+        descriptor["loss"] = "hinge"
+        descriptor["probability_calibration"] = "platt_sigmoid_cv3"
+    return descriptor

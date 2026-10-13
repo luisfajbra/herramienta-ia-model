@@ -88,8 +88,11 @@ bench:
       regressor: {alpha: 1.0}
     svm:
       enabled: true
-      # Aproximacion escalable del kernel RBF: Nystroem evita el costo
-      # cuadratico/cubico de SVC/SVR y SGD conserva costo lineal por epoca.
+      # SVM aproximado: Nystroem (mapeo RBF) + SVM lineal de margen (hinge,
+      # SGD) con calibracion de Platt para predict_proba; el regresor es un
+      # SVR lineal (epsilon-insensible) sobre el mismo mapeo. SVC/SVR exactos
+      # son O(n^2)-O(n^3) e inviables con ~154 000 filas; el nombre interno
+      # "svm" se conserva por compatibilidad con el registro.
       # gamma~=1/17 reproduce "scale" tras estandarizar las 17 features del banco.
       classifier: {gamma: 0.05, n_components: 200, alpha: 0.0001, max_iter: 2000, tol: 0.001}
       regressor: {gamma: 0.05, n_components: 200, alpha: 0.0001, epsilon: 0.1, max_iter: 2000, tol: 0.001}
