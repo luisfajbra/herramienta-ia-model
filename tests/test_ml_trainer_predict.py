@@ -30,7 +30,7 @@ def test_train_models_rejects_dataset_without_flooded_rows(tmp_path, tiny_config
     df["inunda"] = 0
     df["vol_inundacion_m3"] = 0.0
 
-    with pytest.raises(ValueError, match="No hay filas inundadas"):
+    with pytest.raises(ValueError, match="There are no flooded rows"):
         trainer.train_models(df, tiny_config_factory(), tmp_path / "models")
 
 

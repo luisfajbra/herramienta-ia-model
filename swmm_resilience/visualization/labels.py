@@ -9,8 +9,8 @@ IN_SAMPLE_NOTE = (
     "In-sample: the model was trained on these scenarios; this is not an independent validation."
 )
 IN_SAMPLE_BANNER = (
-    "[EN MUESTRA] Estos escenarios (formas y factores) se usaron para entrenar el modelo; "
-    "las métricas no son una validación independiente."
+    "[IN-SAMPLE] These scenarios (shapes and factors) were used to train the model; "
+    "the metrics are not an independent validation."
 )
 
 

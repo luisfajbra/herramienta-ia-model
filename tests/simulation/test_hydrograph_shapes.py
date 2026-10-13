@@ -31,7 +31,7 @@ def test_load_shape_basic(tmp_path):
 def test_load_shape_empty_raises(tmp_path):
     p = tmp_path / "empty.csv"
     p.write_text("time_h,q_norm\n")
-    with pytest.raises(ValueError, match="vacío"):
+    with pytest.raises(ValueError, match="is empty"):
         load_shape(p)
 
 

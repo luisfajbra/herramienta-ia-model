@@ -507,11 +507,11 @@ def test_validate_base_inp_hash_mismatch(monkeypatch, tmp_path):
     base.write_text("network-v2")
     (tmp_path / "training_inp_hash.txt").write_text("0" * 32)
 
-    with pytest.raises(ValueError, match="no coincide"):
+    with pytest.raises(ValueError, match="does not match"):
         hydrograph_batch._validate_base_inp(base, tmp_path / "clf.joblib", False)
 
     # allow_inp_mismatch downgrades to a warning
-    with pytest.warns(UserWarning, match="no coincide"):
+    with pytest.warns(UserWarning, match="does not match"):
         hydrograph_batch._validate_base_inp(base, tmp_path / "clf.joblib", True)
 
 
@@ -545,7 +545,7 @@ def test_continuity_warning_uses_the_threshold_parameter(monkeypatch, tmp_path):
         _run(tmp_path, csv_dir, max_continuity_error_pct=8.0)
 
     # 6.0 > 3.0 (umbral configurado mas estricto que la constante): avisa.
-    with pytest.warns(UserWarning, match=r"Error de continuidad SWMM 6\.00% \(> 3"):
+    with pytest.warns(UserWarning, match=r"SWMM continuity error 6\.00% \(> 3"):
         _run(tmp_path, csv_dir, max_continuity_error_pct=3.0)
 
 
@@ -560,7 +560,7 @@ def test_continuity_warning_default_matches_the_module_constant(monkeypatch, tmp
     )
 
     assert hydrograph_batch.CONTINUITY_ERROR_WARN_PCT == 5.0
-    with pytest.warns(UserWarning, match="Error de continuidad SWMM"):
+    with pytest.warns(UserWarning, match="SWMM continuity error"):
         _run(tmp_path, csv_dir)
 
 

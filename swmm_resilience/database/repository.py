@@ -79,7 +79,7 @@ def save_static_topology(conn: sqlite3.Connection, topo: dict):
         )
 
     conn.commit()
-    print(f"  [topo] {len(df_nodes)} nodos / {len(df_links)} links estaticos guardados.")
+    print(f"  [topo] {len(df_nodes)} nodes / {len(df_links)} static links saved.")
 
 
 def save_results(conn: sqlite3.Connection, run_id: str, results: dict):
@@ -175,5 +175,5 @@ def export_run_summary(db_file: str):
         conn,
     )
     conn.close()
-    print("\nResumen de corridas:")
+    print("\nRuns summary:")
     print(df.to_string(index=False))

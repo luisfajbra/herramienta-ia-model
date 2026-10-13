@@ -66,10 +66,10 @@ class ScenarioPredictor:
 
         if self.clf.n_features_in_ != len(FEATURE_COLS) or self.reg.n_features_in_ != len(FEATURE_COLS):
             raise RuntimeError(
-                f"El modelo en '{clf_path.parent}' espera {self.clf.n_features_in_}/{self.reg.n_features_in_} "
-                f"features (clf/reg) pero FEATURE_COLS tiene {len(FEATURE_COLS)}. "
-                "El modelo activo no corresponde al contrato de features actual -- "
-                "vuelve a promoverlo (--bench-promote o el script de migración correspondiente)."
+                f"The model in '{clf_path.parent}' expects {self.clf.n_features_in_}/{self.reg.n_features_in_} "
+                f"features (clf/reg) but FEATURE_COLS has {len(FEATURE_COLS)}. "
+                "The active model does not match the current feature contract -- "
+                "promote it again (--bench-promote or the corresponding migration script)."
             )
 
         t0 = time.perf_counter()

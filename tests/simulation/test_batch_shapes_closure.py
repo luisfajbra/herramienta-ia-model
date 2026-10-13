@@ -326,7 +326,7 @@ def test_run_batch_shapes_warns_when_drainage_state_is_not_drained(monkeypatch, 
     shape = [(0.0, 0.0), (0.05, 1.0), (0.1, 0.0)]  # ya termina en 0 -> sin warning de cierre
     shapes = {"storm_notdrained": shape}
 
-    with pytest.warns(UserWarning, match="Estado de drenaje: not_drained"):
+    with pytest.warns(UserWarning, match="Drainage state: not_drained"):
         results = batch_mod.run_batch_shapes(config, shapes, {"1C": 2.0}, tmp_path / "run")
 
     assert len(results) == 1
@@ -383,7 +383,7 @@ def test_run_batch_shapes_survives_an_unreadable_out_file(monkeypatch, tmp_path)
     shape = [(0.0, 0.0), (0.05, 1.0), (0.1, 0.0)]  # ya termina en 0 -> sin warning de cierre
     shapes = {"storm_broken": shape}
 
-    with pytest.warns(UserWarning, match="No se pudo leer/clasificar el .out"):
+    with pytest.warns(UserWarning, match="Could not read/classify the .out"):
         results = batch_mod.run_batch_shapes(config, shapes, {"1C": 2.0}, tmp_path / "run")
 
     # (a) run_batch_shapes does NOT raise, and (b) the scenario still
@@ -510,7 +510,7 @@ def test_run_batch_shapes_never_exceeds_max_retries(monkeypatch, tmp_path):
     shape = [(0.0, 0.0), (0.05, 1.0), (0.1, 0.0)]
     shapes = {"storm_no_retry": shape}
 
-    with pytest.warns(UserWarning, match="Estado de drenaje: not_drained"):
+    with pytest.warns(UserWarning, match="Drainage state: not_drained"):
         batch_mod.run_batch_shapes(config, shapes, {"1C": 2.0}, tmp_path / "run")
 
     assert len(classify_calls) == 1

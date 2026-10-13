@@ -13,7 +13,7 @@ def test_results_tab_exists():
     app = ResilienciaDesktopApp(root)
     try:
         tabs = [app.notebook.tab(i, "text") for i in range(app.notebook.index("end"))]
-        assert "Resultados" in tabs
+        assert "Results" in tabs
     finally:
         root.destroy()
 
@@ -28,8 +28,8 @@ def test_results_tree_has_four_folders():
         texts = [app.results_tree.item(c, "text") for c in children]
         assert "SWMM" in texts
         assert "ML Tabular" in texts
-        assert "Surrogado (CNN)" in texts
-        assert "Surrogado (LSTM)" in texts
+        assert "Surrogate (CNN)" in texts
+        assert "Surrogate (LSTM)" in texts
     finally:
         root.destroy()
 

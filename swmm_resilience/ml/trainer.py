@@ -79,10 +79,10 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
             existing_reg = joblib.load(regressor_path) if regressor_path.exists() else None
         except Exception as load_error:
             raise RuntimeError(
-                f"No se pudo leer el modelo existente en {output_dir} para verificar "
-                f"su contrato de features ({load_error}). Revisa manualmente el "
-                f"contenido de {output_dir} antes de continuar -- train_models() no "
-                "sobreescribe a ciegas un directorio que no puede inspeccionar."
+                f"The existing model in {output_dir} could not be read to verify "
+                f"its feature contract ({load_error}). Manually check the "
+                f"contents of {output_dir} before continuing -- train_models() does not "
+                "blindly overwrite a directory it cannot inspect."
             ) from load_error
         n_expected = len(FEATURE_COLUMNS_V17)
         mismatched = (
@@ -91,15 +91,15 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
         )
         if mismatched:
             raise RuntimeError(
-                f"El modelo activo en {output_dir} tiene "
+                f"The active model in {output_dir} has "
                 f"{getattr(existing_clf, 'n_features_in_', 'n/a')}/"
                 f"{getattr(existing_reg, 'n_features_in_', 'n/a')} features (clf/reg), "
-                f"no {n_expected} (contrato tabular_v3_17). train_models() (pipeline "
-                "legacy / --only-ml) no puede sobreescribirlo silenciosamente. Si de "
-                "verdad quieres reemplazar el modelo activo por el legacy de 17 "
-                "features, mueve o borra classifier.joblib y regressor.joblib en "
-                f"{output_dir} manualmente primero (puedes recuperarlos con "
-                "`git checkout -- outputs/models/` si te equivocas)."
+                f"not {n_expected} (tabular_v3_17 contract). train_models() (legacy "
+                "pipeline / --only-ml) cannot silently overwrite it. If you "
+                "really want to replace the active model with the legacy 17-feature "
+                "one, move or delete classifier.joblib and regressor.joblib in "
+                f"{output_dir} manually first (you can recover them with "
+                "`git checkout -- outputs/models/` if you make a mistake)."
             )
 
     X = TABULAR_V3_17.validate_frame(df.loc[:, FEATURE_COLUMNS_V17])
@@ -112,7 +112,7 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
 
     df_flooded = df[df["inunda"] == 1]
     if df_flooded.empty:
-        raise ValueError("No hay filas inundadas para entrenar el regresor.")
+        raise ValueError("There are no flooded rows to train the regressor.")
     reg = make_regressor(config)
     reg.fit(X.loc[df_flooded.index], np.log1p(df_flooded["vol_inundacion_m3"]))
 
@@ -138,5 +138,5 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
         encoding="utf-8",
     )
 
-    print(f"Modelos guardados en {output_dir}  (spw={spw:.2f}, flooded_train={n_pos})")
+    print(f"Models saved to {output_dir}  (spw={spw:.2f}, flooded_train={n_pos})")
     return clf, reg

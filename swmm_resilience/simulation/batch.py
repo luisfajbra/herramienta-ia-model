@@ -66,7 +66,7 @@ def _prepare_closed_scenario_inp(
     closure_manifest["mode"] = "close"
     if closure_manifest["changed_nodes"]:
         warnings.warn(
-            f"[{scenario.scenario_id}] Aporte cerrado a cero en los nodos: "
+            f"[{scenario.scenario_id}] Inflow closed to zero at nodes: "
             f"{closure_manifest['changed_nodes']}.",
             stacklevel=2,
         )
@@ -134,7 +134,7 @@ def run_batch_shapes(
                     for _ in sim:
                         pass
                 if not rpt_path.exists():
-                    raise FileNotFoundError(f"SWMM no generó .rpt: {rpt_path}")
+                    raise FileNotFoundError(f"SWMM did not generate .rpt: {rpt_path}")
                 out_path = scenario_inp.with_suffix(".out")
                 scenario_id = scenario_inp.stem
                 window_hours = min(
@@ -182,8 +182,8 @@ def run_batch_shapes(
                         },
                     }
                     warnings.warn(
-                        f"[{scenario_id}] No se pudo leer/clasificar el .out: {exc!r} — "
-                        f"estado marcado unverified.",
+                        f"[{scenario_id}] Could not read/classify the .out: {exc!r} — "
+                        f"state marked unverified.",
                         stacklevel=2,
                     )
 
@@ -207,9 +207,9 @@ def run_batch_shapes(
             print(f"OK [{state}]")
             if state != "drained":
                 warnings.warn(
-                    f"[{scenario_id}] Estado de drenaje: {state} "
-                    f"({drainage_manifest.get('failed_checks')}) tras "
-                    f"{len(extension_log)} intento(s).",
+                    f"[{scenario_id}] Drainage state: {state} "
+                    f"({drainage_manifest.get('failed_checks')}) after "
+                    f"{len(extension_log)} attempt(s).",
                     stacklevel=2,
                 )
 

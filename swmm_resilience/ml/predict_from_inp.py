@@ -27,20 +27,20 @@ from .predict_tabular import (
 def _base_rows_from_inp(inp_file: Path | str, target_nodes: list[str] | None) -> tuple[pd.DataFrame, str]:
     inp_path = Path(inp_file).expanduser()
     if not inp_path.exists():
-        raise FileNotFoundError(f"No existe el archivo .inp: {inp_path}")
+        raise FileNotFoundError(f"The .inp file does not exist: {inp_path}")
 
     network_hash = file_hash(str(inp_path))
     topology = extract_static_topology(str(inp_path), network_hash, Nodes, Links, Simulation)
     base_rows = pd.DataFrame(topology["node_records"]).rename(columns={"node_uid": "node_id"})
     if base_rows.empty:
-        raise ValueError(f"No se pudieron extraer nodos desde {inp_path}")
+        raise ValueError(f"Could not extract nodes from {inp_path}")
 
     if target_nodes is not None:
         requested = {str(node_id) for node_id in target_nodes}
         base_rows = base_rows[base_rows["node_id"].astype(str).isin(requested)]
         missing = sorted(requested - set(base_rows["node_id"].astype(str)))
         if missing:
-            raise ValueError(f"Estos nodos no existen en la red: {', '.join(missing)}")
+            raise ValueError(f"These nodes do not exist in the network: {', '.join(missing)}")
 
     base_rows["network_file"] = inp_path.name
     return base_rows.reset_index(drop=True), network_hash
@@ -78,7 +78,7 @@ def predict_steady_flows_from_inp(
     inflow_multipliers = normalize_inflow_multipliers(
         inflow_multipliers,
         minimum=1.0,
-        label="Los factores de prediccion",
+        label="The prediction factors",
     )
     prediction_rows, _network_hash = _prediction_rows_from_inp(
         inp_file=inp_file,

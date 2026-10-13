@@ -303,7 +303,7 @@ def persist_training_run(
     (minimal path: no candidates/rankings/promotions/selections).
     """
     if (dataset["inunda"] == 1).sum() == 0:
-        raise ValueError("No hay filas inundadas para entrenar el regresor.")
+        raise ValueError("There are no flooded rows to train the regressor.")
 
     clf_algorithm = config.ml.classifier.algorithm
     reg_algorithm = config.ml.regressor.algorithm

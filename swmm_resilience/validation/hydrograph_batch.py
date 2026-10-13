@@ -108,24 +108,24 @@ def _validate_base_inp(
     flow_units = _get_option(inp, "FLOW_UNITS")
     if flow_units is not None and flow_units.upper() != "LPS":
         raise ValueError(
-            f"FLOW_UNITS='{flow_units}' en el .inp base; el flujo de validación "
-            "requiere LPS (contrato value_lps y conversión 10^6 L → m³)."
+            f"FLOW_UNITS='{flow_units}' in the base .inp; the validation flow "
+            "requires LPS (value_lps contract and 10^6 L → m³ conversion)."
         )
 
     ponding = _get_option(inp, "ALLOW_PONDING")
     if ponding is not None and ponding.upper() in ("YES", "TRUE", "1"):
         warnings.warn(
-            "ALLOW_PONDING está activado en el .inp base: el 'Node Flooding "
-            "Summary' agrega la columna de volumen estancado y cambia la "
-            "contabilidad de volúmenes. Interpretar resultados con cautela.",
+            "ALLOW_PONDING is enabled in the base .inp: the 'Node Flooding "
+            "Summary' adds the ponded-volume column and changes the "
+            "volume accounting. Interpret the results with caution.",
             stacklevel=2,
         )
 
     hash_file = Path(clf_path).parent / "training_inp_hash.txt"
     if not hash_file.exists():
         warnings.warn(
-            f"No se encontró {hash_file}; no se puede verificar que el .inp "
-            "base coincida con la red de entrenamiento.",
+            f"{hash_file} not found; it cannot be verified that the base .inp "
+            "matches the training network.",
             stacklevel=2,
         )
         return
@@ -133,14 +133,14 @@ def _validate_base_inp(
     current = _md5(Path(base_inp_path))
     if stored and current != stored:
         msg = (
-            "El .inp base no coincide con la red usada para entrenar los "
-            f"modelos (hash {current} != {stored}). La validación mediría una "
-            "red distinta a la del modelo."
+            "The base .inp does not match the network used to train the "
+            f"models (hash {current} != {stored}). The validation would measure a "
+            "different network than the model's."
         )
         if allow_inp_mismatch:
-            warnings.warn(msg + " Continuando por --allow-inp-mismatch.", stacklevel=2)
+            warnings.warn(msg + " Continuing because of --allow-inp-mismatch.", stacklevel=2)
         else:
-            raise ValueError(msg + " Usa --allow-inp-mismatch para forzar.")
+            raise ValueError(msg + " Use --allow-inp-mismatch to force.")
 
 
 def _make_predictor(
@@ -303,7 +303,7 @@ def run_batch_validation(
             closure_manifest["mode"] = "close"
             if closure_manifest["changed_nodes"]:
                 warnings.warn(
-                    f"[{scenario.scenario_id}] Aporte cerrado a cero en los nodos: "
+                    f"[{scenario.scenario_id}] Inflow closed to zero at nodes: "
                     f"{closure_manifest['changed_nodes']}.",
                     stacklevel=2,
                 )
@@ -341,9 +341,9 @@ def run_batch_validation(
         continuity_pct = _read_continuity_error(rpt_path)
         if continuity_pct is not None and abs(continuity_pct) > max_continuity_error_pct:
             warnings.warn(
-                f"[{scenario.scenario_id}] Error de continuidad SWMM "
-                f"{continuity_pct:.2f}% (> {max_continuity_error_pct}%): la "
-                "referencia de validación es poco confiable para este escenario.",
+                f"[{scenario.scenario_id}] SWMM continuity error "
+                f"{continuity_pct:.2f}% (> {max_continuity_error_pct}%): the "
+                "validation reference is unreliable for this scenario.",
                 stacklevel=2,
             )
 

@@ -28,7 +28,7 @@ def _validate_one_to_one_mapping(inp, scenario: HydrographScenario) -> dict[str,
     missing = [n for n in scenario.node_series if n not in node_ts_map]
     if missing:
         raise ValueError(
-            f"Nodos del CSV sin referencia a serie en [INFLOWS]: {sorted(missing)}"
+            f"CSV nodes without a series reference in [INFLOWS]: {sorted(missing)}"
         )
 
     seen: dict[str, str] = {}  # ts_name → first node_id that references it
@@ -36,8 +36,8 @@ def _validate_one_to_one_mapping(inp, scenario: HydrographScenario) -> dict[str,
         ts_name = node_ts_map[node_id]
         if ts_name in seen:
             raise ValueError(
-                f"La serie '{ts_name}' está compartida por los nodos "
-                f"'{seen[ts_name]}' y '{node_id}' — relación no unívoca"
+                f"The series '{ts_name}' is shared by the nodes "
+                f"'{seen[ts_name]}' and '{node_id}' — non-unique relation"
             )
         seen[ts_name] = node_id
 
@@ -102,20 +102,20 @@ def write_scenario_inp(
             unfinished.append(node_id)
     if unfinished:
         warnings.warn(
-            "El hidrograma no termina cerca de cero (>1% del pico) en los nodos: "
-            f"{sorted(unfinished)}. El volumen SWMM puede quedar subestimado si "
-            "la recesión no está incluida.",
+            "The hydrograph does not end near zero (>1% of the peak) at nodes: "
+            f"{sorted(unfinished)}. The SWMM volume may be underestimated if "
+            "the recession is not included.",
             stacklevel=2,
         )
 
     # --- Replace timeseries data --------------------------------------------
     if "TIMESERIES" not in inp:
-        raise ValueError("El .inp base no contiene sección [TIMESERIES]")
+        raise ValueError("The base .inp does not contain a [TIMESERIES] section")
 
     for node_id, ts_name in node_to_series.items():
         if ts_name not in inp["TIMESERIES"]:
             raise ValueError(
-                f"Serie '{ts_name}' referenciada en [INFLOWS] pero ausente en [TIMESERIES]"
+                f"Series '{ts_name}' referenced in [INFLOWS] but missing from [TIMESERIES]"
             )
         data = list(scenario.node_series[node_id])
         if drain_down_hours > 0:

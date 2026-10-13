@@ -172,18 +172,18 @@ def _validate_network_geometry(inp_file: str, junction_depths: list[tuple[str, f
         for node_id, depth in too_deep[:5]
     )
     raise ValueError(
-        "La red "
-        f"'{Path(inp_file).name}' tiene profundidades utiles de junction "
-        f"sospechosamente altas: mediana={median_depth:.3f} m y "
-        f"{len(too_deep)}/{len(junction_depths)} nodos superan "
+        "The network "
+        f"'{Path(inp_file).name}' has suspiciously high useful junction depths: "
+        f"median={median_depth:.3f} m and "
+        f"{len(too_deep)}/{len(junction_depths)} nodes exceed "
         f"{INPUT_VALIDATION_MAX_REASONABLE_JUNCTION_DEPTH_M:.1f} m. "
-        "Con esos MaxDepth, SWMM puede no reportar flooding aunque el hidrograma "
-        "si se haya multiplicado correctamente. Esto vuelve no comparables casos "
-        "como Qx1*3 frente a Qx3 si las geometrías no coinciden. "
-        f"Ejemplos: {examples}. "
-        "Revisa la seccion [JUNCTIONS] del .inp y corrige MaxDepth antes de correr. "
-        "Si quieres omitir este bloqueo conscientemente, desactiva "
-        "STRICT_INPUT_VALIDATION en swmm_resilience/config.py."
+        "With those MaxDepth values, SWMM may not report flooding even though the "
+        "hydrograph was correctly multiplied. This makes cases such as "
+        "Qx1*3 versus Qx3 not comparable if the geometries do not match. "
+        f"Examples: {examples}. "
+        "Check the [JUNCTIONS] section of the .inp and fix MaxDepth before running. "
+        "If you consciously want to skip this block, disable "
+        "STRICT_INPUT_VALIDATION in swmm_resilience/config.py."
     )
 
 
@@ -663,5 +663,5 @@ def run_simulation_simple(inp_path: Path, factor: float, run_dir: Path) -> Path:
         tmp_inp.unlink()
 
     if not rpt_path.exists():
-        raise FileNotFoundError(f"SWMM no genero el archivo .rpt esperado: {rpt_path}")
+        raise FileNotFoundError(f"SWMM did not generate the expected .rpt file: {rpt_path}")
     return rpt_path

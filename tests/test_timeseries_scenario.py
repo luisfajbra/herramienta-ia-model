@@ -95,7 +95,7 @@ def test_warns_when_hydrograph_does_not_end_near_zero(monkeypatch, tmp_path):
     monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
 
     # _make_scenario ends at values 2.0 / 1.5 (well above 1% of the peaks)
-    with pytest.warns(UserWarning, match="no termina cerca de cero"):
+    with pytest.warns(UserWarning, match="does not end near zero"):
         ts_mod.write_scenario_inp(
             tmp_path / "base.inp", _make_scenario(), tmp_path / "out"
         )
@@ -194,7 +194,7 @@ def test_rejects_shared_series(monkeypatch, tmp_path):
     fake_inp = _FakeInp(shared_series=True)
     monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
 
-    with pytest.raises(ValueError, match="compartida"):
+    with pytest.raises(ValueError, match="is shared"):
         ts_mod.write_scenario_inp(tmp_path / "base.inp", _make_scenario(), tmp_path / "out")
 
 

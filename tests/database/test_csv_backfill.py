@@ -153,7 +153,7 @@ def test_persist_training_run_rejects_zero_flood_dataset(migrated_managed_conn, 
     config = load_config("config.yaml")
     info = backfill_networks_and_runs(migrated_managed_conn, df, fake_inp, "Test Network")
 
-    with pytest.raises(ValueError, match="No hay filas inundadas"):
+    with pytest.raises(ValueError, match="There are no flooded rows"):
         persist_training_run(
             migrated_managed_conn, df, info["run_id_by_key"], info["node_pk_by_id"], config
         )

@@ -45,8 +45,8 @@ def load_scenario(csv_path: Path, expected_nodes: set[str]) -> HydrographScenari
     extra_cols = set(df.columns) - required
     if missing_cols or extra_cols:
         raise ValueError(
-            f"Columnas inválidas. Faltantes: {sorted(missing_cols)}. "
-            f"Adicionales: {sorted(extra_cols)}"
+            f"Invalid columns. Missing: {sorted(missing_cols)}. "
+            f"Extra: {sorted(extra_cols)}"
         )
 
     df["node_id"] = df["node_id"].astype(str)
@@ -55,29 +55,29 @@ def load_scenario(csv_path: Path, expected_nodes: set[str]) -> HydrographScenari
     csv_nodes = set(df["node_id"].unique())
     if csv_nodes != expected_nodes:
         raise ValueError(
-            f"Nodos incorrectos. Faltantes: {sorted(expected_nodes - csv_nodes)}. "
-            f"Adicionales: {sorted(csv_nodes - expected_nodes)}"
+            f"Incorrect nodes. Missing: {sorted(expected_nodes - csv_nodes)}. "
+            f"Extra: {sorted(csv_nodes - expected_nodes)}"
         )
 
     # Rule 5: valid H:MM format
     parsed = df["time"].apply(lambda t: _parse_time_hours(str(t).strip()))
     bad = df["time"][parsed.isna()].unique().tolist()
     if bad:
-        raise ValueError(f"Tiempos con formato inválido: {bad}")
+        raise ValueError(f"Times with invalid format: {bad}")
     df["_th"] = parsed
 
     # Rule 6: no duplicate (node_id, time) keys
     if df.duplicated(subset=["node_id", "time"]).any():
-        raise ValueError("Claves (node_id, time) duplicadas en el CSV")
+        raise ValueError("Duplicate (node_id, time) keys in the CSV")
 
     # Rule 9: finite non-negative values
     vals = pd.to_numeric(df["value_lps"], errors="coerce")
     if vals.isna().any():
-        raise ValueError("value_lps contiene valores no numéricos o nulos")
+        raise ValueError("value_lps contains non-numeric or null values")
     if not np.isfinite(vals.to_numpy()).all():
-        raise ValueError("value_lps contiene valores infinitos")
+        raise ValueError("value_lps contains infinite values")
     if (vals < 0).any():
-        raise ValueError("value_lps contiene valores negativos")
+        raise ValueError("value_lps contains negative values")
     df["_v"] = vals
 
     # Rules 3, 4, 7 per node and rule 8 (shared grid)
@@ -90,17 +90,17 @@ def load_scenario(csv_path: Path, expected_nodes: set[str]) -> HydrographScenari
 
         # Rule 3: at least two time steps
         if len(times) < 2:
-            raise ValueError(f"Nodo '{nid}' tiene menos de 2 tiempos")
+            raise ValueError(f"Node '{nid}' has fewer than 2 times")
 
         # Rule 4: start at 0:00 (checked on sorted data so row order doesn't matter)
         if times[0] != 0.0:
-            raise ValueError(f"Nodo '{nid}' no comienza en 0:00")
+            raise ValueError(f"Node '{nid}' does not start at 0:00")
 
         # Rule 7: strictly increasing (on sorted times)
         for i in range(1, len(times)):
             if times[i] <= times[i - 1]:
                 raise ValueError(
-                    f"Nodo '{nid}' tiene tiempos no estrictamente crecientes"
+                    f"Node '{nid}' has times that are not strictly increasing"
                 )
 
         # Rule 8: same grid for all nodes
@@ -108,13 +108,13 @@ def load_scenario(csv_path: Path, expected_nodes: set[str]) -> HydrographScenari
             ref_grid = times
         elif not np.allclose(times, ref_grid):
             raise ValueError(
-                f"Nodo '{nid}' tiene una malla temporal diferente al resto"
+                f"Node '{nid}' has a different time grid than the rest"
             )
 
         node_series[nid] = list(zip(grp_sorted["_th"], grp_sorted["_v"]))
 
     if ref_grid is None:
-        raise ValueError("El CSV no contiene filas de datos")
+        raise ValueError("The CSV contains no data rows")
 
     return HydrographScenario(
         scenario_id=scenario_id_from_path(csv_path),

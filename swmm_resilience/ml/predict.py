@@ -84,23 +84,23 @@ def predict_network(factor: float, config: Config, models_dir: Path) -> pd.DataF
 
     if clf.n_features_in_ != len(FEATURE_COLS) or reg.n_features_in_ != len(FEATURE_COLS):
         raise RuntimeError(
-            f"El modelo en '{models_dir}' espera {clf.n_features_in_}/{reg.n_features_in_} "
-            f"features (clf/reg) pero FEATURE_COLS tiene {len(FEATURE_COLS)}. "
-            "El modelo activo no corresponde al contrato de features actual -- "
-            "vuelve a promoverlo (--bench-promote o el script de migración correspondiente)."
+            f"The model in '{models_dir}' expects {clf.n_features_in_}/{reg.n_features_in_} "
+            f"features (clf/reg) but FEATURE_COLS has {len(FEATURE_COLS)}. "
+            "The active model does not match the current feature contract -- "
+            "promote it again (--bench-promote or the corresponding migration script)."
         )
 
     stored_hash = (models_dir / "training_inp_hash.txt").read_text().strip()
     if _md5(config.network.inp_path) != stored_hash:
         raise ValueError(
-            f"El .inp en '{config.network.inp_path}' ha cambiado desde el entrenamiento. "
-            "Re-entrena el modelo o usa el .inp original."
+            f"The .inp at '{config.network.inp_path}' has changed since training. "
+            "Re-train the model or use the original .inp."
         )
 
     if not (config.simulation.factor_min <= factor <= config.simulation.factor_max):
         print(
-            f"ADVERTENCIA: factor={factor} fuera del rango de entrenamiento "
-            f"[{config.simulation.factor_min}, {config.simulation.factor_max}] — extrapolación no validada"
+            f"WARNING: factor={factor} outside the training range "
+            f"[{config.simulation.factor_min}, {config.simulation.factor_max}] — unvalidated extrapolation"
         )
 
     static_df = extract_static_features(config.network.inp_path)

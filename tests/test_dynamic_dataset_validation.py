@@ -60,12 +60,12 @@ def test_assemble_dataset_rejects_missing_label_columns(tmp_path):
     dynamic_df = compute_dynamic_features(static_df, 1.0)
     labels_df = pd.DataFrame({"node_id": ["J2"], "vol_inundacion_m3": [12.0]})
 
-    with pytest.raises(ValueError, match="labels_df debe incluir columnas vol_inundacion_m3 e inunda"):
+    with pytest.raises(ValueError, match="labels_df must include the columns vol_inundacion_m3 and inunda"):
         assemble_dataset(static_df, [(1.0, dynamic_df, labels_df)], tmp_path / "dataset.csv")
 
 
 def test_validate_dataset_rejects_wrong_row_count():
     df = pd.DataFrame({"inunda": [0], "vol_inundacion_m3": [0.0]})
 
-    with pytest.raises(ValueError, match="Filas esperadas"):
+    with pytest.raises(ValueError, match="Expected rows"):
         validate_dataset(df, n_nodes=2, n_factors=1)

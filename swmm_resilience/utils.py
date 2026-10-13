@@ -11,7 +11,7 @@ def normalize_inflow_multipliers(
     values,
     *,
     minimum: float = 1.0,
-    label: str = "Los factores multiplicadores",
+    label: str = "The multiplier factors",
 ) -> list[float]:
     """Normalize multiplier inputs and enforce a lower bound.
 
@@ -22,11 +22,11 @@ def normalize_inflow_multipliers(
     """
     multipliers = [float(value) for value in values]
     if not multipliers:
-        raise ValueError(f"Debes indicar al menos un valor para {label.lower()}.")
+        raise ValueError(f"You must provide at least one value for {label.lower()}.")
     if any(value < minimum for value in multipliers):
         raise ValueError(
-            f"{label} deben ser mayores o iguales a {minimum:.1f}. "
-            "Valores menores generan un caudal inyectado negativo."
+            f"{label} must be greater than or equal to {minimum:.1f}. "
+            "Smaller values produce a negative injected flow."
         )
     return multipliers
 

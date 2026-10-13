@@ -64,5 +64,5 @@ def export_ml_dataset(db_file: str, output_csv: str, network_hash: str | None = 
     df = pd.read_sql(query, conn, params=params)
     conn.close()
     df.to_csv(output_csv, index=False)
-    print(f"\nDataset ML exportado: {output_csv}  ({len(df)} filas, {len(df.columns)} columnas)")
+    print(f"\nML dataset exported: {output_csv}  ({len(df)} rows, {len(df.columns)} columns)")
     return df

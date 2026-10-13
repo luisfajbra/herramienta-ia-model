@@ -25,7 +25,7 @@ def assemble_dataset(
         merged = static_base.merge(dynamic_df, on="node_id", how="left")
         required_label_cols = {"vol_inundacion_m3", "inunda"}
         if not required_label_cols.issubset(labels_df.columns):
-            raise ValueError("labels_df debe incluir columnas vol_inundacion_m3 e inunda")
+            raise ValueError("labels_df must include the columns vol_inundacion_m3 and inunda")
         merged = merged.merge(labels_df, on="node_id", how="left")
         merged["vol_inundacion_m3"] = merged["vol_inundacion_m3"].fillna(0.0)
         merged["inunda"] = merged["inunda"].fillna(0).astype(int)
@@ -34,5 +34,5 @@ def assemble_dataset(
     dataset = pd.concat(all_rows, ignore_index=True)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     dataset.to_csv(output_path, index=False)
-    print(f"Dataset guardado: {output_path}  ({dataset.shape[0]} filas × {dataset.shape[1]} cols)")
+    print(f"Dataset saved: {output_path}  ({dataset.shape[0]} rows × {dataset.shape[1]} cols)")
     return dataset

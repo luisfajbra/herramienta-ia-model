@@ -39,14 +39,14 @@ def close_series_to_zero(
     """
     if len(series) < 2:
         raise ValueError(
-            "La serie necesita al menos 2 puntos para inferir el paso de malla"
+            "The series needs at least 2 points to infer the grid step"
         )
     last_t, last_v = series[-1]
     if abs(last_v) <= tolerance_lps:
         return list(series), False
     step = last_t - series[-2][0]
     if step <= 0:
-        raise ValueError(f"Paso de malla no positivo entre los dos últimos puntos: {step}")
+        raise ValueError(f"Non-positive grid step between the last two points: {step}")
     return list(series) + [(last_t + step, 0.0)], True
 
 
@@ -105,10 +105,10 @@ def enforce_strict_zero_endpoint(scenario: HydrographScenario, tolerance_lps: fl
     )
     if bad:
         raise ValueError(
-            f"El escenario '{scenario.scenario_id}' tiene caudal final distinto de cero "
-            f"(> {tolerance_lps} L/s) en los nodos: {bad}. Modo estricto (default): corrige "
-            "el CSV para que termine en cero, o configura "
-            "validation.csv_inflow_closure_mode: \"close\" para cerrarlo automáticamente."
+            f"The scenario '{scenario.scenario_id}' has a non-zero final flow "
+            f"(> {tolerance_lps} L/s) at nodes: {bad}. Strict mode (default): fix "
+            "the CSV so that it ends at zero, or set "
+            "validation.csv_inflow_closure_mode: \"close\" to close it automatically."
         )
 
 

@@ -41,7 +41,7 @@ def test_close_series_to_zero_treats_a_value_within_tolerance_as_already_closed(
 
 
 def test_close_series_to_zero_rejects_a_series_with_fewer_than_two_points():
-    with pytest.raises(ValueError, match="2 puntos"):
+    with pytest.raises(ValueError, match="2 points"):
         close_series_to_zero([(0.0, 5.0)], tolerance_lps=0.01)
 
 

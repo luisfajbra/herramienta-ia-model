@@ -150,7 +150,7 @@ def evaluate_models(df: pd.DataFrame, config: Config, output_dir: Path) -> dict:
     all_results = {}
 
     for method in config.evaluation.methods:
-        print(f"  Evaluando {method}...")
+        print(f"  Evaluating {method}...")
         cv = LeaveOneGroupOut() if method == "LOSO" else GroupKFold(n_splits=5)
         all_results[method] = _run_cv(df, config, cv)
 

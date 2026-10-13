@@ -235,7 +235,7 @@ def train_cnn(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Entrena CNN 1D temporal para clasificación o regresión.",
+        description="Trains a temporal 1D CNN for classification or regression.",
     )
     parser.add_argument(
         "--task",
@@ -251,7 +251,7 @@ def main() -> None:
 
     tasks = ["classification", "regression"] if args.task == "all" else [args.task]
     for t in tasks:
-        print(f"\n=== Entrenando {t} ===")
+        print(f"\n=== Training {t} ===")
         result = train_cnn(
             task=t,
             n_epochs=args.epochs,
@@ -260,7 +260,7 @@ def main() -> None:
             n_cv_folds=args.folds,
             device=args.device,
         )
-        print(f"Folds completados: {result['n_folds']}, mejor fold: {result['best_fold']}")
+        print(f"Folds completed: {result['n_folds']}, best fold: {result['best_fold']}")
         for fold in result["folds"]:
             print(f"  Fold {fold['fold']}: val_loss={fold['val_loss']:.4f}")
 
