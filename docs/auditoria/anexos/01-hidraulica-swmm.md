@@ -1,241 +1,241 @@
-# Anexo 01 — Auditoría hidráulica / SWMM
+# Annex 01 — Hydraulic / SWMM audit
 
-- **Fecha:** 2026-10-10
-- **Rama / commit base:** `fix/cierre-auditoria-hidrogramas-20260927` @ `6e8579b`. El árbol tiene cambios sin commitear de otra fase (bench/Optuna); no se tocaron. Los números de línea de `main.py` se refieren al **árbol de trabajo**: en `6e8579b` son 12 líneas más (el diff sin commitear elimina 12 líneas por encima de la línea 225). En los demás archivos citados no hay cambios sin commitear.
-- **Motor y librerías (venv del proyecto):** pyswmm 2.1.0, swmm-toolkit 0.17.0, swmm-api 0.4.73.
-- **Red auditada:** `data/networks/chico_hydro-qx1/SWMM - Chico (PVC) Prueba 1 - Qx1.00.inp` (la que usa `config.yaml`): 160 junctions, 1 outfall (`109C`, FREE), 160 conductos circulares de PVC (n = 0.0082), `FLOW_UNITS LPS`, `DYNWAVE`, `ALLOW_PONDING NO`.
-- **Dataset auditado:** `outputs/training_v17.sqlite3` (abierta solo con `mode=ro`): 1000 corridas = 40 formas (`base` + 39 CSV) × 25 factores (0.2–5.0), con 160 000 filas nodo-escenario.
-
----
-
-## 1. Alcance y método
-
-**Alcance (área hidráulica/SWMM):** `swmm_resilience/simulation/` (runner, swmm_api_io, hydrograph_shapes, timeseries_scenario, batch), `swmm_resilience/extraction/` (static_features, topology, dynamic_features, labels), `swmm_resilience/validation/` (hydrograph_csv, hydrograph_batch), la construcción de features e inferencia en `swmm_resilience/ml/scenario_predict.py`, `predict_from_inp.py` y `predict_tabular.py`, `swmm_resilience/analysis/flood_volume.py` y `resilience.py`, `swmm_resilience/dataset/`, `config.yaml` (parámetros hidráulicos) y los `.inp` de `data/networks/` (solo lectura).
-
-**Método:**
-1. Lectura línea a línea del código citado y de las secciones `[OPTIONS]`, `[JUNCTIONS]`, `[CONDUITS]`, `[XSECTIONS]`, `[INFLOWS]` y `[TIMESERIES]` del `.inp`.
-2. Consultas de solo lectura a la BD v17 (`file:...?mode=ro`).
-3. Unas 150 simulaciones SWMM de control (1 a 3 s cada una), todas sobre **copias** en el scratchpad y armadas con **las mismas funciones del pipeline** (`write_scaled_inp`, `apply_shape` + `write_scenario_inp`, `extract_labels`). Sobre esas copias se aplicaron variantes controladas: InitFlow = 0, END_TIME extendido y corte a cero en vez de rampa. Primero se comprobó que las réplicas reproducen **exactamente** las etiquetas guardadas en la BD (§3, V-03).
-4. Scripts `d01`–`d17`, incluidos completos en §5. No se modificó código del proyecto, ni `config.yaml`, ni `outputs/`, ni ningún `.inp`.
-
-**Escala de severidad:** 🔴 CRÍTICO (compromete la validez científica) · 🟠 MAYOR (sesga resultados) · 🟡 MODERADO (limitación o riesgo latente) · 🔵 MENOR (calidad).
-
-**Resultado global:** 0 🔴 · 2 🟠 · 6 🟡 · 6 🔵 (14 hallazgos). No encontré ningún defecto que invalide las etiquetas SWMM del dataset: las réplicas independientes las reproducen al m³. Los dos hallazgos 🟠 son la condición inicial del `.inp` (InitFlow) y la ausencia de un descriptor de volumen del hidrograma entre las features.
+- **Date:** 2026-10-10
+- **Branch / base commit:** `fix/cierre-auditoria-hidrogramas-20260927` @ `6e8579b`. The tree has uncommitted changes from another phase (bench/Optuna); they were not touched. The `main.py` line numbers refer to the **working tree**: in `6e8579b` they are 12 lines higher (the uncommitted diff removes 12 lines above line 225). In the other files cited there are no uncommitted changes.
+- **Engine and libraries (project venv):** pyswmm 2.1.0, swmm-toolkit 0.17.0, swmm-api 0.4.73.
+- **Network audited:** `data/networks/chico_hydro-qx1/SWMM - Chico (PVC) Prueba 1 - Qx1.00.inp` (the one used by `config.yaml`): 160 junctions, 1 outfall (`109C`, FREE), 160 circular PVC conduits (n = 0.0082), `FLOW_UNITS LPS`, `DYNWAVE`, `ALLOW_PONDING NO`.
+- **Dataset audited:** `outputs/training_v17.sqlite3` (opened only with `mode=ro`): 1000 runs = 40 shapes (`base` + 39 CSV) × 25 factors (0.2–5.0), with 160,000 node-scenario rows.
 
 ---
 
-## 2. Hallazgos
+## 1. Scope and method
 
-### 2.1 Tabla resumen
+**Scope (hydraulic/SWMM area):** `swmm_resilience/simulation/` (runner, swmm_api_io, hydrograph_shapes, timeseries_scenario, batch), `swmm_resilience/extraction/` (static_features, topology, dynamic_features, labels), `swmm_resilience/validation/` (hydrograph_csv, hydrograph_batch), the feature construction and inference in `swmm_resilience/ml/scenario_predict.py`, `predict_from_inp.py` and `predict_tabular.py`, `swmm_resilience/analysis/flood_volume.py` and `resilience.py`, `swmm_resilience/dataset/`, `config.yaml` (hydraulic parameters) and the `.inp` files of `data/networks/` (read only).
 
-| ID | Sev. | Archivo:línea | Descripción | Impacto hidráulico cuantificado |
+**Method:**
+1. Line-by-line reading of the cited code and of the `[OPTIONS]`, `[JUNCTIONS]`, `[CONDUITS]`, `[XSECTIONS]`, `[INFLOWS]` and `[TIMESERIES]` sections of the `.inp`.
+2. Read-only queries to the v17 DB (`file:...?mode=ro`).
+3. About 150 control SWMM simulations (1 to 3 s each), all on **copies** in the scratchpad and built with **the same pipeline functions** (`write_scaled_inp`, `apply_shape` + `write_scenario_inp`, `extract_labels`). Controlled variants were applied to those copies: InitFlow = 0, extended END_TIME and a cut to zero instead of a ramp. It was first verified that the replicas reproduce **exactly** the labels stored in the DB (§3, V-03).
+4. Scripts `d01`–`d17`, included in full in §5. No project code, `config.yaml`, `outputs/` or any `.inp` was modified.
+
+**Severity scale:** 🔴 CRITICAL (compromises scientific validity) · 🟠 MAJOR (biases results) · 🟡 MODERATE (limitation or latent risk) · 🔵 MINOR (quality).
+
+**Overall result:** 0 🔴 · 2 🟠 · 6 🟡 · 6 🔵 (14 findings). I found no defect that invalidates the SWMM labels of the dataset: independent replicas reproduce them to the m³. The two 🟠 findings are the initial condition of the `.inp` (InitFlow) and the absence of a hydrograph-volume descriptor among the features.
+
+---
+
+## 2. Findings
+
+### 2.1 Summary table
+
+| ID | Sev. | File:line | Description | Quantified hydraulic impact |
 |---|---|---|---|---|
-| H-01 | 🟠 | `.inp` Qx1 `[CONDUITS]` col. InitFlow (l. 220–379); `swmm_api_io.py:229-263`; `timeseries_scenario.py:47-136` | Todos los conductos arrancan con InitFlow = suma de picos aguas arriba **a factor 1**, en las 1000 corridas, sin importar el factor ni la forma | 855 m³ almacenados en t = 0 (hasta 5.9 veces el volumen de entrada del evento). Error de continuidad de hasta 12.4 % (15 de 80 corridas de control > 5 %; con InitFlow = 0 todas quedan en \|CE\| < 1 %). En eventos cortos a f = 5: volumen inundado total +0.7 % a +10.5 % y 2–5 nodos inundados menos |
-| H-02 | 🟠 | `hydrograph_shapes.py:31-37`; `dynamic_features.py:5-29`; `contracts.py:46-49` | Las formas se normalizan **por pico** y las únicas features de forma son `duracion_horas` y `tiempo_al_pico_h`. El volumen del evento no aparece en ninguna feature | ∫q_norm·dt varía 72 veces (0.133–9.57 h). Con igual duración y factor, el volumen inundado difiere hasta 13.3 veces (`shape_2h` frente a `common_bogota`, f = 2: 1593 frente a 120 m³) |
-| H-03 | 🟡 | `scenario_predict.py:113-124`, `75-95`; `dynamic_features.py:48-54`; `hydrograph_batch.py:54-61`; `main.py:704-726` | El entrenamiento es solo espacialmente uniforme y sincrónico, pero la inferencia acepta CSV arbitrarios por nodo. `tiempo_al_pico_h` se toma de la primera serie del CSV (puede ser nula y dar 0 h). La bandera de extrapolación solo mira pico/base | En entrenamiento, q_pico_nodo/base = factor con desviación de 8.9·10⁻¹⁶ en los 147 nodos (uniformidad total). Con un CSV cuyo primer nodo es nulo, t_pico = 0.0 h aunque el real sea 1.0 h |
-| H-04 | 🟡 | `batch.py:7-73`; `csv_backfill.py:147-156` | El entrenamiento no lee ni guarda el error de continuidad de SWMM (solo lo hace la validación) | `runs.continuity_error_pct` es NULL en 1000 de 1000 corridas. Control: 15 de 80 corridas (19 %) con \|CE\| > 5 %, que es el umbral que el propio proyecto usa en validación |
-| H-05 | 🟡 | `timeseries_scenario.py:120-123` (docstring 58-61) | El "drenaje" de 6 h agrega el punto (t_fin + 6 h, 0). Si la forma no termina en 0, SWMM interpola una **rampa lineal** y no un corte a cero | Volumen de entrada +24.5 % (`shape_2h`), +13.8 % (`long_moderate`) y +9.8 % (`shape_5h`) frente al hidrograma declarado. Volumen inundado +2.2 % (`long_moderate`, f = 5) y +0.7 % (f = 4); sin cambio en los otros casos probados |
-| H-06 | 🟡 | `labels.py:19-23`, `122-139`; `swmm_api_io.py:304-307`; `config.yaml:14` | La etiqueta sale del `.rpt`, con 3 decimales en 10⁶ L, así que la resolución es 1 m³. El umbral "≥ 1 m³" equivale a "≥ 0.5 m³ continuo" | Ningún volumen de la BD está en (0, 1); 1902 filas (4.1 % de los positivos) valen exactamente 1.0, así que cambiar `>=` por `>` las convierte en negativas. En 6 corridas de control, entre 10 y 28 nodos por escenario desbordan (27–57 % de los que desbordan) pero quedan etiquetados como 0 |
-| H-07 | 🟡 | `labels.py:75-86` (`parts[-1]`, l. 79); `swmm_api_io.py:293-298` | El parser de texto de respaldo lee la última columna, que en SWMM 5.2 es "Maximum Ponded Depth" y no el volumen | Si se activa, **todas** las etiquetas pasan a 0 sin aviso. Verificado: 0.0 m³ frente a 7669 m³ por swmm_api en `base` f = 3 |
-| H-08 | 🟡 | `topology.py:90-118` | La única feature de capacidad es la de los conductos **aguas arriba**. La que gobierna la sobrecarga del nodo es la del conducto de **salida** | `upstream_capacity_lps` es NaN en 57 nodos de cabecera (35.6 % de las filas, imputadas). AUC de q_acum/cap_aguas_arriba = 0.732 frente a 0.884 para q_acum/cap_salida |
-| H-09 | 🔵 | `static_features.py:82-87`, `109` | `compute_slope` solo usa cotas de JUNCTIONS, así que `pendiente_out` sale NaN en el nodo que descarga al outfall | 1 nodo (`108C`, 0.6 % de las filas) con pendiente de salida imputada |
-| H-10 | 🔵 | `runner.py:646-667`; `batch.py:7-16`; `main.py:992-1020` | La forma `base` se simula con END = 3 h, sin drenaje y con las series originales; las otras 39 formas llevan +6 h | Comprobado: no cambia ninguna etiqueta (END = 9 h da el mismo resultado a f = 0.2, 1, 3 y 5). Quedan sin simular 147–449 m³ almacenados y alrededor del 7.4 % de la recesión |
-| H-11 | 🔵 | `labels.py:122-139`; `static_features.py:7-26`; `hydrograph_shapes.py:40-53`; `csv_backfill.py:88` | La ruta de entrenamiento no comprueba `FLOW_UNITS`, ignora Sfactor y Baseline de `[INFLOWS]` y fija `flow_units = 'LPS'` en la BD | Sin impacto actual (LPS, Sfactor = 1 y Baseline = 0 verificados en los 160 inflows). Con unidades US el volumen saldría errado por un factor de 3.785 |
-| H-12 | 🔵 | `topology.py:14-32`, `83-88`; `dynamic_features.py:48-54` | `q_pico_acum` suma picos sin desfase ni atenuación, solo sobre CONDUITS. Con divisores o ciclos contaría el caudal dos veces | Sin impacto actual: la red es un árbol acíclico con out-degree máximo 1. Riesgo al transferir a otras redes |
-| H-13 | 🔵 | `runner.py:427-429`, `456-462`, `515-530`; `swmm_api_io.py:131-134` | En la ruta legacy (`swmm_resilience/main.py` y app de escritorio) se leen claves de PySWMM que no existen (`time_flooded`, `time_max_depth`), se asume un dt constante y `base_inflow_lps` es el Baseline (homónimo de la feature v17, que es el pico) | Duración de inundación 0 y `time_to_peak` None salvo por el overlay del `.rpt`. El dt real varía entre 1 y 5 s (5 valores distintos). No afecta al pipeline v17 de la tesis |
-| H-14 | 🔵 | `hydrograph_csv.py:127-129`, `153-156` | `write_shape_validation_csv` redondea los tiempos a minutos enteros (H:MM) | Desplazamiento ≤ 0.5 min y volumen ≤ 1.22 % (`shape_ultra_short_impulse`). En las formas de validación ≤ 0.01 %. t_pico de entrenamiento e inferencia difieren ≤ 3.3·10⁻⁴ h |
+| H-01 | 🟠 | `.inp` Qx1 `[CONDUITS]` InitFlow col. (lines 220–379); `swmm_api_io.py:229-263`; `timeseries_scenario.py:47-136` | All conduits start with InitFlow = sum of upstream peaks **at factor 1**, in all 1000 runs, regardless of the factor or the shape | 855 m³ stored at t = 0 (up to 5.9 times the event's input volume). Continuity error of up to 12.4% (15 of 80 control runs > 5%; with InitFlow = 0 all are at \|CE\| < 1%). In short events at f = 5: total flooded volume +0.7% to +10.5% and 2–5 fewer flooded nodes |
+| H-02 | 🟠 | `hydrograph_shapes.py:31-37`; `dynamic_features.py:5-29`; `contracts.py:46-49` | Shapes are normalized **by peak** and the only shape features are `duracion_horas` and `tiempo_al_pico_h`. The event volume does not appear in any feature | ∫q_norm·dt varies 72 times (0.133–9.57 h). At equal duration and factor, the flooded volume differs up to 13.3 times (`shape_2h` versus `common_bogota`, f = 2: 1593 versus 120 m³) |
+| H-03 | 🟡 | `scenario_predict.py:113-124`, `75-95`; `dynamic_features.py:48-54`; `hydrograph_batch.py:54-61`; `main.py:704-726` | Training is only spatially uniform and synchronous, but inference accepts arbitrary per-node CSVs. `tiempo_al_pico_h` is taken from the first series of the CSV (it can be null and give 0 h). The extrapolation flag only looks at peak/base | In training, q_pico_nodo/base = factor with a deviation of 8.9·10⁻¹⁶ in all 147 nodes (total uniformity). With a CSV whose first node is null, t_pico = 0.0 h even though the actual one is 1.0 h |
+| H-04 | 🟡 | `batch.py:7-73`; `csv_backfill.py:147-156` | Training neither reads nor stores the SWMM continuity error (only validation does) | `runs.continuity_error_pct` is NULL in 1000 of 1000 runs. Control: 15 of 80 runs (19%) with \|CE\| > 5%, which is the threshold the project itself uses in validation |
+| H-05 | 🟡 | `timeseries_scenario.py:120-123` (docstring 58-61) | The 6 h "drain" adds the point (t_end + 6 h, 0). If the shape does not end at 0, SWMM interpolates a **linear ramp** and not a cut to zero | Input volume +24.5% (`shape_2h`), +13.8% (`long_moderate`) and +9.8% (`shape_5h`) versus the declared hydrograph. Flooded volume +2.2% (`long_moderate`, f = 5) and +0.7% (f = 4); no change in the other cases tested |
+| H-06 | 🟡 | `labels.py:19-23`, `122-139`; `swmm_api_io.py:304-307`; `config.yaml:14` | The label comes from the `.rpt`, with 3 decimals in 10⁶ L, so the resolution is 1 m³. The threshold "≥ 1 m³" is equivalent to "≥ 0.5 m³ continuous" | No DB volume is in (0, 1); 1902 rows (4.1% of the positives) are exactly 1.0, so changing `>=` to `>` turns them negative. In 6 control runs, between 10 and 28 nodes per scenario overflow (27–57% of those that overflow) but are labeled 0 |
+| H-07 | 🟡 | `labels.py:75-86` (`parts[-1]`, line 79); `swmm_api_io.py:293-298` | The fallback text parser reads the last column, which in SWMM 5.2 is "Maximum Ponded Depth" and not the volume | If activated, **all** labels become 0 without warning. Verified: 0.0 m³ versus 7669 m³ by swmm_api in `base` f = 3 |
+| H-08 | 🟡 | `topology.py:90-118` | The only capacity feature is that of the **upstream** conduits. The one that governs the surcharge of the node is that of the **outlet** conduit | `upstream_capacity_lps` is NaN in 57 headwater nodes (35.6% of the rows, imputed). AUC of q_acum/upstream_cap = 0.732 versus 0.884 for q_acum/outlet_cap |
+| H-09 | 🔵 | `static_features.py:82-87`, `109` | `compute_slope` only uses JUNCTION elevations, so `pendiente_out` is NaN at the node that discharges to the outfall | 1 node (`108C`, 0.6% of the rows) with imputed outlet slope |
+| H-10 | 🔵 | `runner.py:646-667`; `batch.py:7-16`; `main.py:992-1020` | The `base` shape is simulated with END = 3 h, without drain and with the original series; the other 39 shapes carry +6 h | Verified: it does not change any label (END = 9 h gives the same result at f = 0.2, 1, 3 and 5). 147–449 m³ of storage and about 7.4% of the recession remain unsimulated |
+| H-11 | 🔵 | `labels.py:122-139`; `static_features.py:7-26`; `hydrograph_shapes.py:40-53`; `csv_backfill.py:88` | The training path does not check `FLOW_UNITS`, ignores Sfactor and Baseline of `[INFLOWS]` and fixes `flow_units = 'LPS'` in the DB | No current impact (LPS, Sfactor = 1 and Baseline = 0 verified in all 160 inflows). With US units the volume would be off by a factor of 3.785 |
+| H-12 | 🔵 | `topology.py:14-32`, `83-88`; `dynamic_features.py:48-54` | `q_pico_acum` sums peaks without lag or attenuation, only over CONDUITS. With dividers or cycles it would count the flow twice | No current impact: the network is an acyclic tree with maximum out-degree 1. Risk when transferring to other networks |
+| H-13 | 🔵 | `runner.py:427-429`, `456-462`, `515-530`; `swmm_api_io.py:131-134` | In the legacy path (`swmm_resilience/main.py` and desktop app) PySWMM keys that do not exist (`time_flooded`, `time_max_depth`) are read, a constant dt is assumed and `base_inflow_lps` is the Baseline (homonymous with the v17 feature, which is the peak) | Flooding duration 0 and `time_to_peak` None except through the `.rpt` overlay. The actual dt varies between 1 and 5 s (5 distinct values). It does not affect the thesis's v17 pipeline |
+| H-14 | 🔵 | `hydrograph_csv.py:127-129`, `153-156` | `write_shape_validation_csv` rounds times to whole minutes (H:MM) | Shift ≤ 0.5 min and volume ≤ 1.22% (`shape_ultra_short_impulse`). In the validation shapes ≤ 0.01%. Training and inference t_pico differ by ≤ 3.3·10⁻⁴ h |
 
-### 2.2 Fichas detalladas
+### 2.2 Detailed sheets
 
-#### H-01 🟠 — Condición inicial (InitFlow) fija a factor 1 en todos los escenarios
+#### H-01 🟠 — Initial condition (InitFlow) fixed at factor 1 in all scenarios
 
-- **Dónde:** `.inp` Qx1, `[CONDUITS]`, columna `InitFlow` (líneas 220–379). Las funciones `write_scaled_inp` (`swmm_api_io.py:229-263`) y `write_scenario_inp` (`timeseries_scenario.py:47-136`) solo reescriben `[TIMESERIES]` y `[OPTIONS]`, así que el InitFlow se hereda sin cambios. Qx2 y Qx3 tienen el mismo InitFlow que Qx1 (cociente 1.000).
-- **Qué pasa:** los 160 conductos tienen InitFlow > 0, y el valor es **exactamente** la suma de los picos de las series aguas arriba del nodo de entrada (diferencia máxima 0.0 L/s; 1525 L/s en `T160`). Como los nodos tienen InitDepth = 0, SWMM inicializa sus profundidades a partir de las de los conductos. La red arranca "llena" con el caudal pico de factor 1 en todas las corridas, aunque el escenario sea f = 0.2 o una forma que empieza en q = 0 (33 de las 39 formas tienen q0 = 0).
-- **Impacto cuantificado (d05, d07, d09):**
-  - Initial Stored Volume = 855 m³ en todas las corridas. Es 5.9 veces el volumen de entrada de `shape_ultra_short_impulse` a f = 0.2 (146 m³).
-  - Error de continuidad del routing con la configuración del pipeline: hasta **12.38 %** (ultra_short, f = 0.2). A f = 0.2, 12 de 40 formas superan 5 %; a f = 1.0, 3 de 40. La correlación entre CE y (almacenamiento inicial / entrada) es 0.857. Con InitFlow = 0, el CE queda entre −0.92 % y +0.03 % en todos los casos probados.
-  - Etiquetas (pipeline frente a InitFlow = 0):
+- **Where:** `.inp` Qx1, `[CONDUITS]`, `InitFlow` column (lines 220–379). The functions `write_scaled_inp` (`swmm_api_io.py:229-263`) and `write_scenario_inp` (`timeseries_scenario.py:47-136`) only rewrite `[TIMESERIES]` and `[OPTIONS]`, so the InitFlow is inherited unchanged. Qx2 and Qx3 have the same InitFlow as Qx1 (ratio 1.000).
+- **What happens:** the 160 conduits have InitFlow > 0, and the value is **exactly** the sum of the peaks of the series upstream of the inlet node (maximum difference 0.0 L/s; 1525 L/s at `T160`). Since the nodes have InitDepth = 0, SWMM initializes their depths from those of the conduits. The network starts "full" with the factor-1 peak flow in all runs, even if the scenario is f = 0.2 or a shape that starts at q = 0 (33 of the 39 shapes have q0 = 0).
+- **Quantified impact (d05, d07, d09):**
+  - Initial Stored Volume = 855 m³ in all runs. It is 5.9 times the input volume of `shape_ultra_short_impulse` at f = 0.2 (146 m³).
+  - Routing continuity error with the pipeline configuration: up to **12.38%** (ultra_short, f = 0.2). At f = 0.2, 12 of 40 shapes exceed 5%; at f = 1.0, 3 of 40. The correlation between CE and (initial storage / input) is 0.857. With InitFlow = 0, the CE stays between −0.92% and +0.03% in all cases tested.
+  - Labels (pipeline versus InitFlow = 0):
 
-    | Escenario | Vol. inundado pipeline | Vol. con InitFlow = 0 | Δ | Nodos inundados (pipeline / InitFlow = 0) |
+    | Scenario | Pipeline flooded vol. | Vol. with InitFlow = 0 | Δ | Flooded nodes (pipeline / InitFlow = 0) |
     |---|---|---|---|---|
-    | `shape_ultra_short_impulse` f = 5 | 1320 m³ | 1195 m³ | +10.5 % | 96 / 101 |
-    | `rare_extreme` f = 5 | 2099 | 2054 | +2.2 % | 98 / 100 |
-    | `common_bogota` f = 5 | 2864 | 2825 | +1.4 % | 98 / 100 |
-    | `shape_flash_flood_urban` f = 5 | 4162 | 4121 | +1.0 % | 95 / 99 |
-    | `shape_micro_burst_45min` f = 5 | 4908 | 4875 | +0.7 % | 95 / 97 |
-    | `shape_2h` f = 3 | 5033 | 5038 | −0.1 % | 60 / 62 |
+    | `shape_ultra_short_impulse` f = 5 | 1320 m³ | 1195 m³ | +10.5% | 96 / 101 |
+    | `rare_extreme` f = 5 | 2099 | 2054 | +2.2% | 98 / 100 |
+    | `common_bogota` f = 5 | 2864 | 2825 | +1.4% | 98 / 100 |
+    | `shape_flash_flood_urban` f = 5 | 4162 | 4121 | +1.0% | 95 / 99 |
+    | `shape_micro_burst_45min` f = 5 | 4908 | 4875 | +0.7% | 95 / 97 |
+    | `shape_2h` f = 3 | 5033 | 5038 | −0.1% | 60 / 62 |
     | `base` f = 3 / f = 5 | 7669 / 19940 | 7668 / 19941 | ≈ 0 | 61 / 61 · 93 / 93 |
 
-  - Conclusión: el sesgo se concentra en los eventos cortos e intensos (≤ 1 h), justo en el régimen "flash" que la tesis quiere cubrir. En los eventos largos es despreciable.
-- **Evidencia:** `d03_base_inp.py` (InitFlow = suma de picos, 160/160), `d05_experiments.py`, `d07_more.py`, `d09_continuity_sweep.py`. Corroboración externa: `validation_output/val_extrap_ultrafast_20min/metrics_per_scenario.csv` tiene 8 de 24 escenarios con CE > 5 % (máximo 11.37 %), y `AUDITORIA_SURROGATE_HIDROGRAMAS.md:309` ya lo observaba sin identificar la causa.
-- **Recomendación:** generar los escenarios con InitFlow = 0, o con InitFlow = factor × q(t = 0) acumulado y coherente con la forma. Otra opción es un *spin-up* o hotstart en tiempo seco común a todas las corridas. Después hay que regenerar el dataset, o al menos las formas ≤ 1.5 h, y declarar el criterio en la tesis.
+  - Conclusion: the bias is concentrated in short, intense events (≤ 1 h), precisely the "flash" regime that the thesis wants to cover. In long events it is negligible.
+- **Evidence:** `d03_base_inp.py` (InitFlow = sum of peaks, 160/160), `d05_experiments.py`, `d07_more.py`, `d09_continuity_sweep.py`. External corroboration: `validation_output/val_extrap_ultrafast_20min/metrics_per_scenario.csv` has 8 of 24 scenarios with CE > 5% (maximum 11.37%), and `AUDITORIA_SURROGATE_HIDROGRAMAS.md:309` had already observed it without identifying the cause.
+- **Recommendation:** generate the scenarios with InitFlow = 0, or with InitFlow = factor × q(t = 0) accumulated and consistent with the shape. Another option is a dry-weather *spin-up* or hotstart common to all runs. Then the dataset must be regenerated, or at least the shapes ≤ 1.5 h, and the criterion declared in the thesis.
 
-#### H-02 🟠 — Ninguna feature describe el volumen del hidrograma
+#### H-02 🟠 — No feature describes the hydrograph volume
 
-- **Dónde:** `hydrograph_shapes.py:31-37` (`get_shape_stats` devuelve solo duración y t_pico), `dynamic_features.py:5-29`, `contracts.py:46-49`.
-- **Qué pasa:** las 39 formas de entrenamiento y las 7 de validación están normalizadas a pico = 1 (`d02`). El factor escala el **pico**, y el volumen del evento por nodo (base·f·∫q_norm) depende de la forma: ∫q_norm·dt va de 0.133 h (`shape_ultra_short_impulse`) a 9.57 h (`shape_quasi_uniform_block`), es decir, 72 veces. En hidráulica de drenaje, el volumen desbordado depende sobre todo del volumen de entrada que supera la capacidad, pero el modelo solo ve (duración, t_pico).
-- **Impacto cuantificado (`d12_db_shapes.py`, BD v17):**
-  - Con duración 10 h: `shape_slow_broad_rise` (t_pico 6.0) da 9716 m³ y `shape_long_recession_tail` (t_pico 0.5) da 1366 m³ a f = 2, una relación de 7.1. A f = 5 la relación es 77 404 frente a 15 668 (4.9).
-  - Con duración 2 h: `shape_2h` da 1593 m³ y `common_bogota` 120 m³ a f = 2 (13.3 veces).
-  - Con 39 formas, el par (duración, t_pico) puede servir de "identificador" de la forma en entrenamiento, pero no determina el volumen de una forma nueva. Esto explica físicamente la subestimación de volumen en formas no vistas que reporta `AUDITORIA_SURROGATE_HIDROGRAMAS.md:309`.
-- **Recomendación:** agregar features de volumen: `vol_evento_nodo = q_pico·∫q_norm` (m³), su acumulado aguas arriba, la duración sobre un umbral (por ejemplo q > 0.5·q_pico) y el centroide temporal. Deben calcularse igual en `compute_dynamic_features` y en `compute_scenario_dynamic_features`.
+- **Where:** `hydrograph_shapes.py:31-37` (`get_shape_stats` returns only duration and t_pico), `dynamic_features.py:5-29`, `contracts.py:46-49`.
+- **What happens:** the 39 training shapes and the 7 validation shapes are normalized to peak = 1 (`d02`). The factor scales the **peak**, and the event volume per node (base·f·∫q_norm) depends on the shape: ∫q_norm·dt goes from 0.133 h (`shape_ultra_short_impulse`) to 9.57 h (`shape_quasi_uniform_block`), i.e. 72 times. In drainage hydraulics, the overflowed volume depends mainly on the input volume that exceeds the capacity, but the model only sees (duration, t_pico).
+- **Quantified impact (`d12_db_shapes.py`, v17 DB):**
+  - With duration 10 h: `shape_slow_broad_rise` (t_pico 6.0) gives 9716 m³ and `shape_long_recession_tail` (t_pico 0.5) gives 1366 m³ at f = 2, a ratio of 7.1. At f = 5 the ratio is 77,404 versus 15,668 (4.9).
+  - With duration 2 h: `shape_2h` gives 1593 m³ and `common_bogota` 120 m³ at f = 2 (13.3 times).
+  - With 39 shapes, the (duration, t_pico) pair can serve as an "identifier" of the shape in training, but it does not determine the volume of a new shape. This physically explains the volume underestimation on unseen shapes reported in `AUDITORIA_SURROGATE_HIDROGRAMAS.md:309`.
+- **Recommendation:** add volume features: `vol_evento_nodo = q_pico·∫q_norm` (m³), its upstream accumulation, the duration above a threshold (for example q > 0.5·q_pico) and the temporal centroid. They must be computed the same way in `compute_dynamic_features` and in `compute_scenario_dynamic_features`.
 
-#### H-03 🟡 — Entrenamiento uniforme y sincrónico, inferencia sobre hidrogramas arbitrarios
+#### H-03 🟡 — Uniform and synchronous training, inference on arbitrary hydrographs
 
-- **Dónde:** `scenario_predict.py:113-124` (`peak_map` = max por nodo; `tiempo_al_pico_h` de la **primera** serie, l. 118-119); `dynamic_features.py:48-54` (suma de picos aguas arriba); `hydrograph_batch.py:54-61` (`expected_nodes` incluye los 13 nodos con serie nula); `scenario_predict.py:75-95` (bandera de extrapolación solo por pico/base); `main.py:704-726` (régimen interp/extrap solo por duración).
-- **Qué pasa:** en las 1000 corridas, los 147 nodos con aporte reciben la **misma** forma y el **mismo** factor, con picos sincrónicos (`d01`: |q_pico_nodo/base − factor| ≤ 8.9·10⁻¹⁶). El modo `--evaluate-hydrographs` acepta CSV con series distintas por nodo, y ahí: (a) la suma de picos no coincidentes no es comparable con la del entrenamiento; (b) `tiempo_al_pico_h` depende del orden de los nodos en el CSV, y si el primero es uno de los 13 nodos nulos (`3C`, `4C`, `20C`, …) da 0 h (`d17`: 0.0 h frente a 1.0 h reales); (c) nada avisa que el escenario está fuera de la distribución de entrenamiento.
-- **Impacto:** no sesga los resultados ya reportados, porque la validación fuera de muestra (`--evaluate-validation-shapes`) también usa formas uniformes. Sí limita lo que puede afirmarse: el surrogate no está validado para lluvia con variabilidad espacial.
-- **Recomendación:** calcular t_pico y duración sobre el hidrograma **agregado** (suma de los nodos) tanto en entrenamiento como en inferencia, marcar como extrapolación cualquier CSV con formas heterogéneas o picos desfasados, y declarar la limitación en la tesis.
+- **Where:** `scenario_predict.py:113-124` (`peak_map` = max per node; `tiempo_al_pico_h` from the **first** series, lines 118-119); `dynamic_features.py:48-54` (sum of upstream peaks); `hydrograph_batch.py:54-61` (`expected_nodes` includes the 13 nodes with a null series); `scenario_predict.py:75-95` (extrapolation flag only by peak/base); `main.py:704-726` (interp/extrap regime only by duration).
+- **What happens:** in all 1000 runs, the 147 nodes with inflow receive the **same** shape and the **same** factor, with synchronous peaks (`d01`: |q_pico_nodo/base − factor| ≤ 8.9·10⁻¹⁶). The `--evaluate-hydrographs` mode accepts CSVs with different series per node, and there: (a) the sum of non-coincident peaks is not comparable with that of training; (b) `tiempo_al_pico_h` depends on the order of the nodes in the CSV, and if the first one is one of the 13 null nodes (`3C`, `4C`, `20C`, …) it gives 0 h (`d17`: 0.0 h versus 1.0 h actual); (c) nothing warns that the scenario is outside the training distribution.
+- **Impact:** it does not bias the results already reported, because the out-of-sample validation (`--evaluate-validation-shapes`) also uses uniform shapes. It does limit what can be claimed: the surrogate is not validated for rainfall with spatial variability.
+- **Recommendation:** compute t_pico and duration on the **aggregated** hydrograph (sum of the nodes) both in training and in inference, flag as extrapolation any CSV with heterogeneous shapes or lagged peaks, and declare the limitation in the thesis.
 
-#### H-04 🟡 — Sin control de continuidad de masa en la generación del dataset
+#### H-04 🟡 — No mass continuity control in the dataset generation
 
-- **Dónde:** `batch.py:7-73` (run_batch y run_batch_shapes no leen el `.rpt` más allá de las etiquetas); `csv_backfill.py:147-156` (inserta `runs` sin `continuity_error_pct`). La validación sí lo hace (`hydrograph_batch.py:175-193`, `314-321`).
-- **Evidencia:** `d01_db.py`: `runs` tiene 1000 corridas COMPLETE y `continuity_error_pct IS NULL` = 1000. `d09_continuity_sweep.py` (configuración exacta del pipeline, 80 corridas): a f = 0.2, 12 de 40 con |CE| > 5 %, 40 de 40 con |CE| > 1 % y mediana 3.67 %; a f = 1.0, 3 de 40 con > 5 % y mediana 0.93 %. Todas las corridas con CE > 5 % tienen 0 nodos inundados, así que **no contaminan positivos**, pero sí forman parte del 20 % de filas negativas (factor ≤ 1.0).
-- **Recomendación:** leer y guardar el CE de routing (y el *Highest Continuity Errors* por nodo) para cada corrida, fijar un criterio de aceptación (por ejemplo |CE| ≤ 1 %) y reportarlo. La causa principal se corrige con H-01.
+- **Where:** `batch.py:7-73` (run_batch and run_batch_shapes do not read the `.rpt` beyond the labels); `csv_backfill.py:147-156` (inserts `runs` without `continuity_error_pct`). Validation does do it (`hydrograph_batch.py:175-193`, `314-321`).
+- **Evidence:** `d01_db.py`: `runs` has 1000 COMPLETE runs and `continuity_error_pct IS NULL` = 1000. `d09_continuity_sweep.py` (exact pipeline configuration, 80 runs): at f = 0.2, 12 of 40 with |CE| > 5%, 40 of 40 with |CE| > 1% and median 3.67%; at f = 1.0, 3 of 40 with > 5% and median 0.93%. All runs with CE > 5% have 0 flooded nodes, so they **do not contaminate positives**, but they are part of the 20% of negative rows (factor ≤ 1.0).
+- **Recommendation:** read and store the routing CE (and the *Highest Continuity Errors* per node) for each run, set an acceptance criterion (for example |CE| ≤ 1%) and report it. The main cause is fixed with H-01.
 
-#### H-05 🟡 — El "drain-down" es una rampa lineal, no un corte a cero
+#### H-05 🟡 — The "drain-down" is a linear ramp, not a cut to zero
 
-- **Dónde:** `timeseries_scenario.py:120-123`. Se agrega el punto `(last_time + drain_down_hours, 0.0)`. SWMM interpola linealmente entre puntos, así que si q(t_fin) ≠ 0 el caudal baja **linealmente durante 6 h**. La docstring (l. 58-61) lo presenta como un punto de caudal cero "para que la red drene", y además el caudal no llega a 0 hasta exactamente END_TIME, de modo que esas formas no tienen ningún período real de drenaje.
-- **Formas afectadas:** `shape_2h` (q_fin = 0.075), `shape_5h` (0.074) y `long_moderate` (0.35). Son 3 de 39 formas de entrenamiento y 0 de 7 formas de validación. También afecta a la forma `base` cuando se re-simula en `--evaluate-shapes` (`main.py:495-509`, q_fin/q_pico = 0.074).
-- **Impacto cuantificado (d05, d07):** entrada externa de SWMM 6259 m³ frente a 5032 m³ con corte (`shape_2h`, f = 1, +24.4 %, igual a la predicción analítica de 0.5·q_fin·6 h / ∫ = 24.5 %); `long_moderate` +13.8 %; `shape_5h` +9.8 %. Volumen inundado: `long_moderate` f = 5 da 125 350 frente a 122 624 m³ (+2.2 %), f = 4 da 83 237 frente a 82 654 (+0.7 %), f = 3 y f = 1 sin cambio; `shape_2h` y `shape_5h` sin cambio a f = 1, 3, 4 y 5 (la cola queda por debajo de la capacidad). La feature `duracion_horas` (12 h en `long_moderate`) no incluye las 6 h adicionales de aporte.
-- **Recomendación:** escribir `(t_fin + 1 min, 0)` y `(t_fin + dd, 0)`, o exigir q_fin = 0 en las formas. Si la cola es intencional, incluirla en `duracion_horas` y en el volumen del evento (H-02).
+- **Where:** `timeseries_scenario.py:120-123`. The point `(last_time + drain_down_hours, 0.0)` is added. SWMM interpolates linearly between points, so if q(t_end) ≠ 0 the flow decreases **linearly for 6 h**. The docstring (lines 58-61) presents it as a zero-flow point "para que la red drene" (so that the network drains), and moreover the flow does not reach 0 until exactly END_TIME, so these shapes have no real drain period.
+- **Shapes affected:** `shape_2h` (q_end = 0.075), `shape_5h` (0.074) and `long_moderate` (0.35). They are 3 of 39 training shapes and 0 of 7 validation shapes. It also affects the `base` shape when re-simulated in `--evaluate-shapes` (`main.py:495-509`, q_end/q_peak = 0.074).
+- **Quantified impact (d05, d07):** SWMM external inflow 6259 m³ versus 5032 m³ with cut (`shape_2h`, f = 1, +24.4%, equal to the analytical prediction of 0.5·q_end·6 h / ∫ = 24.5%); `long_moderate` +13.8%; `shape_5h` +9.8%. Flooded volume: `long_moderate` f = 5 gives 125,350 versus 122,624 m³ (+2.2%), f = 4 gives 83,237 versus 82,654 (+0.7%), f = 3 and f = 1 unchanged; `shape_2h` and `shape_5h` unchanged at f = 1, 3, 4 and 5 (the tail remains below capacity). The `duracion_horas` feature (12 h in `long_moderate`) does not include the 6 additional hours of inflow.
+- **Recommendation:** write `(t_end + 1 min, 0)` and `(t_end + dd, 0)`, or require q_end = 0 in the shapes. If the tail is intentional, include it in `duracion_horas` and in the event volume (H-02).
 
-#### H-06 🟡 — Etiqueta cuantizada a 1 m³ y semántica real del umbral
+#### H-06 🟡 — Label quantized to 1 m³ and the actual semantics of the threshold
 
-- **Dónde:** `labels.py:19-23` (`vol >= threshold`), `122-139`; `swmm_api_io.py:304-307` (×1000 desde 10⁶ L); `config.yaml:14` (`flood_threshold_m3: 1.0`).
-- **Qué pasa:** el *Node Flooding Summary* imprime el volumen en 10⁶ L con 3 decimales, así que la resolución es 0.001·10⁶ L = **1 m³**. Un desborde real menor de 0.5 m³ se reporta como 0.000 y uno de 0.5 a 1.5 m³ como 1 m³. El umbral nominal "≥ 1 m³" equivale entonces a "≥ 0.5 m³ de volumen continuo".
-- **Evidencia:**
-  - `d01`/`d12`: en la BD ningún volumen cae en (0, 1); el mínimo positivo es 1.0; 1902 filas valen exactamente 1.0 (4.1 % de los 46 242 positivos); solo 6 filas no son enteras.
-  - `d11_quantization.py` (volumen continuo de PySWMM, `node.statistics['flooding_volume']` en m³, comparado con el `.rpt`): `base` f = 1.6 tiene 45 nodos que desbordan y 27 etiquetados (18 ocultos, máximo 0.347 m³); `base` f = 2.0, 63 frente a 39; `shape_2h` f = 2.0, 67 frente a 39; `rare_extreme` f = 2.0, 37 frente a 16. El error de cuantización llega a ±0.498 m³ (±50 % para un volumen de 1 m³).
-  - El nodo `2I` en `base` f = 3: "Hours Flooded 0.01, Max Rate 11.67 LPS, Volume 0.000", es decir, desborda pero queda etiquetado como 0.
-- **Recomendación:** tomar el volumen continuo (`flooding_volume` de PySWMM o la integración del `.out`), documentar el umbral como volumen continuo y hacer un análisis de sensibilidad del umbral (0, 0.5, 1, 5 m³) en las métricas. El regresor en log1p es especialmente sensible en el rango de 1–5 m³.
+- **Where:** `labels.py:19-23` (`vol >= threshold`), `122-139`; `swmm_api_io.py:304-307` (×1000 from 10⁶ L); `config.yaml:14` (`flood_threshold_m3: 1.0`).
+- **What happens:** the *Node Flooding Summary* prints the volume in 10⁶ L with 3 decimals, so the resolution is 0.001·10⁶ L = **1 m³**. A real overflow smaller than 0.5 m³ is reported as 0.000 and one of 0.5 to 1.5 m³ as 1 m³. The nominal threshold "≥ 1 m³" is therefore equivalent to "≥ 0.5 m³ of continuous volume".
+- **Evidence:**
+  - `d01`/`d12`: in the DB no volume falls in (0, 1); the minimum positive is 1.0; 1902 rows are exactly 1.0 (4.1% of the 46,242 positives); only 6 rows are non-integer.
+  - `d11_quantization.py` (continuous PySWMM volume, `node.statistics['flooding_volume']` in m³, compared with the `.rpt`): `base` f = 1.6 has 45 nodes that overflow and 27 labeled (18 hidden, maximum 0.347 m³); `base` f = 2.0, 63 versus 39; `shape_2h` f = 2.0, 67 versus 39; `rare_extreme` f = 2.0, 37 versus 16. The quantization error reaches ±0.498 m³ (±50% for a volume of 1 m³).
+  - Node `2I` in `base` f = 3: "Hours Flooded 0.01, Max Rate 11.67 LPS, Volume 0.000", i.e. it overflows but is labeled 0.
+- **Recommendation:** take the continuous volume (`flooding_volume` from PySWMM or the integration of the `.out`), document the threshold as a continuous volume and do a sensitivity analysis of the threshold (0, 0.5, 1, 5 m³) on the metrics. The log1p regressor is especially sensitive in the 1–5 m³ range.
 
-  > **Nota de corrección (2026-10-11, spike D-04):** queda descartada la "integración del `.out`" con el `REPORT_STEP` actual de 3 min. Se aleja del volumen continuo hasta 9,5 m³ por nodo, más que la cuantización del `.rpt` (≤ 0,51 m³ por debajo de 100 m³; el nodo `8C` difiere en 0,508 m³). Si se quiere el volumen continuo, la fuente es `flooding_volume` de pyswmm. Ver `../correcciones/03-resolucion-de-la-etiqueta.md`.
+  > **Correction note (2026-10-11, spike D-04):** the "integration of the `.out`" is ruled out with the current 3 min `REPORT_STEP`. It departs from the continuous volume by up to 9.5 m³ per node, more than the `.rpt` quantization (≤ 0.51 m³ below 100 m³; node `8C` differs by 0.508 m³). If the continuous volume is wanted, the source is pyswmm's `flooding_volume`. See `../correcciones/03-resolucion-de-la-etiqueta.md`.
 
-#### H-07 🟡 — Parser de texto de respaldo lee la columna equivocada
+#### H-07 🟡 — Fallback text parser reads the wrong column
 
-- **Dónde:** `labels.py:75-86`. La línea 79 toma `float(parts[-1])` como volumen. En SWMM 5.2 la tabla tiene siempre la columna final **"Maximum Ponded Depth (Meters)"**, también con `ALLOW_PONDING NO` (ver el encabezado en `d04`). La docstring supone que esa columna solo aparece con ponding.
-- **Evidencia:** `d04_base_run.py` sobre `base` f = 3 da 7669 m³ (88 nodos) con swmm_api y 0.0 m³ con el parser de texto (diferencia máxima por nodo 602 m³).
-- **Impacto:** hoy es latente, porque la ruta swmm_api funciona y las etiquetas de la BD coinciden con mis réplicas. Si swmm_api falla (cambio de versión o encoding), `read_flooding_volumes` cae al fallback y genera un dataset con todas las etiquetas en cero, sin error. La heurística de `swmm_api_io.py:293-298` (`"volume" in cl and (... "vol" in cl ...)`) también es frágil: cualquier columna que contenga "volume" se mapea al volumen.
-- **Recomendación:** parsear por encabezado (columna "Total Flood Volume"), fallar en voz alta en vez de degradar, y cruzar Σ vol_nodos con "Flooding Loss" de la continuidad (7669 frente a 7673 m³ en el control; la diferencia viene del redondeo y de los nodos con menos de 0.5 m³).
+- **Where:** `labels.py:75-86`. Line 79 takes `float(parts[-1])` as the volume. In SWMM 5.2 the table always has the final column **"Maximum Ponded Depth (Meters)"**, also with `ALLOW_PONDING NO` (see the header in `d04`). The docstring assumes that this column only appears with ponding.
+- **Evidence:** `d04_base_run.py` on `base` f = 3 gives 7669 m³ (88 nodes) with swmm_api and 0.0 m³ with the text parser (maximum per-node difference 602 m³).
+- **Impact:** today it is latent, because the swmm_api path works and the DB labels match my replicas. If swmm_api fails (version or encoding change), `read_flooding_volumes` falls back to the fallback text parser and generates a dataset with all labels at zero, without error. The heuristic of `swmm_api_io.py:293-298` (`"volume" in cl and (... "vol" in cl ...)`) is also fragile: any column containing "volume" is mapped to the volume.
+- **Recommendation:** parse by header (column "Total Flood Volume"), fail loudly instead of degrading, and cross-check Σ node vol with "Flooding Loss" from the continuity (7669 versus 7673 m³ in the control; the difference comes from rounding and from nodes with less than 0.5 m³).
 
-#### H-08 🟡 — La capacidad hidráulica usada es la de aguas arriba, no la de salida
+#### H-08 🟡 — The hydraulic capacity used is the upstream one, not the outlet one
 
-- **Dónde:** `topology.py:90-118` (`upstream_capacity_lps` = Σ de la capacidad Manning a tubo lleno de los conductos que **entran** al nodo).
-- **Qué pasa:** la sobrecarga y el desborde de un junction dependen de que el caudal acumulado supere la capacidad del conducto de **salida**, además del remanso aguas abajo. La capacidad de entrada es un proxy débil y no existe en los nodos de cabecera.
-- **Evidencia (`d16_capacity_index.py`, BD v17):** `upstream_capacity_lps` es NaN en 57 nodos (57 000 filas, 35.6 %), que luego se imputan con la mediana. AUC univariada frente a `inunda`: q_pico_acum_escalado da 0.753; q_pico_acum_escalado/upstream_capacity da 0.732 (solo en 103 000 filas); q_pico_acum_escalado/cap_salida da **0.884** (en 160 000 filas). La fórmula de Manning está bien implementada (§3, V-05).
-- **Recomendación:** agregar `cap_salida_lps` y el índice `q_pico_acum_escalado / cap_salida`, calculados igual en entrenamiento e inferencia.
+- **Where:** `topology.py:90-118` (`upstream_capacity_lps` = Σ of the full-pipe Manning capacity of the conduits that **enter** the node).
+- **What happens:** the surcharge and overflow of a junction depend on the accumulated flow exceeding the capacity of the **outlet** conduit, in addition to downstream backwater. The inlet capacity is a weak proxy and does not exist at headwater nodes.
+- **Evidence (`d16_capacity_index.py`, v17 DB):** `upstream_capacity_lps` is NaN in 57 nodes (57,000 rows, 35.6%), which are then imputed with the median. Univariate AUC against `inunda`: q_pico_acum_escalado gives 0.753; q_pico_acum_escalado/upstream_capacity gives 0.732 (only in 103,000 rows); q_pico_acum_escalado/outlet_cap gives **0.884** (in 160,000 rows). The Manning formula is well implemented (§3, V-05).
+- **Recommendation:** add `cap_salida_lps` and the index `q_pico_acum_escalado / cap_salida`, computed the same way in training and inference.
 
-#### H-09 🔵 — `pendiente_out` NaN en el nodo que descarga al outfall
+#### H-09 🔵 — `pendiente_out` NaN at the node that discharges to the outfall
 
-- **Dónde:** `static_features.py:82-87`. `compute_slope` busca las cotas solo en `junctions`; `109C` es un OUTFALL, así que la pendiente de `T160` queda `None` y `pendiente_out` de `108C` sale NaN aunque `n_tuberias_out = 1`.
-- **Evidencia:** `d13_manning.py` muestra que el único nodo con `pendiente_out` NaN y salida es `['108C']`. Es 1 nodo (1000 filas). El mismo patrón está en `topology.py:99-108`, pero ahí no afecta porque un outfall nunca es predecesor.
-- **Recomendación:** incluir `[OUTFALLS]` en el diccionario de cotas.
+- **Where:** `static_features.py:82-87`. `compute_slope` looks up elevations only in `junctions`; `109C` is an OUTFALL, so the slope of `T160` is left `None` and `pendiente_out` of `108C` is NaN even though `n_tuberias_out = 1`.
+- **Evidence:** `d13_manning.py` shows that the only node with NaN `pendiente_out` and an outlet is `['108C']`. It is 1 node (1000 rows). The same pattern is in `topology.py:99-108`, but there it does not matter because an outfall is never a predecessor.
+- **Recommendation:** include `[OUTFALLS]` in the elevation dictionary.
 
-#### H-10 🔵 — Protocolo distinto para la forma `base`
+#### H-10 🔵 — Different protocol for the `base` shape
 
-- **Dónde:** `batch.py:7-16` y `runner.py:646-667` (END_TIME original de 3 h, sin drenaje y con las 160 series originales); las 39 formas restantes pasan por `write_scenario_inp` con +6 h. En `main.py:1002`, `duracion_horas` de `base` sale de la **primera** serie del `.inp` (`1C`).
-- **Evidencia:** `d03`: todas las series terminan en 3 h con q/q_pico = 0.074–0.075, y la recesión no simulada (extrapolación exponencial) es el 6.8–8.3 % del volumen. `d05`: END = 9 h deja Flooding Loss y etiquetas **idénticos** a END = 3 h para f = 0.2, 1, 3 y 5; solo cambian el almacenamiento final (147–449 m³ frente a 0) y la salida. Las formas normalizadas de los 147 nodos coinciden con desviación ≤ 0.00075, así que tomar `1C` como representante es correcto.
-- **Recomendación:** unificar el protocolo de simulación de las 40 formas por coherencia metodológica. No hace falta regenerar las etiquetas por esta causa.
+- **Where:** `batch.py:7-16` and `runner.py:646-667` (original END_TIME of 3 h, without drain and with the 160 original series); the remaining 39 shapes go through `write_scenario_inp` with +6 h. In `main.py:1002`, `duracion_horas` of `base` comes from the **first** series of the `.inp` (`1C`).
+- **Evidence:** `d03`: all series end at 3 h with q/q_peak = 0.074–0.075, and the unsimulated recession (exponential extrapolation) is 6.8–8.3% of the volume. `d05`: END = 9 h leaves Flooding Loss and labels **identical** to END = 3 h for f = 0.2, 1, 3 and 5; only the final storage (147–449 m³ versus 0) and the outflow change. The normalized shapes of the 147 nodes coincide with a deviation ≤ 0.00075, so taking `1C` as representative is correct.
+- **Recommendation:** unify the simulation protocol of the 40 shapes for methodological consistency. It is not necessary to regenerate the labels for this cause.
 
-#### H-11 🔵 — Supuestos de unidades y de `[INFLOWS]` sin comprobar en la ruta de entrenamiento
+#### H-11 🔵 — Unit and `[INFLOWS]` assumptions not checked in the training path
 
-- **Dónde:** `labels.py:122-139` y `swmm_api_io.py:304-307` asumen 10⁶ **litros**, pero solo la validación comprueba `FLOW_UNITS = LPS` (`hydrograph_batch.py:102-107`). `static_features.py:7-26` toma el máximo de la serie sin aplicar Sfactor ni Baseline; `hydrograph_shapes.apply_shape` (40-53) reemplaza la serie pero deja Sfactor y Baseline en `[INFLOWS]`, con lo que se aplicarían dos veces. `csv_backfill.py:88` graba `flow_units='LPS'` fijo, sin leerlo del `.inp`.
-- **Evidencia:** `d03` confirma `FLOW_UNITS LPS` y 0 inflows con Sfactor ≠ 1 o Baseline ≠ 0. No hay impacto actual.
-- **Recomendación:** comprobar unidades e `[INFLOWS]` al inicio del pipeline de entrenamiento con las mismas reglas que la validación, y abortar si no se cumplen.
+- **Where:** `labels.py:122-139` and `swmm_api_io.py:304-307` assume 10⁶ **liters**, but only validation checks `FLOW_UNITS = LPS` (`hydrograph_batch.py:102-107`). `static_features.py:7-26` takes the series maximum without applying Sfactor or Baseline; `hydrograph_shapes.apply_shape` (40-53) replaces the series but leaves Sfactor and Baseline in `[INFLOWS]`, so they would be applied twice. `csv_backfill.py:88` writes a fixed `flow_units='LPS'`, without reading it from the `.inp`.
+- **Evidence:** `d03` confirms `FLOW_UNITS LPS` and 0 inflows with Sfactor ≠ 1 or Baseline ≠ 0. There is no current impact.
+- **Recommendation:** check units and `[INFLOWS]` at the start of the training pipeline with the same rules as validation, and abort if they are not met.
 
-#### H-12 🔵 — Acumulación topológica de picos (riesgo al transferir a otras redes)
+#### H-12 🔵 — Topological accumulation of peaks (risk when transferring to other networks)
 
-- **Dónde:** `topology.py:14-32` (grafo solo con CONDUITS), `83-88` y `dynamic_features.py:48-54` (Σ de picos de los ancestros).
-- **Evidencia:** `d03` muestra un grafo acíclico con out-degree máximo 1, un único sumidero (`109C`) y ningún nodo aislado. En esta red, la suma es exacta como índice de aporte sincrónico (en entrenamiento todos los nodos tienen su pico a la misma hora) e ignora la atenuación y el desfase del tránsito.
-- **Recomendación:** documentar que `q_pico_acum` es una cota superior sin tránsito. Si se transfiere a redes con divisores, bombas o vertederos, incluir todos los tipos de enlace y repartir el caudal en las bifurcaciones.
+- **Where:** `topology.py:14-32` (graph with CONDUITS only), `83-88` and `dynamic_features.py:48-54` (Σ of the ancestors' peaks).
+- **Evidence:** `d03` shows an acyclic graph with maximum out-degree 1, a single sink (`109C`) and no isolated node. In this network, the sum is exact as a synchronous-inflow index (in training all nodes have their peak at the same hour) and ignores the attenuation and lag of the routing.
+- **Recommendation:** document that `q_pico_acum` is an upper bound without routing. If it is transferred to networks with dividers, pumps or weirs, include all link types and split the flow at bifurcations.
 
-#### H-13 🔵 — Errores en la ruta legacy (`runner.run_simulation`)
+#### H-13 🔵 — Errors in the legacy path (`runner.run_simulation`)
 
-- **Dónde:** `runner.py:515-517` (`stats.get("time_flooded")`) y `521-530` (`stats.get("time_max_depth")`): **ninguna** de las dos claves existe en PySWMM 2.1 (`d08` lista las claves reales: `flooding_duration`, `max_depth_date`, …). `runner.py:427-429` y `456-462` calculan la tasa de profundidad con el dt del primer paso, cuando el dt real varía (`d08`: 1–5 s, 5 valores distintos, 2205 pasos). `swmm_api_io.py:131-134` y `runner.py:325`: `base_inflow_lps` = Baseline de `[INFLOWS]` (0 en esta red), mientras que en v17 la columna homónima es el pico de la serie.
-- **Impacto:** solo en `swmm_resilience/main.py` y en la app de escritorio. La duración de inundación queda en 0 para los nodos que no aparecen en el `.rpt` y `time_to_peak_min` siempre en None. Ninguna de estas columnas entra al modelo v17 (`ML_DROP_COLUMNS`). No verificado empíricamente: que el modo por defecto `steady` (`config.py:69`) aplicado a un `.inp` hidrográfico con Baseline = 0 aborte en `write_scaled_inp`; se deduce de leer `swmm_api_io.py:217-226` y `256-260`.
-- **Recomendación:** corregir las claves (`flooding_duration`, `max_depth_date`), usar el dt real de cada paso y renombrar `base_inflow_lps` del legacy, o retirar esa ruta.
+- **Where:** `runner.py:515-517` (`stats.get("time_flooded")`) and `521-530` (`stats.get("time_max_depth")`): **neither** key exists in PySWMM 2.1 (`d08` lists the real keys: `flooding_duration`, `max_depth_date`, …). `runner.py:427-429` and `456-462` compute the depth rate with the dt of the first step, when the real dt varies (`d08`: 1–5 s, 5 distinct values, 2205 steps). `swmm_api_io.py:131-134` and `runner.py:325`: `base_inflow_lps` = Baseline of `[INFLOWS]` (0 in this network), whereas in v17 the homonymous column is the series peak.
+- **Impact:** only in `swmm_resilience/main.py` and in the desktop app. The flooding duration is left at 0 for the nodes that do not appear in the `.rpt` and `time_to_peak_min` always None. None of these columns enters the v17 model (`ML_DROP_COLUMNS`). Not verified empirically: that the default `steady` mode (`config.py:69`) applied to a hydrographic `.inp` with Baseline = 0 aborts in `write_scaled_inp`; it is deduced from reading `swmm_api_io.py:217-226` and `256-260`.
+- **Recommendation:** fix the keys (`flooding_duration`, `max_depth_date`), use the real dt of each step and rename the legacy `base_inflow_lps`, or retire that path.
 
-#### H-14 🔵 — Redondeo a minutos al convertir forma → CSV de validación
+#### H-14 🔵 — Rounding to minutes when converting shape → validation CSV
 
-- **Dónde:** `hydrograph_csv.py:127-129` y `153-156`.
-- **Evidencia (`d14_parity.py`):** el desplazamiento máximo es 0.5 min; ΔVol = −1.22 % (`shape_ultra_short_impulse`), −0.26 % (`shape_short_flat_top`) y ≤ 0.05 % en el resto. En las 7 formas de validación, ≤ 0.01 %.
-- **Recomendación:** permitir H:MM:SS en el contrato del CSV, o validar que la forma ya esté en minutos enteros.
+- **Where:** `hydrograph_csv.py:127-129` and `153-156`.
+- **Evidence (`d14_parity.py`):** the maximum shift is 0.5 min; ΔVol = −1.22% (`shape_ultra_short_impulse`), −0.26% (`shape_short_flat_top`) and ≤ 0.05% in the rest. In the 7 validation shapes, ≤ 0.01%.
+- **Recommendation:** allow H:MM:SS in the CSV contract, or validate that the shape is already in whole minutes.
 
-**Nota fuera de área:** `--evaluate-shapes` (`main.py:480-555`) re-simula las **mismas** formas y factores del entrenamiento con el modelo final, así que no es una validación fuera de muestra. Lo remito al anexo de ML; aquí solo constato el hecho.
+**Out-of-area note:** `--evaluate-shapes` (`main.py:480-555`) re-simulates the **same** shapes and factors of the training with the final model, so it is not an out-of-sample validation. I refer it to the ML annex; here I only state the fact.
 
 ---
 
-## 3. Lo que sí está bien hecho (verificado)
+## 3. What is done right (verified)
 
-| ID | Verificación | Evidencia |
+| ID | Verification | Evidence |
 |---|---|---|
-| V-01 | **El escalado conserva el volumen en proporción y SWMM integra el hidrograma declarado.** La entrada externa del `.rpt` coincide con la integral trapezoidal: `base` f = 1 da 7508 m³ frente a 7510 analíticos (−0.03 %); `shape_2h` con corte, 5032 frente a 5027.8 (+0.08 %); ultra_short f = 1, 731 frente a 730.8. f = 3 da 22 525 = 3 × 7508.3. Esto confirma la interpolación lineal entre puntos y el caudal 0 después del último punto. | `d05` |
-| V-02 | **Identidad del escalado.** Pipeline f = 1.0 ≡ `.inp` original (misma entrada, CE de 1.439 % en ambos, etiquetas idénticas). Los `.inp` Qx2 y Qx3 originales ≡ Qx1 × 2 y × 3 por el pipeline: 0 etiquetas distintas y \|ΔVol\| máximo por nodo de 1 m³. La geometría de Qx1, Qx2 y Qx3 es idéntica (ΔElev = ΔMaxDepth = ΔDiam = 0). | `d06`, `d15` |
-| V-03 | **Reproducibilidad de las etiquetas de la BD.** Las réplicas independientes reproducen exactamente vol/n_inunda: `base` f = 3 (7669/61) y f = 5 (19 940/93), `long_moderate` f = 3 (44 540/61) y f = 5 (125 348/91), `shape_2h` f = 3 (5033/60), `shape_ultra_short_impulse` f = 5 (1320/96), `shape_micro_burst_45min` f = 5 (4908/95), `rare_extreme` f = 2 y 5, `common_bogota` f = 5 y `shape_flash_flood_urban` f = 5. | `d05`, `d07`, `d12`, `d18` |
-| V-04 | **Unidades del volumen.** `.rpt` en 10⁶ L × 1000 = m³ es correcto en SI. La ruta swmm_api elige bien la columna (Σ = 7669 m³ frente a "Flooding Loss" 7673 m³; la diferencia es redondeo). PySWMM `flooding_volume` (95.67 m³) coincide con el `.rpt` (0.096·10⁶ L) para `1C`. | `d04`, `d08`, `d11` |
-| V-05 | **Capacidad Manning a tubo lleno** (`utils.py:66-76`): Q = (1/n)·A·(D/4)^(2/3)·S^(1/2)·1000 [L/s] es correcta. Comparada con la capacidad implícita de SWMM (Max Flow / Max-Full Flow) en los 160 conductos, el cociente va de 0.972 a 1.037 (mediana 0.9999); la dispersión se debe al cociente de 2 decimales del `.rpt`. | `d13` |
-| V-06 | **Pendientes y offsets.** No hay pendientes adversas ni nulas (0.00123–0.0923 m/m) ni longitudes cero (58.9–218.3 m). Los offsets (34 conductos) se suman correctamente a la cota de fondo con `LINK_OFFSETS DEPTH`. Δz/L frente al Δz/√(L²−Δz²) de SWMM difiere < 0.43 % para S ≤ 0.092. | `d03`, `d13` |
-| V-07 | **Topología.** Árbol dirigido acíclico, 1 outfall, ningún nodo aislado, `dist_outfall_m` sin NaN; q_pico_acum_base del outfall = 1525 L/s = InitFlow de `T160`. | `d03`, `d13` |
-| V-08 | **Paridad entre entrenamiento e inferencia de las features dinámicas.** BD frente a la ruta de inferencia (`write_shape_validation_csv` → `load_scenario` → `compute_scenario_dynamic_features`) en las 39 formas a f = 2: q_pico_nodo, q_pico_acum_escalado y duracion_horas son **idénticas**; tiempo_al_pico_h difiere ≤ 3.3·10⁻⁴ h. | `d14` |
-| V-09 | **El truncamiento de la recesión en `base` (3 h) no altera las etiquetas** (END = 9 h da el mismo resultado a f = 0.2, 1, 3 y 5). | `d05` |
-| V-10 | **Formas.** Las 39 de entrenamiento y las 7 de validación empiezan en t = 0 (lo impone `load_shape`) y tienen pico 1.000. Las 7 de validación terminan en q = 0, sin rampa (H-05 no las afecta). Existe la guarda de solapamiento entre entrenamiento y validación (`main.py:664-675`). | `d02` |
-| V-11 | **Paso de cálculo.** DYNWAVE con ROUTING_STEP de 5 s, VARIABLE_STEP 0.75 y MINIMUM_STEP 0.5; el dt real es de 1–5 s. El *Node Flooding Summary* integra en cada paso de routing, no en el REPORT_STEP de 3 min. Los volúmenes de PySWMM (paso a paso) y del `.rpt` coinciden dentro de ±0.5 m³ (pura cuantización). | `d08`, `d11` |
-| V-12 | **Umbral físico de la red.** Ninguna forma inunda a f ≤ 1.0 (200 corridas, 20 % del dataset); el inicio de la inundación está entre f = 1.2 (`base`, `common_storm`, `long_moderate`) y f = 1.6 (`shape_ultra_short_impulse`). Es coherente con una red dimensionada para el caudal de diseño Qx1. | `d18` |
-| V-13 | **Validación de los CSV de escenario** (`hydrograph_csv.py:33-124`): exige columnas exactas, nodos exactos, formato H:MM, ausencia de duplicados, valores finitos ≥ 0, malla común y t0 = 0. Además, la correspondencia nodo↔serie es 1:1 (`timeseries_scenario.py:19-44`). Son reglas sólidas. | lectura |
+| V-01 | **The scaling preserves volume proportionally and SWMM integrates the declared hydrograph.** The `.rpt` external inflow matches the trapezoidal integral: `base` f = 1 gives 7508 m³ versus 7510 analytical (−0.03%); `shape_2h` with cut, 5032 versus 5027.8 (+0.08%); ultra_short f = 1, 731 versus 730.8. f = 3 gives 22,525 = 3 × 7508.3. This confirms the linear interpolation between points and the flow of 0 after the last point. | `d05` |
+| V-02 | **Scaling identity.** Pipeline f = 1.0 ≡ original `.inp` (same inflow, CE of 1.439% in both, identical labels). The original Qx2 and Qx3 `.inp` files ≡ Qx1 × 2 and × 3 through the pipeline: 0 different labels and maximum per-node \|ΔVol\| of 1 m³. The geometry of Qx1, Qx2 and Qx3 is identical (ΔElev = ΔMaxDepth = ΔDiam = 0). | `d06`, `d15` |
+| V-03 | **Reproducibility of the DB labels.** Independent replicas reproduce exactly vol/n_inunda: `base` f = 3 (7669/61) and f = 5 (19,940/93), `long_moderate` f = 3 (44,540/61) and f = 5 (125,348/91), `shape_2h` f = 3 (5033/60), `shape_ultra_short_impulse` f = 5 (1320/96), `shape_micro_burst_45min` f = 5 (4908/95), `rare_extreme` f = 2 and 5, `common_bogota` f = 5 and `shape_flash_flood_urban` f = 5. | `d05`, `d07`, `d12`, `d18` |
+| V-04 | **Volume units.** `.rpt` in 10⁶ L × 1000 = m³ is correct in SI. The swmm_api path picks the right column (Σ = 7669 m³ versus "Flooding Loss" 7673 m³; the difference is rounding). PySWMM `flooding_volume` (95.67 m³) matches the `.rpt` (0.096·10⁶ L) for `1C`. | `d04`, `d08`, `d11` |
+| V-05 | **Full-pipe Manning capacity** (`utils.py:66-76`): Q = (1/n)·A·(D/4)^(2/3)·S^(1/2)·1000 [L/s] is correct. Compared with SWMM's implicit capacity (Max Flow / Max-Full Flow) in the 160 conduits, the ratio goes from 0.972 to 1.037 (median 0.9999); the dispersion is due to the 2-decimal ratio of the `.rpt`. | `d13` |
+| V-06 | **Slopes and offsets.** There are no adverse or zero slopes (0.00123–0.0923 m/m) nor zero lengths (58.9–218.3 m). The offsets (34 conduits) are correctly added to the invert elevation with `LINK_OFFSETS DEPTH`. Δz/L versus SWMM's Δz/√(L²−Δz²) differs by < 0.43% for S ≤ 0.092. | `d03`, `d13` |
+| V-07 | **Topology.** Acyclic directed tree, 1 outfall, no isolated node, `dist_outfall_m` without NaN; q_pico_acum_base of the outfall = 1525 L/s = InitFlow of `T160`. | `d03`, `d13` |
+| V-08 | **Training/inference parity of the dynamic features.** DB versus the inference path (`write_shape_validation_csv` → `load_scenario` → `compute_scenario_dynamic_features`) in the 39 shapes at f = 2: q_pico_nodo, q_pico_acum_escalado and duracion_horas are **identical**; tiempo_al_pico_h differs by ≤ 3.3·10⁻⁴ h. | `d14` |
+| V-09 | **The truncation of the recession in `base` (3 h) does not alter the labels** (END = 9 h gives the same result at f = 0.2, 1, 3 and 5). | `d05` |
+| V-10 | **Shapes.** The 39 training and the 7 validation shapes start at t = 0 (enforced by `load_shape`) and have peak 1.000. The 7 validation shapes end at q = 0, without ramp (H-05 does not affect them). The overlap guard between training and validation exists (`main.py:664-675`). | `d02` |
+| V-11 | **Computation step.** DYNWAVE with ROUTING_STEP of 5 s, VARIABLE_STEP 0.75 and MINIMUM_STEP 0.5; the real dt is 1–5 s. The *Node Flooding Summary* integrates at every routing step, not at the 3 min REPORT_STEP. The PySWMM (step by step) and `.rpt` volumes match within ±0.5 m³ (pure quantization). | `d08`, `d11` |
+| V-12 | **Physical threshold of the network.** No shape floods at f ≤ 1.0 (200 runs, 20% of the dataset); the onset of flooding is between f = 1.2 (`base`, `common_storm`, `long_moderate`) and f = 1.6 (`shape_ultra_short_impulse`). It is consistent with a network sized for the Qx1 design flow. | `d18` |
+| V-13 | **Validation of the scenario CSVs** (`hydrograph_csv.py:33-124`): requires exact columns, exact nodes, H:MM format, absence of duplicates, finite values ≥ 0, common grid and t0 = 0. Moreover, the node↔series correspondence is 1:1 (`timeseries_scenario.py:19-44`). They are solid rules. | reading |
 
 ---
 
-## 4. Supuestos y limitaciones hidráulicas que la tesis debe declarar
+## 4. Hydraulic assumptions and limitations that the thesis must declare
 
-1. **Modelo 1D de onda dinámica sin drenaje dual.** SWMM 5.2 (swmm-toolkit 0.17.0) con `DYNWAVE`, `ALLOW_PONDING NO`, SurDepth = 0 y Aponded = 0. El "volumen de inundación" es el **volumen desbordado por la tapa** del pozo (MaxDepth de 1.4–3.3 m). Ese volumen sale del sistema: no se acumula ni vuelve a entrar aguas abajo, y no hay escurrimiento superficial 2D. No representa lámina, extensión ni daño.
-2. **Condición de borde aguas abajo:** un único outfall `109C` de tipo FREE, sin remanso del cuerpo receptor.
-3. **Forzante:** no hay subcuencas ni lluvia. Los aportes son hidrogramas impuestos como inflow directo en 147 nodos (13 nodos sin aporte). El "factor" escala **caudales**, no precipitación, así que deja fuera la no linealidad lluvia-escorrentía.
-4. **Escenarios uniformes y sincrónicos:** la misma forma normalizada y el mismo factor en todos los nodos (H-03). El modelo no está validado para tormentas con variabilidad espacial ni con desfase entre subcuencas.
-5. **Normalización por pico:** el factor fija el pico, y el volumen del evento depende de la forma (H-02).
-6. **Condición inicial:** si se mantiene el InitFlow actual, hay que declararlo como "red inicialmente en régimen de caudal de diseño (factor 1)" e informar su efecto en la continuidad (H-01).
-7. **Definición de la etiqueta:** `inunda = 1` si el volumen del `.rpt`, cuantizado a 1 m³, es ≥ 1 m³, lo que equivale a ≥ 0.5 m³ continuo. Los desbordes menores cuentan como "no inunda" (H-06).
-8. **Duración simulada:** la duración de la forma más 6 h para las 39 formas CSV, y 3 h exactas para `base`. Las formas que no terminan en cero reciben una rampa (H-05).
-9. **Una sola red:** Chico Sur, PVC con n = 0.0082, 160 conductos circulares en un árbol sin estructuras especiales (sin bombas, vertederos, orificios, almacenamientos ni divisores). No se ha demostrado que el modelo sea transferible a otras redes (H-12).
-10. **Rango de factores:** 0.2–5.0 con paso 0.2. El 20 % de las corridas (f ≤ 1.0) no inunda en ningún nodo.
-11. **Índice de "resiliencia"** (`analysis/resilience.py:32`): 1 − fracción de nodos inundados. Es un conteo binario que no pondera magnitud, duración ni recuperación, así que no corresponde a los índices de resiliencia hidráulica de la literatura (severidad × duración). Debe nombrarse con precisión.
-12. **Capacidad de los conductos:** se usa la capacidad nominal de Manning a tubo lleno, que no considera presurización, remanso ni pérdidas locales.
-13. **Calidad numérica:** con la configuración actual, el error de continuidad llega a 12.4 % en eventos cortos y de baja intensidad (H-01, H-04). Hay que declarar el criterio de aceptación de las corridas.
+1. **1D dynamic-wave model without dual drainage.** SWMM 5.2 (swmm-toolkit 0.17.0) with `DYNWAVE`, `ALLOW_PONDING NO`, SurDepth = 0 and Aponded = 0. The "flooding volume" is the **volume overflowing through the manhole cover** (MaxDepth of 1.4–3.3 m). That volume leaves the system: it does not accumulate nor re-enter downstream, and there is no 2D surface runoff. It does not represent depth, extent or damage.
+2. **Downstream boundary condition:** a single FREE-type outfall `109C`, without backwater from the receiving body.
+3. **Forcing:** there are no subcatchments or rainfall. The inflows are hydrographs imposed as direct inflow at 147 nodes (13 nodes without inflow). The "factor" scales **flows**, not precipitation, so it leaves out the rainfall-runoff nonlinearity.
+4. **Uniform and synchronous scenarios:** the same normalized shape and the same factor at all nodes (H-03). The model is not validated for storms with spatial variability or with lag between subcatchments.
+5. **Peak normalization:** the factor fixes the peak, and the event volume depends on the shape (H-02).
+6. **Initial condition:** if the current InitFlow is kept, it must be declared as "network initially at the design-flow regime (factor 1)" and its effect on continuity reported (H-01).
+7. **Label definition:** `inunda = 1` if the `.rpt` volume, quantized to 1 m³, is ≥ 1 m³, which is equivalent to ≥ 0.5 m³ continuous. Smaller overflows count as "no flooding" (H-06).
+8. **Simulated duration:** the shape duration plus 6 h for the 39 CSV shapes, and exactly 3 h for `base`. Shapes that do not end at zero receive a ramp (H-05).
+9. **A single network:** Chico Sur, PVC with n = 0.0082, 160 circular conduits in a tree without special structures (no pumps, weirs, orifices, storage or dividers). It has not been shown that the model is transferable to other networks (H-12).
+10. **Factor range:** 0.2–5.0 with step 0.2. 20% of the runs (f ≤ 1.0) do not flood at any node.
+11. **"Resilience" index** (`analysis/resilience.py:32`): 1 − fraction of flooded nodes. It is a binary count that does not weight magnitude, duration or recovery, so it does not correspond to the hydraulic resilience indices of the literature (severity × duration). It must be named precisely.
+12. **Conduit capacity:** the nominal full-pipe Manning capacity is used, which does not consider pressurization, backwater or local losses.
+13. **Numerical quality:** with the current configuration, the continuity error reaches 12.4% in short, low-intensity events (H-01, H-04). The acceptance criterion of the runs must be declared.
 
 ---
 
-## 5. Scripts de diagnóstico reproducibles
+## 5. Reproducible diagnostic scripts
 
-Todos los scripts son de **solo lectura** sobre el repositorio y la BD (`mode=ro`). Las simulaciones se hacen sobre copias en `./runs/` del directorio de trabajo. Se ejecutan desde un mismo directorio con el Python del proyecto:
+All the scripts are **read-only** on the repository and the DB (`mode=ro`). The simulations are done on copies in `./runs/` of the working directory. They are run from a single directory with the project's Python:
 
 ```
 <repo>\venv\Scripts\python.exe dNN_*.py "<ruta-al-repo>" [args]
 ```
 
-`d07`, `d09`, `d11` y `d15` reutilizan las funciones auxiliares de `d05_experiments.py`, que debe estar en el mismo directorio. Hay que ejecutarlo antes, porque crea `runs/exp`. El tiempo total es de unos 6 minutos (alrededor de 150 corridas SWMM de 1–3 s).
+`d07`, `d09`, `d11` and `d15` reuse the helper functions of `d05_experiments.py`, which must be in the same directory. It must be run first, because it creates `runs/exp`. The total time is about 6 minutes (around 150 SWMM runs of 1–3 s).
 
-| Script | Argumentos | Qué demuestra |
+| Script | Arguments | What it shows |
 |---|---|---|
-| `d01_db.py` | ruta a la BD | Conteos, NULL de continuidad, cuantización de etiquetas, uniformidad q_pico/base |
-| `d02_shapes.py` | carpeta de formas | Normalización por pico, q_fin, ∫q_norm, rampa de drenaje |
-| `d03_base_inp.py` | `.inp` | OPTIONS, InitFlow = Σ picos, recesión truncada, pendientes, topología |
-| `d04_base_run.py` | repo, factor | Formato del *Node Flooding Summary*, continuidad, parser de texto frente a swmm_api |
-| `d05_experiments.py` | repo | InitFlow = 0, END extendido, rampa frente a corte |
-| `d06_qx_compare.py` | repo | Qx2/Qx3 con la misma geometría e InitFlow que Qx1 (termina con KeyError al llegar a Steady, que es otra red; los resultados de Qx2/Qx3 se imprimen antes) |
-| `d07_more.py` | repo | Rampa a f = 4–5 e InitFlow en formas cortas |
-| `d08_pyswmm_keys.py` | `.inp` de control | Claves reales de PySWMM y dt variable |
-| `d09_continuity_sweep.py` | repo | Barrido de CE en 80 corridas |
-| `d10_validation_csvs.py` | repo | Formato de las formas de validación |
-| `d11_quantization.py` | repo | Volumen del `.rpt` frente al de PySWMM (cuantización) |
-| `d12_db_shapes.py` | ruta a la BD | Volumen por forma con igual duración; filas con vol = 1.0 |
-| `d13_manning.py` | repo, `.rpt` | Capacidad Manning frente a SWMM; pendientes; NaN estáticos |
-| `d14_parity.py` | repo | Paridad de features entre entrenamiento e inferencia; redondeo a minutos |
+| `d01_db.py` | path to the DB | Counts, continuity NULLs, label quantization, q_pico/base uniformity |
+| `d02_shapes.py` | shapes folder | Peak normalization, q_end, ∫q_norm, drain ramp |
+| `d03_base_inp.py` | `.inp` | OPTIONS, InitFlow = Σ peaks, truncated recession, slopes, topology |
+| `d04_base_run.py` | repo, factor | Format of the *Node Flooding Summary*, continuity, text parser versus swmm_api |
+| `d05_experiments.py` | repo | InitFlow = 0, extended END, ramp versus cut |
+| `d06_qx_compare.py` | repo | Qx2/Qx3 with the same geometry and InitFlow as Qx1 (ends with a KeyError on reaching Steady, which is another network; the Qx2/Qx3 results are printed before) |
+| `d07_more.py` | repo | Ramp at f = 4–5 and InitFlow in short shapes |
+| `d08_pyswmm_keys.py` | control `.inp` | Actual PySWMM keys and variable dt |
+| `d09_continuity_sweep.py` | repo | CE sweep over 80 runs |
+| `d10_validation_csvs.py` | repo | Format of the validation shapes |
+| `d11_quantization.py` | repo | `.rpt` volume versus PySWMM (quantization) |
+| `d12_db_shapes.py` | path to the DB | Volume per shape at equal duration; rows with vol = 1.0 |
+| `d13_manning.py` | repo, `.rpt` | Manning capacity versus SWMM; slopes; static NaNs |
+| `d14_parity.py` | repo | Feature parity between training and inference; rounding to minutes |
 | `d15_identity.py` | repo | Pipeline f = 1 ≡ original; Qx2/Qx3 ≡ Qx1 × 2/× 3 |
-| `d16_capacity_index.py` | repo | AUC de capacidad aguas arriba frente a capacidad de salida |
-| `d17_tpico_inferencia.py` | repo | t_pico de inferencia tomado de la primera serie |
-| `d18_db_checks.py` | ruta a la BD | Totales de la BD que se cruzan con las re-simulaciones (V-03); umbral físico (V-12) |
+| `d16_capacity_index.py` | repo | AUC of upstream capacity versus outlet capacity |
+| `d17_tpico_inferencia.py` | repo | Inference t_pico taken from the first series |
+| `d18_db_checks.py` | path to the DB | DB totals that are cross-checked with the re-simulations (V-03); physical threshold (V-12) |
 
-Código completo:
+Full code:
 
 
 ### `d01_db.py`
