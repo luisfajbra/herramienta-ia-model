@@ -13,6 +13,21 @@ de CPU sin terminar. Nystroem fija el número de componentes y los solvers SGD
 escalan linealmente con las filas. No es un SVM de kernel exacto: el nombre
 interno ``svm`` se conserva sólo por compatibilidad con el registro y el
 espacio de Optuna; el descriptor lo declara como ``svm_aproximado_nystroem``.
+
+Sesgo conocido: ``class_weight`` moldea el margen, pero la calibración de
+Platt (ajustada sobre folds internos SIN ponderar) elimina casi todo su efecto
+sobre la probabilidad final. Por eso el umbral 0.5 de esta familia equivale
+aproximadamente a la decisión de Bayes sin ponderar, mientras que XGBoost y el
+MLP desplazan su umbral efectivo al subir ``scale_pos_weight``. El recall y el
+F1 de esta familia no son directamente comparables con los de aquéllas; el AUC,
+independiente del umbral, es la comparación de clasificador más justa.
+
+Nota sobre la calibración: ``CalibratedClassifierCV(cv=3)`` usa un
+``StratifiedKFold`` sin barajar sobre las filas de ENTRENAMIENTO únicamente
+(no hay fuga de test), pero el corte interno depende del orden de las filas y
+las filas de un mismo hidrograma están fuertemente correlacionadas; si el
+frame de entrenamiento no está ordenado por forma, los folds de calibración
+pueden ser optimistas.
 """
 
 from __future__ import annotations
@@ -104,6 +119,9 @@ def preprocessing_descriptor(params: dict) -> dict:
     ``train.py`` llama a esta función con los parámetros del clasificador y
     con los del regresor; sólo estos últimos llevan ``epsilon``, y así se
     distingue la pérdida declarada (``hinge`` + Platt vs ε-insensible).
+    Limitación: un bloque de regresor SIN ``epsilon`` se describiría como
+    clasificador; el contrato del registro sólo entrega ``params`` y en el
+    flujo real el regresor siempre lleva ``epsilon`` (config y Optuna).
     """
     is_regressor = "epsilon" in params
     kernel_settings, _ = _partition_settings(

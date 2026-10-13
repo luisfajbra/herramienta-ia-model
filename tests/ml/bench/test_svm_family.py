@@ -186,3 +186,52 @@ def test_descriptor_of_the_regressor_has_no_probability_calibration():
     assert descriptor["model_type"] == "svm_aproximado_nystroem"
     assert descriptor["loss"] == "epsilon_insensitive"
     assert "probability_calibration" not in descriptor
+
+
+@pytest.mark.parametrize("seed", [0, 1, 2])
+def test_platt_calibration_neutralizes_most_of_class_weight_on_probabilities(seed):
+    """Sesgo conocido (R17), documentado en el docstring del modulo.
+
+    class_weight moldea el margen, pero la calibracion de Platt sobre folds
+    sin ponderar quita casi todo su efecto en la probabilidad: la media de
+    predict_proba apenas cambia entre scale_pos_weight=1 y 8 (en 5 semillas
+    observadas el cambio maximo fue ~0.004; el margen de 0.05 es holgado).
+    """
+    rng = np.random.default_rng(seed)
+    X = _frame(rng.normal(size=(600, 3)))
+    y = ((X["f0"] + 0.8 * rng.normal(size=600)) > 0.5).astype(int).to_numpy()
+    means = [
+        svm.build_classifier(PARAMS, scale_pos_weight=w).fit(X, y).predict_proba(X)[:, 1].mean()
+        for w in (1.0, 8.0)
+    ]
+    assert abs(means[0] - means[1]) < 0.05
+
+
+def test_fitted_classifier_and_regressor_survive_a_joblib_round_trip(tmp_path):
+    """train.py persiste candidatos con joblib; CalibratedClassifierCV es un
+    objeto nuevo dentro del pickle."""
+    import joblib
+
+    X, y = _separable(n=200)
+    classifier = svm.build_classifier(PARAMS, scale_pos_weight=2.0).fit(X, y)
+    regressor = svm.build_regressor({**PARAMS, "epsilon": 0.1}).fit(X, np.log1p(np.abs(X["f0"])))
+
+    joblib.dump(classifier, tmp_path / "clf.joblib")
+    joblib.dump(regressor, tmp_path / "reg.joblib")
+    classifier_back = joblib.load(tmp_path / "clf.joblib")
+    regressor_back = joblib.load(tmp_path / "reg.joblib")
+
+    assert np.array_equal(classifier.predict_proba(X), classifier_back.predict_proba(X))
+    assert np.array_equal(classifier.predict(X), classifier_back.predict(X))
+    assert np.array_equal(regressor.predict(X), regressor_back.predict(X))
+
+
+def test_descriptor_limitation_regressor_params_without_epsilon_look_like_classifier():
+    """Limitacion documentada: preprocessing_descriptor solo recibe ``params``
+    y distingue el regresor por la presencia de ``epsilon``. Un bloque de
+    regresor sin ``epsilon`` se describiria como clasificador (hinge + Platt).
+    En el flujo real el regresor siempre lleva ``epsilon`` (config.yaml y el
+    espacio de Optuna lo incluyen)."""
+    descriptor = svm.preprocessing_descriptor(PARAMS)  # sin epsilon
+    assert descriptor["loss"] == "hinge"
+    assert descriptor["probability_calibration"] == "platt_sigmoid_cv3"
