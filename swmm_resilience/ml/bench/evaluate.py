@@ -13,6 +13,11 @@ predicciones para las familias tabulares del banco (Task 9).
 
 from __future__ import annotations
 
+import os
+import sys
+from contextlib import contextmanager
+from typing import NamedTuple
+
 import numpy as np
 import pandas as pd
 
@@ -239,11 +244,106 @@ def _fit_predict_fold(
     return yc_pred.astype(int), yc_prob.astype(float), yr_pred.astype(float)
 
 
+# Variables de entorno que acotan los hilos de BLAS/OpenMP; en el paralelismo
+# por folds cada proceso debe usar un solo hilo (varios procesos × varios hilos
+# saturaría la máquina y, en el MLP, hasta empeora el tiempo).
+_THREAD_ENV_VARS = (
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+)
+
+
+@contextmanager
+def single_thread_environment():
+    """Fija a "1" las variables de hilos mientras dura el bloque y las restaura.
+
+    Se aplica en el proceso padre ANTES de crear el pool de joblib, para que los
+    procesos hijos nazcan heredando el límite.
+    """
+    previous = {name: os.environ.get(name) for name in _THREAD_ENV_VARS}
+    try:
+        for name in _THREAD_ENV_VARS:
+            os.environ[name] = "1"
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
+class _FoldData(NamedTuple):
+    """Lo mínimo que ``_fit_predict_fold`` necesita de un PreparedDataset.
+
+    Viaja a los procesos hijos en vez del PreparedDataset completo: ``folds``
+    (decenas de millones de filas con LeaveOneShapeOut) no se usa para ajustar
+    y pesaría en cada tarea.
+    """
+
+    X: pd.DataFrame
+    y_clf: pd.Series
+    y_reg: pd.Series
+
+
+def _fit_predict_fold_worker(
+    data: _FoldData,
+    family_name: str,
+    classifier_params: dict,
+    regressor_params: dict,
+    train_idx: np.ndarray,
+    test_idx: np.ndarray,
+):
+    """Tarea de un fold en un proceso hijo (nivel de módulo: joblib la serializa por nombre)."""
+    from threadpoolctl import threadpool_limits
+
+    from .registry import get_family
+
+    get_family(family_name)  # importa el módulo de la familia (torch, si es el MLP)
+    if "torch" in sys.modules:
+        sys.modules["torch"].set_num_threads(1)
+    with threadpool_limits(limits=1):
+        return _fit_predict_fold(
+            data, family_name, classifier_params, regressor_params, train_idx, test_idx
+        )
+
+
+def fit_predict_folds_parallel(
+    prepared: PreparedDataset,
+    family_name: str,
+    classifier_params: dict,
+    regressor_params: dict,
+    splits: list[tuple[np.ndarray, np.ndarray]],
+    n_jobs: int,
+) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
+    """Ajusta y predice cada ``(train_idx, test_idx)`` en procesos aparte.
+
+    Devuelve los resultados en el mismo orden que ``splits``, de modo que el
+    resultado es idéntico al del bucle secuencial para familias deterministas.
+    """
+    from joblib import Parallel, delayed
+
+    data = _FoldData(prepared.X, prepared.y_clf, prepared.y_reg)
+    workers = max(1, min(int(n_jobs), len(splits)))
+    with single_thread_environment():
+        return Parallel(n_jobs=workers, backend="loky")(
+            delayed(_fit_predict_fold_worker)(
+                data, family_name, classifier_params, regressor_params, train_idx, test_idx
+            )
+            for train_idx, test_idx in splits
+        )
+
+
 def evaluate_candidate(
     prepared: PreparedDataset,
     family_name: str,
     classifier_params: dict,
     regressor_params: dict,
+    *,
+    protocols=None,
+    n_jobs: int = 1,
 ) -> tuple[pd.DataFrame, dict]:
     """Entrena y predice fold a fold, y puntúa el resultado.
 
@@ -253,21 +353,45 @@ def evaluate_candidate(
     El Pipeline de la familia lleva dentro la imputación y el escalado, así
     que ``fit`` sobre el train del fold los ajusta SOLO con esas filas. Ahí
     está la garantía anti-fuga en ejecución.
+
+    ``protocols`` (iterable o None = todos) restringe los folds que se ajustan
+    y puntúan. ``n_jobs`` > 1 corre los folds en procesos aparte (un hilo cada
+    uno); los folds se concatenan siempre en el orden (protocolo, fold), así
+    que el OOF no depende de ``n_jobs``.
     """
-    records: list[pd.DataFrame] = []
-    for (protocol, fold_id), chunk in prepared.folds.groupby(["protocol", "fold_id"]):
+    folds = prepared.folds
+    score_protocols = None
+    if protocols is not None:
+        score_protocols = list(protocols)
+        folds = folds[folds["protocol"].isin(score_protocols)]
+
+    groups = []
+    for (protocol, fold_id), chunk in folds.groupby(["protocol", "fold_id"]):
         train_idx = chunk.loc[chunk["split"] == "train", "sample_idx"].to_numpy()
         test_idx = chunk.loc[chunk["split"] == "test", "sample_idx"].to_numpy()
+        groups.append((protocol, fold_id, train_idx, test_idx))
 
-        yc_pred, yc_prob, yr_pred = _fit_predict_fold(
+    if n_jobs > 1:
+        predictions = fit_predict_folds_parallel(
             prepared,
             family_name,
             classifier_params,
             regressor_params,
-            train_idx,
-            test_idx,
+            [(train_idx, test_idx) for _, _, train_idx, test_idx in groups],
+            n_jobs,
         )
+    else:
+        predictions = [
+            _fit_predict_fold(
+                prepared, family_name, classifier_params, regressor_params, train_idx, test_idx
+            )
+            for _, _, train_idx, test_idx in groups
+        ]
 
+    records: list[pd.DataFrame] = []
+    for (protocol, fold_id, _, test_idx), (yc_pred, yc_prob, yr_pred) in zip(
+        groups, predictions
+    ):
         records.append(
             pd.DataFrame(
                 {
@@ -283,5 +407,7 @@ def evaluate_candidate(
         )
 
     oof = pd.concat(records, ignore_index=True)
-    metrics = score_predictions(prepared, oof, {"prep_id": prepared.prep_id})
+    metrics = score_predictions(
+        prepared, oof, {"prep_id": prepared.prep_id}, protocols=score_protocols
+    )
     return oof, metrics

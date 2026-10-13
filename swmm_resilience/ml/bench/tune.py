@@ -28,7 +28,7 @@ import pandas as pd
 from sklearn.model_selection import GroupKFold
 
 from ...config import ML_RANDOM_STATE
-from .evaluate import _fit_predict_fold
+from .evaluate import _fit_predict_fold, fit_predict_folds_parallel
 from .metrics import end_to_end_metrics
 from .schemas import PreparedDataset
 
@@ -151,12 +151,32 @@ _STATUS_REASON_EXPLORATORY = (
 )
 
 
-def _objective(trial, prepared, family_name: str, tuning_folds: pd.DataFrame) -> float:
-    classifier_params = _sample_params(
-        trial, SEARCH_SPACES[family_name]["classifier"], prefix=f"{family_name}_classifier_"
+def _merge_fixed(sampled: dict, fixed: dict | None, task: str) -> dict:
+    """Parámetros efectivos: lo muestreado, pisado por lo fijado para ``task``."""
+    return {**sampled, **((fixed or {}).get(task) or {})}
+
+
+def _objective(
+    trial,
+    prepared,
+    family_name: str,
+    tuning_folds: pd.DataFrame,
+    fold_n_jobs: int = 1,
+    fixed_params: dict | None = None,
+) -> float:
+    classifier_params = _merge_fixed(
+        _sample_params(
+            trial, SEARCH_SPACES[family_name]["classifier"], prefix=f"{family_name}_classifier_"
+        ),
+        fixed_params,
+        "classifier",
     )
-    regressor_params = _sample_params(
-        trial, SEARCH_SPACES[family_name]["regressor"], prefix=f"{family_name}_regressor_"
+    regressor_params = _merge_fixed(
+        _sample_params(
+            trial, SEARCH_SPACES[family_name]["regressor"], prefix=f"{family_name}_regressor_"
+        ),
+        fixed_params,
+        "regressor",
     )
     trial.set_user_attr("classifier_params", classifier_params)
     trial.set_user_attr("regressor_params", regressor_params)
@@ -164,14 +184,26 @@ def _objective(trial, prepared, family_name: str, tuning_folds: pd.DataFrame) ->
     y_clf_all = prepared.y_clf.to_numpy()
     y_reg_all = prepared.y_reg.to_numpy()
 
-    fold_values: list[float] = []
+    splits = []
     for _, chunk in tuning_folds.groupby("fold_id"):
         train_idx = chunk.loc[chunk["split"] == "train", "sample_idx"].to_numpy()
         test_idx = chunk.loc[chunk["split"] == "test", "sample_idx"].to_numpy()
+        splits.append((train_idx, test_idx))
 
-        yc_pred, _, yr_pred = _fit_predict_fold(
-            prepared, family_name, classifier_params, regressor_params, train_idx, test_idx
+    if fold_n_jobs > 1:
+        predictions = fit_predict_folds_parallel(
+            prepared, family_name, classifier_params, regressor_params, splits, fold_n_jobs
         )
+    else:
+        predictions = [
+            _fit_predict_fold(
+                prepared, family_name, classifier_params, regressor_params, train_idx, test_idx
+            )
+            for train_idx, test_idx in splits
+        ]
+
+    fold_values: list[float] = []
+    for (_, test_idx), (yc_pred, _, yr_pred) in zip(splits, predictions):
         routed = np.where(yc_pred == 1, yr_pred, 0.0)
         fold_values.append(
             end_to_end_metrics(
@@ -200,6 +232,8 @@ class TuneResult:
     best_value: float = float("nan")
     status: str = _STATUS_EXPLORATORY
     status_reason: str = _STATUS_REASON_EXPLORATORY
+    fixed_params: dict = field(default_factory=dict)
+    fold_n_jobs: int = 1
 
 
 def run_study(
@@ -208,11 +242,19 @@ def run_study(
     n_trials: int = 50,
     n_splits: int = 5,
     seed: int = ML_RANDOM_STATE,
+    fold_n_jobs: int = 1,
+    fixed_params: dict | None = None,
 ) -> TuneResult:
     """Corre un estudio Optuna sobre `family_name`, inner GroupKFold(n_splits) por shape_id.
 
     Etiqueta el resultado como estimación exploratoria: no hay holdout de
     formas separado del que usa esta búsqueda (spec §12).
+
+    ``fold_n_jobs`` > 1 evalúa los folds internos de cada trial en procesos
+    aparte (el valor del trial es la misma media). ``fixed_params``
+    (``{"classifier": {...}, "regressor": {...}}``) se fusiona SOBRE lo
+    muestreado en cada trial, para fijar ajustes que no se buscan (épocas del
+    MLP, hilos de XGBoost).
     """
     if family_name not in SEARCH_SPACES:
         raise ValueError(
@@ -228,7 +270,9 @@ def run_study(
     started = datetime.now(timezone.utc)
     start_perf = time.perf_counter()
     study.optimize(
-        lambda trial: _objective(trial, prepared, family_name, tuning_folds),
+        lambda trial: _objective(
+            trial, prepared, family_name, tuning_folds, fold_n_jobs, fixed_params
+        ),
         n_trials=n_trials,
         catch=(Exception,),
     )
@@ -268,6 +312,8 @@ def run_study(
         best_classifier_params=study.best_trial.user_attrs["classifier_params"],
         best_regressor_params=study.best_trial.user_attrs["regressor_params"],
         best_value=float(study.best_value),
+        fixed_params=json.loads(json.dumps(fixed_params or {})),
+        fold_n_jobs=int(fold_n_jobs),
     )
 
 
@@ -295,6 +341,8 @@ def save_tune_result(result: TuneResult, output_dir: Path | str) -> Path:
         "best_value": result.best_value,
         "status": result.status,
         "status_reason": result.status_reason,
+        "fixed_params": result.fixed_params,
+        "fold_n_jobs": result.fold_n_jobs,
     }
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
     return path
