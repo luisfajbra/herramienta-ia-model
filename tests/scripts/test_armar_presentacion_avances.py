@@ -115,11 +115,11 @@ def _numero(slide):
     return next(s for s in slide.shapes if s.name == "TextBox 6").text_frame.text
 
 
-def test_fmt_usa_formato_espanol():
-    assert deck.fmt(106526, 0) == "106.526"
-    assert deck.fmt(9.1263, 2) == "9,13"
-    assert deck.fmt(0.98170, 4) == "0,9817"
-    assert deck.fmt(172.8642, 2) == "172,86"
+def test_fmt_uses_english_number_format():
+    assert deck.fmt(106526, 0) == "106,526"
+    assert deck.fmt(9.1263, 2) == "9.13"
+    assert deck.fmt(0.98170, 4) == "0.9817"
+    assert deck.fmt(172.8642, 2) == "172.86"
 
 
 def test_agregar_slide_resultados_agrega_cuatro_slides_con_los_nombres_reales(tmp_path):
@@ -128,10 +128,10 @@ def test_agregar_slide_resultados_agrega_cuatro_slides_con_los_nombres_reales(tm
     nuevas = deck.agregar_slide_resultados(prs, datos)
     assert len(nuevas) == 4 and len(prs.slides) == 5
     assert [_titulo(x) for x in nuevas] == [
-        "XGBoost y MLP: resultados con formas no vistas",
-        "Afinación con Optuna: 3 trials por familia",
-        "Matrices de confusión: XGBoost y MLP afinados",
-        "Conclusiones y próximos pasos",
+        "XGBoost and MLP: results on unseen shapes",
+        "Optuna tuning: 3 trials per family",
+        "Confusion matrices: tuned XGBoost and MLP",
+        "Conclusions and next steps",
     ]
     for slide in nuevas:
         assert not _titulo(slide).rstrip().endswith(".")
@@ -141,18 +141,18 @@ def test_agregar_slide_resultados_agrega_cuatro_slides_con_los_nombres_reales(tm
     resultados = nuevas[0]
     tabla = next(x for x in resultados.shapes if x.has_table).table
     celdas = [[c.text for c in row.cells] for row in tabla.rows]
-    assert celdas[0] == ["Modelo", "RMSE", "F1", "AUC", "NSE"]
+    assert celdas[0] == ["Model", "RMSE", "F1", "AUC", "NSE"]
     assert [f[0] for f in celdas[1:]] == [
-        "XGBoost afinado", "XGBoost por defecto", "MLP afinado", "MLP por defecto",
-        "SVM afinado", "SVM por defecto", "Ref. sin aprender"]
-    assert celdas[1][1:] == ["69,64", "0,9812", "0,9993", "0,953"]
+        "XGBoost tuned", "XGBoost default", "MLP tuned", "MLP default",
+        "SVM tuned", "SVM default", "No-learning baseline"]
+    assert celdas[1][1:] == ["69.64", "0.9812", "0.9993", "0.953"]
     graficos = [x.chart for x in resultados.shapes if x.has_chart]
     assert len(graficos) == 2  # RMSE y F1, por familia: por defecto vs afinado
     rmse = graficos[0].plots[0]
-    assert list(rmse.categories) == ["XGBoost", "MLP", "SVM aproximado"]
+    assert list(rmse.categories) == ["XGBoost", "MLP", "Approximate SVM"]
     assert list(rmse.series[0].values) == [112.8, 114.38, 222.46]  # por defecto
     assert list(rmse.series[1].values) == [69.64, 101.12, 214.87]  # afinado
-    assert "172,86" in _textos(resultados)  # referencia
+    assert "172.86" in _textos(resultados)  # baseline
 
 
 def test_slide_de_afinacion_usa_el_minimo_acumulado(tmp_path):
@@ -162,10 +162,10 @@ def test_slide_de_afinacion_usa_el_minimo_acumulado(tmp_path):
     series = {s.name: list(s.values) for s in grafico.plots[0].series}
     assert series["XGBoost"] == [300.0, 100.0, 100.0]
     assert series["MLP"] == [150.0, 90.0, 90.0]
-    assert series["SVM aproximado"] == [220.0, 220.0, 210.0]
+    assert series["Approximate SVM"] == [220.0, 220.0, 210.0]
     tabla = next(x for x in afinacion.shapes if x.has_table).table
-    assert [c.text for c in tabla.rows[1].cells] == ["XGBoost", "65,0", "12,6"]
-    assert "20 trials" not in _textos(afinacion)  # el numero sale del CSV (3)
+    assert [c.text for c in tabla.rows[1].cells] == ["XGBoost", "65.0", "12.6"]
+    assert "20 trials" not in _textos(afinacion)  # the number comes from the CSV (3)
 
 
 def test_slide_de_matrices_usa_xgboost_y_mlp_afinados(tmp_path):
@@ -173,10 +173,10 @@ def test_slide_de_matrices_usa_xgboost_y_mlp_afinados(tmp_path):
     matrices = deck.agregar_slide_resultados(_prs_base(), datos)[2]
     texto = _textos(matrices)
     # xgboost_tuned es la fila 2 del CSV falso (k=2) y mlp_tuned la 4
-    for valor in ("100.002", "1.002", "302", "45.002", "100.004", "1.004", "304", "45.004"):
+    for valor in ("100,002", "1,002", "302", "45,002", "100,004", "1,004", "304", "45,004"):
         assert valor in texto
-    assert "FN en la banda de 1 m³: 202 de 302" in texto
-    assert "FN en la banda de 1 m³: 204 de 304" in texto
+    assert "FN in the 1 m³ band: 202 of 302" in texto
+    assert "FN in the 1 m³ band: 204 of 304" in texto
     assert "banda_limitrofe.csv" in texto
 
 
@@ -184,10 +184,10 @@ def test_conclusiones_leen_las_cifras_de_las_tablas(tmp_path):
     datos = _datos_parte2_falsos(tmp_path / "datos_parte2")
     conclusiones = deck.agregar_slide_resultados(_prs_base(), datos)[3]
     texto = _textos(conclusiones)
-    assert "69,6 m³" in texto and "−38 %" in texto and "101,1 m³" in texto
-    assert "215 vs 173" in texto and "0,83 vs 0,976" in texto
-    assert "200 épocas, batch 1024" in texto and "n_jobs=1" in texto
-    assert "963 de 1000 corridas" in texto  # sin tables_provenance.json: valor por omision
+    assert "69.6 m³" in texto and "−38%" in texto and "101.1 m³" in texto
+    assert "215 vs 173" in texto and "0.83 vs 0.976" in texto
+    assert "200 epochs, batch 1024" in texto and "n_jobs=1" in texto
+    assert "963 of 1000 runs" in texto  # without tables_provenance.json: default value
 
 
 def test_agregar_slide_resultados_falla_si_falta_una_variante(tmp_path):
@@ -225,20 +225,20 @@ def test_construir_sin_datos_parte2_agrega_seis_slides_y_no_toca_la_base(tmp_pat
 
     nuevas = list(prs2.slides)[1:]
     assert [_titulo(s) for s in nuevas] == [
-        "Auditoría: qué se encontró y qué se corrigió",
-        "Qué mide cada protocolo (y por qué importa)",
-        "Matriz de confusión de XGBoost con formas no vistas",
-        "La etiqueta de inundación y su resolución",
-        "Cambio de arquitectura del SVM",
-        "Cómo se hará la comparación justa",
+        "Audit: what was found and what was fixed",
+        "What each protocol measures (and why it matters)",
+        "XGBoost confusion matrix on unseen shapes",
+        "The flood label and its resolution",
+        "Approximate SVM: architecture change",
+        "How the fair comparison is run",
     ]
     for pos, slide in enumerate(nuevas, start=2):
         assert not _titulo(slide).rstrip().endswith(".")
         assert _numero(slide) == str(pos)
         assert _pie(slide).startswith(deck.FOOTER_TEXT)
         assert len(slide.notes_slide.notes_text_frame.text) > 300
-    assert "resultados en las siguientes diapositivas" not in _pie(nuevas[-1])
-    assert "por medir" in _textos(nuevas[4])  # sin resumen_afinacion.csv: expectativa
+    assert "results on the following slides" not in _pie(nuevas[-1])
+    assert "to be measured" in _textos(nuevas[4])  # without resumen_afinacion.csv: expectation
 
 
 def test_construir_con_datos_parte2_agrega_los_slides_de_resultados(tmp_path):
@@ -247,11 +247,11 @@ def test_construir_con_datos_parte2_agrega_los_slides_de_resultados(tmp_path):
     datos2 = _datos_parte2_falsos(tmp_path / "datos_parte2")
     prs = deck.construir(base, tmp_path / "salida.pptx", DATOS_REALES, datos2)
     assert len(prs.slides) == 1 + 6 + 4
-    assert _pie(list(prs.slides)[6]).endswith("resultados en las siguientes diapositivas")
-    # la slide del SVM cita el costo medido (840 s = 14 min) del CSV de afinacion
+    assert _pie(list(prs.slides)[6]).endswith("results on the following slides")
+    # the SVM slide cites the measured cost (840 s = 14 min) from the tuning CSV
     assert "~14 min" in _textos(list(prs.slides)[5])
-    assert "por medir" not in _textos(list(prs.slides)[5])
-    assert "3 trials de Optuna por familia" in _textos(list(prs.slides)[6])
+    assert "to be measured" not in _textos(list(prs.slides)[5])
+    assert "3 Optuna trials per family" in _textos(list(prs.slides)[6])
 
 
 def test_construir_se_niega_a_sobrescribir_la_base(tmp_path):
@@ -287,5 +287,68 @@ def test_las_cifras_de_las_slides_de_auditoria_coinciden_con_los_csv():
     m = mc[("xgboost", "LeaveOneShapeOut")]
     for campo in ("tn", "fp", "fn", "tp"):
         assert deck.fmt(m[campo], 0) in texto_m
-    assert "333 de 380" in texto_m
+    assert "333 of 380" in texto_m
     assert deck.fmt(cp[("xgboost", "LeaveOneShapeOut")]["f1_agregado"], 4) in texto_m
+
+
+# --- English translation of the base deck ---------------------------------
+def _prs_con_texto_es(tmp_path=None):
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Emu(deck.SLIDE_W), Emu(deck.SLIDE_H)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    caja = slide.shapes.add_textbox(0, 0, Emu(3000000), Emu(500000))
+    caja.text_frame.text = "Presupuesto computacional: medir antes"
+    tabla = slide.shapes.add_table(1, 2, 0, Emu(600000), Emu(3000000), Emu(400000)).table
+    tabla.cell(0, 0).text = "Corridas SWMM"
+    tabla.cell(0, 1).text = "1000"
+    slide.notes_slide.notes_text_frame.text = "Fuente: https://example.org/x"
+    return prs, slide
+
+
+def test_translate_base_translates_frames_tables_and_notes():
+    prs, slide = _prs_con_texto_es()
+    traducciones = {
+        "Presupuesto computacional: medir antes": "Computational budget: measure first",
+        "Corridas SWMM": "SWMM runs",
+        "Fuente: https://example.org/x": "Source: https://example.org/x",
+    }
+    contadores = deck.translate_base(prs, traducciones)
+    assert contadores == {"frames": 2, "notes": 1, "alt": 0}
+    texto = _textos(slide)
+    assert "Computational budget: measure first" in texto and "SWMM runs" in texto
+    assert "1000" in texto  # numbers are untouched
+    assert slide.notes_slide.notes_text_frame.text == "Source: https://example.org/x"
+
+
+def test_translate_base_fails_loudly_on_spanish_without_entry():
+    prs, _ = _prs_con_texto_es()
+    with pytest.raises(ValueError, match="Presupuesto computacional"):
+        deck.translate_base(prs, {"Corridas SWMM": "SWMM runs"})
+
+
+def test_translate_base_keeps_first_run_formatting_and_clears_the_rest():
+    prs = Presentation()
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    caja = slide.shapes.add_textbox(0, 0, Emu(3000000), Emu(500000))
+    para = caja.text_frame.paragraphs[0]
+    r1 = para.add_run()
+    r1.text = "Morado: variables de "
+    r1.font.bold = True
+    r2 = para.add_run()
+    r2.text = "entrada"
+    deck.translate_base(prs, {"Morado: variables de entrada": "Purple: input variables"})
+    runs = caja.text_frame.paragraphs[0].runs
+    assert runs[0].text == "Purple: input variables" and runs[0].font.bold is True
+    assert runs[1].text == ""
+
+
+def test_the_real_base_deck_has_no_spanish_left_after_translating():
+    base = deck.BASE
+    if not base.exists():  # pragma: no cover
+        pytest.skip("base deck not available")
+    prs = Presentation(str(base))
+    contadores = deck.translate_base(prs)  # raises if any Spanish paragraph lacks an entry
+    assert contadores["frames"] > 150 and contadores["notes"] > 20
+    assert not deck._parece_espanol(_textos(prs.slides[16]))  # slide 17 (was Spanish)
+    assert next(
+        s for s in prs.slides[36].shapes if s.name == "TextBox 3").text_frame.text == "Next steps"

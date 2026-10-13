@@ -1,17 +1,19 @@
-"""Arma la presentacion del 13 de octubre de 2026 (avances: auditoria, SVM
-aproximado y comparacion justa) a partir de la presentacion del 5 de octubre.
+"""Build the October 13, 2026 presentation (progress: audit, approximate SVM
+and fair comparison) from the October 5 presentation.
 
-La presentacion base nunca se modifica: el script la abre, le agrega 6
-diapositivas nuevas (mas 2 de resultados si ya existen las tablas de la
-parte 2) y guarda el resultado en un archivo distinto. Es idempotente:
-siempre reconstruye la salida desde la base.
+The base presentation is never modified: the script opens it, translates its
+text to English (in the output only, driven by deck_translations_en.json),
+appends 6 new slides (plus 4 results slides when the part 2 tables exist) and
+saves the result to a different file. It is idempotent: the output is always
+rebuilt from the base.
 
-Las cifras de las diapositivas de la auditoria salen de los CSV de
-``docs/auditoria/correcciones/datos`` (se leen al construir); el resto es
-texto de ``docs/auditoria/correcciones/0[1-4]-*.md`` y de la spec
+Figures on the audit slides come from the CSVs in
+``docs/auditoria/correcciones/datos`` (read at build time); the rest is text
+from ``docs/auditoria/correcciones/0[1-4]-*.md`` and from the spec
 ``docs/superpowers/specs/2026-10-12-parte2-svm-comparacion-justa-design.md``.
+CSV column names and file names are code identifiers and stay in Spanish.
 
-Uso:
+Usage:
     venv/Scripts/python.exe scripts/armar_presentacion_avances_13_10.py
 """
 
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -46,7 +49,7 @@ DATOS_DIR = REPO_ROOT / "docs" / "auditoria" / "correcciones" / "datos"
 DATOS_PARTE2_DIR = REPO_ROOT / "docs" / "auditoria" / "correcciones" / "datos_parte2"
 
 FOOTER_TEXT = (
-    "MLSMFP  |  Avances: auditoría, SVM aproximado y comparación justa  |  13 octubre 2026"
+    "MLSMFP  |  Progress: audit, approximate SVM and fair comparison  |  October 13, 2026"
 )
 
 # --- Estilo de la presentacion base (colores, tipografias y posiciones) -----
@@ -75,9 +78,17 @@ LAYOUT_NAME = "Title only"
 # Formato y lectura de datos
 # ---------------------------------------------------------------------------
 def fmt(value: float, decimals: int = 2) -> str:
-    """Formato espanol: coma decimal y punto de miles (106526 -> 106.526)."""
-    text = f"{float(value):,.{decimals}f}"
-    return text.replace(",", "\0").replace(".", ",").replace("\0", ".")
+    """English format: decimal point and thousands comma (106526 -> 106,526)."""
+    return f"{float(value):,.{decimals}f}"
+
+
+def _rel(ruta) -> str:
+    """Path relative to the repository (for speaker notes), POSIX style."""
+    ruta = Path(ruta)
+    try:
+        return ruta.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return ruta.as_posix()
 
 
 def cargar_csv(path: Path) -> list[dict]:
@@ -89,7 +100,7 @@ def _fila(rows: list[dict], modelo: str, protocolo: str) -> dict:
     for row in rows:
         if row["modelo"] == modelo and row["protocolo"] == protocolo:
             return row
-    raise KeyError(f"No hay fila para {modelo} / {protocolo}")
+    raise KeyError(f"No row for {modelo} / {protocolo}")
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +363,8 @@ def _notas(slide, texto: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Diapositiva 1: auditoria
+# ---------------------------------------------------------------------------
+# Slide 1: audit
 # ---------------------------------------------------------------------------
 def slide_auditoria(prs, datos_dir: Path = DATOS_DIR):
     cp = cargar_csv(Path(datos_dir) / "comparacion_protocolos.csv")
@@ -360,62 +372,62 @@ def slide_auditoria(prs, datos_dir: Path = DATOS_DIR):
     ref_loso = _fila(cp, "baseline_interpolacion_factor", "LOSO")
 
     s = nueva_slide(
-        prs, "Auditoría: qué se encontró y qué se corrigió",
-        "Siete hallazgos de la auditoría del 10 de octubre · XGBoost por defecto, 154.080 filas",
+        prs, "Audit: what was found and what was fixed",
+        "Seven findings from the October 10 audit · default XGBoost, 154,080 rows",
     )
 
     def cod(codigo, resto):
         return [(codigo + "  ", ACCENT, True), (resto, TEXT, False)]
 
-    estado = {"Corregido": GREEN, "Parcial": AMBER, "Abierto": AMBER, "Pendiente": AMBER}
+    estado = {"Fixed": GREEN, "Partial": AMBER, "Open": AMBER, "Pending": AMBER}
     filas_raw = [
-        (cod("M-01", "Sin referencias"),
-         "Dos referencias sin aprendizaje en el banco",
-         f"LOSO: referencia {fmt(ref_loso['rmse_vol_agregado_m3'])} m³ vs XGBoost "
-         f"{fmt(xgb_loso['rmse_vol_agregado_m3'])} m³", "Corregido"),
-        (cod("M-02", "Volumen de la forma"),
-         "Medición por forma; el modelo no cambió",
-         "Una forma = 71,6 % del error cuadrático", "Abierto"),
-        (cod("M-03", "F1 promediado"),
-         "F1 agregado sobre la matriz de confusión",
+        (cod("M-01", "No baselines"),
+         "Two no-learning baselines added to the benchmark",
+         f"LOSO: baseline {fmt(ref_loso['rmse_vol_agregado_m3'])} m³ vs XGBoost "
+         f"{fmt(xgb_loso['rmse_vol_agregado_m3'])} m³", "Fixed"),
+        (cod("M-02", "Shape volume"),
+         "Per-shape measurement; the model is unchanged",
+         "One shape = 71.6% of the squared error", "Open"),
+        (cod("M-03", "Averaged F1"),
+         "Pooled F1 from the confusion matrix",
          f"LOSO: F1 {fmt(xgb_loso['f1_media_por_fold_con_ceros'], 4)} → "
-         f"{fmt(xgb_loso['f1_agregado'], 4)}", "Corregido"),
-        (cod("V-01", "Figuras en muestra"),
-         "Pie «en muestra» en las figuras nuevas",
-         "6 pruebas; figuras antiguas sin regenerar", "Parcial"),
-        (cod("V-07", "Script sobrescribía el .inp"),
-         "Sin efectos al importar; exige --force",
-         "No sobrescribe sin --force (pruebas)", "Corregido"),
-        (cod("M-07 / V-04", "Modelo ≠ promotion.json"),
-         "predict_network compara los SHA-256",
-         "Se detiene si no coinciden (15 pruebas)", "Parcial"),
-        (cod("D-04", "Resolución de la etiqueta"),
-         "Spike: umbral efectivo ≈ 0,5 m³",
-         "Decisión A/B pendiente; recomiendo A", "Pendiente"),
+         f"{fmt(xgb_loso['f1_agregado'], 4)}", "Fixed"),
+        (cod("V-01", "In-sample figures"),
+         "“In-sample” footnote on the new figures",
+         "6 tests; old figures not regenerated", "Partial"),
+        (cod("V-07", "Script overwrote the .inp"),
+         "No side effects on import; requires --force",
+         "Does not overwrite without ‑‑force (tests)", "Fixed"),
+        (cod("M-07 / V-04", "Model ≠ promotion.json"),
+         "predict_network checks the SHA-256 hashes",
+         "Stops if they differ (15 tests)", "Partial"),
+        (cod("D-04", "Label resolution"),
+         "Spike: effective threshold ≈ 0.5 m³",
+         "A/B decision pending; I recommend A", "Pending"),
     ]
     filas = [[a, b, c, [(d, estado[d], True)]] for a, b, c, d in filas_raw]
     _tabla(s, L, Y0, [2250000, 2400000, 2650000, 1250000],
-           ["Hallazgo", "Corrección", "Verificación", "Estado"], filas,
+           ["Finding", "Fix", "Verification", "Status"], filas,
            row_h=480000, header_h=340000, size=12)
 
     _notas(s, (
-        "La auditoría interna del protocolo encontró siete problemas que afectaban cómo se leen los resultados; "
-        "esta tabla resume cada hallazgo, su corrección y cómo se verificó. "
-        "El más importante es M-01: en LOSO una referencia que solo interpola entre factores vecinos obtiene un RMSE de "
-        f"{fmt(ref_loso['rmse_vol_agregado_m3'])} m³ contra {fmt(xgb_loso['rmse_vol_agregado_m3'])} m³ de XGBoost, así que ese protocolo mide interpolación y no generalización. "
-        f"M-03 es de agregación: promediar el F1 por pliegue con ceros daba {fmt(xgb_loso['f1_media_por_fold_con_ceros'], 4)} y el F1 agregado es {fmt(xgb_loso['f1_agregado'], 4)}. "
-        "Dos estados no son de cierre: M-02 sigue abierto (una sola forma concentra el 71,6 % del error cuadrático) y D-04 espera mi decisión entre las rutas A y B. "
-        "V-01 y M-07/V-04 están corregidos solo en las figuras nuevas y en predict_network; otros cargadores siguen sin verificación.\n\n"
-        "Fuentes: docs/auditoria/correcciones/04-informe-consolidado.md (§1 estado por hallazgo, §2 antes y después); "
-        "datos/comparacion_protocolos.csv (rmse_vol_agregado_m3, f1_agregado, f1_media_por_fold_con_ceros, XGBoost y "
-        "baseline_interpolacion_factor en LOSO); datos/por_forma.csv (71,6 %: rmse_vol^2 x n_rows de shape_quasi_uniform_block sobre el total, XGBoost, LeaveOneShapeOut); "
-        "01-evaluacion-honesta.md §1-§3; 02-trazabilidad-y-seguridad.md §1-§3 (6 pruebas de V-01, 15 de verify_promotion); 03-resolucion-de-la-etiqueta.md §1."
+        "The internal audit of the evaluation protocol found seven problems that affected how the results are read; "
+        "this table summarizes each finding, its fix, and how it was verified. "
+        "The most important is M-01: in LOSO a baseline that only interpolates between neighboring factors reaches a volume RMSE of "
+        f"{fmt(ref_loso['rmse_vol_agregado_m3'])} m³ against {fmt(xgb_loso['rmse_vol_agregado_m3'])} m³ for XGBoost, so that protocol measures interpolation, not generalization. "
+        f"M-03 is about aggregation: averaging F1 per fold with zeros gave {fmt(xgb_loso['f1_media_por_fold_con_ceros'], 4)} while the pooled F1 is {fmt(xgb_loso['f1_agregado'], 4)}. "
+        "Two items are not closed: M-02 remains open (a single shape concentrates 71.6% of the squared error) and D-04 awaits my decision between paths A and B. "
+        "V-01 and M-07/V-04 are fixed only for the new figures and for predict_network; other loaders still lack verification.\n\n"
+        "Sources: docs/auditoria/correcciones/04-informe-consolidado.md (§1 status per finding, §2 before and after); "
+        "datos/comparacion_protocolos.csv (rmse_vol_agregado_m3, f1_agregado, f1_media_por_fold_con_ceros, XGBoost and "
+        "baseline_interpolacion_factor in LOSO); datos/por_forma.csv (71.6%: rmse_vol^2 x n_rows of shape_quasi_uniform_block over the total, XGBoost, LeaveOneShapeOut); "
+        "01-evaluacion-honesta.md §1-§3; 02-trazabilidad-y-seguridad.md §1-§3 (6 tests for V-01, 15 for verify_promotion); 03-resolucion-de-la-etiqueta.md §1."
     ))
     return s
 
 
 # ---------------------------------------------------------------------------
-# Diapositiva 2: que mide cada protocolo
+# Slide 2: what each protocol measures
 # ---------------------------------------------------------------------------
 def slide_protocolos(prs, datos_dir: Path = DATOS_DIR):
     cp = cargar_csv(Path(datos_dir) / "comparacion_protocolos.csv")
@@ -425,27 +437,27 @@ def slide_protocolos(prs, datos_dir: Path = DATOS_DIR):
     xgb_forma = _fila(cp, "xgboost", "LeaveOneShapeOut")
 
     s = nueva_slide(
-        prs, "Qué mide cada protocolo (y por qué importa)",
-        "RMSE de volumen agregado, XGBoost por defecto frente a una referencia que no aprende",
+        prs, "What each protocol measures (and why it matters)",
+        "Pooled volume RMSE: default XGBoost vs a baseline that does not learn",
     )
     card_w = 3950000
     _card(s, L, Y0 + 20000, card_w, 1330000, [
-        P("LOSO y GroupKFold5", 14, True, TEXT, 3),
-        P("Se retienen factores de intensidad", 12, False, MUTED, 5),
-        P("Interpolación entre factores", 14, True, AMBER, 3),
-        P("Todas las formas ya se vieron", 12, False, MUTED),
+        P("LOSO and GroupKFold5", 14, True, TEXT, 3),
+        P("Intensity factors are held out", 12, False, MUTED, 5),
+        P("Interpolation between factors", 14, True, AMBER, 3),
+        P("All shapes were already seen", 12, False, MUTED),
     ])
     _card(s, L, Y0 + 1480000, card_w, 1330000, [
         P("LeaveOneShapeOut", 14, True, TEXT, 3),
-        P("Se retiene una forma de hidrograma completa", 12, False, MUTED, 5),
-        P("Formas de hidrograma nuevas", 14, True, ACCENT, 3),
-        P("40 pliegues: la prueba principal", 12, False, MUTED),
+        P("One whole hydrograph shape is held out", 12, False, MUTED, 5),
+        P("Unseen hydrograph shapes", 14, True, ACCENT, 3),
+        P("40 folds: the main test", 12, False, MUTED),
     ], fill=PANEL_ALT, line=ACCENT, line_w=2.25)
 
     cx = L + 4150000
     cw = W - 4150000
     _textbox(s, cx, Y0, cw, 260000,
-             [P("RMSE agregado del volumen (m³): menor es mejor", 11, False, MUTED)])
+             [P("Pooled volume RMSE (m³): lower is better", 11, False, MUTED)])
     ref_loso_v = round(float(ref_loso["rmse_vol_agregado_m3"]), 2)
     xgb_loso_v = round(float(xgb_loso["rmse_vol_agregado_m3"]), 2)
     ref_forma_v = round(float(ref_forma["rmse_vol_agregado_m3"]), 2)
@@ -453,36 +465,36 @@ def slide_protocolos(prs, datos_dir: Path = DATOS_DIR):
     _chart_barras(
         s, cx, Y0 + 250000, cw, 2560000,
         ["LOSO", "LeaveOneShapeOut"],
-        [("Referencia sin aprendizaje", [ref_loso_v, ref_forma_v], AMBER),
+        [("No-learning baseline", [ref_loso_v, ref_forma_v], AMBER),
          ("XGBoost", [xgb_loso_v, xgb_forma_v], ACCENT)],
         etiquetas=[[fmt(ref_loso_v), fmt(ref_forma_v)], [fmt(xgb_loso_v), fmt(xgb_forma_v)]],
         size=12, gap=55,
     )
     _textbox(s, cx, Y0 + 2800000, cw, 200000, [P(
-        "Ref.: interpolación (izq.), forma más cercana (der.)",
+        "Baseline: factor interpolation (left), nearest shape (right)",
         10, False, MUTED)])
 
     _shape(s, MSO_SHAPE.ROUNDED_RECTANGLE, L, 4080000, W, 650000, fill=HEAD, line=None,
-           paras=[P("LeaveOneShapeOut es la cifra principal", 18, True, TEXT, 2),
-                  P("En LOSO la referencia que no aprende gana: ese protocolo solo mide interpolación",
+           paras=[P("LeaveOneShapeOut is the headline figure", 18, True, TEXT, 2),
+                  P("In LOSO the no-learning baseline wins: that protocol only measures interpolation",
                     12, False, MUTED)],
            margins=(150000, 40000, 150000, 40000))
 
     _notas(s, (
-        "Cada protocolo retiene un grupo distinto. En LOSO y GroupKFold5 se retienen factores de intensidad y todas las formas siguen en el entrenamiento, "
-        "así que se mide interpolación entre factores; en LeaveOneShapeOut se retiene una forma completa y se mide generalización a formas nuevas. "
-        f"La prueba de que importa: en LOSO la referencia que no aprende tiene RMSE de {fmt(ref_loso_v)} m³ y XGBoost {fmt(xgb_loso_v)} m³, es decir, ganar en LOSO no demuestra nada. "
-        f"En LeaveOneShapeOut el orden se invierte: la referencia de forma más cercana tiene {fmt(ref_forma_v)} m³ y XGBoost {fmt(xgb_forma_v)} m³. "
-        "Por eso LeaveOneShapeOut es la cifra principal de toda la comparación. Con la malla de 25 factores, GroupKFold5 no es más exigente que LOSO: ningún pliegue retiene dos factores contiguos.\n\n"
-        "Fuentes: docs/auditoria/correcciones/datos/comparacion_protocolos.csv, columna rmse_vol_agregado_m3 "
+        "Each protocol holds out a different group. In LOSO and GroupKFold5 intensity factors are held out and all shapes remain in training, "
+        "so what is measured is interpolation between factors; in LeaveOneShapeOut a whole shape is held out and what is measured is generalization to unseen shapes. "
+        f"The proof that this matters: in LOSO the no-learning baseline has an RMSE of {fmt(ref_loso_v)} m³ and XGBoost {fmt(xgb_loso_v)} m³, so winning in LOSO proves nothing. "
+        f"In LeaveOneShapeOut the order reverses: the nearest-shape baseline has {fmt(ref_forma_v)} m³ and XGBoost {fmt(xgb_forma_v)} m³. "
+        "That is why LeaveOneShapeOut is the headline figure of the whole comparison. With the 25-factor grid, GroupKFold5 is no more demanding than LOSO: no fold holds out two contiguous factors.\n\n"
+        "Sources: docs/auditoria/correcciones/datos/comparacion_protocolos.csv, column rmse_vol_agregado_m3 "
         "(baseline_interpolacion_factor/LOSO, xgboost/LOSO, baseline_forma_mas_cercana/LeaveOneShapeOut, xgboost/LeaveOneShapeOut); "
-        "01-evaluacion-honesta.md §0 (qué mide cada protocolo) y §1; 04-informe-consolidado.md §3 y §11."
+        "01-evaluacion-honesta.md §0 (what each protocol measures) and §1; 04-informe-consolidado.md §3 and §11."
     ))
     return s
 
 
 # ---------------------------------------------------------------------------
-# Diapositiva 3: matriz de confusion
+# Slide 3: confusion matrix
 # ---------------------------------------------------------------------------
 def slide_matriz(prs, datos_dir: Path = DATOS_DIR):
     datos_dir = Path(datos_dir)
@@ -493,17 +505,17 @@ def slide_matriz(prs, datos_dir: Path = DATOS_DIR):
     fn_banda, fn_total = int(bl["fn_en_banda_1_2m3"]), int(bl["fn_total"])
 
     s = nueva_slide(
-        prs, "Matriz de confusión de XGBoost con formas no vistas",
-        f"LeaveOneShapeOut · {fmt(tn + fp + fn + tp, 0)} nodos-escenario · etiqueta: volumen ≥ 1 m³",
+        prs, "XGBoost confusion matrix on unseen shapes",
+        f"LeaveOneShapeOut · {fmt(tn + fp + fn + tp, 0)} node-scenarios · label: volume ≥ 1 m³",
     )
     rh_w, cell_w, cell_h, gap = 1250000, 1900000, 980000, 50000
     mx = L + rh_w + 50000
     my1, my2 = 1500000, 1500000 + cell_h + gap
-    for i, texto in enumerate(("no inunda", "inunda")):
+    for i, texto in enumerate(("no flood", "flood")):
         _textbox(s, mx + i * (cell_w + gap), Y0 + 20000, cell_w, 400000,
-                 [P("PREDICHO", 10, True, MUTED), P(texto, 14, True, TEXT)])
-    for texto, y in (("no inunda", my1), ("inunda", my2)):
-        _textbox(s, L, y, rh_w, cell_h, [P("REAL", 10, True, MUTED), P(texto, 14, True, TEXT)],
+                 [P("PREDICTED", 10, True, MUTED), P(texto, 14, True, TEXT)])
+    for texto, y in (("no flood", my1), ("flood", my2)):
+        _textbox(s, L, y, rh_w, cell_h, [P("ACTUAL", 10, True, MUTED), P(texto, 14, True, TEXT)],
                  anchor=MSO_ANCHOR.MIDDLE)
 
     def celda(x, y, valor, etiqueta, fill, line, line_w, color_num):
@@ -511,17 +523,17 @@ def slide_matriz(prs, datos_dir: Path = DATOS_DIR):
                paras=[P(fmt(valor, 0), 24, True, color_num, 2), P(etiqueta, 12, False, MUTED)],
                anchor=MSO_ANCHOR.TOP, margins=(130000, 90000, 100000, 40000))
 
-    celda(mx, my1, tn, "TN · verdaderos negativos", PANEL_ALT, LINE, 1.0, TEXT)
-    celda(mx + cell_w + gap, my1, fp, "FP · falsos positivos", PANEL, AMBER, 1.0, AMBER)
-    celda(mx, my2, fn, "FN · falsos negativos", PANEL, AMBER, 3.0, AMBER)
-    celda(mx + cell_w + gap, my2, tp, "TP · verdaderos positivos", HEAD, ACCENT, 1.5, TEXT)
+    celda(mx, my1, tn, "TN · true negatives", PANEL_ALT, LINE, 1.0, TEXT)
+    celda(mx + cell_w + gap, my1, fp, "FP · false positives", PANEL, AMBER, 1.0, AMBER)
+    celda(mx, my2, fn, "FN · false negatives", PANEL, AMBER, 3.0, AMBER)
+    celda(mx + cell_w + gap, my2, tp, "TP · true positives", HEAD, ACCENT, 1.5, TEXT)
 
     tx = mx + 2 * cell_w + gap + 250000
     tw = L + W - tx
     tile_h = 780000
     metricas = [("Recall", fmt(cp["recall_agregado"], 4), ACCENT),
-                ("Precisión", fmt(cp["precision_agregada"], 4), ACCENT),
-                ("F1 agregado", fmt(cp["f1_agregado"], 4), TEXT)]
+                ("Precision", fmt(cp["precision_agregada"], 4), ACCENT),
+                ("Pooled F1", fmt(cp["f1_agregado"], 4), TEXT)]
     for i, (nombre, valor, color) in enumerate(metricas):
         _card(s, tx, Y0 + 20000 + i * (tile_h + 60000), tw, tile_h,
               [P(nombre, 12, False, MUTED, 1), P(valor, 22, True, color)],
@@ -530,40 +542,40 @@ def slide_matriz(prs, datos_dir: Path = DATOS_DIR):
     cy, ch = 3680000, 950000
     _shape(s, MSO_SHAPE.ROUNDED_RECTANGLE, L, cy, W, ch, fill=PANEL, line=AMBER, line_w=2.0)
     _textbox(s, L + 150000, cy, 2900000, ch,
-             [P(f"{fn_banda} de {fn_total}", 30, True, AMBER)], anchor=MSO_ANCHOR.MIDDLE)
+             [P(f"{fn_banda} of {fn_total}", 30, True, AMBER)], anchor=MSO_ANCHOR.MIDDLE)
     _textbox(s, L + 3150000, cy, W - 3300000, ch, [
-        P("falsos negativos tienen volumen reportado de 1 m³", 14, True, TEXT, 3),
-        P("el mínimo que cuenta como inundación; ninguno supera 100 m³", 12, False, MUTED),
+        P("false negatives have a reported volume of 1 m³", 14, True, TEXT, 3),
+        P("the minimum that counts as flooding; none exceeds 100 m³", 12, False, MUTED),
     ], anchor=MSO_ANCHOR.MIDDLE)
 
     _notas(s, (
-        "Esta es la matriz agregada de XGBoost con hiperparámetros por defecto cuando se retiene una forma de hidrograma completa, sobre "
-        f"{fmt(tn + fp + fn + tp, 0)} casos nodo-escenario. Hay {fmt(tp, 0)} verdaderos positivos, {fmt(tn, 0)} verdaderos negativos, {fmt(fp, 0)} falsos positivos y {fmt(fn, 0)} falsos negativos; "
-        f"de ahí salen recall {fmt(cp['recall_agregado'], 4)}, precisión {fmt(cp['precision_agregada'], 4)} y F1 {fmt(cp['f1_agregado'], 4)}. "
-        f"Lo que quiero que se lleven: {fn_banda} de los {fn_total} falsos negativos son nodos cuyo volumen reportado es de 1 m³, el mínimo que la etiqueta considera inundación; "
-        "ninguno supera los 100 m³. Es decir, los errores de clasificación se concentran en el borde de la etiqueta y no en inundaciones grandes. "
-        "Si se excluye esa banda el F1 sube de 0,9817 a 0,9847, pero eso se reporta solo como sensibilidad, con exclusión asimétrica.\n\n"
-        "Fuentes: docs/auditoria/correcciones/datos/matriz_confusion.csv (xgboost, LeaveOneShapeOut: tn, fp, fn, tp); "
+        "This is the pooled confusion matrix of default XGBoost when a whole hydrograph shape is held out, over "
+        f"{fmt(tn + fp + fn + tp, 0)} node-scenario cases. There are {fmt(tp, 0)} true positives, {fmt(tn, 0)} true negatives, {fmt(fp, 0)} false positives, and {fmt(fn, 0)} false negatives; "
+        f"from these come a recall of {fmt(cp['recall_agregado'], 4)}, a precision of {fmt(cp['precision_agregada'], 4)}, and an F1 of {fmt(cp['f1_agregado'], 4)}. "
+        f"The takeaway: {fn_banda} of the {fn_total} false negatives are nodes whose reported volume is 1 m³, the minimum the label counts as flooding; "
+        "none exceeds 100 m³. In other words, the classification errors concentrate at the edge of the label and not on large floods. "
+        "Excluding that band raises F1 from 0.9817 to 0.9847, but that is reported only as a sensitivity check, with asymmetric exclusion.\n\n"
+        "Sources: docs/auditoria/correcciones/datos/matriz_confusion.csv (xgboost, LeaveOneShapeOut: tn, fp, fn, tp); "
         "datos/comparacion_protocolos.csv (recall_agregado, precision_agregada, f1_agregado); "
-        "datos/banda_limitrofe.csv (fn_total, fn_en_banda_1_2m3, fn_con_vol_ge_100m3); 04-informe-consolidado.md §3 y §4; 03-resolucion-de-la-etiqueta.md §1 punto 6 (F1 0,9847 sin la banda)."
+        "datos/banda_limitrofe.csv (fn_total, fn_en_banda_1_2m3, fn_con_vol_ge_100m3); 04-informe-consolidado.md §3 and §4; 03-resolucion-de-la-etiqueta.md §1 point 6 (F1 0.9847 without the band)."
     ))
     return s
 
 
 # ---------------------------------------------------------------------------
-# Diapositiva 4: etiqueta y resolucion
+# Slide 4: label and resolution
 # ---------------------------------------------------------------------------
 def slide_etiqueta(prs):
     s = nueva_slide(
-        prs, "La etiqueta de inundación y su resolución",
-        "De SWMM al .rpt y a la etiqueta: el reporte imprime el volumen con resolución de 1 m³",
+        prs, "The flood label and its resolution",
+        "From SWMM to the .rpt to the label: the report prints volume at 1 m³ resolution",
     )
     bw, gap_w = 2500000, 524820
     y, h = Y0 + 20000, 1000000
     cajas = [
-        ("1 · SWMM", "Volumen de desborde continuo (coma flotante)"),
-        ("2 · Reporte .rpt", "10⁶ L con 3 decimales: resolución de 1 m³"),
-        ("3 · Etiqueta", "inunda = 1 si V_rpt ≥ 1 m³"),
+        ("1 · SWMM", "Continuous overflow volume (floating point)"),
+        ("2 · .rpt report", "10⁶ L with 3 decimals: 1 m³ resolution"),
+        ("3 · Label", "flood = 1 if V_rpt ≥ 1 m³"),
     ]
     for i, (titulo, detalle) in enumerate(cajas):
         x = L + i * (bw + gap_w)
@@ -574,53 +586,56 @@ def slide_etiqueta(prs):
             _arrow(s, x + bw + 70000, y + h // 2 - 150000, gap_w - 140000, 300000)
 
     _shape(s, MSO_SHAPE.ROUNDED_RECTANGLE, L, 2200000, W, 800000, fill=HEAD, line=None,
-           paras=[P("etiqueta ≈ volumen continuo ≥ 0,5 m³", 18, True, TEXT, 3),
-                  P("acotado a 0,4988–0,5002 m³ en 15 escenarios de control (2.400 casos nodo-escenario)",
+           paras=[P("label ≈ continuous volume ≥ 0.5 m³", 18, True, TEXT, 3),
+                  P("bounded to 0.4988–0.5002 m³ in 15 control scenarios (2,400 node-scenario cases)",
                     12, False, MUTED)],
            margins=(150000, 40000, 150000, 40000))
 
     _textbox(s, L, 3110000, W, 200000,
-             [P("DECISIÓN PENDIENTE (DEL AUTOR)", 10, True, MUTED)])
+             [P("PENDING DECISION (AUTHOR)", 10, True, MUTED)])
     cw = (W - 150000) // 2
     cy, ch = 3450000, 1150000
     _card(s, L, cy, cw, ch, [
-        P("A · Declarar el supuesto", 14, True, ACCENT, 4),
-        P("Se mantiene el dato y se reporta la matriz con la banda de 1 m³ separada", 12, False, TEXT)],
+        P("A · State the assumption", 14, True, ACCENT, 4),
+        P("Keep the data and report the confusion matrix with the 1 m³ band separated", 12, False, TEXT)],
         fill=PANEL_ALT, line=AMBER, line_w=2.25)
-    _pill(s, L + cw - 2150000, cy - 110000, 2050000, 240000, "RECOMENDACIÓN: A", AMBER)
+    _pill(s, L + cw - 2150000, cy - 110000, 2050000, 240000, "RECOMMENDATION: A", AMBER)
     _card(s, L + cw + 150000, cy, cw, ch, [
-        P("B · Re-simular las 1000 corridas", 14, True, ACCENT, 4),
-        P("≈ 17–20 min de SWMM, pero se rehacen dataset, BD, banco, Optuna y todas las cifras",
+        P("B · Re-simulate the 1000 runs", 14, True, ACCENT, 4),
+        P("≈ 17–20 min of SWMM, but the dataset, DB, benchmark, Optuna and all figures are redone",
           12, False, TEXT)])
 
     _notas(s, (
-        "La etiqueta de inundación no sale directamente del volumen continuo de SWMM: el reporte .rpt lo imprime en 10⁶ L con tres decimales, es decir con resolución de 1 m³, "
-        "y la etiqueta es volumen reportado mayor o igual a 1 m³. En las re-simulaciones de control eso equivale a un umbral de volumen continuo de aproximadamente 0,5 m³, "
-        "acotado a entre 0,4988 y 0,5002 m³ en 15 escenarios con registro por nodo, sin discrepancias en 2.400 casos nodo-escenario; es una cuantización determinista, no ruido. "
-        "Hay dos rutas: A, mantener resolución y umbral y declararlos como supuesto reportando la matriz con la banda separada, o B, re-simular las 1000 corridas, que cuesta unos 17 a 20 minutos de SWMM "
-        "pero obliga a rehacer dataset, base de datos, prep_id, banco, Optuna y todas las cifras. La recomendación es la ruta A; la decisión es mía y está pendiente.\n\n"
-        "Fuentes: docs/auditoria/correcciones/03-resolucion-de-la-etiqueta.md §1 (puntos 1-8) y §2.1 (cadena de resolución); "
-        "04-informe-consolidado.md §4. Cota 0,4988-0,5002 m³ y 2.400 casos: 03 §1 punto 2; 17-20 min: 03 §1 punto 5. "
-        "La alerta de que la decisión sigue abierta está también en 04 §11 (Pendiente)."
+        "The flood label does not come directly from SWMM's continuous volume: the .rpt report prints it in 10⁶ L with three decimals, that is, at 1 m³ resolution, "
+        "and the label is reported volume greater than or equal to 1 m³. In the control re-simulations this is equivalent to a continuous-volume threshold of about 0.5 m³, "
+        "bounded between 0.4988 and 0.5002 m³ in 15 scenarios with per-node records, with no discrepancies in 2,400 node-scenario cases; it is a deterministic quantization, not noise. "
+        "There are two paths: A, keep the resolution and threshold, state them as an assumption, and report the confusion matrix with the band separated; or B, re-simulate the 1000 runs, which costs about 17 to 20 minutes of SWMM "
+        "but forces redoing the dataset, database, prep_id, benchmark, Optuna, and all figures. The recommendation is path A; the decision is mine and is still pending.\n\n"
+        "Sources: docs/auditoria/correcciones/03-resolucion-de-la-etiqueta.md §1 (points 1-8) and §2.1 (resolution chain); "
+        "04-informe-consolidado.md §4. The 0.4988-0.5002 m³ bound and the 2,400 cases: 03 §1 point 2; 17-20 min: 03 §1 point 5. "
+        "That the decision remains open is also in 04 §11 (Pending)."
     ))
     return s
 
 
+# ---------------------------------------------------------------------------
+# Slide 5: SVM architecture
+# ---------------------------------------------------------------------------
 def _n_trials(datos_parte2_dir) -> str:
-    """Presupuesto de Optuna (lee resumen_afinacion.csv si existe)."""
+    """Optuna budget (reads resumen_afinacion.csv when available)."""
     if datos_parte2_dir:
         ruta = Path(datos_parte2_dir) / "resumen_afinacion.csv"
         if ruta.exists():
             ns = {r["n_trials"] for r in cargar_csv(ruta)}
             if len(ns) == 1:
-                return f"{ns.pop()} trials de Optuna por familia"
-    return "Mismo número de trials de Optuna"
+                return f"{ns.pop()} Optuna trials per family"
+    return "Same number of Optuna trials"
 
 
 def _tiempo_estudio_svm(datos_parte2_dir) -> dict:
-    """Costo medido del SVM aproximado. El tiempo por fold (8-13 s con
-    ~150.000 filas: svm por defecto 8 s; n_components 400, 13 s) viene del
-    estudio de costos; la duracion del estudio sale de resumen_afinacion.csv."""
+    """Measured cost of the approximate SVM. The per-fold time (8-13 s with
+    ~150,000 rows: default svm 8 s; n_components 400, 13 s) comes from the
+    cost study; the study duration comes from resumen_afinacion.csv."""
     if datos_parte2_dir:
         ruta = Path(datos_parte2_dir) / "resumen_afinacion.csv"
         if ruta.exists():
@@ -628,29 +643,26 @@ def _tiempo_estudio_svm(datos_parte2_dir) -> dict:
                 if r["family"] == "svm":
                     minutos = fmt(float(r["duration_s"]) / 60, 0)
                     return {
-                        "slide": "Costo lineal en n: ~8-13 s por fold con 150.000 filas; "
-                                 f"estudio de {r['n_trials']} trials en ~{minutos} min",
-                        "notas": "ajuste y predicción de ~8 a 13 s por fold con 150.000 filas "
-                                 "(SVM por defecto 8 s; n_components 400, 13 s) y el estudio "
-                                 f"completo de {r['n_trials']} trials duró unos {minutos} minutos.",
-                        "fuente": f"{Path(datos_parte2_dir).as_posix()}/resumen_afinacion.csv "
-                                  "(family=svm, duration_s) y estudio de costos de la parte 2.",
+                        "slide": "Linear cost in n: ~8–13 s per fold on 150,000 rows; "
+                                 f"{r['n_trials']}-trial study in ~{minutos} min",
+                        "notas": "fit and predict take ~8 to 13 s per fold on 150,000 rows "
+                                 "(default SVM 8 s; n_components 400, 13 s) and the full "
+                                 f"{r['n_trials']}-trial study took about {minutos} minutes.",
+                        "fuente": f"{_rel(datos_parte2_dir)}/resumen_afinacion.csv "
+                                  "(family=svm, duration_s) and the part 2 cost study.",
                     }
     return {
-        "slide": "Costo lineal en n; se espera correr en segundos por fold (por medir)",
-        "notas": "el tiempo real por fold aún está por medir; hoy es una expectativa y no una cifra.",
-        "fuente": "tiempo por fold pendiente de medición.",
+        "slide": "Linear cost in n; expected to run in seconds per fold (to be measured)",
+        "notas": "the actual per-fold time is still to be measured; today it is an expectation, not a figure.",
+        "fuente": "per-fold time pending measurement.",
     }
 
 
-# ---------------------------------------------------------------------------
-# Diapositiva 5: arquitectura del SVM
-# ---------------------------------------------------------------------------
 def slide_svm(prs, datos_parte2_dir=None):
     medido = _tiempo_estudio_svm(datos_parte2_dir)
     s = nueva_slide(
-        prs, "Cambio de arquitectura del SVM",
-        "El kernel RBF exacto no escala a 154.080 filas; se aproxima con un mapeo de Nystroem",
+        prs, "Approximate SVM: architecture change",
+        "The exact RBF kernel does not scale to 154,080 rows; it is approximated with a Nystroem map",
     )
     gap = 190000
     x1, w1 = L, 1000000
@@ -658,74 +670,73 @@ def slide_svm(prs, datos_parte2_dir=None):
     x3, w3 = x2 + w2 + gap, 2250000
     x4, w4 = x3 + w3 + gap, L + W - (x3 + w3 + gap)
 
-    # Antes
+    # Before
     ya, ha = 1320000, 800000
-    _pill(s, L, 1030000, 2400000, 250000, "ANTES · KERNEL EXACTO", AMBER)
-    _card(s, x1, ya, w1, ha, [P("Datos", 14, True, TEXT)])
+    _pill(s, L, 1030000, 2400000, 250000, "BEFORE · EXACT KERNEL", AMBER)
+    _card(s, x1, ya, w1, ha, [P("Data", 14, True, TEXT)])
     _card(s, x2, ya, w2, ha, [P("StandardScaler", 14, True, TEXT)])
     _card(s, x3, ya, w3 + gap + w4, ha, [
-        P("SVC / SVR con kernel RBF exacto", 14, True, TEXT, 3),
-        P("Costo O(n²) a O(n³) con ~154.000 filas", 12, False, MUTED)],
+        P("SVC / SVR with exact RBF kernel", 14, True, TEXT, 3),
+        P("Cost O(n²) to O(n³) with ~154,000 rows", 12, False, MUTED)],
         fill=PANEL_ALT, line=AMBER, line_w=2.0)
     for ax in (x1 + w1, x2 + w2):
         _arrow(s, ax + 25000, ya + ha // 2 - 110000, gap - 50000, 220000)
     _textbox(s, L, ya + ha + 40000, W, 280000, [P(
-        "No termina: más de 39 h de CPU acumuladas; se canceló", 13, True, AMBER)])
+        "Did not finish: over 39 h of accumulated CPU; cancelled", 13, True, AMBER)])
 
-    # Despues
+    # After
     yb, hb = 2860000, 950000
-    _pill(s, L, 2570000, 2400000, 250000, "DESPUÉS · SVM APROXIMADO", ACCENT)
-    _card(s, x1, yb, w1, hb, [P("Datos", 14, True, TEXT)])
+    _pill(s, L, 2570000, 2400000, 250000, "AFTER · APPROXIMATE SVM", ACCENT)
+    _card(s, x1, yb, w1, hb, [P("Data", 14, True, TEXT)])
     _card(s, x2, yb, w2, hb, [P("StandardScaler", 14, True, TEXT)])
     _card(s, x3, yb, w3, hb, [
-        P("Mapeo de Nystroem", 14, True, TEXT, 3),
+        P("Nystroem map", 14, True, TEXT, 3),
         P("RBF, n_components", 12, False, MUTED)], fill=PANEL_ALT, line=ACCENT, line_w=2.0)
     _card(s, x4, yb, w4, hb, [
-        P("", 12, runs=[("Clasificador: ", ACCENT, True),
-                        ("SVM lineal (pérdida hinge) + calibración de Platt", TEXT, False)], after=4),
-        P("", 12, runs=[("Regresor: ", ACCENT, True),
-                        ("SVR lineal ε-insensible", TEXT, False)])],
+        P("", 12, runs=[("Classifier: ", ACCENT, True),
+                        ("linear SVM (hinge loss) + Platt calibration", TEXT, False)], after=4),
+        P("", 12, runs=[("Regressor: ", ACCENT, True),
+                        ("linear ε-insensitive SVR", TEXT, False)])],
         fill=PANEL_ALT, line=ACCENT, line_w=2.0)
     for ax in (x1 + w1, x2 + w2, x3 + w3):
         _arrow(s, ax + 25000, yb + hb // 2 - 110000, gap - 50000, 220000)
-    _textbox(s, L, yb + hb + 40000, W, 280000, [P(
-        medido["slide"], 13, True, GREEN)])
+    _textbox(s, L, yb + hb + 40000, W, 280000, [P(medido["slide"], 13, True, GREEN)])
 
     _shape(s, MSO_SHAPE.ROUNDED_RECTANGLE, L, 4280000, W, 440000, fill=None, line=AMBER,
-           line_w=2.0, paras=[P("SVM aproximado (kernel aproximado), no un SVM de kernel exacto",
+           line_w=2.0, paras=[P("Approximate SVM (approximate kernel), not an exact-kernel SVM",
                                 14, True, AMBER)],
            margins=(150000, 30000, 150000, 30000))
 
     _notas(s, (
-        "El SVM original usaba SVC y SVR exactos con kernel RBF, cuyo costo crece entre n al cuadrado y n al cubo; con unas 154.000 filas la corrida del 5 de octubre acumuló más de un día y 15 horas de CPU "
-        "(más de 39 horas) sin terminar y se canceló. La alternativa es un SVM aproximado: se estandariza, se aproxima el kernel RBF con un mapeo de Nystroem de n_components componentes y sobre ese mapeo se entrena "
-        "un clasificador lineal de margen con pérdida hinge, calibrado con Platt para obtener probabilidades, y un regresor lineal con pérdida ε-insensible (SVR lineal). "
-        f"El costo pasa a ser lineal en el número de filas y está medido: {medido['notas']} "
-        "Hay que decirlo con claridad: no es un SVM de kernel exacto, es un SVM aproximado, y así se documenta en el descriptor de preprocesado (svm_aproximado_nystroem).\n\n"
-        "Fuentes: docs/superpowers/specs/2026-10-12-parte2-svm-comparacion-justa-design.md §2 y §3.1; swmm_resilience/ml/bench/models/svm_family.py (docstring y build_classifier/build_regressor); "
-        "docs/resultados/2026-10-06-handoff-svm.md §2 (más de 1 día y 15 h de CPU, cancelada, ~154.000 filas); "
+        "The original SVM used exact SVC and SVR with an RBF kernel, whose cost grows between n squared and n cubed; with about 154,000 rows the October 5 run accumulated more than a day and 15 hours of CPU "
+        "(over 39 hours) without finishing and was cancelled. The alternative is an approximate SVM: the data are standardized, the RBF kernel is approximated with a Nystroem map of n_components components, and on that map "
+        "a linear margin classifier with hinge loss is trained, calibrated with Platt scaling to obtain probabilities, together with a linear regressor with an ε-insensitive loss (linear SVR). "
+        f"The cost becomes linear in the number of rows and it has been measured: {medido['notas']} "
+        "It must be stated clearly: this is not an exact-kernel SVM, it is an approximate SVM, and it is documented as such in the preprocessing descriptor (svm_aproximado_nystroem).\n\n"
+        "Sources: docs/superpowers/specs/2026-10-12-parte2-svm-comparacion-justa-design.md §2 and §3.1; swmm_resilience/ml/bench/models/svm_family.py (docstring and build_classifier/build_regressor); "
+        "docs/resultados/2026-10-06-handoff-svm.md §2 (more than 1 day and 15 h of CPU, cancelled, ~154,000 rows); "
         + medido["fuente"]
     ))
     return s
 
 
 # ---------------------------------------------------------------------------
-# Diapositiva 6: comparacion justa
+# Slide 6: fair comparison
 # ---------------------------------------------------------------------------
 def slide_comparacion_justa(prs, con_resultados: bool, datos_parte2_dir=None):
     n_trials = _n_trials(datos_parte2_dir)
     pie = FOOTER_TEXT + (
-        "  ·  resultados en las siguientes diapositivas" if con_resultados
-        else "  ·  resultados: corridas en curso")
+        "  ·  results on the following slides" if con_resultados
+        else "  ·  results: runs in progress")
     s = nueva_slide(
-        prs, "Cómo se hará la comparación justa",
-        "Tres familias con las mismas condiciones; solo cambia el modelo", pie)
+        prs, "How the fair comparison is run",
+        "Three families under the same conditions; only the model changes", pie)
     cw = 2750000
     xs = [L, L + cw + 150000, L + 2 * (cw + 150000)]
     familias = [
-        ("XGBoost", "Árboles de gradiente", "Se presenta siempre", ACCENT),
-        ("MLP", "Red neuronal", "Se presenta siempre", ACCENT),
-        ("SVM aproximado", "Nystroem + SVM lineal", "Tercer candidato", AMBER),
+        ("XGBoost", "Gradient-boosted trees", "Always presented", ACCENT),
+        ("MLP", "Neural network", "Always presented", ACCENT),
+        ("Approximate SVM", "Nystroem + linear SVM", "Third candidate", AMBER),
     ]
     for x, (nombre, desc, etiqueta, color) in zip(xs, familias):
         _card(s, x, Y0 + 20000, cw, 930000, [
@@ -735,10 +746,10 @@ def slide_comparacion_justa(prs, con_resultados: bool, datos_parte2_dir=None):
         _arrow(s, x + cw // 2 - 150000, Y0 + 990000, 300000, 230000, "down", LINE)
 
     filas = [
-        ("Mismo dato", "tabular_v4_21 · 154.080 filas (prep_id ca706e27654e0cf5)"),
-        ("Mismo presupuesto", f"{n_trials} y mismo CV interno por forma"),
-        ("Mismo protocolo", "LeaveOneShapeOut: 40 pliegues, una forma retenida por pliegue"),
-        ("Mismas métricas", "RMSE de volumen · F1 · NSE del regresor · matriz de confusión"),
+        ("Same data", "tabular_v4_21 · 154,080 rows (prep_id ca706e27654e0cf5)"),
+        ("Same budget", f"{n_trials} and the same inner CV by shape"),
+        ("Same protocol", "LeaveOneShapeOut: 40 folds, one held-out shape per fold"),
+        ("Same metrics", "Volume RMSE · F1 · regressor NSE · confusion matrix"),
     ]
     py, rh = Y0 + 1260000, 400000
     for i, (etiqueta, valor) in enumerate(filas):
@@ -751,45 +762,45 @@ def slide_comparacion_justa(prs, con_resultados: bool, datos_parte2_dir=None):
 
     _shape(s, MSO_SHAPE.ROUNDED_RECTANGLE, L, 4180000, W, 520000, fill=None, line=AMBER,
            line_w=2.0,
-           paras=[P("Estimación exploratoria condicionada: los hiperparámetros se eligen con todas las formas",
+           paras=[P("Conditional exploratory estimate: hyperparameters are chosen with all shapes",
                     13, True, AMBER)],
            margins=(150000, 30000, 150000, 30000))
 
     _notas(s, (
-        "Para comparar de forma justa las tres familias, todas usan el mismo dato (contrato tabular_v4_21, 154.080 filas), el mismo presupuesto de afinación con Optuna "
-        "(mismo número de trials y el mismo CV interno por forma), el mismo protocolo de evaluación, LeaveOneShapeOut, y las mismas métricas. "
-        "XGBoost y MLP se presentan siempre; el SVM aproximado entra como tercer candidato con el resultado que obtenga. "
-        "La advertencia importante: los hiperparámetros se eligen usando todas las formas, así que la cifra de LeaveOneShapeOut es optimista por igual para las tres familias. "
-        "Sirve para comparar entre ellas, no como confirmación independiente; por eso se declara como estimación exploratoria condicionada. "
-        "Una afinación anidada por forma queda como trabajo futuro.\n\n"
-        "Fuentes: docs/superpowers/specs/2026-10-12-parte2-svm-comparacion-justa-design.md §1, §3.2 y §3.3 (decisiones del autor del 2026-10-12); "
-        "04-informe-consolidado.md encabezado (prep_id ca706e27654e0cf5, 154.080 filas) y §5 punto 1."
+        "To compare the three families fairly, all use the same data (tabular_v4_21 contract, 154,080 rows), the same tuning budget with Optuna "
+        "(same number of trials and the same inner CV by shape), the same evaluation protocol, LeaveOneShapeOut, and the same metrics. "
+        "XGBoost and MLP are always presented; the approximate SVM enters as a third candidate with whatever result it obtains. "
+        "The important caveat: hyperparameters are chosen using all shapes, so the LeaveOneShapeOut figure is optimistic equally for the three families. "
+        "It serves to compare them with each other, not as independent confirmation; that is why it is declared a conditional exploratory estimate. "
+        "A nested tuning by shape is left as future work.\n\n"
+        "Sources: docs/superpowers/specs/2026-10-12-parte2-svm-comparacion-justa-design.md §1, §3.2 and §3.3 (author decisions of 2026-10-12); "
+        "04-informe-consolidado.md header (prep_id ca706e27654e0cf5, 154,080 rows) and §5 point 1."
     ))
     return s
 
 
 # ---------------------------------------------------------------------------
-# Diapositivas de resultados (solo si ya existen las tablas de la parte 2)
+# Results slides (only when the part 2 tables exist)
 # ---------------------------------------------------------------------------
-FAMILIAS = [("xgboost", "XGBoost"), ("mlp", "MLP"), ("svm", "SVM aproximado")]
+FAMILIAS = [("xgboost", "XGBoost"), ("mlp", "MLP"), ("svm", "Approximate SVM")]
 REFERENCIA = "baseline_forma_mas_cercana"
 COLOR_FAMILIA = {"xgboost": ACCENT, "mlp": GREEN, "svm": AMBER}
 
 
 def _datos_parte2(datos_dir) -> dict:
-    """Lee las tablas de la parte 2 (LeaveOneShapeOut) y las deja por modelo."""
+    """Read the part 2 tables (LeaveOneShapeOut) and index them by model."""
     datos_dir = Path(datos_dir)
     filas = [r for r in cargar_csv(datos_dir / "comparacion_protocolos.csv")
              if r["protocolo"] == "LeaveOneShapeOut"]
     if not filas:
-        raise ValueError(f"{datos_dir} no tiene filas del protocolo LeaveOneShapeOut")
+        raise ValueError(f"{datos_dir} has no rows for the LeaveOneShapeOut protocol")
     por_modelo = {r["modelo"]: r for r in filas}
     for familia, _ in FAMILIAS:
         for variante in ("default", "tuned"):
             if f"{familia}_{variante}" not in por_modelo:
-                raise ValueError(f"Falta {familia}_{variante} en comparacion_protocolos.csv")
+                raise ValueError(f"{familia}_{variante} is missing in comparacion_protocolos.csv")
     if REFERENCIA not in por_modelo:
-        raise ValueError(f"Falta {REFERENCIA} en comparacion_protocolos.csv")
+        raise ValueError(f"{REFERENCIA} is missing in comparacion_protocolos.csv")
     matriz = {r["modelo"]: r for r in cargar_csv(datos_dir / "matriz_confusion.csv")
               if r["protocolo"] == "LeaveOneShapeOut"}
     banda = {r["modelo"]: r for r in cargar_csv(datos_dir / "banda_limitrofe.csv")
@@ -801,7 +812,7 @@ def _datos_parte2(datos_dir) -> dict:
     convergencia: dict = {}
     for familia, lista in ensayos.items():
         mejor, serie = float("inf"), []
-        for _, valor in sorted(lista):  # minimo acumulado por trial
+        for _, valor in sorted(lista):  # running minimum per trial
             mejor = min(mejor, valor)
             serie.append(mejor)
         convergencia[familia] = serie
@@ -812,66 +823,66 @@ def _datos_parte2(datos_dir) -> dict:
 def _slide_resultados(prs, d: dict, ruta: Path):
     cp = d["cp"]
     s = nueva_slide(
-        prs, "XGBoost y MLP: resultados con formas no vistas",
-        "LeaveOneShapeOut · XGBoost y MLP son el par que se presenta; SVM aproximado, "
-        "tercer candidato")
+        prs, "XGBoost and MLP: results on unseen shapes",
+        "LeaveOneShapeOut · XGBoost and MLP are the presented pair; approximate SVM, "
+        "third candidate")
 
     filas = []
     for familia, nombre in FAMILIAS:
-        for variante, sufijo in (("tuned", "afinado"), ("default", "por defecto")):
+        for variante, sufijo in (("tuned", "tuned"), ("default", "default")):
             r = cp[f"{familia}_{variante}"]
             presentado = familia != "svm"
             color = ACCENT if presentado else TEXT
+            corto = "SVM" if familia == "svm" else nombre
             filas.append([
-                [(f"{nombre.split()[0]} {sufijo}", color, presentado and variante == "tuned")],
+                [(f"{corto} {sufijo}", color, presentado and variante == "tuned")],
                 [(fmt(r["rmse_vol_agregado_m3"]), color, False)],
                 [(fmt(r["f1_agregado"], 4), color, False)],
                 [(fmt(r["auc_roc_agregado"], 4), color, False)],
                 [(fmt(r["nse_regresor_oracle"], 3), color, False)],
             ])
     ref = cp[REFERENCIA]
-    filas.append([[("Ref. sin aprender", AMBER, True)],
+    filas.append([[("No-learning baseline", AMBER, True)],
                   [(fmt(ref["rmse_vol_agregado_m3"]), AMBER, False)],
                   [(fmt(ref["f1_agregado"], 4), AMBER, False)],
                   [(fmt(ref["auc_roc_agregado"], 4), AMBER, False)],
                   [(fmt(ref["nse_regresor_oracle"], 3), AMBER, False)]])
-    _tabla(s, L, Y0, [1950000, 700000, 750000, 750000, 700000],
-           ["Modelo", "RMSE", "F1", "AUC", "NSE"], filas, row_h=370000, header_h=340000,
+    _tabla(s, L, Y0, [1900000, 800000, 750000, 750000, 650000],
+           ["Model", "RMSE", "F1", "AUC", "NSE"], filas, row_h=370000, header_h=340000,
            size=12, name="Table results")
     _textbox(s, L, Y0 + 340000 + 370000 * len(filas) + 110000, 4850000, 420000, [
-        P("RMSE de volumen agregado en m³ (menor es mejor); NSE del regresor en nodos "
-          "inundados. Barras: etiqueta del valor afinado; por defecto, en la tabla", 10, False, MUTED)])
+        P("Pooled volume RMSE in m³ (lower is better); regressor NSE on flooded nodes. "
+          "Bars label the tuned value; default values are in the table", 10, False, MUTED)])
 
     cx, cw = L + 5000000, W - 5000000
     nombres = [n for _, n in FAMILIAS]
     for bloque, (rotulo, campo, decimales) in enumerate((
-            ("RMSE de volumen (m³): menor es mejor", "rmse_vol_agregado_m3", 2),
-            ("F1 agregado: mayor es mejor", "f1_agregado", 4))):
+            ("Volume RMSE (m³): lower is better", "rmse_vol_agregado_m3", 2),
+            ("Pooled F1: higher is better", "f1_agregado", 4))):
         y = Y0 + bloque * 1840000
         _textbox(s, cx, y, cw, 420000, [
             P(rotulo, 11, False, MUTED, 1),
-            P(f"Referencia sin aprender: {fmt(ref[campo], decimales)}", 10, True, AMBER)])
+            P(f"No-learning baseline: {fmt(ref[campo], decimales)}", 10, True, AMBER)])
         defecto = [round(float(cp[f"{f}_default"][campo]), decimales + 1) for f, _ in FAMILIAS]
         afinado = [round(float(cp[f"{f}_tuned"][campo]), decimales + 1) for f, _ in FAMILIAS]
-        holgura = 1.45
         _chart_barras(
             s, cx, y + 400000, cw, 1380000, nombres,
-            [("Por defecto", defecto, LINE), ("Afinado", afinado, ACCENT)],
+            [("Default", defecto, LINE), ("Tuned", afinado, ACCENT)],
             etiquetas=[None, [fmt(v, decimales) for v in afinado]],
             colores_puntos=[[LINE, LINE, "3F5A78"], [ACCENT, ACCENT, "7A8FA6"]],
-            horizontal=True, size=10, gap=40, maximo=max(defecto + afinado) * holgura)
+            horizontal=True, size=10, gap=40, maximo=max(defecto + afinado) * 1.45)
 
     x_t, x_d, mlp_t = cp["xgboost_tuned"], cp["xgboost_default"], cp["mlp_tuned"]
     mejora = 100 * (1 - float(x_t["rmse_vol_agregado_m3"]) / float(x_d["rmse_vol_agregado_m3"]))
     svm_t = cp["svm_tuned"]
     _notas(s, (
-        "Resultados del protocolo principal, LeaveOneShapeOut, con el mismo dato, el mismo presupuesto de Optuna y las mismas métricas para las tres familias. "
-        f"XGBoost afinado es el mejor: RMSE de volumen de {fmt(x_t['rmse_vol_agregado_m3'])} m³, {fmt(mejora, 0)} % menos que con sus parámetros por defecto ({fmt(x_d['rmse_vol_agregado_m3'])} m³). "
-        f"El MLP afinado queda segundo con {fmt(mlp_t['rmse_vol_agregado_m3'])} m³; ambos tienen F1 cercano a {fmt(x_t['f1_agregado'], 2)} y AUC cercano a {fmt(x_t['auc_roc_agregado'], 3)}. "
-        f"El SVM aproximado queda por debajo incluso de la referencia que no aprende ({fmt(svm_t['rmse_vol_agregado_m3'])} contra {fmt(ref['rmse_vol_agregado_m3'])} m³; F1 {fmt(svm_t['f1_agregado'], 3)} contra {fmt(ref['f1_agregado'], 3)}). "
-        "Son estimaciones exploratorias condicionadas: los hiperparámetros se eligieron con todas las formas, así que son optimistas por igual para las tres familias. "
-        "Nota: el XGBoost por defecto de esta corrida no coincide con el de la auditoría (106,21 m³ en datos/comparacion_protocolos.csv); son corridas distintas y no se comparan entre sí.\n\n"
-        f"Fuente: {ruta.as_posix()}/comparacion_protocolos.csv (filas LeaveOneShapeOut; columnas rmse_vol_agregado_m3, f1_agregado, auc_roc_agregado, nse_regresor_oracle); "
+        "Results of the main protocol, LeaveOneShapeOut, with the same data, the same Optuna budget, and the same metrics for the three families. "
+        f"Tuned XGBoost is the best: volume RMSE of {fmt(x_t['rmse_vol_agregado_m3'])} m³, {fmt(mejora, 0)}% lower than with its default parameters ({fmt(x_d['rmse_vol_agregado_m3'])} m³). "
+        f"Tuned MLP comes second with {fmt(mlp_t['rmse_vol_agregado_m3'])} m³; both have an F1 close to {fmt(x_t['f1_agregado'], 2)} and an AUC close to {fmt(x_t['auc_roc_agregado'], 3)}. "
+        f"The approximate SVM falls below even the no-learning baseline ({fmt(svm_t['rmse_vol_agregado_m3'])} against {fmt(ref['rmse_vol_agregado_m3'])} m³; F1 {fmt(svm_t['f1_agregado'], 3)} against {fmt(ref['f1_agregado'], 3)}). "
+        "These are conditional exploratory estimates: the hyperparameters were chosen with all shapes, so they are optimistic equally for the three families. "
+        "Note: the default XGBoost of this run does not match the one in the audit (106.21 m³ in datos/comparacion_protocolos.csv); they are different runs and are not compared with each other.\n\n"
+        f"Source: {_rel(ruta)}/comparacion_protocolos.csv (LeaveOneShapeOut rows; columns rmse_vol_agregado_m3, f1_agregado, auc_roc_agregado, nse_regresor_oracle); "
         "docs/superpowers/specs/2026-10-12-parte2-svm-comparacion-justa-design.md §3.2-§3.3."
     ))
     return s
@@ -881,9 +892,9 @@ def _slide_afinacion(prs, d: dict, ruta: Path):
     resumen, conv = d["resumen"], d["convergencia"]
     n_trials = max(len(v) for v in conv.values())
     s = nueva_slide(
-        prs, f"Afinación con Optuna: {n_trials} trials por familia",
-        f"{n_trials} trials por familia, mismos datos y protocolo; estimación exploratoria "
-        "(hiperparámetros elegidos con todas las formas)")
+        prs, f"Optuna tuning: {n_trials} trials per family",
+        f"{n_trials} trials per family, same data and protocol; exploratory estimate "
+        "(hyperparameters chosen with all shapes)")
 
     cd = CategoryChartData()
     cd.categories = [str(i + 1) for i in range(n_trials)]
@@ -891,7 +902,7 @@ def _slide_afinacion(prs, d: dict, ruta: Path):
     for familia in orden:
         cd.add_series(dict(FAMILIAS)[familia], [round(v, 2) for v in conv[familia]])
     cw = 5000000
-    _textbox(s, L, Y0, cw, 260000, [P("Mejor RMSE interno hasta ese trial (m³)", 11, False, MUTED)])
+    _textbox(s, L, Y0, cw, 260000, [P("Best inner RMSE up to that trial (m³)", 11, False, MUTED)])
     frame = s.shapes.add_chart(XL_CHART_TYPE.LINE, Emu(L), Emu(Y0 + 250000), Emu(cw),
                                Emu(3250000), cd)
     chart = frame.chart
@@ -930,27 +941,28 @@ def _slide_afinacion(prs, d: dict, ruta: Path):
     for familia in orden:
         r = resumen[familia]
         filas.append([
-            [(dict(FAMILIAS)[familia].replace("aproximado", "aprox."), COLOR_FAMILIA[familia], True)],
+            [(dict(FAMILIAS)[familia].replace("Approximate SVM", "Approx. SVM"),
+              COLOR_FAMILIA[familia], True)],
             [(fmt(r["best_value"], 1), TEXT, False)],
             [(fmt(float(r["duration_s"]) / 60, 1), TEXT, False)],
         ])
-    _tabla(s, tx, Y0 + 250000, [1200000, 1250000, tw - 2450000],
-           ["Familia", "Mejor RMSE", "Min"], filas, row_h=480000, header_h=340000, size=12,
+    _tabla(s, tx, Y0 + 250000, [1350000, 1150000, tw - 2500000],
+           ["Family", "Best RMSE", "Min"], filas, row_h=480000, header_h=340000, size=12,
            name="Table tuning")
     _textbox(s, tx, Y0 + 250000 + 340000 + 480000 * len(filas) + 120000, tw, 900000, [
-        P("RMSE interno: GroupKFold(5) por forma dentro de la búsqueda; no es la cifra de "
-          "LeaveOneShapeOut.", 10, False, MUTED, 4),
-        P("Min: duración del estudio completo.", 10, False, MUTED)])
+        P("Inner RMSE: GroupKFold(5) by shape inside the search; not the "
+          "LeaveOneShapeOut figure.", 10, False, MUTED, 4),
+        P("Min: duration of the whole study.", 10, False, MUTED)])
 
     detalle = "; ".join(
-        f"{dict(FAMILIAS)[f]} termina en {fmt(resumen[f]['best_value'], 1)} m³ tras "
+        f"{dict(FAMILIAS)[f]} ends at {fmt(resumen[f]['best_value'], 1)} m³ after "
         f"{fmt(float(resumen[f]['duration_s']) / 60, 1)} min" for f in orden)
     _notas(s, (
-        f"Cada familia recibió la misma búsqueda: {n_trials} trials de Optuna sobre el mismo dato y con el mismo CV interno por forma. "
-        f"La curva muestra el mejor RMSE interno alcanzado hasta cada trial: {detalle}. "
-        "El SVM aproximado queda lejos de las otras dos durante toda la búsqueda. "
-        "Es una estimación exploratoria condicionada: los hiperparámetros se eligen con todas las formas, y el valor interno no es el de LeaveOneShapeOut.\n\n"
-        f"Fuentes: {ruta.as_posix()}/convergencia_afinacion.csv (family, trial, value; mínimo acumulado) y resumen_afinacion.csv (n_trials, best_value, duration_s, status)."
+        f"Each family received the same search: {n_trials} Optuna trials on the same data and with the same inner CV by shape. "
+        f"The curve shows the best inner RMSE reached up to each trial: {detalle}. "
+        "The approximate SVM stays far from the other two throughout the search. "
+        "It is a conditional exploratory estimate: hyperparameters are chosen with all shapes, and the inner value is not the LeaveOneShapeOut one.\n\n"
+        f"Sources: {_rel(ruta)}/convergencia_afinacion.csv (family, trial, value; running minimum) and resumen_afinacion.csv (n_trials, best_value, duration_s, status)."
     ))
     return s
 
@@ -961,9 +973,9 @@ def _panel_matriz(s, x, y, ancho, titulo, matriz, metricas, banda):
     rh, gap = 950000, 40000
     cell_w, cell_h = (ancho - rh - gap) // 2, 800000
     mx = x + rh
-    for i, texto in enumerate(("no inunda", "inunda")):
+    for i, texto in enumerate(("no flood", "flood")):
         _textbox(s, mx + i * (cell_w + gap), y + 340000, cell_w, 380000,
-                 [P("PREDICHO", 9, True, MUTED), P(texto, 12, True, TEXT)])
+                 [P("PREDICTED", 9, True, MUTED), P(texto, 12, True, TEXT)])
     celdas = [
         (tn, "TN", PANEL_ALT, LINE, 1.0, TEXT), (fp, "FP", PANEL, AMBER, 1.0, AMBER),
         (fn, "FN", PANEL, AMBER, 3.0, AMBER), (tp, "TP", HEAD, ACCENT, 1.5, TEXT),
@@ -975,43 +987,43 @@ def _panel_matriz(s, x, y, ancho, titulo, matriz, metricas, banda):
                fill, line, line_w,
                paras=[P(fmt(valor, 0), 20, True, color, 1), P(sigla, 11, False, MUTED)],
                anchor=MSO_ANCHOR.TOP, margins=(110000, 70000, 80000, 30000))
-    for fila, texto in enumerate(("no inunda", "inunda")):
+    for fila, texto in enumerate(("no flood", "flood")):
         _textbox(s, x, y + 740000 + fila * (cell_h + gap), rh - 60000, cell_h,
-                 [P("REAL", 9, True, MUTED), P(texto, 12, True, TEXT)], anchor=MSO_ANCHOR.MIDDLE)
+                 [P("ACTUAL", 9, True, MUTED), P(texto, 12, True, TEXT)], anchor=MSO_ANCHOR.MIDDLE)
     ym = y + 740000 + 2 * cell_h + gap + 90000
     _textbox(s, x, ym, ancho, 280000, [P("", 12, runs=[
         ("Recall ", MUTED, False), (fmt(metricas["recall_agregado"], 4), TEXT, True),
-        ("  ·  Precisión ", MUTED, False), (fmt(metricas["precision_agregada"], 4), TEXT, True),
+        ("  ·  Precision ", MUTED, False), (fmt(metricas["precision_agregada"], 4), TEXT, True),
         ("  ·  F1 ", MUTED, False), (fmt(metricas["f1_agregado"], 4), ACCENT, True)])])
     _shape(s, MSO_SHAPE.ROUNDED_RECTANGLE, x, ym + 330000, ancho, 480000, fill=PANEL,
            line=AMBER, line_w=1.5, paras=[P(
-               f"FN en la banda de 1 m³: {int(banda['fn_en_banda_1_2m3'])} de {int(banda['fn_total'])}",
+               f"FN in the 1 m³ band: {int(banda['fn_en_banda_1_2m3'])} of {int(banda['fn_total'])}",
                12, True, TEXT)], margins=(110000, 30000, 110000, 30000))
 
 
 def _slide_matrices(prs, d: dict, ruta: Path):
     s = nueva_slide(
-        prs, "Matrices de confusión: XGBoost y MLP afinados",
-        "LeaveOneShapeOut · 154.080 nodos-escenario · FN en la banda de 1 m³: "
-        "ver banda_limitrofe.csv")
+        prs, "Confusion matrices: tuned XGBoost and MLP",
+        "LeaveOneShapeOut · 154,080 node-scenarios · FN in the 1 m³ band: "
+        "see banda_limitrofe.csv")
     pw = (W - 300000) // 2
     detalle = []
-    for i, (modelo, titulo) in enumerate((("xgboost_tuned", "XGBoost afinado"),
-                                          ("mlp_tuned", "MLP afinado"))):
+    for i, (modelo, titulo) in enumerate((("xgboost_tuned", "Tuned XGBoost"),
+                                          ("mlp_tuned", "Tuned MLP"))):
         _panel_matriz(s, L + i * (pw + 300000), Y0 + 20000, pw, titulo, d["mc"][modelo],
                       d["cp"][modelo], d["bl"][modelo])
         m, b = d["mc"][modelo], d["bl"][modelo]
         detalle.append(
             f"{titulo}: TN {fmt(m['tn'], 0)}, FP {fmt(m['fp'], 0)}, FN {fmt(m['fn'], 0)}, "
-            f"TP {fmt(m['tp'], 0)}; FN en banda de 1 m³: {b['fn_en_banda_1_2m3']} de "
-            f"{b['fn_total']}; FN con volumen real de 100 m³ o más: {b['fn_con_vol_ge_100m3']}")
+            f"TP {fmt(m['tp'], 0)}; FN in the 1 m³ band: {b['fn_en_banda_1_2m3']} of "
+            f"{b['fn_total']}; FN with actual volume of 100 m³ or more: {b['fn_con_vol_ge_100m3']}")
     _notas(s, (
-        "Matrices agregadas de las dos familias que se presentan, con hiperparámetros afinados, reteniendo una forma de hidrograma completa cada vez. "
-        "Clasifican casi igual; la diferencia está en los falsos positivos y en los pocos falsos negativos grandes. "
+        "Pooled matrices of the two families being presented, with tuned hyperparameters, holding out one whole hydrograph shape at a time. "
+        "They classify almost the same; the difference lies in the false positives and in the few large false negatives. "
         + " | ".join(detalle) + ". "
-        "La mayoría de los falsos negativos son nodos con volumen reportado de 1 m³, el mínimo que la etiqueta cuenta como inundación.\n\n"
-        f"Fuentes: {ruta.as_posix()}/matriz_confusion.csv (tn, fp, fn, tp), comparacion_protocolos.csv (recall_agregado, precision_agregada, f1_agregado) "
-        "y banda_limitrofe.csv (fn_total, fn_en_banda_1_2m3, fn_con_vol_ge_100m3)."
+        "Most false negatives are nodes with a reported volume of 1 m³, the minimum the label counts as flooding.\n\n"
+        f"Sources: {_rel(ruta)}/matriz_confusion.csv (tn, fp, fn, tp), comparacion_protocolos.csv (recall_agregado, precision_agregada, f1_agregado) "
+        "and banda_limitrofe.csv (fn_total, fn_en_banda_1_2m3, fn_con_vol_ge_100m3)."
     ))
     return s
 
@@ -1025,49 +1037,49 @@ def _slide_conclusiones(prs, d: dict, ruta: Path):
     ruta_prov = Path(ruta) / "tables_provenance.json"
     if ruta_prov.exists():
         prov = json.loads(ruta_prov.read_text(encoding="utf-8"))
-    corridas = (f"{prov['n_runs']} de {prov['n_runs_full_grid']} corridas"
-                if "n_runs" in prov else "963 de 1000 corridas")
+    corridas = (f"{prov['n_runs']} of {prov['n_runs_full_grid']} runs"
+                if "n_runs" in prov else "963 of 1000 runs")
 
     def fijos(familia):
         crudo = resumen.get(familia, {}).get("fixed_params") or "{}"
         return json.loads(crudo).get("classifier", {})
 
     mlp, xgb = fijos("mlp"), fijos("xgboost")
-    alcance = (f"MLP: {mlp.get('epochs', 200)} épocas, batch {mlp.get('batch_size', 1024)} · "
+    alcance = (f"MLP: {mlp.get('epochs', 200)} epochs, batch {mlp.get('batch_size', 1024)} · "
                f"XGBoost: n_jobs={xgb.get('n_jobs', 1)}")
 
     s = nueva_slide(
-        prs, "Conclusiones y próximos pasos",
-        "XGBoost afinado es el mejor; el SVM aproximado queda por debajo de la referencia")
+        prs, "Conclusions and next steps",
+        "Tuned XGBoost is the best; the approximate SVM falls below the baseline")
     tw = 4300000
     _card(s, L, Y0 + 20000, tw, 1000000, [
-        P("XGBoost afinado es el mejor", 14, True, ACCENT, 2),
-        P(f"RMSE {fmt(xt['rmse_vol_agregado_m3'], 1)} m³ (−{fmt(mejora, 0)} % frente a sus "
-          f"parámetros por defecto); MLP afinado 2.º: {fmt(mt['rmse_vol_agregado_m3'], 1)} m³. "
-          f"Ambos con F1 ≈ {fmt(xt['f1_agregado'], 2)} y AUC ≈ {fmt(xt['auc_roc_agregado'], 3)}",
+        P("Tuned XGBoost is the best", 14, True, ACCENT, 2),
+        P(f"RMSE {fmt(xt['rmse_vol_agregado_m3'], 1)} m³ (−{fmt(mejora, 0)}% vs its "
+          f"default parameters); tuned MLP 2nd: {fmt(mt['rmse_vol_agregado_m3'], 1)} m³. "
+          f"Both with F1 ≈ {fmt(xt['f1_agregado'], 2)} and AUC ≈ {fmt(xt['auc_roc_agregado'], 3)}",
           12, False, TEXT)], fill=PANEL_ALT, line=ACCENT, line_w=2.0, anchor=MSO_ANCHOR.TOP)
     _card(s, L, Y0 + 1100000, tw, 1170000, [
-        P("SVM aproximado: bajo la referencia", 14, True, AMBER, 2),
+        P("Approximate SVM: below the baseline", 14, True, AMBER, 2),
         P(f"RMSE ≈ {fmt(st['rmse_vol_agregado_m3'], 0)} vs {fmt(ref['rmse_vol_agregado_m3'], 0)} m³; "
-          f"F1 {fmt(st['f1_agregado'], 2)} vs {fmt(ref['f1_agregado'], 3)}. Atribuible: kernel "
-          "aproximado, espacio de búsqueda limitado y Platt, que neutraliza class_weight "
-          "(declarado)", 12, False, TEXT)], fill=PANEL, line=AMBER, line_w=1.5,
+          f"F1 {fmt(st['f1_agregado'], 2)} vs {fmt(ref['f1_agregado'], 3)}. Attributable: approximate "
+          "kernel, limited search space, and Platt calibration, which neutralizes class_weight "
+          "(declared)", 12, False, TEXT)], fill=PANEL, line=AMBER, line_w=1.5,
           anchor=MSO_ANCHOR.TOP)
     _card(s, L, Y0 + 2350000, tw, 1080000, [
-        P("Alcance honesto", 14, True, MUTED, 2),
-        P("Hiperparámetros elegidos con todas las formas (optimista por igual) · una red · "
+        P("Honest scope", 14, True, MUTED, 2),
+        P("Hyperparameters chosen with all shapes (optimistic equally) · one network · "
           f"{corridas} · {alcance}", 12, False, TEXT)], fill=PANEL, line=LINE,
           anchor=MSO_ANCHOR.TOP)
 
     px = L + tw + 250000
     pw = W - tw - 250000
-    _textbox(s, px, Y0 + 20000, pw, 240000, [P("PRÓXIMOS PASOS", 10, True, MUTED)])
+    _textbox(s, px, Y0 + 20000, pw, 240000, [P("NEXT STEPS", 10, True, MUTED)])
     pasos = [
-        "Decidir la etiqueta: ruta A (recomendada) o B",
-        "Afinación anidada por forma",
-        "Más trials y espacio más amplio para el SVM",
-        "Matriz de confusión por forma extrema",
-        "Propagar a mapas por familia",
+        "Decide the label: path A (recommended) or B",
+        "Nested tuning by shape",
+        "More trials and a wider search space for the SVM",
+        "Confusion matrix for the extreme shapes",
+        "Propagate to per-family maps",
     ]
     for i, paso in enumerate(pasos):
         py = Y0 + 300000 + i * 680000
@@ -1078,23 +1090,23 @@ def _slide_conclusiones(prs, d: dict, ruta: Path):
               fill=PANEL, line=LINE)
 
     _notas(s, (
-        f"Mensaje principal: XGBoost afinado es el mejor, con RMSE de volumen de {fmt(xt['rmse_vol_agregado_m3'], 1)} m³, {fmt(mejora, 0)} % menos que con sus parámetros por defecto; "
-        f"el MLP afinado queda segundo con {fmt(mt['rmse_vol_agregado_m3'], 1)} m³ y ambos tienen F1 cercano a {fmt(xt['f1_agregado'], 2)} y AUC cercano a {fmt(xt['auc_roc_agregado'], 3)}. "
-        f"El SVM aproximado queda por debajo incluso de la referencia que no aprende: {fmt(st['rmse_vol_agregado_m3'], 0)} contra {fmt(ref['rmse_vol_agregado_m3'], 0)} m³ y F1 {fmt(st['f1_agregado'], 2)} contra {fmt(ref['f1_agregado'], 3)}; "
-        "lo atribuible es el kernel aproximado, un espacio de búsqueda limitado y la calibración de Platt, que neutraliza class_weight (declarado). "
-        f"Alcance: hiperparámetros elegidos con todas las formas, una red, {corridas}; {alcance}. "
-        "Próximos pasos: decidir la etiqueta (recomiendo A), afinación anidada por forma, más trials o espacio más amplio para el SVM, matriz de confusión por forma extrema y propagar a mapas por familia.\n\n"
-        f"Fuentes: {ruta.as_posix()}/comparacion_protocolos.csv, resumen_afinacion.csv (fixed_params), tables_provenance.json (n_runs, n_runs_full_grid); "
-        "docs/auditoria/correcciones/04-informe-consolidado.md §4 y §5."
+        f"Main message: tuned XGBoost is the best, with a volume RMSE of {fmt(xt['rmse_vol_agregado_m3'], 1)} m³, {fmt(mejora, 0)}% lower than with its default parameters; "
+        f"tuned MLP comes second with {fmt(mt['rmse_vol_agregado_m3'], 1)} m³ and both have an F1 close to {fmt(xt['f1_agregado'], 2)} and an AUC close to {fmt(xt['auc_roc_agregado'], 3)}. "
+        f"The approximate SVM falls below even the no-learning baseline: {fmt(st['rmse_vol_agregado_m3'], 0)} against {fmt(ref['rmse_vol_agregado_m3'], 0)} m³ and F1 {fmt(st['f1_agregado'], 2)} against {fmt(ref['f1_agregado'], 3)}; "
+        "what is attributable is the approximate kernel, a limited search space, and Platt calibration, which neutralizes class_weight (declared). "
+        f"Scope: hyperparameters chosen with all shapes, one network, {corridas}; {alcance}. "
+        "Next steps: decide the label (I recommend A), nested tuning by shape, more trials or a wider search space for the SVM, a confusion matrix for the extreme shapes, and propagating to per-family maps.\n\n"
+        f"Sources: {_rel(ruta)}/comparacion_protocolos.csv, resumen_afinacion.csv (fixed_params), tables_provenance.json (n_runs, n_runs_full_grid); "
+        "docs/auditoria/correcciones/04-informe-consolidado.md §4 and §5."
     ))
     return s
 
 
 def agregar_slide_resultados(prs, datos_dir):
-    """Agrega las slides de resultados de la parte 2 desde las tablas de
-    ``datos_dir``: resultados (tabla + barras), afinacion (curvas de
-    convergencia), matrices de confusion y conclusiones/proximos pasos.
-    Devuelve la lista de slides agregadas."""
+    """Add the part 2 results slides from the tables in ``datos_dir``:
+    results (table + bars), tuning (convergence curves), confusion matrices,
+    and conclusions/next steps. Returns the list of added slides. The CSV
+    column names are code identifiers (kept in Spanish)."""
     datos_dir = Path(datos_dir)
     d = _datos_parte2(datos_dir)
     return [
@@ -1106,14 +1118,118 @@ def agregar_slide_resultados(prs, datos_dir):
 
 
 # ---------------------------------------------------------------------------
+# English translation of the base deck (output deck only)
+# ---------------------------------------------------------------------------
+TRADUCCIONES = Path(__file__).resolve().parent / "deck_translations_en.json"
+
+_ES_ACENTOS = re.compile("[áéíóúñ¿¡ÁÉÍÓÚÑ]")
+_ES_PALABRAS = re.compile(
+    r"\b(de|la|el|los|las|que|para|con|por|una|del|se|sin|más|como|entre|sobre|desde|"
+    r"hacia|este|esta|esto|nuestro|nuestra|todas|todos|hidrograma|hidrogramas|"
+    r"escenario|escenarios|corrida|corridas|filas|nodos|formas|familias|"
+    r"resultados|siguiente|siguientes|presupuesto|computacional|medir|antes|"
+    r"ejemplo|datos|ruta|aspecto|paso|costo|simulaciones|observaciones|cronograma|"
+    r"tesis|pendiente|origen|valor|nota|familia|lineal|resultado|mejora|objetivo|"
+    r"ganador|clasificador|regresor|fuente|c[oó]digo|referencias|nivel|acceso|"
+    r"criterio|invertir|tiempo|b[uú]squeda|memoria|alcance|"
+    r"recomendaci[oó]n|propia|cerrar|primero|reservar)\b",
+    re.IGNORECASE)
+_NOMBRES_PROPIOS = ("Garzón", "Brazão", "Paraíba", "Brasília", "Garzón")
+
+
+def _parece_espanol(texto: str) -> bool:
+    limpio = texto
+    for nombre in _NOMBRES_PROPIOS:
+        limpio = limpio.replace(nombre, "")
+    if re.match(r"^\s*(https?://|\S+\.(png|csv|json)$)", limpio):
+        return False
+    return bool(_ES_ACENTOS.search(limpio) or _ES_PALABRAS.search(limpio))
+
+
+def _cargar_traducciones(ruta=TRADUCCIONES) -> dict:
+    return json.loads(Path(ruta).read_text(encoding="utf-8"))
+
+
+def _aplicar_a_parrafo(para, ingles: str) -> None:
+    """English into the first run (keeps its formatting); the others are emptied."""
+    runs = para.runs
+    if not runs:
+        return
+    runs[0].text = ingles
+    for extra in runs[1:]:
+        extra.text = ""
+    for run in runs:
+        rpr = run._r.find(qn("a:rPr"))
+        if rpr is not None and rpr.get("lang", "").startswith("es"):
+            rpr.set("lang", "en-US")
+            if rpr.get("err"):
+                del rpr.attrib["err"]
+
+
+def _marcos_de_texto(shapes):
+    for sh in shapes:
+        if sh.shape_type == 6:  # group
+            yield from _marcos_de_texto(sh.shapes)
+            continue
+        if sh.has_text_frame:
+            yield sh.text_frame
+        if getattr(sh, "has_table", False) and sh.has_table:
+            for row in sh.table.rows:
+                for cell in row.cells:
+                    yield cell.text_frame
+
+
+def translate_base(prs, translations: dict | None = None, n_base: int | None = None) -> dict:
+    """Translate to English every paragraph (slide text frames, table cells,
+    speaker notes) and alt text of the first ``n_base`` slides. Paragraphs
+    that look Spanish and have no entry are collected and reported: raises
+    ValueError listing them. Numbers/names/files are not touched except by the
+    exact translation entries. Returns counters."""
+    traducciones = _cargar_traducciones() if translations is None else translations
+    n_base = len(prs.slides) if n_base is None else n_base
+    contadores = {"frames": 0, "notes": 0, "alt": 0}
+    faltan: list[str] = []
+
+    def _procesa(marco, tipo, donde):
+        for para in marco.paragraphs:
+            texto = "".join(r.text for r in para.runs)
+            if not texto.strip():
+                continue
+            if texto in traducciones:
+                if traducciones[texto] != texto:
+                    _aplicar_a_parrafo(para, traducciones[texto])
+                    contadores[tipo] += 1
+            elif _parece_espanol(texto):
+                faltan.append(f"{donde}: {texto[:90]}")
+
+    for idx, slide in enumerate(list(prs.slides)[:n_base], start=1):
+        for marco in _marcos_de_texto(slide.shapes):
+            _procesa(marco, "frames", f"slide {idx}")
+        if slide.has_notes_slide:
+            _procesa(slide.notes_slide.notes_text_frame, "notes", f"slide {idx} notes")
+        for el in slide._element.iter():
+            descr = el.get("descr") if hasattr(el, "get") else None
+            if descr and descr in traducciones and traducciones[descr] != descr:
+                el.set("descr", traducciones[descr])
+                contadores["alt"] += 1
+    if faltan:
+        raise ValueError("Spanish text without a translation entry:\n" + "\n".join(faltan))
+    return contadores
+
+
+# ---------------------------------------------------------------------------
 def construir(base: Path = BASE, salida: Path = OUTPUT, datos_dir: Path = DATOS_DIR,
-              datos_parte2_dir: Path = DATOS_PARTE2_DIR) -> Presentation:
+              datos_parte2_dir: Path = DATOS_PARTE2_DIR, traducir: bool = True):
     base, salida = Path(base), Path(salida)
     if not base.exists():
-        raise SystemExit(f"No existe {base}")
+        raise SystemExit(f"{base} does not exist")
     if salida.resolve() == base.resolve():
-        raise SystemExit("La salida no puede ser la presentacion base")
+        raise SystemExit("The output cannot be the base presentation")
     prs = Presentation(str(base))
+    n_base = len(prs.slides)
+    if traducir:
+        contadores = translate_base(prs, n_base=n_base)
+        print(f"Base deck translated to English: {contadores}")
     con_resultados = (Path(datos_parte2_dir) / "comparacion_protocolos.csv").exists()
 
     slide_auditoria(prs, datos_dir)
@@ -1131,7 +1247,7 @@ def construir(base: Path = BASE, salida: Path = OUTPUT, datos_dir: Path = DATOS_
 
 def main() -> None:
     prs = construir()
-    print(f"Guardado: {OUTPUT} ({len(prs.slides)} slides)")
+    print(f"Saved: {OUTPUT} ({len(prs.slides)} slides)")
 
 
 if __name__ == "__main__":
