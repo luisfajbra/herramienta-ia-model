@@ -1,122 +1,122 @@
-# Correcciones de la auditoría (pasos 1 a 6) — diseño
+# Audit corrections (steps 1 to 6) — design
 
-**Fecha:** 2026-10-11
-**Rama:** `fix/cierre-auditoria-hidrogramas-20260927` (checkout en el worktree `optuna-tuning-familia-ganadora`).
-**Origen:** `docs/auditoria/2026-10-10-auditoria-completa.md` y anexos 01–05.
-**Alcance:** hallazgos M-01, M-02, M-03, V-01, V-07, M-07/V-04 y D-04/H-06, más la persistencia de las predicciones fuera de fold (M-08/T-19). La Parte 2 (SVM justo y selección final XGBoost + MLP) es un subproyecto aparte con su propia spec.
+**Date:** 2026-10-11
+**Branch:** `fix/cierre-auditoria-hidrogramas-20260927` (checked out in the `optuna-tuning-familia-ganadora` worktree).
+**Source:** `docs/auditoria/2026-10-10-auditoria-completa.md` and annexes 01–05.
+**Scope:** findings M-01, M-02, M-03, V-01, V-07, M-07/V-04 and D-04/H-06, plus the persistence of out-of-fold predictions (M-08/T-19). Part 2 (fair SVM and final XGBoost + MLP selection) is a separate subproject with its own spec.
 
-## 1. Estado de partida verificado (re-triaje en el worktree)
+## 1. Verified starting state (re-triage in the worktree)
 
-| Hallazgo | Estado en el worktree |
+| Finding | State in the worktree |
 |---|---|
-| M-01 sin referencias sin aprendizaje | Abierto. `LeaveOneShapeOut` ya es el protocolo del ranking (`bench.protocols[0]`) |
-| M-02 sin volumen del evento | Mitigado en parte: `tabular_v4_21` añade `volumen_local_integrado_m3`, `volumen_tributario_integrado_m3` e `integral_exceso_capacidad_m3`. RMSE de XGBoost por forma 78,04 → 56,81 m³. Falta medir NSE y error por forma con v4_21 |
-| M-03 F1 promediado con ceros | Abierto (`ml/bench/metrics.py:41-43` y `mean_metrics`) |
-| V-01 figuras en muestra | Abierto (`visualization/resilience_curve.py`, `flood_volume_curve.py`; salida de `--evaluate-shapes`) |
-| V-07 `halve_timeseries.py` | Abierto |
-| M-07/V-04 modelo ≠ `promotion.json` | En el worktree `outputs/models` está versionado y los SHA-256 coinciden con `promotion.json`. Falta una verificación automática y la procedencia en las figuras |
-| D-04/H-06 resolución de la etiqueta | Abierto (`flood_threshold_m3: 1.0` = resolución del `.rpt`) |
-| OOF no persistido | Abierto (`main.py`, `_run_bench`: `_, metrics = evaluate_candidate(...)`) |
+| M-01 no no-learning references | Open. `LeaveOneShapeOut` is already the ranking protocol (`bench.protocols[0]`) |
+| M-02 no event volume | Partly mitigated: `tabular_v4_21` adds `volumen_local_integrado_m3`, `volumen_tributario_integrado_m3` and `integral_exceso_capacidad_m3`. XGBoost RMSE per shape 78.04 → 56.81 m³. NSE and per-shape error with v4_21 still to be measured |
+| M-03 F1 averaged with zeros | Open (`ml/bench/metrics.py:41-43` and `mean_metrics`) |
+| V-01 figures on a sample | Open (`visualization/resilience_curve.py`, `flood_volume_curve.py`; output of `--evaluate-shapes`) |
+| V-07 `halve_timeseries.py` | Open |
+| M-07/V-04 model ≠ `promotion.json` | In the worktree `outputs/models` is versioned and the SHA-256 values match `promotion.json`. An automatic verification and provenance in the figures are missing |
+| D-04/H-06 label resolution | Open (`flood_threshold_m3: 1.0` = resolution of the `.rpt`) |
+| OOF not persisted | Open (`main.py`, `_run_bench`: `_, metrics = evaluate_candidate(...)`) |
 
-Línea base de tests antes de empezar: **1.049 passed, 0 failed** (commit `1ecca50`).
+Test baseline before starting: **1,049 passed, 0 failed** (commit `1ecca50`).
 
-## 2. Decisiones de diseño
+## 2. Design decisions
 
-### 2.1 Punto de enchufe
-`score_predictions(prepared, oof, provenance)` en `ml/bench/evaluate.py` es la capa núcleo: puntúa predicciones fuera de fold sin saber qué modelo las generó. Las referencias sin aprendizaje, la agregación nueva de M-03 y el desglose por forma entran ahí, de modo que todos los candidatos y todas las referencias caen en la misma tabla con las mismas métricas.
+### 2.1 Plug-in point
+`score_predictions(prepared, oof, provenance)` in `ml/bench/evaluate.py` is the core layer: it scores out-of-fold predictions without knowing which model generated them. The no-learning references, the new M-03 aggregation and the per-shape breakdown enter there, so that all candidates and all references fall into the same table with the same metrics.
 
-### 2.2 Referencias sin aprendizaje (M-01)
-Módulo nuevo `ml/bench/baselines.py`. Cada referencia recibe un `PreparedDataset` y devuelve un frame OOF con las columnas de `OOF_COLUMNS`; después se puntúa con `score_predictions`.
-- `interpolacion_factor`: para una fila de test (forma, nodo, factor), interpola linealmente el volumen del mismo nodo y forma entre los factores vecinos del train. En los extremos usa el vecino más cercano. Aplica a protocolos agrupados por `factor_mult`. En `LeaveOneShapeOut` no aplica (la forma no está en train) y se omite explícitamente.
-- `forma_mas_cercana`: para una fila de test (forma retenida, nodo, factor), toma el volumen del mismo nodo y factor en la forma de train más cercana en (`duracion_horas`, `tiempo_al_pico_h`) estandarizados. Aplica a `LeaveOneShapeOut`.
-- Etiqueta predicha: `volumen_predicho >= threshold_m3`. Probabilidad: igual a la etiqueta predicha (0/1). El AUC-ROC de una referencia sin probabilidades reales no se interpreta; se documenta.
-- Cada protocolo lleva en `schemas.py` una descripción de qué mide (`PROTOCOL_INTERPRETATION`): `LOSO` y `GroupKFold5` miden interpolación entre factores; `LeaveOneShapeOut` mide generalización a formas nuevas. Esa descripción se escribe en los JSON de reportes.
+### 2.2 No-learning references (M-01)
+New module `ml/bench/baselines.py`. Each reference receives a `PreparedDataset` and returns an OOF frame with the `OOF_COLUMNS` columns; it is then scored with `score_predictions`.
+- `interpolacion_factor`: for a test row (shape, node, factor), it linearly interpolates the volume of the same node and shape between the neighbouring train factors. At the extremes it uses the nearest neighbour. It applies to protocols grouped by `factor_mult`. In `LeaveOneShapeOut` it does not apply (the shape is not in train) and is explicitly omitted.
+- `forma_mas_cercana`: for a test row (held-out shape, node, factor), it takes the volume of the same node and factor in the nearest train shape in standardized (`duracion_horas`, `tiempo_al_pico_h`). It applies to `LeaveOneShapeOut`.
+- Predicted label: `volumen_predicho >= threshold_m3`. Probability: equal to the predicted label (0/1). The ROC-AUC of a reference without real probabilities is not interpreted; this is documented.
+- Each protocol carries in `schemas.py` a description of what it measures (`PROTOCOL_INTERPRETATION`): `LOSO` and `GroupKFold5` measure interpolation between factors; `LeaveOneShapeOut` measures generalization to new shapes. That description is written to the report JSONs.
 
-### 2.3 Agregación de métricas del clasificador (M-03)
-Para cada protocolo:
-- `classifier` (cifra principal) = métricas calculadas sobre todas las filas de test concatenadas del protocolo, más `specificity`. La matriz de confusión agregada `confusion_matrix = {tn, fp, fn, tp}` es una clave de primer nivel separada (no anidada en `classifier`).
-- `classifier_per_fold` = estadísticos de dispersión entre folds (`min`, `median`, `max`, `mean`) de precisión, recall y F1, calculados solo sobre folds donde la métrica está definida. En un fold sin positivos reales, recall y F1 son **NaN**, no 0. Se reporta `n_undefined`.
-- `classifier_legacy_mean_zero_fill` = el valor antiguo (media por fold con `zero_division=0`), conservado con nombre explícito para poder citar el antes y el después.
-- El criterio de desempate `classifier.f1` del ranking pasa a leer el valor agregado.
-- El test de paridad con `ml/evaluator.py` se ajusta para comparar contra `classifier_legacy_mean_zero_fill`: la paridad con el código legado sigue demostrada, y el valor nuevo se prueba aparte.
-- `regressor_oracle` y `end_to_end` no cambian de definición en esta fase. Se añade un bloque nuevo `end_to_end_pooled` (RMSE, MAE, volumen total real y predicho y `vol_total_error_pct`, calculados sobre el pool de todos los folds); `end_to_end` conserva exactamente las claves del evaluador legado porque el test de paridad lo exige.
+### 2.3 Aggregation of classifier metrics (M-03)
+For each protocol:
+- `classifier` (main figure) = metrics computed over all the concatenated test rows of the protocol, plus `specificity`. The pooled confusion matrix `confusion_matrix = {tn, fp, fn, tp}` is a separate top-level key (not nested in `classifier`).
+- `classifier_per_fold` = dispersion statistics across folds (`min`, `median`, `max`, `mean`) of precision, recall and F1, computed only over folds where the metric is defined. In a fold without true positives, recall and F1 are **NaN**, not 0. `n_undefined` is reported.
+- `classifier_legacy_mean_zero_fill` = the old value (per-fold mean with `zero_division=0`), kept under an explicit name so that the before and after can be quoted.
+- The `classifier.f1` tie-breaking criterion of the ranking now reads the pooled value.
+- The parity test with `ml/evaluator.py` is adjusted to compare against `classifier_legacy_mean_zero_fill`: parity with the legacy code remains demonstrated, and the new value is tested separately.
+- `regressor_oracle` and `end_to_end` do not change definition in this phase. A new block `end_to_end_pooled` is added (RMSE, MAE, true and predicted total volume and `vol_total_error_pct`, computed over the pool of all folds); `end_to_end` keeps exactly the keys of the legacy evaluator because the parity test requires it.
 
-### 2.4 Desglose por forma (M-02)
-`score_predictions` añade `by_shape` por protocolo: para cada `shape_id` en el test, `n_rows`, `n_positives`, `f1`, `rmse_vol`, `vol_real_m3`, `vol_pred_m3` y `error_vol_pct`. Solo tiene sentido en `LeaveOneShapeOut` (una forma por fold), pero se calcula para cualquier protocolo.
+### 2.4 Per-shape breakdown (M-02)
+`score_predictions` adds `by_shape` per protocol: for each `shape_id` in the test set, `n_rows`, `n_positives`, `f1`, `rmse_vol`, `vol_real_m3`, `vol_pred_m3` and `error_vol_pct`. It only makes sense in `LeaveOneShapeOut` (one shape per fold), but it is computed for any protocol.
 
-### 2.5 Persistencia de predicciones fuera de fold (M-08/T-19)
-`_run_bench` conserva el primer elemento que devuelve `evaluate_candidate` y lo escribe en `outputs/bench/oof/<prep_id>/<familia>.parquet`. La procedencia (`prep_id`, hiperparámetros por familia, fecha UTC, referencias evaluadas y fallidas) se escribe en un `provenance.json` aparte en `outputs/bench/reports/`, no dentro de cada JSON de métricas; cada `metrics_*.json` lleva solo dos claves de marca al nivel superior: `metrics_definition` (`classifier_pooled_v2`) y `prep_id`, para distinguir archivos de corridas parciales con definiciones distintas. Las referencias de 2.2 se persisten igual bajo la familia `baseline_*`.
+### 2.5 Persistence of out-of-fold predictions (M-08/T-19)
+`_run_bench` keeps the first element returned by `evaluate_candidate` and writes it to `outputs/bench/oof/<prep_id>/<familia>.parquet`. The provenance (`prep_id`, per-family hyperparameters, UTC date, evaluated and failed references) is written to a separate `provenance.json` in `outputs/bench/reports/`, not inside each metrics JSON; each `metrics_*.json` carries only two marker keys at the top level: `metrics_definition` (`classifier_pooled_v2`) and `prep_id`, to distinguish files from partial runs with different definitions. The references of 2.2 are persisted in the same way under the `baseline_*` family.
 
-### 2.6 Figuras y salidas en muestra (V-01)
-Las figuras de `resilience_curve`, `flood_volume_curve` y la comparación por factor añaden una nota al pie (los títulos y leyendas no cambian, a propósito, porque otras pruebas los verifican): "El modelo fue entrenado con estos escenarios; no es validación". `--evaluate-shapes` imprime un aviso en la cabecera de su salida. Las versiones fuera de muestra derivables de las predicciones del paso 2.5 quedan como mejora opcional, fuera de esta fase.
+### 2.6 Figures and outputs on a sample (V-01)
+The figures of `resilience_curve`, `flood_volume_curve` and the per-factor comparison add a footnote (the titles and legends do not change, on purpose, because other tests verify them): `"El modelo fue entrenado con estos escenarios; no es validación"` ("The model was trained on these scenarios; it is not validation"). `--evaluate-shapes` prints a warning in the header of its output. The out-of-sample versions derivable from the predictions of step 2.5 remain an optional improvement, outside this phase.
 
 ### 2.7 `halve_timeseries.py` (V-07)
-Se convierte en una función `halve_timeseries(src, dst, force=False)` con `main()` bajo `if __name__ == "__main__"` y argumentos explícitos `--src` y `--dst`. Se niega a sobrescribir un `dst` existente sin `force`. Importar el módulo no tiene efectos. No se borra el archivo.
+It becomes a function `halve_timeseries(src, dst, force=False)` with `main()` under `if __name__ == "__main__"` and explicit `--src` and `--dst` arguments. It refuses to overwrite an existing `dst` without `force`. Importing the module has no side effects. The file is not deleted.
 
-### 2.8 Coherencia modelo–`promotion.json` (M-07/V-04)
-- `verify_promotion(models_dir)` en `ml/bench/promote.py`: compara el SHA-256 de `classifier.joblib` y `regressor.joblib` con `promotion.json`. Devuelve un resultado estructurado (`ok`, lista de discrepancias).
-- Se invoca antes de cargar los modelos de `outputs/models` para predecir (`ml/predict.py`). Con discrepancia, lanza `ModelProvenanceError` con ambos SHA. Si no existe `promotion.json`, advierte y continúa (compatibilidad con modelos legado).
-- Las rutas de generación de figuras (`visualization/runner.py`) escriben `provenance.json` junto a las figuras: familia, SHA-256 de los modelos, `prep_id`, fecha.
-- Test de contrato: `--bench` y `--bench-evaluate` no escriben en `outputs/models/`.
-- No se cambia `promote: "xgboost"` de `config.yaml`; la promoción sigue siendo explícita con `--bench-promote`.
+### 2.8 Model–`promotion.json` consistency (M-07/V-04)
+- `verify_promotion(models_dir)` in `ml/bench/promote.py`: compares the SHA-256 of `classifier.joblib` and `regressor.joblib` with `promotion.json`. It returns a structured result (`ok`, list of discrepancies).
+- It is invoked before loading the models of `outputs/models` to predict (`ml/predict.py`). On a discrepancy, it raises `ModelProvenanceError` with both SHA values. If `promotion.json` does not exist, it warns and continues (compatibility with legacy models).
+- The figure-generation paths (`visualization/runner.py`) write `provenance.json` next to the figures: family, SHA-256 of the models, `prep_id`, date.
+- Contract test: `--bench` and `--bench-evaluate` do not write to `outputs/models/`.
+- `promote: "xgboost"` in `config.yaml` is not changed; promotion remains explicit with `--bench-promote`.
 
-### 2.9 Resolución de la etiqueta (D-04/H-06) — spike antes de código
-No se cambia código en este paso hasta una decisión. El spike mide, sobre copias y en el scratchpad:
-1. si el volumen inundado por nodo se puede obtener del `.out` binario (serie de inundación integrada en el tiempo) con resolución mejor que 1 m³, y cuánto difiere del `.rpt` en las combinaciones de control;
-2. el tiempo por simulación y el costo estimado de re-simular las 1.000 corridas;
-3. cuántas etiquetas cambiarían y qué pasa con la banda 0,5–2 m³ al usar un umbral continuo.
+### 2.9 Label resolution (D-04/H-06) — spike before code
+No code is changed in this step until a decision is made. The spike measures, on copies and in the scratchpad:
+1. whether the flooded volume per node can be obtained from the binary `.out` (flooding series integrated over time) with a resolution better than 1 m³, and how much it differs from the `.rpt` in the control combinations;
+2. the time per simulation and the estimated cost of re-simulating the 1,000 runs;
+3. how many labels would change and what happens to the 0.5–2 m³ band when a continuous threshold is used.
 
-Con esos números el usuario decide entre:
-- **A:** conservar la resolución y el umbral actuales, declararlos como supuesto y reportar una matriz de confusión que separa la banda limítrofe (volumen real de 1 a 2 m³);
-- **B:** re-simular, regenerar el dataset (nuevo `prep_id`) y re-ejecutar el banco.
+With those numbers the user decides between:
+- **A:** keep the current resolution and threshold, declare them as an assumption and report a confusion matrix that separates the borderline band (true volume from 1 to 2 m³);
+- **B:** re-simulate, regenerate the dataset (new `prep_id`) and re-run the benchmark.
 
-## 3. Archivos
+## 3. Files
 
-| Archivo | Cambio |
+| File | Change |
 |---|---|
-| `swmm_resilience/ml/bench/baselines.py` | Nuevo |
-| `swmm_resilience/ml/bench/metrics.py` | Agregación agregada, dispersión por fold, matriz de confusión |
-| `swmm_resilience/ml/bench/evaluate.py` | `score_predictions` con las métricas nuevas y `by_shape` |
+| `swmm_resilience/ml/bench/baselines.py` | New |
+| `swmm_resilience/ml/bench/metrics.py` | Pooled aggregation, per-fold dispersion, confusion matrix |
+| `swmm_resilience/ml/bench/evaluate.py` | `score_predictions` with the new metrics and `by_shape` |
 | `swmm_resilience/ml/bench/schemas.py` | `PROTOCOL_INTERPRETATION` |
-| `swmm_resilience/ml/bench/reports.py` | `provenance.json` aparte, marcas `metrics_definition`/`prep_id` en cada JSON de métricas, descripción del protocolo |
-| `swmm_resilience/ml/bench/ranking.py` / `config.yaml` | Ruta del desempate `classifier.f1` hacia el valor agregado |
-| `swmm_resilience/ml/bench/promote.py`, `swmm_resilience/ml/predict.py` | `verify_promotion` y su uso |
-| `swmm_resilience/visualization/*.py`, `swmm_resilience/analysis/*.py`, `main.py` | Rótulos en muestra, OOF, aviso en `--evaluate-shapes`, `provenance.json` |
-| `halve_timeseries.py` | Guarda y función |
-| `tests/ml/bench/…` | Pruebas nuevas y ajuste del test de paridad |
-| `docs/auditoria/correcciones/` | Documentación (sección 5) |
+| `swmm_resilience/ml/bench/reports.py` | Separate `provenance.json`, `metrics_definition`/`prep_id` markers in each metrics JSON, protocol description |
+| `swmm_resilience/ml/bench/ranking.py` / `config.yaml` | Path of the `classifier.f1` tie-breaker towards the pooled value |
+| `swmm_resilience/ml/bench/promote.py`, `swmm_resilience/ml/predict.py` | `verify_promotion` and its use |
+| `swmm_resilience/visualization/*.py`, `swmm_resilience/analysis/*.py`, `main.py` | In-sample labels, OOF, warning in `--evaluate-shapes`, `provenance.json` |
+| `halve_timeseries.py` | Guard and function |
+| `tests/ml/bench/…` | New tests and parity-test adjustment |
+| `docs/auditoria/correcciones/` | Documentation (section 5) |
 
-## 4. Pruebas
+## 4. Tests
 
-Cada cambio nace de una prueba que falla (TDD) y cierra con la suite completa en verde. Pruebas clave:
-- La agregación: un predictor perfecto da F1 = 1,0 agregado; en un fold sin positivos el recall del fold es NaN y `n_undefined` lo cuenta; la matriz de confusión suma el número de filas.
-- Las referencias: la interpolación sobre una función lineal conocida reproduce exactamente los valores omitidos; la forma más cercana elige la forma esperada en un caso mínimo; el frame OOF cumple `_validate_oof`.
-- `by_shape`: error relativo calculado a mano en un caso de 2 formas.
-- `verify_promotion`: coincide, no coincide y falta `promotion.json`.
-- `halve_timeseries`: importar el módulo no escribe; sobrescribir sin `force` falla.
-- Contrato: `--bench` y `--bench-evaluate` no tocan `outputs/models`.
-- Ajuste del test de paridad: el valor legado sigue coincidiendo con `ml/evaluator.py`.
+Each change starts from a failing test (TDD) and closes with the full suite green. Key tests:
+- The aggregation: a perfect predictor gives pooled F1 = 1.0; in a fold without positives the fold recall is NaN and `n_undefined` counts it; the confusion matrix sums to the number of rows.
+- The references: interpolation over a known linear function exactly reproduces the omitted values; the nearest shape picks the expected shape in a minimal case; the OOF frame satisfies `_validate_oof`.
+- `by_shape`: relative error computed by hand in a 2-shape case.
+- `verify_promotion`: matches, does not match and `promotion.json` missing.
+- `halve_timeseries`: importing the module does not write; overwriting without `force` fails.
+- Contract: `--bench` and `--bench-evaluate` do not touch `outputs/models`.
+- Parity-test adjustment: the legacy value still matches `ml/evaluator.py`.
 
-## 5. Documentación para la investigación
+## 5. Documentation for the research
 
-Directorio `docs/auditoria/correcciones/`:
-- `00-indice.md`: tabla de hallazgos → estado → commit → documento.
-- `01-evaluacion-honesta.md` (M-01, M-02, M-03, OOF y matriz de confusión).
+Directory `docs/auditoria/correcciones/`:
+- `00-indice.md`: table of findings → status → commit → document.
+- `01-evaluacion-honesta.md` (M-01, M-02, M-03, OOF and confusion matrix).
 - `02-trazabilidad-y-seguridad.md` (V-01, V-07, M-07/V-04).
-- `03-resolucion-de-la-etiqueta.md` (D-04/H-06; resultados del spike y decisión).
-- `04-informe-consolidado.md`: resultados antes/después, tablas, y el resumen que se pueda incorporar al informe de la investigación.
+- `03-resolucion-de-la-etiqueta.md` (D-04/H-06; spike results and decision).
+- `04-informe-consolidado.md`: before/after results, tables, and the summary that can be incorporated into the research report.
 
-Cada hallazgo se documenta con: problema y evidencia, causa, cambio realizado (commit), verificación con cifras antes y después, límites que quedan y un bloque **"Texto para la tesis"**.
+Each finding is documented with: problem and evidence, cause, change made (commit), verification with before and after figures, remaining limits and a **"Text for the thesis"** block.
 
-## 6. Ejecución
+## 6. Execution
 
-- `subagent-driven-development`: un subagente por tarea, revisión en dos etapas; modelo potente (Opus) para métricas, referencias y mediciones; Sonnet para tareas mecánicas.
-- Un commit por tarea y push a `fix/cierre-auditoria-hidrogramas-20260927` al cerrar cada paso.
-- Compuertas: el paso 6 se detiene tras el spike y espera la decisión A/B. La Parte 2 no empieza hasta cerrar la Parte 1.
+- `subagent-driven-development`: one subagent per task, two-stage review; a powerful model (Opus) for metrics, references and measurements; Sonnet for mechanical tasks.
+- One commit per task and push to `fix/cierre-auditoria-hidrogramas-20260927` at the close of each step.
+- Gates: step 6 stops after the spike and waits for the A/B decision. Part 2 does not start until Part 1 is closed.
 
-## 7. Fuera de alcance
+## 7. Out of scope
 
-- Rediseñar las features de volumen del evento más allá de lo que aporta v4_21 (se decide tras medir en el paso 1).
-- Curvas de resiliencia fuera de muestra (mejora opcional posterior).
-- SVM, tuning justo y selección final: Parte 2.
-- Alinear el checkout principal con la rama remota.
+- Redesigning the event-volume features beyond what v4_21 provides (decided after measuring in step 1).
+- Out-of-sample resilience curves (optional later improvement).
+- SVM, fair tuning and final selection: Part 2.
+- Aligning the main checkout with the remote branch.

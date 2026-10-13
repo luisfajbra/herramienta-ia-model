@@ -1,71 +1,71 @@
-# Correcciones de la auditoría (pasos 1 a 6) — Plan de implementación
+# Audit corrections (steps 1 to 6) — Implementation plan
 
-> **Para agentes:** SUB-SKILL REQUERIDA: usar `superpowers:subagent-driven-development` (recomendado) o `superpowers:executing-plans` para ejecutar este plan tarea por tarea. Los pasos usan casillas de verificación.
+> **For agents:** REQUIRED SUB-SKILL: use `superpowers:subagent-driven-development` (recommended) or `superpowers:executing-plans` to execute this plan task by task. The steps use checkboxes.
 
-**Objetivo:** que la evaluación del banco deje de sobreestimar o confundir resultados (agregación de métricas, referencias sin aprendizaje, desglose por forma, matriz de confusión, predicciones fuera de fold persistidas) y que las figuras, el modelo promovido y los scripts peligrosos sean trazables y seguros; y dejar documentado el spike sobre la resolución de la etiqueta.
+**Objective:** that the benchmark evaluation stops overestimating or confusing results (metric aggregation, no-learning references, per-shape breakdown, confusion matrix, persisted out-of-fold predictions) and that the figures, the promoted model and the dangerous scripts are traceable and safe; and to leave the spike on the label resolution documented.
 
-**Arquitectura:** `score_predictions()` (`ml/bench/evaluate.py`) sigue siendo la única capa que puntúa predicciones fuera de fold. Se le añade un conjunto de métricas agregadas, el desglose por forma y un parámetro `protocols`. Las referencias sin aprendizaje (`ml/bench/baselines.py`) producen el mismo frame OOF y se puntúan con esa misma función. `main.py` persiste OOF, métricas y proveniencia. Verificación de promoción y rótulos "en muestra" se añaden en los puntos de consumo.
+**Architecture:** `score_predictions()` (`ml/bench/evaluate.py`) remains the only layer that scores out-of-fold predictions. A set of pooled metrics, the per-shape breakdown and a `protocols` parameter are added to it. The no-learning references (`ml/bench/baselines.py`) produce the same OOF frame and are scored with that same function. `main.py` persists OOF, metrics and provenance. Promotion verification and "in-sample" labels are added at the consumption points.
 
-**Tecnologías:** Python 3.12 (venv del proyecto), pandas, numpy, scikit-learn, pytest, matplotlib, pyarrow (parquet).
+**Technologies:** Python 3.12 (project venv), pandas, numpy, scikit-learn, pytest, matplotlib, pyarrow (parquet).
 
 **Spec:** `docs/superpowers/specs/2026-10-11-correcciones-auditoria-design.md`
-**Auditoría de origen:** `docs/auditoria/2026-10-10-auditoria-completa.md`
+**Source audit:** `docs/auditoria/2026-10-10-auditoria-completa.md`
 
-## Restricciones globales
+## Global constraints
 
-- Trabajar en el worktree `C:\Users\lf.fajardo\Downloads\Tesis\herramienta-ia-model\.claude\worktrees\optuna-tuning-familia-ganadora`, rama `worktree-optuna-tuning-familia-ganadora` (publicada como `fix/cierre-auditoria-hidrogramas-20260927`). **No** hacer `cd` al checkout principal ni editar archivos allí.
-- Intérprete: `..\..\..\venv\Scripts\python.exe` (relativo al worktree). Todos los comandos `pytest` se ejecutan como `..\..\..\venv\Scripts\python.exe -m pytest <ruta> -q -p no:cacheprovider --basetemp=<carpeta temporal fuera del repo>`.
-- TDD: cada prueba nueva debe fallar por la ausencia del comportamiento antes de modificar producción.
-- Línea base de la suite completa: **1.049 passed, 0 failed** (commit `1ecca50`). Al cerrar cada tarea, la suite completa debe seguir en verde (los tests que cambien deliberadamente se listan en la tarea).
-- No cambiar `promote: "xgboost"` de `config.yaml`. No escribir en `outputs/models/`, ni borrar o sobrescribir artefactos de `outputs/` existentes. Los resultados nuevos van a rutas nuevas.
-- No tocar `main` ni el checkout principal. Un commit por tarea. El push a `origin fix/cierre-auditoria-hidrogramas-20260927` lo hace el coordinador al cerrar cada bloque, no los subagentes.
-- Convenciones del banco: mensajes y comentarios en español; nombres de código en el estilo del módulo vecino. Cada commit termina con la línea `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
-- Umbral de inundación canónico: `volumen_m3 >= flood_threshold_m3` (Fase A).
+- Work in the worktree `C:\Users\lf.fajardo\Downloads\Tesis\herramienta-ia-model\.claude\worktrees\optuna-tuning-familia-ganadora`, branch `worktree-optuna-tuning-familia-ganadora` (published as `fix/cierre-auditoria-hidrogramas-20260927`). **Do not** `cd` into the main checkout or edit files there.
+- Interpreter: `..\..\..\venv\Scripts\python.exe` (relative to the worktree). All `pytest` commands are run as `..\..\..\venv\Scripts\python.exe -m pytest <path> -q -p no:cacheprovider --basetemp=<temporary folder outside the repo>`.
+- TDD: each new test must fail because the behaviour is absent before modifying production code.
+- Baseline of the full suite: **1,049 passed, 0 failed** (commit `1ecca50`). When closing each task, the full suite must remain green (the tests that deliberately change are listed in the task).
+- Do not change `promote: "xgboost"` in `config.yaml`. Do not write to `outputs/models/`, nor delete or overwrite existing artefacts in `outputs/`. New results go to new paths.
+- Do not touch `main` or the main checkout. One commit per task. The push to `origin fix/cierre-auditoria-hidrogramas-20260927` is done by the coordinator when closing each block, not by the subagents.
+- Benchmark conventions: messages and comments in Spanish; code names in the style of the neighbouring module. Each commit ends with the line `Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>`.
+- Canonical flooding threshold: `volumen_m3 >= flood_threshold_m3` (Phase A).
 
-## Corrección a la spec (descubierta al leer el código)
+## Correction to the spec (discovered when reading the code)
 
-La spec §2.3 proponía añadir `vol_total_error_pct` a `end_to_end`. El test de paridad exige que `end_to_end` tenga **las mismas claves** que el evaluador legado, así que esas métricas agregadas van en un bloque nuevo `end_to_end_pooled`. `by_factor` no cambia. Esta tarea actualiza la spec (Task 2, paso 7).
+Spec §2.3 proposed adding `vol_total_error_pct` to `end_to_end`. The parity test requires `end_to_end` to have **the same keys** as the legacy evaluator, so those pooled metrics go in a new block `end_to_end_pooled`. `by_factor` does not change. This task updates the spec (Task 2, step 7).
 
-## Mapa de archivos
+## File map
 
-| Archivo | Responsabilidad |
+| File | Responsibility |
 |---|---|
-| `swmm_resilience/ml/bench/metrics.py` | Funciones puras de métricas (se añaden las agregadas, por fold y por forma) |
-| `swmm_resilience/ml/bench/evaluate.py` | `score_predictions` (usa las métricas nuevas y el parámetro `protocols`) |
-| `swmm_resilience/ml/bench/baselines.py` | **Nuevo.** Referencias sin aprendizaje |
+| `swmm_resilience/ml/bench/metrics.py` | Pure metric functions (the pooled, per-fold and per-shape ones are added) |
+| `swmm_resilience/ml/bench/evaluate.py` | `score_predictions` (uses the new metrics and the `protocols` parameter) |
+| `swmm_resilience/ml/bench/baselines.py` | **New.** No-learning references |
 | `swmm_resilience/ml/bench/schemas.py` | `PROTOCOL_INTERPRETATION` |
 | `swmm_resilience/ml/bench/reports.py` | `write_metrics_files`, `write_oof`, `write_provenance` |
 | `swmm_resilience/ml/bench/promote.py` | `verify_promotion`, `assert_promotion_consistent` |
-| `swmm_resilience/ml/predict.py` | Llama a `assert_promotion_consistent` antes de cargar modelos |
+| `swmm_resilience/ml/predict.py` | Calls `assert_promotion_consistent` before loading models |
 | `swmm_resilience/visualization/labels.py` | `IN_SAMPLE_NOTE`, `add_in_sample_note` |
-| `swmm_resilience/visualization/{resilience_curve,flood_volume_curve,model_comparison}.py` | Nota "en muestra" |
-| `swmm_resilience/visualization/runner.py` | `provenance.json` junto a las figuras |
-| `main.py` | OOF + referencias + proveniencia en `--bench-evaluate`; aviso en `--evaluate-shapes` |
-| `halve_timeseries.py` | Función con guarda `__main__` |
-| `scripts/informe_evaluacion.py` | **Nuevo.** Tablas del informe a partir de OOF y datos preparados |
-| `tests/ml/bench/prepared_factory.py` | **Nuevo.** Fabrica de `PreparedDataset` mínimos para pruebas |
-| `docs/auditoria/correcciones/` | Documentación para la investigación |
+| `swmm_resilience/visualization/{resilience_curve,flood_volume_curve,model_comparison}.py` | "In sample" note |
+| `swmm_resilience/visualization/runner.py` | `provenance.json` next to the figures |
+| `main.py` | OOF + references + provenance in `--bench-evaluate`; warning in `--evaluate-shapes` |
+| `halve_timeseries.py` | Function with `__main__` guard |
+| `scripts/informe_evaluacion.py` | **New.** Report tables from OOF and prepared data |
+| `tests/ml/bench/prepared_factory.py` | **New.** Factory of minimal `PreparedDataset` objects for tests |
+| `docs/auditoria/correcciones/` | Documentation for the research |
 
 ---
 
-### Task 1: Métricas agregadas, por fold y por forma (funciones puras)
+### Task 1: Pooled, per-fold and per-shape metrics (pure functions)
 
 **Files:**
-- Modify: `swmm_resilience/ml/bench/metrics.py` (añadir al final)
-- Test: `tests/ml/bench/test_metrics.py` (añadir al final)
+- Modify: `swmm_resilience/ml/bench/metrics.py` (append at the end)
+- Test: `tests/ml/bench/test_metrics.py` (append at the end)
 
 **Interfaces:**
-- Produces (usadas por la Task 2):
-  - `confusion_counts(y_true, y_pred) -> dict` con claves `tn, fp, fn, tp` (enteros)
-  - `pooled_classifier_metrics(true_parts, pred_parts, prob_parts) -> dict` con `precision, recall, f1, auc_roc, specificity` (floats)
-  - `fold_classifier_metrics(y_true, y_pred) -> dict` con `precision, recall, f1`; `NaN` donde no está definido
-  - `summarize_fold_metrics(folds: list) -> dict` por métrica: `mean, min, median, max, n_undefined`
+- Produces (used by Task 2):
+  - `confusion_counts(y_true, y_pred) -> dict` with keys `tn, fp, fn, tp` (integers)
+  - `pooled_classifier_metrics(true_parts, pred_parts, prob_parts) -> dict` with `precision, recall, f1, auc_roc, specificity` (floats)
+  - `fold_classifier_metrics(y_true, y_pred) -> dict` with `precision, recall, f1`; `NaN` where not defined
+  - `summarize_fold_metrics(folds: list) -> dict` per metric: `mean, min, median, max, n_undefined`
   - `end_to_end_pooled_metrics(vol_true_parts, vol_routed_parts) -> dict`
   - `shape_breakdown_entry(yc_true, yc_pred, vol_true, vol_routed) -> dict`
 
-- [ ] **Step 1: Escribir las pruebas que fallan**
+- [ ] **Step 1: Write the failing tests**
 
-Añadir al final de `tests/ml/bench/test_metrics.py` (y añadir los nombres nuevos al bloque `from swmm_resilience.ml.bench.metrics import (...)` del inicio del archivo):
+Append at the end of `tests/ml/bench/test_metrics.py` (and add the new names to the `from swmm_resilience.ml.bench.metrics import (...)` block at the top of the file):
 
 ```python
 from swmm_resilience.ml.bench.metrics import (
@@ -197,14 +197,14 @@ def test_shape_breakdown_entry_f1_and_error_are_nan_without_positives():
     assert np.isnan(entry["error_vol_pct"])
 ```
 
-- [ ] **Step 2: Verificar que fallan**
+- [ ] **Step 2: Verify that they fail**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/ml/bench/test_metrics.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t1`
-Expected: FAIL con `ImportError: cannot import name 'confusion_counts'`
+Expected: FAIL with `ImportError: cannot import name 'confusion_counts'`
 
-- [ ] **Step 3: Implementar**
+- [ ] **Step 3: Implement**
 
-Añadir al final de `swmm_resilience/ml/bench/metrics.py`:
+Append at the end of `swmm_resilience/ml/bench/metrics.py`:
 
 ```python
 def confusion_counts(y_true, y_pred) -> dict:
@@ -310,10 +310,10 @@ def shape_breakdown_entry(yc_true, yc_pred, vol_true, vol_routed) -> dict:
     }
 ```
 
-- [ ] **Step 4: Verificar que pasan**
+- [ ] **Step 4: Verify that they pass**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/ml/bench/test_metrics.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t1`
-Expected: todos pasan (los preexistentes y los nuevos).
+Expected: all pass (the pre-existing and the new ones).
 
 - [ ] **Step 5: Commit**
 
@@ -324,23 +324,23 @@ git commit -m "feat(bench): metricas agregadas, por fold (NaN) y por forma (hall
 
 ---
 
-### Task 2: `score_predictions` con agregación honesta, matriz de confusión y desglose por forma
+### Task 2: `score_predictions` with honest aggregation, confusion matrix and per-shape breakdown
 
 **Files:**
 - Create: `tests/ml/bench/prepared_factory.py`
 - Modify: `swmm_resilience/ml/bench/evaluate.py` (`_validate_oof`, `score_predictions`)
 - Modify: `tests/ml/bench/test_score_predictions.py`, `tests/ml/bench/test_parity_with_legacy_evaluator.py`
-- Modify: `docs/superpowers/specs/2026-10-11-correcciones-auditoria-design.md` (§2.3 y §2.4)
+- Modify: `docs/superpowers/specs/2026-10-11-correcciones-auditoria-design.md` (§2.3 and §2.4)
 
 **Interfaces:**
 - Consumes (Task 1): `pooled_classifier_metrics`, `fold_classifier_metrics`, `summarize_fold_metrics`, `confusion_counts`, `end_to_end_pooled_metrics`, `shape_breakdown_entry`.
-- Produces (Tasks 3 y 4):
-  - `score_predictions(prepared, oof, provenance, protocols=None) -> dict`. Por protocolo, el dict contiene las claves: `classifier` (pooled: `precision, recall, f1, auc_roc, specificity`), `confusion_matrix` (`tn, fp, fn, tp`), `classifier_per_fold`, `classifier_legacy_mean_zero_fill` (la media por fold antigua, con las mismas claves que el evaluador legado), `regressor_oracle`, `end_to_end` (sin cambios), `end_to_end_pooled`, `by_factor`, `by_shape`.
+- Produces (Tasks 3 and 4):
+  - `score_predictions(prepared, oof, provenance, protocols=None) -> dict`. Per protocol, the dict contains the keys: `classifier` (pooled: `precision, recall, f1, auc_roc, specificity`), `confusion_matrix` (`tn, fp, fn, tp`), `classifier_per_fold`, `classifier_legacy_mean_zero_fill` (the old per-fold mean, with the same keys as the legacy evaluator), `regressor_oracle`, `end_to_end` (unchanged), `end_to_end_pooled`, `by_factor`, `by_shape`.
   - `tests/ml/bench/prepared_factory.make_prepared(rows, protocols, threshold=1.0) -> PreparedDataset`
 
-- [ ] **Step 1: Crear la fábrica de datasets de prueba**
+- [ ] **Step 1: Create the test dataset factory**
 
-Crear `tests/ml/bench/prepared_factory.py`:
+Create `tests/ml/bench/prepared_factory.py`:
 
 ```python
 """Fábrica mínima de PreparedDataset para pruebas del banco (sin SQL)."""
@@ -414,11 +414,11 @@ def perfect_oof(prepared: PreparedDataset) -> pd.DataFrame:
     )
 ```
 
-Verificar que se importa: `..\..\..\venv\Scripts\python.exe -c "from tests.ml.bench.prepared_factory import make_prepared"` (si falla por rutas, usar `pytest.ini pythonpath = .` y ejecutar desde la raíz del worktree).
+Verify that it imports: `..\..\..\venv\Scripts\python.exe -c "from tests.ml.bench.prepared_factory import make_prepared"` (if it fails because of paths, use `pytest.ini pythonpath = .` and run from the worktree root).
 
-- [ ] **Step 2: Escribir las pruebas que fallan**
+- [ ] **Step 2: Write the failing tests**
 
-Añadir al final de `tests/ml/bench/test_score_predictions.py`:
+Append at the end of `tests/ml/bench/test_score_predictions.py`:
 
 ```python
 from tests.ml.bench.prepared_factory import make_prepared, perfect_oof
@@ -538,7 +538,7 @@ def test_by_shape_and_pooled_end_to_end_use_the_routed_volume():
     )
 ```
 
-Y actualizar la prueba existente `test_result_has_the_three_levels_and_the_factor_breakdown` (cambiar la aserción de igualdad por inclusión):
+And update the existing test `test_result_has_the_three_levels_and_the_factor_breakdown` (change the equality assertion to inclusion):
 
 ```python
     assert set(result["LOSO"]) >= {
@@ -548,16 +548,16 @@ Y actualizar la prueba existente `test_result_has_the_three_levels_and_the_facto
     }
 ```
 
-- [ ] **Step 3: Verificar que fallan**
+- [ ] **Step 3: Verify that they fail**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/ml/bench/test_score_predictions.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t2`
 Expected: FAIL (`KeyError: 'confusion_matrix'`, `TypeError ... unexpected keyword argument 'protocols'`, etc.)
 
-- [ ] **Step 4: Implementar**
+- [ ] **Step 4: Implement**
 
-En `swmm_resilience/ml/bench/evaluate.py`:
+In `swmm_resilience/ml/bench/evaluate.py`:
 
-1. Reemplazar el bloque `from .metrics import (...)` por:
+1. Replace the `from .metrics import (...)` block with:
 
 ```python
 from .metrics import (
@@ -574,7 +574,7 @@ from .metrics import (
 )
 ```
 
-2. Reemplazar `_validate_oof` por:
+2. Replace `_validate_oof` with:
 
 ```python
 def _validate_oof(
@@ -607,7 +607,7 @@ def _validate_oof(
         )
 ```
 
-3. Reemplazar `score_predictions` completa por:
+3. Replace the whole `score_predictions` with:
 
 ```python
 def score_predictions(
@@ -729,11 +729,11 @@ def score_predictions(
     return results
 ```
 
-- [ ] **Step 5: Ajustar el test de paridad con el evaluador legado**
+- [ ] **Step 5: Adjust the parity test with the legacy evaluator**
 
-En `tests/ml/bench/test_parity_with_legacy_evaluator.py`:
+In `tests/ml/bench/test_parity_with_legacy_evaluator.py`:
 
-(a) Reemplazar la aserción de claves del banco en `_assert_top_level_shape` por inclusión, y reemplazar la comprobación del banco vacío para que mire el campo legado. Sustituir el cuerpo de `_assert_top_level_shape` por:
+(a) Replace the benchmark key assertion in `_assert_top_level_shape` with inclusion, and replace the empty-benchmark check so that it looks at the legacy field. Replace the body of `_assert_top_level_shape` with:
 
 ```python
 def _assert_top_level_shape(legacy: dict, bench: dict) -> None:
@@ -763,12 +763,12 @@ def _assert_top_level_shape(legacy: dict, bench: dict) -> None:
     )
 ```
 
-(b) En los tres tests, reemplazar la línea
+(b) In the three tests, replace the line
 `_assert_metrics_match(legacy["classifier"], bench["classifier"], "classifier")`
-por
+with
 `_assert_metrics_match(legacy["classifier"], bench["classifier_legacy_mean_zero_fill"], "classifier")`.
 
-(c) Añadir al final del archivo una prueba que fija la diferencia buscada:
+(c) Append at the end of the file a test that pins the sought difference:
 
 ```python
 def test_the_new_classifier_value_is_pooled_and_differs_from_the_legacy_mean(
@@ -783,19 +783,19 @@ def test_the_new_classifier_value_is_pooled_and_differs_from_the_legacy_mean(
     assert bench["classifier"]["f1"] == pytest.approx(expected_f1)
 ```
 
-- [ ] **Step 6: Ejecutar el paquete del banco completo y reparar solo lo que cambia a propósito**
+- [ ] **Step 6: Run the full benchmark package and repair only what changes on purpose**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/ml/bench -q -p no:cacheprovider --basetemp=%TEMP%\pt_t2b`
-Expected: todo en verde. Si un test preexistente falla únicamente porque (i) comparaba el conjunto exacto de claves de `score_predictions` o (ii) esperaba la media por fold en `classifier`, ajustarlo a las nuevas claves y dejar constancia en el mensaje del commit de cuáles cambiaron. Cualquier otro fallo es una regresión real: investigar, no relajar tolerancias.
+Expected: all green. If a pre-existing test fails solely because (i) it compared the exact set of keys of `score_predictions` or (ii) it expected the per-fold mean in `classifier`, adjust it to the new keys and record in the commit message which ones changed. Any other failure is a real regression: investigate, do not relax tolerances.
 
-- [ ] **Step 7: Actualizar la spec**
+- [ ] **Step 7: Update the spec**
 
-En `docs/superpowers/specs/2026-10-11-correcciones-auditoria-design.md`, §2.3, reemplazar la frase "Se añade a `end_to_end` el error relativo del volumen total (`vol_total_error_pct`)." por: "Se añade un bloque nuevo `end_to_end_pooled` (RMSE, MAE, volumen total real y predicho y `vol_total_error_pct`, calculados sobre el pool de todos los folds); `end_to_end` conserva exactamente las claves del evaluador legado porque el test de paridad lo exige." Y en §2.3 la lista de claves de `classifier` se complementa con `confusion_matrix` como clave de primer nivel separada (no anidada en `classifier`).
+In `docs/superpowers/specs/2026-10-11-correcciones-auditoria-design.md`, §2.3, replace the sentence "An `end_to_end` relative error of the total volume (`vol_total_error_pct`) is added." with: "A new block `end_to_end_pooled` is added (RMSE, MAE, true and predicted total volume and `vol_total_error_pct`, computed over the pool of all folds); `end_to_end` keeps exactly the keys of the legacy evaluator because the parity test requires it." And in §2.3 the list of keys of `classifier` is complemented with `confusion_matrix` as a separate top-level key (not nested in `classifier`).
 
-- [ ] **Step 8: Suite completa y commit**
+- [ ] **Step 8: Full suite and commit**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=%TEMP%\pt_t2c -o addopts="-m 'not scale' -q"`
-Expected: sin fallos.
+Expected: no failures.
 
 ```bash
 git add tests/ml/bench/prepared_factory.py swmm_resilience/ml/bench/evaluate.py tests/ml/bench/test_score_predictions.py tests/ml/bench/test_parity_with_legacy_evaluator.py docs/superpowers/specs/2026-10-11-correcciones-auditoria-design.md
@@ -804,20 +804,20 @@ git commit -m "feat(bench): clasificador agregado, matriz de confusion y desglos
 
 ---
 
-### Task 3: Referencias sin aprendizaje (M-01)
+### Task 3: No-learning references (M-01)
 
 **Files:**
 - Create: `swmm_resilience/ml/bench/baselines.py`
 - Create: `tests/ml/bench/test_baselines.py`
-- Modify: `swmm_resilience/ml/bench/schemas.py` (añadir `PROTOCOL_INTERPRETATION` tras `PROTOCOL_GROUP_COLUMNS`)
+- Modify: `swmm_resilience/ml/bench/schemas.py` (add `PROTOCOL_INTERPRETATION` after `PROTOCOL_GROUP_COLUMNS`)
 
 **Interfaces:**
 - Consumes (Task 2): `score_predictions(prepared, oof, provenance, protocols=...)`, `make_prepared`, `perfect_oof`.
-- Produces (Task 4): constantes `INTERPOLACION_FACTOR = "baseline_interpolacion_factor"`, `FORMA_MAS_CERCANA = "baseline_forma_mas_cercana"`, `BASELINES`; excepción `BaselineNotApplicable(ValueError)`; `baseline_oof(prepared, name, flood_threshold_m3) -> pd.DataFrame` (columnas `OOF_COLUMNS`); `evaluate_baseline(prepared, name, flood_threshold_m3) -> tuple[pd.DataFrame, dict]`; `schemas.PROTOCOL_INTERPRETATION: dict[str, str]`.
+- Produces (Task 4): constants `INTERPOLACION_FACTOR = "baseline_interpolacion_factor"`, `FORMA_MAS_CERCANA = "baseline_forma_mas_cercana"`, `BASELINES`; exception `BaselineNotApplicable(ValueError)`; `baseline_oof(prepared, name, flood_threshold_m3) -> pd.DataFrame` (columns `OOF_COLUMNS`); `evaluate_baseline(prepared, name, flood_threshold_m3) -> tuple[pd.DataFrame, dict]`; `schemas.PROTOCOL_INTERPRETATION: dict[str, str]`.
 
-- [ ] **Step 1: Escribir las pruebas que fallan**
+- [ ] **Step 1: Write the failing tests**
 
-Crear `tests/ml/bench/test_baselines.py`:
+Create `tests/ml/bench/test_baselines.py`:
 
 ```python
 import numpy as np
@@ -963,14 +963,14 @@ def test_every_protocol_has_an_interpretation():
     assert set(BASELINES) == {INTERPOLACION_FACTOR, FORMA_MAS_CERCANA}
 ```
 
-- [ ] **Step 2: Verificar que fallan**
+- [ ] **Step 2: Verify that they fail**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/ml/bench/test_baselines.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t3`
-Expected: FAIL con `ModuleNotFoundError: ...baselines`
+Expected: FAIL with `ModuleNotFoundError: ...baselines`
 
-- [ ] **Step 3: Implementar**
+- [ ] **Step 3: Implement**
 
-En `swmm_resilience/ml/bench/schemas.py`, justo después de la definición de `PROTOCOL_GROUP_COLUMNS`:
+In `swmm_resilience/ml/bench/schemas.py`, right after the definition of `PROTOCOL_GROUP_COLUMNS`:
 
 ```python
 PROTOCOL_INTERPRETATION = {
@@ -988,7 +988,7 @@ PROTOCOL_INTERPRETATION = {
 }
 ```
 
-Crear `swmm_resilience/ml/bench/baselines.py`:
+Create `swmm_resilience/ml/bench/baselines.py`:
 
 ```python
 """Referencias sin aprendizaje para el banco (hallazgo M-01).
@@ -1191,10 +1191,10 @@ def evaluate_baseline(
     return oof, metrics
 ```
 
-- [ ] **Step 4: Verificar que pasan**
+- [ ] **Step 4: Verify that they pass**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/ml/bench/test_baselines.py tests/ml/bench/test_schemas.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t3`
-Expected: todo en verde. Si `test_nearest_shape_borrows_the_volume_of_the_closest_training_shape` falla, revisar primero los números esperados del enunciado (A↔B se parecen; C se parece a B) antes de tocar la implementación.
+Expected: all green. If `test_nearest_shape_borrows_the_volume_of_the_closest_training_shape` fails, first review the expected numbers of the statement (A↔B are similar; C is similar to B) before touching the implementation.
 
 - [ ] **Step 5: Commit**
 
@@ -1205,20 +1205,20 @@ git commit -m "feat(bench): referencias sin aprendizaje (interpolacion de factor
 
 ---
 
-### Task 4: Persistir OOF, referencias y proveniencia en `--bench-evaluate`
+### Task 4: Persist OOF, references and provenance in `--bench-evaluate`
 
 **Files:**
 - Modify: `swmm_resilience/ml/bench/reports.py`
-- Modify: `main.py` (`_run_bench`, bloque de evaluación)
+- Modify: `main.py` (`_run_bench`, evaluation block)
 - Modify: `tests/ml/bench/test_reports.py`, `tests/ml/bench/test_bench_cli.py`
 
 **Interfaces:**
-- Consumes: `evaluate_baseline`, `BASELINES`, `BaselineNotApplicable` (Task 3); `PROTOCOL_INTERPRETATION` (Task 3); `evaluate_candidate` devuelve `(oof, metrics)`.
-- Produces: `reports.write_metrics_files(metrics_by_name, output_dir, prefix="metrics_") -> dict[str, Path]`; `reports.write_oof(oof, root, prep_id, name) -> Path` (`<root>/<prep_id>/<name>.parquet`); `reports.write_provenance(output_dir, prepared, families, baselines) -> Path` (`provenance.json`). `write_reports` conserva su firma y comportamiento.
+- Consumes: `evaluate_baseline`, `BASELINES`, `BaselineNotApplicable` (Task 3); `PROTOCOL_INTERPRETATION` (Task 3); `evaluate_candidate` returns `(oof, metrics)`.
+- Produces: `reports.write_metrics_files(metrics_by_name, output_dir, prefix="metrics_") -> dict[str, Path]`; `reports.write_oof(oof, root, prep_id, name) -> Path` (`<root>/<prep_id>/<name>.parquet`); `reports.write_provenance(output_dir, prepared, families, baselines) -> Path` (`provenance.json`). `write_reports` keeps its signature and behaviour.
 
-- [ ] **Step 1: Escribir las pruebas que fallan**
+- [ ] **Step 1: Write the failing tests**
 
-Añadir al final de `tests/ml/bench/test_reports.py`:
+Append at the end of `tests/ml/bench/test_reports.py`:
 
 ```python
 import json
@@ -1275,16 +1275,16 @@ def test_write_provenance_records_prep_id_params_baselines_and_protocol_meaning(
     assert "LOSO" in record["protocol_interpretation"]
 ```
 
-- [ ] **Step 2: Verificar que fallan**
+- [ ] **Step 2: Verify that they fail**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/ml/bench/test_reports.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t4`
-Expected: FAIL con `ImportError: cannot import name 'write_metrics_files'`
+Expected: FAIL with `ImportError: cannot import name 'write_metrics_files'`
 
-- [ ] **Step 3: Implementar en `reports.py`**
+- [ ] **Step 3: Implement in `reports.py`**
 
-Añadir a los imports: `from datetime import datetime, timezone` y `from .schemas import PROTOCOL_INTERPRETATION, PreparedDataset`.
+Add to the imports: `from datetime import datetime, timezone` and `from .schemas import PROTOCOL_INTERPRETATION, PreparedDataset`.
 
-Añadir estas funciones y hacer que `write_reports` use `write_metrics_files` (conservando su firma y los nombres de archivo):
+Add these functions and make `write_reports` use `write_metrics_files` (keeping its signature and the file names):
 
 ```python
 def write_metrics_files(
@@ -1337,22 +1337,22 @@ def write_provenance(
     return path
 ```
 
-Y dentro de `write_reports`, sustituir el bucle que escribe `metrics_<family>.json` por:
+And inside `write_reports`, replace the loop that writes `metrics_<family>.json` with:
 
 ```python
     written: dict[str, Path] = write_metrics_files(metrics_by_family, directory)
 ```
 
-(mantener el resto: `ranking.json`, `ranking.csv`).
+(keep the rest: `ranking.json`, `ranking.csv`).
 
-- [ ] **Step 4: Verificar que pasan las pruebas de reportes**
+- [ ] **Step 4: Verify that the report tests pass**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/ml/bench/test_reports.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t4`
 Expected: PASS.
 
-- [ ] **Step 5: Escribir la prueba de CLI que falla**
+- [ ] **Step 5: Write the failing CLI test**
 
-Añadir a `tests/ml/bench/test_bench_cli.py`, junto a `test_full_bench_run_writes_ranking_without_promoting`:
+Add to `tests/ml/bench/test_bench_cli.py`, next to `test_full_bench_run_writes_ranking_without_promoting`:
 
 ```python
 def test_bench_evaluate_persists_oof_baselines_and_provenance(
@@ -1386,11 +1386,11 @@ def test_bench_evaluate_persists_oof_baselines_and_provenance(
 ```
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/ml/bench/test_bench_cli.py::test_bench_evaluate_persists_oof_baselines_and_provenance -q -p no:cacheprovider --basetemp=%TEMP%\pt_t4b`
-Expected: FAIL (`AssertionError` por archivos inexistentes).
+Expected: FAIL (`AssertionError` because of nonexistent files).
 
-- [ ] **Step 6: Implementar en `main.py`**
+- [ ] **Step 6: Implement in `main.py`**
 
-En `_run_bench`, añadir a los imports locales:
+In `_run_bench`, add to the local imports:
 
 ```python
     from swmm_resilience.ml.bench.baselines import (
@@ -1405,7 +1405,7 @@ En `_run_bench`, añadir a los imports locales:
         write_reports,
     )
 ```
-(sustituyendo el import existente de `write_reports`), y definir `oof_dir = BENCH_ROOT / "oof"` junto a `reports_dir`. Reemplazar el bucle de evaluación y las líneas siguientes hasta `write_reports(...)` por:
+(replacing the existing import of `write_reports`), and define `oof_dir = BENCH_ROOT / "oof"` next to `reports_dir`. Replace the evaluation loop and the following lines up to `write_reports(...)` with:
 
 ```python
     if run_all or args.bench_evaluate:
@@ -1455,10 +1455,10 @@ En `_run_bench`, añadir a los imports locales:
         print(ranking.to_string(index=False))
 ```
 
-- [ ] **Step 7: Verificar y commit**
+- [ ] **Step 7: Verify and commit**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/ml/bench -q -p no:cacheprovider --basetemp=%TEMP%\pt_t4c`
-Expected: todo en verde (incluida `test_full_bench_run_writes_ranking_without_promoting`, que sigue exigiendo que no se cree `outputs/models`).
+Expected: all green (including `test_full_bench_run_writes_ranking_without_promoting`, which still requires that `outputs/models` not be created).
 
 ```bash
 git add swmm_resilience/ml/bench/reports.py main.py tests/ml/bench/test_reports.py tests/ml/bench/test_bench_cli.py
@@ -1467,19 +1467,19 @@ git commit -m "feat(bench): persistir OOF, referencias y proveniencia en --bench
 
 ---
 
-### Task 5: Rotular como "en muestra" las figuras y salidas que lo son (V-01)
+### Task 5: Label as "in sample" the figures and outputs that are so (V-01)
 
 **Files:**
-- Modify: `swmm_resilience/visualization/labels.py`, `resilience_curve.py`, `flood_volume_curve.py`, `model_comparison.py` (solo `plot_factor_comparison`)
-- Modify: `main.py` (inicio del bloque `--evaluate-shapes`)
+- Modify: `swmm_resilience/visualization/labels.py`, `resilience_curve.py`, `flood_volume_curve.py`, `model_comparison.py` (only `plot_factor_comparison`)
+- Modify: `main.py` (start of the `--evaluate-shapes` block)
 - Create: `tests/visualization/test_in_sample_note.py`
 
 **Interfaces:**
 - Produces: `labels.IN_SAMPLE_NOTE: str`, `labels.IN_SAMPLE_BANNER: str`, `labels.add_in_sample_note(fig) -> None`.
 
-- [ ] **Step 1: Escribir las pruebas que fallan**
+- [ ] **Step 1: Write the failing tests**
 
-Crear `tests/visualization/test_in_sample_note.py`:
+Create `tests/visualization/test_in_sample_note.py`:
 
 ```python
 import matplotlib
@@ -1550,14 +1550,14 @@ def test_the_evaluate_shapes_branch_prints_the_in_sample_banner():
     assert "IN_SAMPLE_BANNER" in source
 ```
 
-- [ ] **Step 2: Verificar que fallan**
+- [ ] **Step 2: Verify that they fail**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/visualization/test_in_sample_note.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t5`
-Expected: FAIL con `ImportError: cannot import name 'IN_SAMPLE_NOTE'`. Nota: si el nombre de la función de flood_volume (`plot_flood_volume_curves`) no coincide con el real, abrir `flood_volume_curve.py` y usar el nombre público que genera `flood_volume_swmm.png` y `flood_volume_ml.png`.
+Expected: FAIL with `ImportError: cannot import name 'IN_SAMPLE_NOTE'`. Note: if the name of the flood_volume function (`plot_flood_volume_curves`) does not match the real one, open `flood_volume_curve.py` and use the public name that generates `flood_volume_swmm.png` and `flood_volume_ml.png`.
 
-- [ ] **Step 3: Implementar**
+- [ ] **Step 3: Implement**
 
-En `swmm_resilience/visualization/labels.py`, añadir tras los imports:
+In `swmm_resilience/visualization/labels.py`, add after the imports:
 
 ```python
 IN_SAMPLE_NOTE = (
@@ -1577,13 +1577,13 @@ def add_in_sample_note(fig) -> None:
     )
 ```
 
-En `resilience_curve.py`: importar `from .labels import add_in_sample_note` y, en `plot_resilience_curve`, justo antes de `fig.savefig(path_ml, ...)` añadir `add_in_sample_note(fig)`.
+In `resilience_curve.py`: import `from .labels import add_in_sample_note` and, in `plot_resilience_curve`, right before `fig.savefig(path_ml, ...)` add `add_in_sample_note(fig)`.
 
-En `flood_volume_curve.py`: importar igual y añadir `add_in_sample_note(fig)` justo antes de `fig.savefig(path_ml, ...)` y antes de `fig.savefig(output_path, ...)` en `plot_flood_volume_combined`.
+In `flood_volume_curve.py`: import the same and add `add_in_sample_note(fig)` right before `fig.savefig(path_ml, ...)` and before `fig.savefig(output_path, ...)` in `plot_flood_volume_combined`.
 
-En `model_comparison.py`, dentro de `plot_factor_comparison`: añadir `add_in_sample_note(fig)` justo antes de cada uno de los dos `fig.savefig(...)` (el de `profile_path` y el de `parity_path`); importar `add_in_sample_note` desde `.labels` junto a `format_node_label`.
+In `model_comparison.py`, inside `plot_factor_comparison`: add `add_in_sample_note(fig)` right before each of the two `fig.savefig(...)` (the one of `profile_path` and the one of `parity_path`); import `add_in_sample_note` from `.labels` together with `format_node_label`.
 
-En `main.py`, en el bloque `if args.evaluate_shapes:`, justo después del `try/except` de `load_training_frame` y antes de `from swmm_resilience.simulation.hydrograph_shapes import load_all_shapes`, añadir:
+In `main.py`, in the `if args.evaluate_shapes:` block, right after the `try/except` of `load_training_frame` and before `from swmm_resilience.simulation.hydrograph_shapes import load_all_shapes`, add:
 
 ```python
         from swmm_resilience.visualization.labels import IN_SAMPLE_BANNER
@@ -1591,10 +1591,10 @@ En `main.py`, en el bloque `if args.evaluate_shapes:`, justo después del `try/e
         print(f"\n{IN_SAMPLE_BANNER}")
 ```
 
-- [ ] **Step 4: Verificar y suite de visualización**
+- [ ] **Step 4: Verify and visualization suite**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/visualization tests/test_visualization.py tests/test_resilience.py tests/test_flood_volume.py tests/test_factor_comparison_cli.py tests/test_hydrograph_batch.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t5b`
-Expected: todo en verde (los títulos de los mapas de validación no se tocaron).
+Expected: all green (the titles of the validation maps were not touched).
 
 - [ ] **Step 5: Commit**
 
@@ -1605,18 +1605,18 @@ git commit -m "fix(viz): rotular como en muestra las curvas y comparaciones eval
 
 ---
 
-### Task 6: `halve_timeseries.py` sin efectos al importarse (V-07)
+### Task 6: `halve_timeseries.py` without side effects on import (V-07)
 
 **Files:**
-- Modify: `halve_timeseries.py` (reescritura)
-- Create: `tests/scripts/test_halve_timeseries.py` (la carpeta `tests/scripts` ya existe)
+- Modify: `halve_timeseries.py` (rewrite)
+- Create: `tests/scripts/test_halve_timeseries.py` (the `tests/scripts` folder already exists)
 
 **Interfaces:**
-- Produces: `halve_timeseries.halve_timeseries(src, dst, force=False) -> int` (número de valores divididos) y `main(argv=None)`.
+- Produces: `halve_timeseries.halve_timeseries(src, dst, force=False) -> int` (number of halved values) and `main(argv=None)`.
 
-- [ ] **Step 1: Escribir las pruebas que fallan**
+- [ ] **Step 1: Write the failing tests**
 
-Crear `tests/scripts/test_halve_timeseries.py`:
+Create `tests/scripts/test_halve_timeseries.py`:
 
 ```python
 import importlib
@@ -1681,14 +1681,14 @@ def test_refuses_to_use_the_source_as_destination(tmp_path):
         halve_timeseries(src, src, force=True)
 ```
 
-- [ ] **Step 2: Verificar que fallan**
+- [ ] **Step 2: Verify that they fail**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/scripts/test_halve_timeseries.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t6`
-Expected: FAIL. Atención: el primer test **importa el módulo actual, que escribe el `.inp` base al importarse**. Para no dañar datos reales, antes de ejecutar este paso hacer `git status data/` y confirmar que `data/networks/chico_hydro-qx1/` no tiene cambios después; si el import modificara el archivo, restaurar con `git checkout -- data/networks/chico_hydro-qx1/`. (Esta es justamente la razón de V-07.) Alternativa más segura: ejecutar el paso 2 con `monkeypatch.chdir(tmp_path)` ya incluido en la primera prueba: las rutas relativas del script no existirán desde `tmp_path` y el import fallará con `FileNotFoundError` sin tocar nada.
+Expected: FAIL. Attention: the first test **imports the current module, which writes the base `.inp` when imported**. To avoid damaging real data, before running this step do `git status data/` and confirm that `data/networks/chico_hydro-qx1/` has no changes afterwards; if the import modified the file, restore with `git checkout -- data/networks/chico_hydro-qx1/`. (This is precisely the reason for V-07.) Safer alternative: run step 2 with `monkeypatch.chdir(tmp_path)` already included in the first test: the relative paths of the script will not exist from `tmp_path` and the import will fail with `FileNotFoundError` without touching anything.
 
-- [ ] **Step 3: Implementar**
+- [ ] **Step 3: Implement**
 
-Reemplazar `halve_timeseries.py` por:
+Replace `halve_timeseries.py` with:
 
 ```python
 """Divide por 2 los valores de [TIMESERIES] de un .inp de SWMM.
@@ -1761,10 +1761,10 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-- [ ] **Step 4: Verificar y commit**
+- [ ] **Step 4: Verify and commit**
 
-Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/scripts -q -p no:cacheprovider --basetemp=%TEMP%\pt_t6b` y `git status --short data/` (debe estar vacío).
-Expected: verde y sin cambios en `data/`.
+Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/scripts -q -p no:cacheprovider --basetemp=%TEMP%\pt_t6b` and `git status --short data/` (must be empty).
+Expected: green and no changes in `data/`.
 
 ```bash
 git add halve_timeseries.py tests/scripts/test_halve_timeseries.py
@@ -1773,19 +1773,19 @@ git commit -m "fix: halve_timeseries sin efectos al importarse y sin sobrescribi
 
 ---
 
-### Task 7: Coherencia modelo–`promotion.json` y procedencia de las figuras (M-07/V-04)
+### Task 7: Model–`promotion.json` consistency and figure provenance (M-07/V-04)
 
 **Files:**
 - Modify: `swmm_resilience/ml/bench/promote.py`, `swmm_resilience/ml/predict.py`, `swmm_resilience/visualization/runner.py`
 - Create: `tests/ml/bench/test_verify_promotion.py`
-- Modify: `tests/test_ml_trainer_predict.py` (solo si un test existente carga modelos sin `promotion.json`; ver Step 5)
+- Modify: `tests/test_ml_trainer_predict.py` (only if an existing test loads models without `promotion.json`; see Step 5)
 
 **Interfaces:**
-- Produces: `promote.ModelProvenanceError(RuntimeError)`; `promote.verify_promotion(models_dir) -> dict` con `status` ∈ {`verified`, `mismatch`, `no_record`}, `ok` (`True`/`False`/`None`) y `discrepancies` (lista de `{artifact, expected, actual}`); `promote.assert_promotion_consistent(models_dir) -> dict`; `promote.model_provenance(models_dir) -> dict` (`family`, `feature_contract_id`, `classifier_sha256`, `regressor_sha256`, `prep_id`).
+- Produces: `promote.ModelProvenanceError(RuntimeError)`; `promote.verify_promotion(models_dir) -> dict` with `status` ∈ {`verified`, `mismatch`, `no_record`}, `ok` (`True`/`False`/`None`) and `discrepancies` (list of `{artifact, expected, actual}`); `promote.assert_promotion_consistent(models_dir) -> dict`; `promote.model_provenance(models_dir) -> dict` (`family`, `feature_contract_id`, `classifier_sha256`, `regressor_sha256`, `prep_id`).
 
-- [ ] **Step 1: Escribir las pruebas que fallan**
+- [ ] **Step 1: Write the failing tests**
 
-Crear `tests/ml/bench/test_verify_promotion.py`:
+Create `tests/ml/bench/test_verify_promotion.py`:
 
 ```python
 import hashlib
@@ -1879,14 +1879,14 @@ def test_model_provenance_without_a_record_is_marked_unknown(tmp_path):
     assert info["family"] == "desconocida"
 ```
 
-- [ ] **Step 2: Verificar que fallan**
+- [ ] **Step 2: Verify that they fail**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/ml/bench/test_verify_promotion.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t7`
-Expected: FAIL con `ImportError: cannot import name 'ModelProvenanceError'`
+Expected: FAIL with `ImportError: cannot import name 'ModelProvenanceError'`
 
-- [ ] **Step 3: Implementar en `promote.py`**
+- [ ] **Step 3: Implement in `promote.py`**
 
-Añadir `import warnings` a los imports y estas definiciones:
+Add `import warnings` to the imports and these definitions:
 
 ```python
 class ModelProvenanceError(RuntimeError):
@@ -1969,20 +1969,20 @@ def model_provenance(models_dir: Path | str) -> dict:
     }
 ```
 
-- [ ] **Step 4: Verificar que pasan**
+- [ ] **Step 4: Verify that they pass**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/ml/bench/test_verify_promotion.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t7`
 Expected: PASS.
 
-- [ ] **Step 5: Conectar `predict_network` y probar la conexión**
+- [ ] **Step 5: Wire `predict_network` and test the wiring**
 
-En `swmm_resilience/ml/predict.py`, añadir `from .bench.promote import assert_promotion_consistent` a los imports (verificar que no hay importación circular: `promote` importa `.train`; si el import circular aparece, hacer el import dentro de la función) y, como primera línea de `predict_network` (antes de `joblib.load`):
+In `swmm_resilience/ml/predict.py`, add `from .bench.promote import assert_promotion_consistent` to the imports (verify that there is no circular import: `promote` imports `.train`; if a circular import appears, do the import inside the function) and, as the first line of `predict_network` (before `joblib.load`):
 
 ```python
     assert_promotion_consistent(models_dir)
 ```
 
-Añadir a `tests/ml/bench/test_verify_promotion.py` una prueba de conexión:
+Add to `tests/ml/bench/test_verify_promotion.py` a wiring test:
 
 ```python
 def test_predict_network_refuses_models_that_do_not_match_promotion_json(tmp_path):
@@ -1995,11 +1995,11 @@ def test_predict_network_refuses_models_that_do_not_match_promotion_json(tmp_pat
 ```
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/ml/bench/test_verify_promotion.py tests/test_ml_trainer_predict.py tests/test_predict_shape_features.py tests/test_scenario_predict.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t7b`
-Expected: verde. Si un test preexistente de `predict_network` falla porque sus modelos de prueba tienen un `promotion.json` incoherente, corregir el fixture del test (no la verificación). Si falla por `UserWarning` convertido en error, comprobar `pytest.ini` (no hay `filterwarnings = error` hoy).
+Expected: green. If a pre-existing `predict_network` test fails because its test models have an inconsistent `promotion.json`, fix the test fixture (not the verification). If it fails because of a `UserWarning` turned into an error, check `pytest.ini` (there is no `filterwarnings = error` today).
 
-- [ ] **Step 6: Estampar la procedencia junto a las figuras**
+- [ ] **Step 6: Stamp the provenance next to the figures**
 
-En `swmm_resilience/visualization/runner.py`, localizar la función que genera mapas/figuras con el modelo (el punto donde se llama a `predict_network` o `generate_ml_map`) y, al terminar de escribir las figuras de un directorio de salida, escribir `provenance.json` con:
+In `swmm_resilience/visualization/runner.py`, locate the function that generates maps/figures with the model (the point where `predict_network` or `generate_ml_map` is called) and, when it finishes writing the figures of an output directory, write `provenance.json` with:
 
 ```python
 from ..ml.bench.promote import model_provenance
@@ -2016,7 +2016,7 @@ def write_figure_provenance(output_dir, models_dir) -> Path:
     return path
 ```
 
-Definir `write_figure_provenance` en `runner.py` y llamarla al final de la rutina que produce las figuras ML (leer el archivo para ubicar el punto exacto; `models_dir` es el directorio de modelos que ese código ya usa). Añadir a `tests/visualization/test_runtime_caption.py` o a un archivo nuevo `tests/visualization/test_figure_provenance.py`:
+Define `write_figure_provenance` in `runner.py` and call it at the end of the routine that produces the ML figures (read the file to locate the exact point; `models_dir` is the models directory that this code already uses). Add to `tests/visualization/test_runtime_caption.py` or to a new file `tests/visualization/test_figure_provenance.py`:
 
 ```python
 import json
@@ -2041,10 +2041,10 @@ def test_figure_provenance_records_the_active_model(tmp_path):
     assert "generated_at_utc" in record
 ```
 
-- [ ] **Step 7: Suite completa y commit**
+- [ ] **Step 7: Full suite and commit**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=%TEMP%\pt_t7c -o addopts="-m 'not scale' -q"`
-Expected: sin fallos.
+Expected: no failures.
 
 ```bash
 git add swmm_resilience/ml/bench/promote.py swmm_resilience/ml/predict.py swmm_resilience/visualization/runner.py tests/ml/bench/test_verify_promotion.py tests/visualization
@@ -2053,22 +2053,22 @@ git commit -m "feat: verificar modelo contra promotion.json antes de predecir y 
 
 ---
 
-### Task 8: Medición real y script del informe (M-01, M-02, M-03, matriz de confusión)
+### Task 8: Real measurement and report script (M-01, M-02, M-03, confusion matrix)
 
-Esta tarea **no cambia el código del paquete**: ejecuta el banco sobre los datos reales y genera tablas reproducibles. No se escribe en `outputs/models`.
+This task **does not change the package code**: it runs the benchmark on the real data and generates reproducible tables. Nothing is written to `outputs/models`.
 
 **Files:**
 - Create: `scripts/informe_evaluacion.py`
 - Create: `tests/scripts/test_informe_evaluacion.py`
-- Create (salida): `docs/auditoria/correcciones/datos/*.csv`
+- Create (output): `docs/auditoria/correcciones/datos/*.csv`
 
 **Interfaces:**
-- Consumes: parquet de OOF (`outputs/bench/oof/<prep_id>/*.parquet`, Task 4) y el PreparedDataset (`outputs/bench/prepared/<prep_id>/`).
-- Produces: `informe_evaluacion.build_tables(prepared, oof_by_name, flood_threshold_m3) -> dict[str, pd.DataFrame]` con las tablas `comparacion_protocolos`, `matriz_confusion`, `banda_limitrofe`, `por_forma`; y un `main()` CLI.
+- Consumes: OOF parquet (`outputs/bench/oof/<prep_id>/*.parquet`, Task 4) and the PreparedDataset (`outputs/bench/prepared/<prep_id>/`).
+- Produces: `informe_evaluacion.build_tables(prepared, oof_by_name, flood_threshold_m3) -> dict[str, pd.DataFrame]` with the tables `comparacion_protocolos`, `matriz_confusion`, `banda_limitrofe`, `por_forma`; and a CLI `main()`.
 
-- [ ] **Step 1: Prueba que falla**
+- [ ] **Step 1: Failing test**
 
-Crear `tests/scripts/test_informe_evaluacion.py`:
+Create `tests/scripts/test_informe_evaluacion.py`:
 
 ```python
 import numpy as np
@@ -2116,9 +2116,9 @@ def test_boundary_band_splits_false_negatives_by_true_volume():
 ```
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/scripts/test_informe_evaluacion.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t8`
-Expected: FAIL con `ModuleNotFoundError: scripts.informe_evaluacion` (verificar que `scripts/` es importable; si no existe `scripts/__init__.py`, crearlo vacío en este mismo paso).
+Expected: FAIL with `ModuleNotFoundError: scripts.informe_evaluacion` (verify that `scripts/` is importable; if `scripts/__init__.py` does not exist, create it empty in this same step).
 
-- [ ] **Step 2: Implementar `scripts/informe_evaluacion.py`**
+- [ ] **Step 2: Implement `scripts/informe_evaluacion.py`**
 
 ```python
 """Tablas del informe de evaluación a partir de OOF persistidos.
@@ -2223,30 +2223,30 @@ if __name__ == "__main__":
     raise SystemExit(main())
 ```
 
-Nota para el implementador: `resolve_prepared` exige que el PreparedDataset cubra los protocolos pedidos; si el prepared real solo contiene un subconjunto de `PROTOCOLS`, pasar `tuple(prepared_protocols)` leído del manifiesto en vez de `PROTOCOLS`.
+Note for the implementer: `resolve_prepared` requires that the PreparedDataset covers the requested protocols; if the real prepared dataset contains only a subset of `PROTOCOLS`, pass `tuple(prepared_protocols)` read from the manifest instead of `PROTOCOLS`.
 
-- [ ] **Step 3: Verificar las pruebas**
+- [ ] **Step 3: Verify the tests**
 
 Run: `..\..\..\venv\Scripts\python.exe -m pytest tests/scripts/test_informe_evaluacion.py -q -p no:cacheprovider --basetemp=%TEMP%\pt_t8`
 Expected: PASS.
 
-- [ ] **Step 4: Ejecución real (solo XGBoost y referencias)**
+- [ ] **Step 4: Real run (XGBoost and references only)**
 
-Esta ejecución usa los datos reales y tarda varios minutos. Ejecutarla en segundo plano, redirigiendo la salida a un archivo en el scratchpad. **No** correr el MLP ni las demás familias aquí.
+This run uses the real data and takes several minutes. Run it in the background, redirecting the output to a file in the scratchpad. **Do not** run the MLP or the other families here.
 
 ```
 ..\..\..\venv\Scripts\python.exe main.py --bench-evaluate --models xgboost --prep-id <PREP_ID_V4_21>
 ```
 
-`<PREP_ID_V4_21>` es el PreparedDataset vigente del contrato `tabular_v4_21`: es el directorio de `outputs/bench/prepared/` cuyo `manifest` declara `feature_contract_id` = `tabular_v4_21` y los tres protocolos de `config.yaml`. Si ese directorio no existe o no cubre `bench.protocols`, ejecutar antes `main.py --bench-prepare` (escribe solo en `outputs/bench/prepared/`) y usar el `prep_id` que imprime. Verificar que `--bench-evaluate` NO crea ni modifica nada en `outputs/models/` (comparar `git status outputs/models` antes y después).
+`<PREP_ID_V4_21>` is the current PreparedDataset of the `tabular_v4_21` contract: it is the directory of `outputs/bench/prepared/` whose `manifest` declares `feature_contract_id` = `tabular_v4_21` and the three protocols of `config.yaml`. If that directory does not exist or does not cover `bench.protocols`, first run `main.py --bench-prepare` (writes only to `outputs/bench/prepared/`) and use the `prep_id` that it prints. Verify that `--bench-evaluate` does NOT create or modify anything in `outputs/models/` (compare `git status outputs/models` before and after).
 
-- [ ] **Step 5: Generar las tablas**
+- [ ] **Step 5: Generate the tables**
 
 ```
 ..\..\..\venv\Scripts\python.exe scripts\informe_evaluacion.py --prep-id <PREP_ID_V4_21>
 ```
 
-Expected: cuatro CSV en `docs/auditoria/correcciones/datos/`. Revisar que la fila `baseline_interpolacion_factor` / `LOSO` existe y que `xgboost` / `LeaveOneShapeOut` trae las 40 formas en `por_forma.csv`.
+Expected: four CSVs in `docs/auditoria/correcciones/datos/`. Check that the row `baseline_interpolacion_factor` / `LOSO` exists and that `xgboost` / `LeaveOneShapeOut` has the 40 shapes in `por_forma.csv`.
 
 - [ ] **Step 6: Commit**
 
@@ -2257,39 +2257,39 @@ git commit -m "feat: script del informe de evaluacion y tablas de XGBoost y refe
 
 ---
 
-### Task 9: Spike de la resolución de la etiqueta (D-04/H-06) — informe, sin cambios al paquete
+### Task 9: Spike on label resolution (D-04/H-06) — report, no changes to the package
 
-Es un spike: su producto es un documento con números y una recomendación. Todo el código de diagnóstico vive en el scratchpad de la sesión; no se modifica nada del paquete ni de `outputs/`.
+It is a spike: its product is a document with numbers and a recommendation. All the diagnostic code lives in the session scratchpad; nothing of the package or of `outputs/` is modified.
 
 **Files:**
 - Create: `docs/auditoria/correcciones/03-resolucion-de-la-etiqueta.md`
 
-- [ ] **Step 1: Entender cómo se lee hoy el volumen**
+- [ ] **Step 1: Understand how the volume is read today**
 
-Leer `swmm_resilience/extraction/labels.py` y `swmm_resilience/simulation/swmm_api_io.py` (la lectura del reporte `.rpt`, "Flooding Summary" / "Total Flood Volume", unidades de 10^6 L con 3 decimales) y `swmm_resilience/simulation/runner.py` para ver cómo se invoca SWMM por escenario. Documentar en el informe la fórmula exacta y la resolución resultante (1 m³).
+Read `swmm_resilience/extraction/labels.py` and `swmm_resilience/simulation/swmm_api_io.py` (the reading of the `.rpt` report, "Flooding Summary" / "Total Flood Volume", units of 10^6 L with 3 decimals) and `swmm_resilience/simulation/runner.py` to see how SWMM is invoked per scenario. Document in the report the exact formula and the resulting resolution (1 m³).
 
-- [ ] **Step 2: Medir si el volumen se puede obtener con mayor resolución**
+- [ ] **Step 2: Measure whether the volume can be obtained with a higher resolution**
 
-Sobre COPIAS del `.inp` en el scratchpad, simular 6 combinaciones forma/factor de control (incluir `base`, una forma corta, una larga y factores 0,2, 1,0, 3,0 y 5,0) y comparar, nodo por nodo:
-(a) el volumen del `.rpt` (resolución actual);
-(b) el volumen obtenido integrando en el tiempo la serie de caudal de inundación del archivo binario `.out` (o `pyswmm`/`swmm_api` `Output`), con la convención de unidades de la red (LPS);
-(c) si SWMM expone el volumen de inundación acumulado por nodo con más decimales por otra vía.
-Reportar la diferencia máxima, la mediana y cuántos nodos cambian de etiqueta con el umbral actual de 1,0 m³ y con un umbral continuo.
+On COPIES of the `.inp` in the scratchpad, simulate 6 control shape/factor combinations (include `base`, a short shape, a long one and factors 0.2, 1.0, 3.0 and 5.0) and compare, node by node:
+(a) the volume of the `.rpt` (current resolution);
+(b) the volume obtained by integrating over time the flooding flow series of the binary `.out` file (or `pyswmm`/`swmm_api` `Output`), with the unit convention of the network (LPS);
+(c) whether SWMM exposes the accumulated flooding volume per node with more decimals by another route.
+Report the maximum difference, the median and how many nodes change label with the current threshold of 1.0 m³ and with a continuous threshold.
 
-- [ ] **Step 3: Estimar el costo de re-simular**
+- [ ] **Step 3: Estimate the cost of re-simulating**
 
-Cronometrar las 6 simulaciones y extrapolar a las 1.000 corridas del dataset (40 formas × 25 factores). Estimar también el costo posterior: regeneración del dataset, nuevo `prep_id`, recálculo de features v4_21 y re-ejecución del banco.
+Time the 6 simulations and extrapolate to the 1,000 runs of the dataset (40 shapes × 25 factors). Also estimate the downstream cost: dataset regeneration, new `prep_id`, recomputation of v4_21 features and re-execution of the benchmark.
 
-- [ ] **Step 4: Cuantificar el efecto sobre la matriz de confusión**
+- [ ] **Step 4: Quantify the effect on the confusion matrix**
 
-Con los OOF de XGBoost (Task 8) reportar cuántos falsos negativos y falsos positivos caen en la banda de 1 a 2 m³ y qué pasaría con el F1 agregado si esa banda se excluyera de la evaluación (camino A) frente a usar etiquetas de resolución completa (camino B, estimado a partir de la muestra de control).
+With the XGBoost OOFs (Task 8) report how many false negatives and false positives fall in the 1 to 2 m³ band and what would happen to the pooled F1 if that band were excluded from the evaluation (path A) versus using full-resolution labels (path B, estimated from the control sample).
 
-- [ ] **Step 5: Escribir el informe del spike**
+- [ ] **Step 5: Write the spike report**
 
-Documento con: fórmula actual, resolución, tabla de comparación `.rpt` vs `.out`, costo estimado, efecto sobre la matriz de confusión, y una recomendación explícita entre:
-- **A:** conservar la resolución y el umbral actuales, declararlos como supuesto y reportar la matriz con la banda limítrofe separada;
-- **B:** re-simular y regenerar el dataset.
-Terminar con la sección "Decisión pendiente del autor". **No ejecutar B.**
+Document with: current formula, resolution, `.rpt` vs `.out` comparison table, estimated cost, effect on the confusion matrix, and an explicit recommendation between:
+- **A:** keep the current resolution and threshold, declare them as an assumption and report the matrix with the borderline band separated;
+- **B:** re-simulate and regenerate the dataset.
+End with the section "Pending decision for the author". **Do not execute B.**
 
 - [ ] **Step 6: Commit**
 
@@ -2300,7 +2300,7 @@ git commit -m "docs: spike de la resolucion de la etiqueta de inundacion (D-04, 
 
 ---
 
-### Task 10: Documentación para la investigación
+### Task 10: Documentation for the research
 
 **Files:**
 - Create: `docs/auditoria/correcciones/00-indice.md`
@@ -2308,19 +2308,19 @@ git commit -m "docs: spike de la resolucion de la etiqueta de inundacion (D-04, 
 - Create: `docs/auditoria/correcciones/02-trazabilidad-y-seguridad.md`
 - Create: `docs/auditoria/correcciones/04-informe-consolidado.md`
 
-Cada hallazgo se escribe con esta estructura exacta: **Problema y evidencia** · **Causa** · **Qué cambió** (archivos y hash de commit) · **Verificación** (cifras antes y después, con la fuente de cada número) · **Límites que quedan** · **Texto para la tesis** (párrafo listo para pegar, en español académico, sin jerga de implementación).
+Each finding is written with this exact structure: **Problem and evidence** · **Cause** · **What changed** (files and commit hash) · **Verification** (before and after figures, with the source of each number) · **Remaining limits** · **Text for the thesis** (ready-to-paste paragraph, in academic Spanish, without implementation jargon).
 
-- [ ] **Step 1: `01-evaluacion-honesta.md`** — M-01 (referencias sin aprendizaje: qué miden LOSO/GroupKFold5 frente a LeaveOneShapeOut), M-02 (medición con v4_21: NSE y error por forma, concentración del error, comparación con el 0,814 previo), M-03 (valor agregado frente a media por fold: 0,9656 frente a 0,7408 en LOSO con la definición anterior), persistencia de OOF y matriz de confusión (tabla de `matriz_confusion.csv` y de `banda_limitrofe.csv`). Todas las cifras salen de `docs/auditoria/correcciones/datos/*.csv`; citar el archivo.
+- [ ] **Step 1: `01-evaluacion-honesta.md`** — M-01 (no-learning references: what LOSO/GroupKFold5 measure versus LeaveOneShapeOut), M-02 (measurement with v4_21: NSE and per-shape error, error concentration, comparison with the previous 0.814), M-03 (pooled value versus per-fold mean: 0.9656 versus 0.7408 in LOSO with the previous definition), OOF persistence and confusion matrix (table of `matriz_confusion.csv` and of `banda_limitrofe.csv`). All the figures come from `docs/auditoria/correcciones/datos/*.csv`; cite the file.
 
-- [ ] **Step 2: `02-trazabilidad-y-seguridad.md`** — V-01 (qué figuras y salidas son en muestra), V-07 (`halve_timeseries`), M-07/V-04 (`verify_promotion`, `provenance.json`, y la nota de que en el worktree los SHA ya coincidían, mientras que el checkout atrasado tenía `660be918…` frente a `e2e7925e…`).
+- [ ] **Step 2: `02-trazabilidad-y-seguridad.md`** — V-01 (which figures and outputs are in-sample), V-07 (`halve_timeseries`), M-07/V-04 (`verify_promotion`, `provenance.json`, and the note that in the worktree the SHA values already matched, whereas the outdated checkout had `660be918…` versus `e2e7925e…`).
 
-- [ ] **Step 3: `04-informe-consolidado.md`** — tabla hallazgo → estado → commit → documento; tabla "antes y después" de las métricas clave (F1, RMSE, NSE, matriz de confusión) para XGBoost y las dos referencias en los tres protocolos; limitaciones; y un resumen de una página para el informe de la investigación. Incluir la sección "Pendiente": D-04/H-06 (decisión A/B) y la Parte 2.
+- [ ] **Step 3: `04-informe-consolidado.md`** — table finding → status → commit → document; "before and after" table of the key metrics (F1, RMSE, NSE, confusion matrix) for XGBoost and the two references in the three protocols; limitations; and a one-page summary for the research report. Include the section "Pending": D-04/H-06 (A/B decision) and Part 2.
 
-- [ ] **Step 4: `00-indice.md`** — índice con enlaces relativos a los documentos y a los CSV.
+- [ ] **Step 4: `00-indice.md`** — index with relative links to the documents and the CSVs.
 
-- [ ] **Step 5: Revisión de cifras**
+- [ ] **Step 5: Review of figures**
 
-Para cada cifra del texto, comprobar que aparece en un CSV de `datos/` o en la salida de un test citado. Reemplazar cualquier número que no se pueda rastrear. Ejecutar `..\..\..\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=%TEMP%\pt_t10 -o addopts="-m 'not scale' -q"` y copiar el conteo final de tests al informe.
+For each figure in the text, check that it appears in a CSV in `datos/` or in the output of a cited test. Replace any number that cannot be traced. Run `..\..\..\venv\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp=%TEMP%\pt_t10 -o addopts="-m 'not scale' -q"` and copy the final test count to the report.
 
 - [ ] **Step 6: Commit**
 
@@ -2331,12 +2331,12 @@ git commit -m "docs: correcciones de la auditoria documentadas para la investiga
 
 ---
 
-## Autorrevisión del plan
+## Plan self-review
 
-**Cobertura de la spec:**
-- §2.2 referencias → Task 3 · §2.3 agregación → Tasks 1–2 · §2.4 `by_shape` → Tasks 1–2 · §2.5 OOF y proveniencia → Task 4 · §2.6 en muestra → Task 5 · §2.7 `halve_timeseries` → Task 6 · §2.8 `verify_promotion` y figuras → Task 7 · §2.9 spike → Task 9 · §5 documentación → Task 10 · medición real (M-02) → Task 8.
-- Test de contrato de `outputs/models`: ya existe en `test_full_bench_run_writes_ranking_without_promoting` (Task 4 la conserva y la nueva prueba de CLI repite la aserción).
+**Spec coverage:**
+- §2.2 references → Task 3 · §2.3 aggregation → Tasks 1–2 · §2.4 `by_shape` → Tasks 1–2 · §2.5 OOF and provenance → Task 4 · §2.6 in sample → Task 5 · §2.7 `halve_timeseries` → Task 6 · §2.8 `verify_promotion` and figures → Task 7 · §2.9 spike → Task 9 · §5 documentation → Task 10 · real measurement (M-02) → Task 8.
+- Contract test of `outputs/models`: it already exists in `test_full_bench_run_writes_ranking_without_promoting` (Task 4 keeps it and the new CLI test repeats the assertion).
 
-**Escaneo de marcadores vacíos:** sin pendientes de redacción. Dos puntos donde el implementador debe leer el código real antes de editar, ambos señalados con su criterio de decisión: el nombre público de la función de `flood_volume_curve.py` (Task 5, Step 2) y el punto de llamada en `runner.py` (Task 7, Step 6).
+**Empty-placeholder scan:** no wording pending. Two points where the implementer must read the real code before editing, both flagged with their decision criterion: the public name of the function in `flood_volume_curve.py` (Task 5, Step 2) and the call point in `runner.py` (Task 7, Step 6).
 
-**Consistencia de tipos:** `score_predictions(prepared, oof, provenance, protocols=None)` se define en la Task 2 y se usa con `protocols=` en las Tasks 3 y 8. Las claves `classifier`, `confusion_matrix`, `classifier_per_fold`, `classifier_legacy_mean_zero_fill`, `end_to_end_pooled` y `by_shape` se definen en la Task 2 y se leen con los mismos nombres en la Task 8. `PROTOCOL_INTERPRETATION` se define en la Task 3 y se usa en las Tasks 4 y 8. `write_oof`, `write_metrics_files` y `write_provenance` se definen y se prueban en la Task 4 con las firmas que usa `main.py`.
+**Type consistency:** `score_predictions(prepared, oof, provenance, protocols=None)` is defined in Task 2 and used with `protocols=` in Tasks 3 and 8. The keys `classifier`, `confusion_matrix`, `classifier_per_fold`, `classifier_legacy_mean_zero_fill`, `end_to_end_pooled` and `by_shape` are defined in Task 2 and read with the same names in Task 8. `PROTOCOL_INTERPRETATION` is defined in Task 3 and used in Tasks 4 and 8. `write_oof`, `write_metrics_files` and `write_provenance` are defined and tested in Task 4 with the signatures that `main.py` uses.

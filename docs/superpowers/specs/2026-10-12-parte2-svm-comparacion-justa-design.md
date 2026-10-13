@@ -1,50 +1,50 @@
-# Parte 2 — SVM aproximado y comparación justa XGBoost / MLP / SVM — diseño
+# Part 2 — approximate SVM and fair XGBoost / MLP / SVM comparison — design
 
-**Fecha:** 2026-10-12
-**Rama:** `fix/cierre-auditoria-hidrogramas-20260927` (worktree `optuna-tuning-familia-ganadora`).
-**Precede:** `docs/superpowers/specs/2026-10-11-correcciones-auditoria-design.md` (Parte 1, cerrada).
-**Decisiones del autor (2026-10-12):** (1) etiqueta: **ruta A** (no se re-simula; la base de datos no se toca ni se migra); (2) XGBoost y MLP se presentan siempre; el SVM entra como tercer candidato con su resultado; (3) esta semana: SVM corregido o su alternativa de vectores de soporte + corridas con datos reales + actualización de la presentación del 2026-10-13; (4) hacer solo entrenamientos y cosas poco dañinas o demoradas.
+**Date:** 2026-10-12
+**Branch:** `fix/cierre-auditoria-hidrogramas-20260927` (worktree `optuna-tuning-familia-ganadora`).
+**Precedes:** `docs/superpowers/specs/2026-10-11-correcciones-auditoria-design.md` (Part 1, closed).
+**Author's decisions (2026-10-12):** (1) label: **path A** (no re-simulation; the database is neither touched nor migrated); (2) XGBoost and MLP are always presented; the SVM enters as a third candidate with its result; (3) this week: corrected SVM or its support-vector alternative + runs with real data + update of the 2026-10-13 presentation; (4) do only training and low-harm or slow things.
 
-## 1. Objetivo
-Dejar el SVM en condiciones comparables con XGBoost y MLP y obtener resultados reproducibles de los tres sobre el mismo dato (`tabular_v4_21`, `prep_id ca706e27654e0cf5`, 154.080 filas), con el mismo presupuesto de afinación y el mismo protocolo de evaluación (LeaveOneShapeOut como cifra principal), documentados para la investigación.
+## 1. Objective
+Bring the SVM to a state comparable with XGBoost and MLP and obtain reproducible results for the three on the same data (`tabular_v4_21`, `prep_id ca706e27654e0cf5`, 154,080 rows), with the same tuning budget and the same evaluation protocol (LeaveOneShapeOut as the main figure), documented for the research.
 
-## 2. Estado de partida
-- `svm_family.py` (commit WIP `1ecca50`): Nystroem (RBF) + `SGDClassifier(loss="log_loss")` + `SGDRegressor(loss="epsilon_insensitive")`. El regresor es un SVR lineal sobre el mapeo de kernel; el clasificador es regresión logística, **no** una máquina de vectores de soporte. El benchmark del 2026-10-05 lo dejó 3.º: RMSE 155,2 m³, F1 0,843 (contrato `v3_17`, sin afinar).
-- `tune.py` ya tiene `SEARCH_SPACES` para `xgboost`, `mlp` y `svm`, y un `run_study` (GroupKFold(5) por `shape_id` interno, objetivo `end_to_end.rmse_vol_todos_nodos`). Etiqueta sus resultados como `estimacion_exploratoria_condicionada`.
-- La CLI (`--bench-tune`, `--bench-evaluate`) solo prepara/lee el contrato `tabular_v3_17`; el contrato vigente `tabular_v4_21` ya está preparado en `outputs/bench/prepared_v4_21/ca706e27654e0cf5` y se usa desde scripts.
-- Hardware: 64 CPU, sin GPU, torch CPU (32 hilos).
+## 2. Starting state
+- `svm_family.py` (WIP commit `1ecca50`): Nystroem (RBF) + `SGDClassifier(loss="log_loss")` + `SGDRegressor(loss="epsilon_insensitive")`. The regressor is a linear SVR on the kernel mapping; the classifier is logistic regression, **not** a support vector machine. The 2026-10-05 benchmark left it 3rd: RMSE 155.2 m³, F1 0.843 (`v3_17` contract, untuned).
+- `tune.py` already has `SEARCH_SPACES` for `xgboost`, `mlp` and `svm`, and a `run_study` (GroupKFold(5) by internal `shape_id`, objective `end_to_end.rmse_vol_todos_nodos`). It labels its results as `estimacion_exploratoria_condicionada` (conditional exploratory estimate).
+- The CLI (`--bench-tune`, `--bench-evaluate`) only prepares/reads the `tabular_v3_17` contract; the current contract `tabular_v4_21` is already prepared in `outputs/bench/prepared_v4_21/ca706e27654e0cf5` and is used from scripts.
+- Hardware: 64 CPUs, no GPU, torch CPU (32 threads).
 
-## 3. Decisiones de diseño
+## 3. Design decisions
 
-### 3.1 SVM: "SVM aproximado con mapeo de Nystroem"
-- Clasificador: `Nystroem(kernel="rbf")` → `CalibratedClassifierCV(SGDClassifier(loss="hinge", class_weight=…), method="sigmoid", cv=3)`. Es un SVM lineal de margen (pérdida *hinge*) sobre el kernel RBF aproximado, con calibración de Platt para obtener `predict_proba` (requerido por el evaluador para el AUC). Equivale, con kernel aproximado, a `SVC(probability=True)` que usaba la versión exacta.
-- Regresor: sin cambios — `SGDRegressor(loss="epsilon_insensitive")` sobre el mismo mapeo (SVR lineal sobre Nystroem), con el objetivo en `log1p`.
-- El nombre interno de la familia sigue siendo `svm` (compatibilidad con el registro y el espacio de Optuna); el descriptor de preprocesado declara `svm_aproximado_nystroem` y la documentación lo llama "SVM aproximado (Nystroem + SVM lineal)". No se presenta como un SVM de kernel exacto.
-- Hiperparámetros afinables: `gamma`, `n_components`, `alpha` (clasificador y regresor) y `epsilon` (regresor) — el espacio existente; se añade `C` equivalente vía `alpha` (SGD). No se amplía el espacio más allá de eso.
-- Alternativa descartada: `SVC`/`SVR` exactos (O(n²)–O(n³); la corrida del 2026-10-05 acumuló más de 1 día y 15 h de CPU sin terminar).
+### 3.1 SVM: "approximate SVM with Nystroem mapping"
+- Classifier: `Nystroem(kernel="rbf")` → `CalibratedClassifierCV(SGDClassifier(loss="hinge", class_weight=…), method="sigmoid", cv=3)`. It is a linear margin SVM (*hinge* loss) on the approximate RBF kernel, with Platt calibration to obtain `predict_proba` (required by the evaluator for the AUC). With an approximate kernel, it is equivalent to the `SVC(probability=True)` used by the exact version.
+- Regressor: unchanged — `SGDRegressor(loss="epsilon_insensitive")` on the same mapping (linear SVR on Nystroem), with the target in `log1p`.
+- The internal family name remains `svm` (compatibility with the registry and the Optuna space); the preprocessing descriptor declares `svm_aproximado_nystroem` and the documentation calls it "approximate SVM (Nystroem + linear SVM)". It is not presented as an exact-kernel SVM.
+- Tunable hyperparameters: `gamma`, `n_components`, `alpha` (classifier and regressor) and `epsilon` (regressor) — the existing space; an equivalent `C` is added via `alpha` (SGD). The space is not extended beyond that.
+- Discarded alternative: exact `SVC`/`SVR` (O(n²)–O(n³); the 2026-10-05 run accumulated more than 1 day and 15 h of CPU without finishing).
 
-### 3.2 Comparación justa
-- Mismo dato (`prep_id ca706e27654e0cf5`), misma semilla (`ML_RANDOM_STATE`), mismo objetivo (`end_to_end.rmse_vol_todos_nodos`), **mismo número de trials Optuna** para las tres familias, mismo CV interno (GroupKFold(5) por forma).
-- Presupuesto: N trials iguales para las tres, fijado tras medir el costo de un trial por familia en esta máquina (ver §5). Si el MLP no cabe en el tiempo disponible con 200 épocas, se reduce `epochs` y/o se sube `batch_size` **en las tres evaluaciones del MLP por igual** (afinación y evaluación final) y se declara.
-- Sesgo declarado: los hiperparámetros se eligen con todas las formas (`estimacion_exploratoria_condicionada`), así que las cifras de LeaveOneShapeOut posteriores son optimistas **por igual** para las tres familias; sirven para comparar, no como confirmación independiente. Una afinación anidada por forma (×40) queda como trabajo futuro.
-- XGBoost: además del resultado afinado se conserva el resultado con parámetros por defecto ya medido (`datos/runs/metrics_xgboost.json`), para mostrar el efecto de la afinación.
+### 3.2 Fair comparison
+- Same data (`prep_id ca706e27654e0cf5`), same seed (`ML_RANDOM_STATE`), same objective (`end_to_end.rmse_vol_todos_nodos`), **same number of Optuna trials** for the three families, same internal CV (GroupKFold(5) by shape).
+- Budget: equal N trials for the three, fixed after measuring the cost of one trial per family on this machine (see §5). If the MLP does not fit in the available time with 200 epochs, `epochs` is reduced and/or `batch_size` is raised **equally in all the MLP evaluations** (tuning and final evaluation) and this is declared.
+- Declared bias: the hyperparameters are chosen with all the shapes (`estimacion_exploratoria_condicionada`), so the subsequent LeaveOneShapeOut figures are optimistic **equally** for the three families; they serve to compare, not as independent confirmation. A nested per-shape tuning (×40) remains as future work.
+- XGBoost: besides the tuned result, the already measured result with default parameters is kept (`datos/runs/metrics_xgboost.json`), to show the effect of tuning.
 
-### 3.3 Evaluación y reporte
-- Protocolo principal: LeaveOneShapeOut (40 folds) para el modelo afinado de cada familia, más el SVM con parámetros por defecto (barato). No se repite LOSO/GroupKFold5 para estas corridas (miden interpolación entre factores; ya documentado) salvo que sobre tiempo.
-- Referencias sin aprendizaje: se reutilizan las ya calculadas (misma `prep_id`).
-- Tablas con el mismo formato y procedencia que `docs/auditoria/correcciones/datos/` (`informe_evaluacion.build_tables`), en un directorio nuevo `docs/auditoria/correcciones/datos_parte2/`: comparación, matriz de confusión, banda de 1–2 m³ y por forma, más el resumen de cada estudio (mejores parámetros, trials, tiempos, curva de convergencia) y `provenance.json`.
-- Documento `docs/auditoria/correcciones/06-seleccion-de-modelos.md` con "Texto para la tesis" y la regla de presentación: XGBoost y MLP siempre; el SVM como tercer candidato con su resultado.
+### 3.3 Evaluation and reporting
+- Main protocol: LeaveOneShapeOut (40 folds) for the tuned model of each family, plus the SVM with default parameters (cheap). LOSO/GroupKFold5 are not repeated for these runs (they measure interpolation between factors; already documented) unless time remains.
+- No-learning references: the ones already computed are reused (same `prep_id`).
+- Tables with the same format and provenance as `docs/auditoria/correcciones/datos/` (`informe_evaluacion.build_tables`), in a new directory `docs/auditoria/correcciones/datos_parte2/`: comparison, confusion matrix, 1–2 m³ band and per shape, plus the summary of each study (best parameters, trials, timings, convergence curve) and `provenance.json`.
+- Document `docs/auditoria/correcciones/06-seleccion-de-modelos.md` with "Text for the thesis" and the presentation rule: XGBoost and MLP always; the SVM as a third candidate with its result.
 
-### 3.4 Ejecución
-- Script resumible `scripts/ejecutar_parte2_v4_21.py`: etapas por familia (estudio → mejores parámetros → evaluación LeaveOneShapeOut → OOF y métricas), cada etapa se persiste al terminar y se salta si ya existe. Orden: svm, xgboost, mlp (el MLP es el cuello de botella). No escribe en `outputs/models`, `outputs/bench/reports`, `outputs/bench/prepared*`, la base SQLite ni `data/`.
-- Sin migraciones ni re-simulación. No se promueve ningún modelo.
+### 3.4 Execution
+- Resumable script `scripts/ejecutar_parte2_v4_21.py`: stages per family (study → best parameters → LeaveOneShapeOut evaluation → OOF and metrics); each stage is persisted when it finishes and is skipped if it already exists. Order: svm, xgboost, mlp (the MLP is the bottleneck). It does not write to `outputs/models`, `outputs/bench/reports`, `outputs/bench/prepared*`, the SQLite database or `data/`.
+- No migrations or re-simulation. No model is promoted.
 
-## 4. Fuera de alcance
-Re-simulación/regeneración del dataset (ruta B); afinación anidada; ampliar el espacio de búsqueda; GroupKFold5/LOSO para los modelos afinados; promoción de un modelo a `outputs/models`; temporal LSTM/CNN.
+## 4. Out of scope
+Re-simulation/regeneration of the dataset (path B); nested tuning; extending the search space; GroupKFold5/LOSO for the tuned models; promotion of a model to `outputs/models`; temporal LSTM/CNN.
 
-## 5. Plan de ejecución (compacto, por tarea)
-1. **SVM aproximado** (código, TDD): `svm_family.py` con el clasificador hinge + Platt; pruebas de contrato (predict_proba en [0,1], `class_weight`, determinismo, parámetros desconocidos fallan, descriptor); espacio de Optuna sin cambios.
-2. **Medición de costos** (spike, solo lectura): tiempo de un ajuste y de un trial por familia en esta máquina sobre `prepared_v4_21`; propuesta de N y de `epochs/batch_size` del MLP.
-3. **Script resumible** (código, TDD en lo puro): etapas, persistencia, procedencia, tablas.
-4. **Corrida real** (en segundo plano), vigilada por etapas.
-5. **Documento 06** y **presentación** (actualización con lo ya existente y luego con resultados).
+## 5. Execution plan (compact, per task)
+1. **Approximate SVM** (code, TDD): `svm_family.py` with the hinge + Platt classifier; contract tests (predict_proba in [0,1], `class_weight`, determinism, unknown parameters fail, descriptor); Optuna space unchanged.
+2. **Cost measurement** (spike, read-only): time of one fit and of one trial per family on this machine over `prepared_v4_21`; proposal for N and for the MLP `epochs/batch_size`.
+3. **Resumable script** (code, TDD on the pure parts): stages, persistence, provenance, tables.
+4. **Real run** (in the background), monitored by stages.
+5. **Document 06** and **presentation** (update with what already exists and then with results).

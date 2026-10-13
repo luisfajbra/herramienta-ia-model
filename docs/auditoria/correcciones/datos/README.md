@@ -1,66 +1,66 @@
-# Datos de evaluación de las correcciones de la auditoría (M-01, M-02, M-03)
+# Evaluation data for the audit corrections (M-01, M-02, M-03)
 
-Estas tablas son la fuente de las cifras que cita el informe de la tesis sobre
-la evaluación de XGBoost y de las referencias sin aprendizaje. Todo número
-citado debe salir de aquí y poder rastrearse con `tables_provenance.json`.
+These tables are the source of the figures quoted by the thesis report on
+the evaluation of XGBoost and of the no-learning references. Every quoted
+number must come from here and be traceable with `tables_provenance.json`.
 
-## Qué se evaluó
+## What was evaluated
 
-- **Modelo:** XGBoost con los hiperparámetros **por defecto de `config.yaml`**
-  (`bench.families.xgboost`: 200 árboles, profundidad 6, tasa 0,05,
-  submuestreo 0,8, igual en el clasificador y en el regresor). **No** es el
-  modelo ajustado con Optuna: estas tablas miden protocolos y métricas.
-- **Referencias sin aprendizaje:** `baseline_interpolacion_factor`
-  (interpola el volumen de la misma forma y nodo entre factores vecinos) y
-  `baseline_forma_mas_cercana` (copia el volumen del mismo nodo y factor en la
-  forma de entrenamiento más parecida por duración y tiempo al pico).
-- **Datos:** contrato `tabular_v4_21` (21 features), PreparedDataset
-  `ca706e27654e0cf5`. Son 154 080 filas: 963 de los 1000 runs (40 formas × 25
-  factores) × 160 nodos. El filtro de continuidad (|error| ≤ 5 %) deja fuera
-  37 celdas (forma, factor). Una fila está inundada si su volumen es ≥ 1 m³.
+- **Model:** XGBoost with the **default hyperparameters of `config.yaml`**
+  (`bench.families.xgboost`: 200 trees, depth 6, learning rate 0.05,
+  subsampling 0.8, the same in the classifier and in the regressor). It is **not**
+  the model tuned with Optuna: these tables measure protocols and metrics.
+- **No-learning references:** `baseline_interpolacion_factor`
+  (interpolates the volume of the same shape and node between neighbouring factors) and
+  `baseline_forma_mas_cercana` (copies the volume of the same node and factor from the
+  training shape most similar in duration and time to peak).
+- **Data:** `tabular_v4_21` contract (21 features), PreparedDataset
+  `ca706e27654e0cf5`. There are 154,080 rows: 963 of the 1000 runs (40 shapes × 25
+  factors) × 160 nodes. The continuity filter (|error| ≤ 5 %) leaves out
+  37 (shape, factor) cells. A row is flooded if its volume is ≥ 1 m³.
 
-  > **Nota de corrección (2026-10-11, spike D-04):** el volumen es el del `.rpt`, con resolución de 1 m³. En la muestra re-simulada (una red, 17 escenarios simulados, 15 con desborde; la cota del umbral se calculó en los 15 con registro por nodo, 13 con desborde), "≥ 1 m³" es consistente con un umbral efectivo de ≈ 0,5 m³ de volumen continuo, acotado a (0,4988; 0,5002] m³. Ver `../03-resolucion-de-la-etiqueta.md`.
+  > **Correction note (2026-10-11, spike D-04):** the volume is that of the `.rpt`, with a resolution of 1 m³. In the re-simulated sample (one network, 17 simulated scenarios, 15 with overflow; the threshold bound was computed on the 15 with per-node records, 13 with overflow), "≥ 1 m³" is consistent with an effective threshold of ≈ 0.5 m³ of continuous volume, bounded to (0.4988, 0.5002] m³. See `../03-resolucion-de-la-etiqueta.md`.
 
-- **Protocolos:**
-  - `LOSO` y `GroupKFold5` agrupan por factor de intensidad, así que miden
-    **interpolación entre factores**: todas las formas siguen en el
-    entrenamiento. Con esta malla, `GroupKFold5` nunca retiene dos factores
-    contiguos, y la referencia de interpolación da exactamente las mismas
-    predicciones que en `LOSO`.
-  - `LeaveOneShapeOut` retiene una forma de hidrograma completa: mide la
-    generalización a **formas no vistas**. Es el protocolo principal.
+- **Protocols:**
+  - `LOSO` and `GroupKFold5` group by intensity factor, so they measure
+    **interpolation between factors**: all shapes remain in the
+    training set. With this grid, `GroupKFold5` never holds out two contiguous
+    factors, and the interpolation reference gives exactly the same
+    predictions as in `LOSO`.
+  - `LeaveOneShapeOut` holds out one complete hydrograph shape: it measures
+    generalization to **unseen shapes**. It is the main protocol.
 
-## Archivos
+## Files
 
-Las métricas "agregadas" se calculan sobre todas las filas de test del
-protocolo; "media por fold" es el promedio de los folds.
+The "pooled" metrics are computed over all the test rows of the
+protocol; "per-fold mean" is the average of the folds.
 
-- `comparacion_protocolos.csv`: una fila por (modelo, protocolo). Columnas:
-  - `modelo`, `protocolo`, `que_mide`;
-  - `f1_agregado`, `recall_agregado`, `precision_agregada`;
-  - `f1_media_por_fold_con_ceros`: la definición anterior, que cuenta como 0 los folds sin positivos;
-  - `folds_f1_indefinido`;
-  - `rmse_vol_agregado_m3`, `rmse_vol_media_por_fold_m3`: volumen enrutado por el clasificador, en todos los nodos;
-  - `error_vol_total_pct`;
-  - `nse_regresor_oracle`: el regresor evaluado solo en los nodos realmente inundados.
-- `matriz_confusion.csv`: columnas `modelo`, `protocolo`, `tn`, `fp`, `fn`, `tp`. En cada fila, tn + fp + fn + tp = 154 080.
-- `banda_limitrofe.csv`: columnas `modelo`, `protocolo`, `fn_total`, `fn_en_banda_1_2m3` (volumen real en [1, 2) m³), `fn_fuera_de_banda` y `fn_con_vol_ge_100m3` (volumen real ≥ 100 m³). Clasifica los falsos negativos por volumen real.
-- `por_forma.csv`: una fila por (modelo, protocolo, forma). Columnas: `modelo`, `protocolo`, `forma`, `n_rows`, `n_positives`, `f1`, `rmse_vol`, `vol_real_m3`, `vol_pred_m3` y `error_vol_pct`.
-- `tables_provenance.json`: la procedencia de los cuatro CSV. Registra:
-  - el comando exacto, el commit de git y si el árbol versionado estaba sucio;
-  - el SHA-256 de cada OOF leído y de cada CSV escrito;
-  - n_rows, n_runs, la malla completa y las celdas faltantes.
-- `runs/metrics_<modelo>.json`: las métricas completas que devuelve
-  `score_predictions` para cada modelo o referencia. Incluyen `classifier`,
+- `comparacion_protocolos.csv`: one row per (model, protocol). Columns:
+  - `modelo` (model), `protocolo` (protocol), `que_mide` (what it measures);
+  - `f1_agregado` (pooled F1), `recall_agregado` (pooled recall), `precision_agregada` (pooled precision);
+  - `f1_media_por_fold_con_ceros` (zero-filled per-fold mean F1): the previous definition, which counts folds without positives as 0;
+  - `folds_f1_indefinido` (folds with undefined F1);
+  - `rmse_vol_agregado_m3` (pooled volume RMSE), `rmse_vol_media_por_fold_m3` (per-fold-mean volume RMSE): volume routed by the classifier, over all nodes;
+  - `error_vol_total_pct` (total volume error);
+  - `nse_regresor_oracle` (oracle regressor NSE): the regressor evaluated only on the nodes that actually flooded.
+- `matriz_confusion.csv`: columns `modelo`, `protocolo`, `tn`, `fp`, `fn`, `tp`. In each row, tn + fp + fn + tp = 154,080.
+- `banda_limitrofe.csv`: columns `modelo`, `protocolo`, `fn_total`, `fn_en_banda_1_2m3` (true volume in [1, 2) m³), `fn_fuera_de_banda` (outside the band) and `fn_con_vol_ge_100m3` (true volume ≥ 100 m³). It classifies the false negatives by true volume.
+- `por_forma.csv`: one row per (model, protocol, shape). Columns: `modelo`, `protocolo`, `forma` (shape), `n_rows`, `n_positives`, `f1`, `rmse_vol`, `vol_real_m3` (true volume), `vol_pred_m3` (predicted volume) and `error_vol_pct` (volume error).
+- `tables_provenance.json`: the provenance of the four CSVs. It records:
+  - the exact command, the git commit and whether the versioned tree was dirty;
+  - the SHA-256 of each OOF read and of each CSV written;
+  - n_rows, n_runs, the complete grid and the missing cells.
+- `runs/metrics_<modelo>.json`: the full metrics returned by
+  `score_predictions` for each model or reference. They include `classifier`,
   `confusion_matrix`, `classifier_per_fold`,
   `classifier_legacy_mean_zero_fill`, `regressor_oracle`, `end_to_end`,
-  `end_to_end_pooled`, `by_factor` y `by_shape`, separadas por protocolo.
-- `runs/provenance.json`: la procedencia de la corrida. Registra:
-  - prep_id, contrato, features, filas, umbral y filtro de continuidad;
-  - los hiperparámetros, el commit, las versiones y los segundos de cada etapa;
-  - las filas de respaldo de cada referencia (`baseline_fallback`).
+  `end_to_end_pooled`, `by_factor` and `by_shape`, separated by protocol.
+- `runs/provenance.json`: the provenance of the run. It records:
+  - prep_id, contract, features, rows, threshold and continuity filter;
+  - the hyperparameters, the commit, the versions and the seconds of each stage;
+  - the fallback rows of each reference (`baseline_fallback`).
 
-## Cómo reproducir
+## How to reproduce
 
 ```
 # 1. Corrida completa (prepara el dataset, evalúa XGBoost y las referencias,
@@ -71,17 +71,17 @@ venv/Scripts/python.exe scripts/ejecutar_evaluacion_v4_21.py
 venv/Scripts/python.exe scripts/informe_evaluacion.py --prep-id ca706e27654e0cf5 --prepared-dir outputs/bench/prepared_v4_21 --oof-root outputs/bench/oof --out docs/auditoria/correcciones/datos --flood-threshold 1.0
 ```
 
-## Nota de trazabilidad
+## Traceability note
 
-Los archivos de `runs/` (métricas y `provenance.json`) salieron de
-`scripts/ejecutar_evaluacion_v4_21.py` en el commit `4a2a87c`. Esa corrida
-también escribió los CSV. Después, los cuatro CSV se regeneraron con
-`scripts/informe_evaluacion.py` a partir de los mismos OOF, sin reentrenar, en
-el commit que registra `tables_provenance.json`. Esa versión ordena las filas
-por (modelo, protocolo, forma) y escribe con fin de línea LF. Los valores son
-idénticos a los de la corrida original: se comprobó con pandas, comparando
-valor a valor.
+The files in `runs/` (metrics and `provenance.json`) came from
+`scripts/ejecutar_evaluacion_v4_21.py` at commit `4a2a87c`. That run
+also wrote the CSVs. Afterwards, the four CSVs were regenerated with
+`scripts/informe_evaluacion.py` from the same OOFs, without retraining, at
+the commit that records `tables_provenance.json`. That version sorts the rows
+by (model, protocol, shape) and writes with LF line endings. The values are
+identical to those of the original run: this was checked with pandas, comparing
+value by value.
 
-La corrida del paso 1 también escribe los CSV, pero no
-`tables_provenance.json`. Por eso, si se repite, hay que ejecutar después el
-paso 2 para que las tablas y su procedencia vuelvan a coincidir.
+The run of step 1 also writes the CSVs, but not
+`tables_provenance.json`. Therefore, if it is repeated, step 2 must be run
+afterwards so that the tables and their provenance match again.

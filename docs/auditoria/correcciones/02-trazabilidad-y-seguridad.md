@@ -1,187 +1,187 @@
-# Corrección 02 — Trazabilidad de figuras y modelos, y seguridad de scripts (V-01, V-07, M-07/V-04)
+# Correction 02 — Traceability of figures and models, and script safety (V-01, V-07, M-07/V-04)
 
-- **Fecha:** 2026-10-11
-- **Rama:** `worktree-optuna-tuning-familia-ganadora`. Commits `93e34b4`, `57dc170`, `8f17147`, `0c8a3f4` y `398d6bc`.
-- **Origen de los hallazgos:** [`../2026-10-10-auditoria-completa.md`](../2026-10-10-auditoria-completa.md), [`../anexos/05-analisis-visualizacion-soporte.md`](../anexos/05-analisis-visualizacion-soporte.md) (V-01, V-04, V-07) y [`../anexos/02-ml-protocolo-evaluacion.md`](../anexos/02-ml-protocolo-evaluacion.md) (M-07, M-13).
-- **Alcance:** estos cambios no modifican ningún modelo, dato ni métrica. Hacen visible si una figura es de ajuste en muestra, con qué modelo se generó, y evitan que un script o una prueba alteren archivos de referencia.
+- **Date:** 2026-10-11
+- **Branch:** `worktree-optuna-tuning-familia-ganadora`. Commits `93e34b4`, `57dc170`, `8f17147`, `0c8a3f4` and `398d6bc`.
+- **Origin of the findings:** [`../2026-10-10-auditoria-completa.md`](../2026-10-10-auditoria-completa.md), [`../anexos/05-analisis-visualizacion-soporte.md`](../anexos/05-analisis-visualizacion-soporte.md) (V-01, V-04, V-07) and [`../anexos/02-ml-protocolo-evaluacion.md`](../anexos/02-ml-protocolo-evaluacion.md) (M-07, M-13).
+- **Scope:** these changes do not modify any model, data or metric. They make visible whether a figure is an in-sample fit and which model generated it, and they prevent a script or a test from altering reference files.
 
 ---
 
-## 1. V-01 (y M-13 en parte) — Figuras y salidas en muestra sin rotular
+## 1. V-01 (and M-13 in part) — In-sample figures and outputs without labels
 
-### Problema y evidencia
+### Problem and evidence
 
-Las curvas de resiliencia, de volumen total inundado y la comparación por factor evalúan el modelo sobre los mismos factores y nodos con los que se entrenó: `train_models` ajusta con el dataset completo y `predict_network` se evalúa sobre los 25 factores del dataset (0,2 a 5,0) y los 160 nodos (anexo 05, V-01). Los títulos decían "SWMM (Actual)" y "ML Prediction" sin indicar que es ajuste en muestra. Lo mismo ocurría con la salida de `--evaluate-shapes`, que imprime F1 y NSE sobre formas y factores de entrenamiento (anexo 02, M-13). Un lector puede tomar esas figuras y cifras como validación.
+The resilience curves, the total flooded volume curves and the per-factor comparison evaluate the model on the same factors and nodes it was trained with: `train_models` fits with the complete dataset and `predict_network` is evaluated on the 25 factors of the dataset (0.2 to 5.0) and the 160 nodes (annex 05, V-01). The titles said "SWMM (Actual)" and "ML Prediction" without indicating that it is an in-sample fit. The same happened with the output of `--evaluate-shapes`, which prints F1 and NSE on training shapes and factors (annex 02, M-13). A reader may take those figures and numbers as validation.
 
-### Causa
+### Cause
 
-Las figuras se diseñaron para mostrar el comportamiento del modelo final sobre la malla de simulaciones; no había una distinción explícita entre ajuste y validación en las rutinas de visualización ni en el CLI.
+The figures were designed to show the behaviour of the final model on the simulation grid; there was no explicit distinction between fit and validation in the visualization routines or in the CLI.
 
-### Qué cambió
+### What changed
 
 Commit `93e34b4`:
 
-| Archivo | Cambio |
+| File | Change |
 |---|---|
-| `swmm_resilience/visualization/labels.py` | Constantes `IN_SAMPLE_NOTE` (pie de figura, en inglés: "In-sample: the model was trained on these scenarios; this is not an independent validation.") e `IN_SAMPLE_BANNER` (aviso de consola, en español: "[EN MUESTRA] Estos escenarios (formas y factores) se usaron para entrenar el modelo; las métricas no son una validación independiente."), y las funciones `add_in_sample_note(fig)` y `print_in_sample_banner()` |
-| `swmm_resilience/visualization/resilience_curve.py` | Pie en `resilience_ml.png` (la figura solo-SWMM no cambia) |
-| `swmm_resilience/visualization/flood_volume_curve.py` | Pie en `flood_volume_ml.png` y `flood_volume_combined.png` |
-| `swmm_resilience/visualization/model_comparison.py` | Pie en las figuras de comparación por factor (`volume_by_node_factor_*`, `parity_factor_*`) |
-| `main.py` | `--evaluate-shapes` imprime el aviso antes de sus métricas |
+| `swmm_resilience/visualization/labels.py` | Constants `IN_SAMPLE_NOTE` (figure footnote, in English: "In-sample: the model was trained on these scenarios; this is not an independent validation.") and `IN_SAMPLE_BANNER` (console warning, in Spanish: "[EN MUESTRA] Estos escenarios (formas y factores) se usaron para entrenar el modelo; las métricas no son una validación independiente." — i.e. "[IN SAMPLE] These scenarios (shapes and factors) were used to train the model; the metrics are not an independent validation."), and the functions `add_in_sample_note(fig)` and `print_in_sample_banner()` |
+| `swmm_resilience/visualization/resilience_curve.py` | Footnote in `resilience_ml.png` (the SWMM-only figure does not change) |
+| `swmm_resilience/visualization/flood_volume_curve.py` | Footnote in `flood_volume_ml.png` and `flood_volume_combined.png` |
+| `swmm_resilience/visualization/model_comparison.py` | Footnote in the per-factor comparison figures (`volume_by_node_factor_*`, `parity_factor_*`) |
+| `main.py` | `--evaluate-shapes` prints the warning before its metrics |
 
-### Verificación
+### Verification
 
-| Comprobación | Antes | Después | Fuente |
+| Check | Before | After | Source |
 |---|---|---|---|
-| Familias de figuras ML con aviso "en muestra" | 0 | 5 (`resilience_ml`, `flood_volume_ml`, `flood_volume_combined`, `volume_by_node_factor_*`, `parity_factor_*`) | Commit `93e34b4`; `tests/visualization/test_in_sample_note.py` |
-| Aviso en la salida de `--evaluate-shapes` | No | Sí | `test_the_evaluate_shapes_branch_prints_the_in_sample_banner` |
-| Pruebas nuevas | — | 6, todas en verde | `tests/visualization/test_in_sample_note.py` (`test_add_in_sample_note_writes_the_note_into_the_figure`, `test_resilience_ml_figure_carries_the_in_sample_note`, `test_flood_volume_figures_carry_the_in_sample_note`, `test_factor_comparison_figures_carry_the_in_sample_note`, `test_print_in_sample_banner_emits_the_banner`, `test_the_evaluate_shapes_branch_prints_the_in_sample_banner`) |
+| ML figure families with an "in-sample" warning | 0 | 5 (`resilience_ml`, `flood_volume_ml`, `flood_volume_combined`, `volume_by_node_factor_*`, `parity_factor_*`) | Commit `93e34b4`; `tests/visualization/test_in_sample_note.py` |
+| Warning in the output of `--evaluate-shapes` | No | Yes | `test_the_evaluate_shapes_branch_prints_the_in_sample_banner` |
+| New tests | — | 6, all green | `tests/visualization/test_in_sample_note.py` (`test_add_in_sample_note_writes_the_note_into_the_figure`, `test_resilience_ml_figure_carries_the_in_sample_note`, `test_flood_volume_figures_carry_the_in_sample_note`, `test_factor_comparison_figures_carry_the_in_sample_note`, `test_print_in_sample_banner_emits_the_banner`, `test_the_evaluate_shapes_branch_prints_the_in_sample_banner`) |
 
-Según el registro de la revisión de la tarea, el revisor inspeccionó las figuras renderizadas.
+According to the task review log, the reviewer inspected the rendered figures.
 
-### Límites que quedan
+### Remaining limits
 
-- **Las figuras ya existentes en `outputs/metrics/` no se regeneraron.** No llevan el aviso. Solo lo llevan las que se generen de ahora en adelante.
-- **Se añadió un pie de figura, no se cambiaron títulos ni leyendas.** La spec (§2.6) pedía añadir "(en muestra)" también al título; la implementación se limitó al pie.
-- **El pie está en inglés**, como el resto del texto de las figuras. Si una figura entra en la tesis, el carácter "en muestra" debe decirse también en la leyenda en español.
-- **M-13 queda parcialmente abierto.** `--evaluate-generalization` (interpolación entre factores vistos) y `--evaluate-validation-shapes` (que protege la condición fuera de muestra solo por el nombre de la forma) no se rotularon.
-- **No se generaron versiones fuera de muestra de las curvas** a partir de las predicciones fuera de pliegue (mejora opcional, spec §7).
-- Pruebas: la de la figura comprueba el texto de la nota, no su posición en la imagen; con más de 30 nodos la nota queda cerca del rótulo del eje (minucias diferidas, ver `04`).
+- **The figures already existing in `outputs/metrics/` were not regenerated.** They do not carry the warning. Only those generated from now on carry it.
+- **A figure footnote was added; titles and legends were not changed.** The spec (§2.6) asked to add "(in sample)" to the title as well; the implementation was limited to the footnote.
+- **The footnote is in English**, like the rest of the text of the figures. If a figure goes into the thesis, the "in-sample" character must also be stated in the Spanish-language caption.
+- **M-13 remains partially open.** `--evaluate-generalization` (interpolation between seen factors) and `--evaluate-validation-shapes` (which protects the out-of-sample condition only by the name of the shape) were not labelled.
+- **No out-of-sample versions of the curves were generated** from the out-of-fold predictions (optional improvement, spec §7).
+- Tests: the figure test checks the text of the note, not its position in the image; with more than 30 nodes the note sits close to the axis label (deferred nitpicks, see `04`).
 
-### Texto para la tesis
+### Text for the thesis
 
-> Las curvas de resiliencia, de volumen total inundado y las comparaciones por factor que se presentan para el modelo final se calcularon sobre las mismas combinaciones de forma, factor y nodo con las que se entrenó el modelo. Describen, por tanto, el ajuste del modelo a los datos de entrenamiento y no su capacidad predictiva; así se indica en cada figura. La evaluación fuera de muestra es la de la validación cruzada por forma retenida y la de los hidrogramas de validación no usados en el entrenamiento.
+> The resilience curves, the total flooded volume curves and the per-factor comparisons presented for the final model were computed on the same combinations of shape, factor and node with which the model was trained. They therefore describe the fit of the model to the training data and not its predictive capacity; this is indicated in each figure. The out-of-sample evaluation is that of the held-out-shape cross-validation and that of the validation hydrographs not used in training.
 
 ---
 
-## 2. V-07 — `halve_timeseries.py` sobrescribía la red base al importarse
+## 2. V-07 — `halve_timeseries.py` overwrote the base network when imported
 
-### Problema y evidencia
+### Problem and evidence
 
-`halve_timeseries.py` era un script versionado sin guarda `if __name__ == "__main__"` y con rutas relativas fijas: al importarlo o ejecutarlo leía la red Qx2 y **sobrescribía** el `.inp` base `chico_hydro-qx1/...Qx1.00.inp` (el que usa `config.yaml`), dividiendo la serie por 2 (anexo 05, V-07; confirmado por lectura en la auditoría §3.1). Eso cambiaría el hash MD5 de la red, y `predict_network` rechazaría los modelos (`training_inp_hash.txt`). La auditoría comprobó además que el `.inp` Qx1 actual es consistente con Qx2/2 (`max|Qx1·2 − Qx2| = 0,001`), es decir, el script o un equivalente ya se aplicó en algún momento.
+`halve_timeseries.py` was a versioned script without an `if __name__ == "__main__"` guard and with fixed relative paths: when imported or executed it read the Qx2 network and **overwrote** the base `.inp` `chico_hydro-qx1/...Qx1.00.inp` (the one used by `config.yaml`), dividing the series by 2 (annex 05, V-07; confirmed by reading in audit §3.1). That would change the MD5 hash of the network, and `predict_network` would reject the models (`training_inp_hash.txt`). The audit also verified that the current Qx1 `.inp` is consistent with Qx2/2 (`max|Qx1·2 − Qx2| = 0.001`), that is, the script or an equivalent had already been applied at some point.
 
-### Causa
+### Cause
 
-Código ejecutable a nivel de módulo, sin argumentos ni protección contra sobrescritura.
+Executable code at module level, without arguments or protection against overwriting.
 
-### Qué cambió
+### What changed
 
-Commit `57dc170`, archivos `halve_timeseries.py` y `tests/scripts/test_halve_timeseries.py`:
+Commit `57dc170`, files `halve_timeseries.py` and `tests/scripts/test_halve_timeseries.py`:
 
-- Función `halve_timeseries(src, dst, force=False)` que divide por 2 solo la sección `[TIMESERIES]`.
-- `main()` con argumentos explícitos `--src`, `--dst` y `--force`, bajo `if __name__ == "__main__"`. Importar el módulo no tiene efectos.
-- Se niega a sobrescribir un destino existente sin `force` y a usar el origen como destino.
-- El archivo no se borró.
+- Function `halve_timeseries(src, dst, force=False)` that divides by 2 only the `[TIMESERIES]` section.
+- `main()` with explicit arguments `--src`, `--dst` and `--force`, under `if __name__ == "__main__"`. Importing the module has no side effects.
+- It refuses to overwrite an existing destination without `force` and to use the source as the destination.
+- The file was not deleted.
 
-### Verificación
+### Verification
 
-| Comprobación | Antes | Después | Fuente |
+| Check | Before | After | Source |
 |---|---|---|---|
-| Importar el módulo escribe en `data/` | Sí (auditoría §3.1) | No | `test_importing_the_module_has_no_side_effects` |
-| Sobrescribe un destino existente sin `--force` | Sí (siempre escribía) | No | `test_refuses_to_overwrite_an_existing_destination_without_force` |
-| Acepta el origen como destino | — | No | `test_refuses_to_use_the_source_as_destination` |
-| Solo cambia `[TIMESERIES]` | — | Sí | `test_halves_only_the_timeseries_section` |
-| `git status --short data/` antes y después de las pruebas | — | Vacío en ambos casos | Informe de la tarea 6 (notas de trabajo no versionadas) |
+| Importing the module writes to `data/` | Yes (audit §3.1) | No | `test_importing_the_module_has_no_side_effects` |
+| Overwrites an existing destination without `--force` | Yes (it always wrote) | No | `test_refuses_to_overwrite_an_existing_destination_without_force` |
+| Accepts the source as the destination | — | No | `test_refuses_to_use_the_source_as_destination` |
+| Changes only `[TIMESERIES]` | — | Yes | `test_halves_only_the_timeseries_section` |
+| `git status --short data/` before and after the tests | — | Empty in both cases | Report of task 6 (unversioned working notes) |
 
-### Límites que quedan
+### Remaining limits
 
-- La procedencia de las redes Qx1, Qx2 y Qx3 (Qx1 como derivado redondeado de Qx2) sigue sin documentarse (recomendación del anexo 05).
-- Minucias diferidas: aserciones laxas (`in`) en la prueba de división, `main()` sin prueba de CLI, ventana de carrera entre comprobar y escribir el destino, y ningún aviso si la sección no tiene filas (ver `04`).
-- El hallazgo emparejado en el plan de la auditoría, T-04 (`python -m swmm_resilience.ml.train --help` entrena), no se trató en esta serie.
+- The provenance of the Qx1, Qx2 and Qx3 networks (Qx1 as a rounded derivative of Qx2) remains undocumented (recommendation of annex 05).
+- Deferred nitpicks: loose assertions (`in`) in the halving test, `main()` without a CLI test, a race window between checking and writing the destination, and no warning if the section has no rows (see `04`).
+- The paired finding in the audit plan, T-04 (`python -m swmm_resilience.ml.train --help` trains), was not addressed in this series.
 
-### Texto para la tesis
+### Text for the thesis
 
-No requiere texto en la tesis: es un riesgo de integridad del repositorio, no de los resultados. Si se quiere mencionar en la sección de reproducibilidad: *"Los scripts auxiliares que derivan redes de otras redes se ejecutan solo de forma explícita y no sobrescriben archivos existentes, de modo que la red base usada para generar los datos no puede alterarse por accidente."*
+No text is required in the thesis: it is a repository integrity risk, not a risk to the results. If it is to be mentioned in the reproducibility section: *"The auxiliary scripts that derive networks from other networks are executed only explicitly and do not overwrite existing files, so that the base network used to generate the data cannot be altered by accident."*
 
 ---
 
-## 3. M-07 / V-04 — Modelo en disco distinto del promovido; figuras sin procedencia
+## 3. M-07 / V-04 — Model on disk different from the promoted one; figures without provenance
 
-### Problema y evidencia
+### Problem and evidence
 
-En el checkout auditado (rama `fix/cierre-auditoria-hidrogramas-20260927`, commit `6e8579b`), `outputs/models/classifier.joblib` tenía SHA-256 `660be918…` mientras `promotion.json` declaraba `e2e7925e…`; el regresor, `6b61f627…` frente a `40e67e22…` (auditoría §3.1; anexo 05, V-04). El modelo en disco lo había reentrenado el pipeline por defecto (`train_models`) el 3 de octubre, con 40 formas, mientras la promoción registraba un candidato del banco de 19 formas (anexo 02, M-07). Las figuras de `outputs/metrics/` eran del 6 al 15 de septiembre, anteriores al modelo cargado. No se podía afirmar qué modelo había generado cada figura ni si `promotion.json` decía la verdad.
+In the audited checkout (branch `fix/cierre-auditoria-hidrogramas-20260927`, commit `6e8579b`), `outputs/models/classifier.joblib` had SHA-256 `660be918…` while `promotion.json` declared `e2e7925e…`; the regressor, `6b61f627…` versus `40e67e22…` (audit §3.1; annex 05, V-04). The model on disk had been retrained by the default pipeline (`train_models`) on 3 October, with 40 shapes, while the promotion recorded a benchmark candidate with 19 shapes (annex 02, M-07). The figures in `outputs/metrics/` dated from 6 to 15 September, prior to the loaded model. It could not be stated which model had generated each figure nor whether `promotion.json` told the truth.
 
-**En el worktree donde se hicieron estas correcciones el estado de partida era distinto:** los modelos de `outputs/models` están versionados y sus SHA-256 ya coincidían con `promotion.json` (spec §1). El propio `promotion.json`, en cambio, estaba ignorado por `.gitignore` (`outputs/models/*`) y no se versionaba; desde el commit `25eb169` está versionado con `git add -f`, y `.gitignore` tiene la excepción explícita `!outputs/models/promotion.json` (commit `e90448d`), de modo que futuras promociones no se ignoran en silencio. `verify_promotion` detiene la predicción (`ModelProvenanceError`) solo cuando `promotion.json` EXISTE y no coincide con los modelos; si falta, advierte y continúa, y las figuras quedan con familia "desconocida". Para este documento se repitió la comprobación con `verify_promotion("outputs/models")`, que devuelve `{'status': 'verified', 'ok': True, 'discrepancies': []}`; el `promotion.json` del worktree declara `family: xgboost`, `classifier_sha256` `a7bb8f8f…`, `source` `scripts/comparar_contratos_xgboost.py` y fecha 2026-10-06. Es decir, la discrepancia de la auditoría era del checkout atrasado, no del worktree. Lo que faltaba en ambos era una **verificación automática** al cargar el modelo y la **procedencia** en las figuras.
+**In the worktree where these corrections were made the starting state was different:** the models in `outputs/models` are versioned and their SHA-256 values already matched `promotion.json` (spec §1). `promotion.json` itself, however, was ignored by `.gitignore` (`outputs/models/*`) and was not versioned; since commit `25eb169` it is versioned with `git add -f`, and `.gitignore` has the explicit exception `!outputs/models/promotion.json` (commit `e90448d`), so that future promotions are not silently ignored. `verify_promotion` stops the prediction (`ModelProvenanceError`) only when `promotion.json` EXISTS and does not match the models; if it is missing, it warns and continues, and the figures are left with family "desconocida" (unknown). For this document the check was repeated with `verify_promotion("outputs/models")`, which returns `{'status': 'verified', 'ok': True, 'discrepancies': []}`; the `promotion.json` of the worktree declares `family: xgboost`, `classifier_sha256` `a7bb8f8f…`, `source` `scripts/comparar_contratos_xgboost.py` and date 2026-10-06. That is, the discrepancy in the audit was due to the outdated checkout, not to the worktree. What was missing in both was an **automatic verification** when loading the model and **provenance** in the figures.
 
-### Causa
+### Cause
 
-`predict_network` cargaba `classifier.joblib` y `regressor.joblib` sin comparar sus SHA-256 con `promotion.json`, y el pipeline por defecto podía reescribir `outputs/models` sin tocar `promotion.json` (anexo 02, M-07: `main.py:1082`, `ml/trainer.py:78-80` en el checkout auditado). En el worktree, `train_models` ya se negaba a sobrescribir un modelo con otro número de features y escribía su propio `promotion.json` (cambios anteriores a esta serie, no revisados aquí).
+`predict_network` loaded `classifier.joblib` and `regressor.joblib` without comparing their SHA-256 values with `promotion.json`, and the default pipeline could rewrite `outputs/models` without touching `promotion.json` (annex 02, M-07: `main.py:1082`, `ml/trainer.py:78-80` in the audited checkout). In the worktree, `train_models` already refused to overwrite a model with another number of features and wrote its own `promotion.json` (changes prior to this series, not reviewed here).
 
-### Qué cambió
+### What changed
 
-| Commit | Archivo | Cambio |
+| Commit | File | Change |
 |---|---|---|
-| `8f17147` | `swmm_resilience/ml/bench/promote.py` | `verify_promotion(models_dir)` compara el SHA-256 de `classifier.joblib` y `regressor.joblib` con `promotion.json` y devuelve un resultado estructurado; `assert_promotion_consistent` lanza `ModelProvenanceError` con ambos SHA si no coinciden, y advierte y continúa si no existe `promotion.json` (modelos legado); `model_provenance` resume el modelo activo |
-| `8f17147` | `swmm_resilience/ml/predict.py` | `predict_network` verifica antes de cargar los modelos (importación diferida para no cargar torch) |
-| `8f17147` | `swmm_resilience/visualization/runner.py` | `write_figure_provenance` escribe `provenance.json` junto a las figuras ML de `generate_ml_map` y del lote `run` (en el lote, solo si se generó al menos una figura nueva, para no atribuir figuras viejas al modelo actual) |
-| `0c8a3f4` | `promote.py`, `main.py` | Sin `promotion.json`, la procedencia registra el SHA-256 real de los archivos del modelo (familia "desconocida"); `main.py` estampa `provenance.json` tras `--resilience-curve`, `--flood-volume-curve` y la comparación por factor |
-| `0c8a3f4` | `tests/test_ml_trainer_predict.py`, `tests/test_predict_shape_features.py` | Las pruebas existentes de predicción crean un `promotion.json` coherente con su modelo de prueba (eliminan avisos espurios) |
+| `8f17147` | `swmm_resilience/ml/bench/promote.py` | `verify_promotion(models_dir)` compares the SHA-256 of `classifier.joblib` and `regressor.joblib` with `promotion.json` and returns a structured result; `assert_promotion_consistent` raises `ModelProvenanceError` with both SHA values if they do not match, and warns and continues if `promotion.json` does not exist (legacy models); `model_provenance` summarizes the active model |
+| `8f17147` | `swmm_resilience/ml/predict.py` | `predict_network` verifies before loading the models (deferred import so as not to load torch) |
+| `8f17147` | `swmm_resilience/visualization/runner.py` | `write_figure_provenance` writes `provenance.json` next to the ML figures of `generate_ml_map` and of the `run` batch (in the batch, only if at least one new figure was generated, so as not to attribute old figures to the current model) |
+| `0c8a3f4` | `promote.py`, `main.py` | Without `promotion.json`, the provenance records the real SHA-256 of the model files (family "desconocida" (unknown)); `main.py` stamps `provenance.json` after `--resilience-curve`, `--flood-volume-curve` and the per-factor comparison |
+| `0c8a3f4` | `tests/test_ml_trainer_predict.py`, `tests/test_predict_shape_features.py` | The existing prediction tests create a `promotion.json` consistent with their test model (removing spurious warnings) |
 
-### Verificación
+### Verification
 
-| Comprobación | Antes | Después | Fuente |
+| Check | Before | After | Source |
 |---|---|---|---|
-| `predict_network` con un modelo que no coincide con `promotion.json` | Carga y predice | Se niega (`ModelProvenanceError` con ambos SHA) | `test_predict_network_refuses_models_that_do_not_match_promotion_json`, `test_assert_raises_on_mismatch_naming_the_hashes` |
-| Sin `promotion.json` | Carga sin aviso | Advierte y continúa | `test_predict_network_warns_and_proceeds_without_promotion_json` |
-| Figuras de curvas y comparación con `provenance.json` | No | Sí | `test_figure_provenance_records_the_active_model`, `test_figure_provenance_without_a_record_stamps_the_artifact_hashes`, pruebas de `tests/test_cli_sql_reads.py` |
-| Importar `ml/predict.py` carga torch | No | No (se mantiene) | `test_importing_predict_does_not_load_torch` |
-| Estado de `outputs/models` en el worktree | SHA coincidentes (spec §1) | `verified`, 0 discrepancias | `verify_promotion("outputs/models")`, ejecutado 2026-10-11 |
-| Pruebas nuevas | — | 15 en `tests/ml/bench/test_verify_promotion.py` y 2 en `tests/visualization/test_figure_provenance.py` | Archivos citados |
+| `predict_network` with a model that does not match `promotion.json` | Loads and predicts | Refuses (`ModelProvenanceError` with both SHA values) | `test_predict_network_refuses_models_that_do_not_match_promotion_json`, `test_assert_raises_on_mismatch_naming_the_hashes` |
+| Without `promotion.json` | Loads without warning | Warns and continues | `test_predict_network_warns_and_proceeds_without_promotion_json` |
+| Curve and comparison figures with `provenance.json` | No | Yes | `test_figure_provenance_records_the_active_model`, `test_figure_provenance_without_a_record_stamps_the_artifact_hashes`, tests in `tests/test_cli_sql_reads.py` |
+| Importing `ml/predict.py` loads torch | No | No (kept) | `test_importing_predict_does_not_load_torch` |
+| State of `outputs/models` in the worktree | Matching SHA values (spec §1) | `verified`, 0 discrepancies | `verify_promotion("outputs/models")`, run 2026-10-11 |
+| New tests | — | 15 in `tests/ml/bench/test_verify_promotion.py` and 2 in `tests/visualization/test_figure_provenance.py` | Cited files |
 
-Durante todas las corridas de esta serie, el SHA-256 de `outputs/models/*`, de `outputs/training_v17.sqlite3` y de `outputs/bench/reports/*` no cambió (informe de la tarea 8, `sha256sum -c` antes y después; notas de trabajo no versionadas).
+During all the runs of this series, the SHA-256 of `outputs/models/*`, of `outputs/training_v17.sqlite3` and of `outputs/bench/reports/*` did not change (report of task 8, `sha256sum -c` before and after; unversioned working notes).
 
-### Límites que quedan
+### Remaining limits
 
-- **Otros cargadores de modelos no pasan por `verify_promotion`.** Siguen cargando sin verificar (registro de decisiones R8; números de línea al momento de la revisión de la tarea 7):
-  - `ScenarioPredictor` en `main.py` (líneas 614, 702 y 831 en ese momento);
-  - el análisis SHAP (`main.py`, línea 522: `joblib.load` directo);
-  - `predict_from_inp` a través de `ml/train.py` (`load_saved_model_artifact`), que usa también el mapa ML de la aplicación de escritorio (`generate_ml_map`).
-  El mapa de escritorio sí recibe `provenance.json`, pero el modelo que dibuja no se verifica contra `promotion.json`.
-- **Un `promotion.json` o `manifest.json` malformado** produce un `JSONDecodeError` sin mensaje de dominio.
-- **Granularidad gruesa:** `provenance.json` describe el modelo activo en el momento de escribir, por carpeta, no por figura.
-- **Las figuras existentes no se regeneraron** con el modelo declarado (recomendación de la auditoría, P0 punto 4): siguen sin procedencia. El modelo final de la tesis aún no está fijado (Parte 2).
-- **Sin `promotion.json`, la procedencia identifica archivos, no candidatos:** el SHA-256 de los artefactos no dice con qué `prep_id` ni con qué candidato del banco se entrenaron.
+- **Other model loaders do not go through `verify_promotion`.** They still load without verification (decision log R8; line numbers at the time of the task 7 review):
+  - `ScenarioPredictor` in `main.py` (lines 614, 702 and 831 at that time);
+  - the SHAP analysis (`main.py`, line 522: direct `joblib.load`);
+  - `predict_from_inp` through `ml/train.py` (`load_saved_model_artifact`), which is also used by the ML map of the desktop application (`generate_ml_map`).
+  The desktop map does receive `provenance.json`, but the model it draws is not verified against `promotion.json`.
+- **A malformed `promotion.json` or `manifest.json`** produces a `JSONDecodeError` without a domain message.
+- **Coarse granularity:** `provenance.json` describes the active model at the time of writing, per folder, not per figure.
+- **The existing figures were not regenerated** with the declared model (audit recommendation, P0 item 4): they remain without provenance. The final model of the thesis is not yet fixed (Part 2).
+- **Without `promotion.json`, the provenance identifies files, not candidates:** the SHA-256 of the artefacts does not say with which `prep_id` or with which benchmark candidate they were trained.
 
-### Texto para la tesis
+### Text for the thesis
 
-> Cada figura generada con el modelo de aprendizaje automático se acompaña de un registro de procedencia con la familia del modelo, la huella SHA-256 de los archivos del clasificador y del regresor, el conjunto de datos de entrenamiento y la fecha. Antes de predecir, el sistema comprueba que los archivos del modelo coinciden con el registro de promoción y se detiene si no es así, de modo que no puede atribuirse a un modelo una figura producida con otro.
+> Each figure generated with the machine-learning model is accompanied by a provenance record with the model family, the SHA-256 fingerprint of the classifier and regressor files, the training dataset and the date. Before predicting, the system checks that the model files match the promotion record and stops if they do not, so that a figure produced with one model cannot be attributed to another.
 
-(Si se usa este párrafo, conviene limitarlo a las figuras de la tesis que efectivamente se regeneren con el modelo final, y no aplicarlo a las rutas de predicción por escenario, SHAP o escritorio, que no están verificadas.)
+(If this paragraph is used, it should be limited to the thesis figures that are actually regenerated with the final model, and not applied to the scenario prediction, SHAP or desktop paths, which are not verified.)
 
 ---
 
-## 4. Defecto encontrado durante el trabajo — pruebas que escribían procedencia falsa en `outputs/metrics`
+## 4. Defect found during the work — tests that wrote false provenance to `outputs/metrics`
 
-### Problema y evidencia
+### Problem and evidence
 
-Al añadir la procedencia en `main.py` (commit `0c8a3f4`), tres pruebas existentes que ejecutan `main.main()` empezaron a escribir `provenance.json` en el `outputs/metrics` **real** del repositorio: `tests/test_cli_sql_reads.py::test_resilience_curve_reads_the_frame_from_sql`, `::test_flood_volume_curve_reads_the_frame_from_sql` y `tests/test_factor_comparison_cli.py::test_factor_comparison_cli_generates_plots_in_metrics_directory`. Se detectó durante la corrida de la tarea 8: la suite completa sobrescribió `outputs/metrics/provenance.json` y `outputs/metrics/factor_comparison/provenance.json` (informe de la tarea 8). Esos archivos atribuían las figuras existentes al modelo de prueba: procedencia falsa.
+When provenance was added in `main.py` (commit `0c8a3f4`), three existing tests that run `main.main()` started writing `provenance.json` to the **real** `outputs/metrics` of the repository: `tests/test_cli_sql_reads.py::test_resilience_curve_reads_the_frame_from_sql`, `::test_flood_volume_curve_reads_the_frame_from_sql` and `tests/test_factor_comparison_cli.py::test_factor_comparison_cli_generates_plots_in_metrics_directory`. It was detected during the run of task 8: the full suite overwrote `outputs/metrics/provenance.json` and `outputs/metrics/factor_comparison/provenance.json` (report of task 8). Those files attributed the existing figures to the test model: false provenance.
 
-### Causa
+### Cause
 
-Las pruebas sustituían solo el cálculo y el dibujo, pero dejaban `main.METRICS_DIR` apuntando a la carpeta real, y nada impedía que una prueba escribiera allí.
+The tests replaced only the computation and the drawing, but left `main.METRICS_DIR` pointing to the real folder, and nothing prevented a test from writing there.
 
-### Qué cambió
+### What changed
 
-Commit `398d6bc` (registro de decisiones R10):
+Commit `398d6bc` (decision log R10):
 
-- Las tres pruebas redirigen `main.METRICS_DIR` a una carpeta temporal; sus aserciones no cambian.
-- `tests/conftest.py` añade un guardia automático: antes y después de cada prueba toma (tamaño, fecha de modificación) de cada archivo bajo el `outputs/metrics` real y falla si alguno se creó o cambió.
-- Se borraron los dos `provenance.json` espurios (ignorados por git; no había versión legítima que restaurar).
+- The three tests redirect `main.METRICS_DIR` to a temporary folder; their assertions do not change.
+- `tests/conftest.py` adds an automatic guard: before and after each test it takes (size, modification date) of each file under the real `outputs/metrics` and fails if any was created or changed.
+- The two spurious `provenance.json` files were deleted (ignored by git; there was no legitimate version to restore).
 
-### Verificación
+### Verification
 
-| Comprobación | Resultado | Fuente |
+| Check | Result | Source |
 |---|---|---|
-| Suite con el guardia y sin la corrección | 1145 pasan; 3 errores en el desmontaje, exactamente las tres pruebas culpables | Informe de la tarea 7, segunda ronda (notas de trabajo no versionadas) |
-| Suite con el guardia y la corrección | 1145 pasan, 0 errores; los dos archivos no reaparecen | ídem; registro de decisiones R10 |
-| Suite completa al cierre de la serie | Ver `04` §7 | Comando de `04` §7 |
+| Suite with the guard and without the fix | 1,145 pass; 3 teardown errors, exactly the three guilty tests | Report of task 7, second round (unversioned working notes) |
+| Suite with the guard and the fix | 1,145 pass, 0 errors; the two files do not reappear | same; decision log R10 |
+| Full suite at the close of the series | See `04` §7 | Command of `04` §7 |
 
-### Límites que quedan
+### Remaining limits
 
-- El guardia vigila solo `outputs/metrics`, no `outputs/models` ni `outputs/bench`.
-- El guardia no tiene una prueba propia que demuestre que detecta una escritura.
-- Quedó una carpeta vacía `outputs/metrics/factor_comparison/`.
+- The guard watches only `outputs/metrics`, not `outputs/models` or `outputs/bench`.
+- The guard has no test of its own demonstrating that it detects a write.
+- An empty folder `outputs/metrics/factor_comparison/` was left behind.
 
-### Texto para la tesis
+### Text for the thesis
 
-No requiere texto en la tesis. Es un defecto del entorno de pruebas, corregido antes de generar ninguna cifra o figura de la tesis.
+No text is required in the thesis. It is a defect of the test environment, corrected before any figure or number of the thesis was generated.

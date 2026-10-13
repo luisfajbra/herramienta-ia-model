@@ -1,19 +1,19 @@
-# Bitácora de decisiones y revisiones de las correcciones de la auditoría
+# Decision log and reviews of the audit corrections
 
-Registro del proceso de ejecución del plan `docs/superpowers/plans/2026-10-11-correcciones-auditoria.md`
-(25+ commits sobre la base `9ad4df0`). Cada tarea se implementó con un subagente, se revisó (cumplimiento de
-la spec y calidad), se corrigió y se volvió a revisar; al final hubo una revisión de toda la rama y una pasada
-final de correcciones. Las decisiones tomadas por el controlador en nombre del autor aparecen como `Ruling: R<n>`
-con su motivo y lo que costaría si estuvieran equivocadas. Los hallazgos menores diferidos aparecen como
-`minor (deferred)` o en las líneas de revisión de cada tarea.
+Record of the execution process of the plan `docs/superpowers/plans/2026-10-11-correcciones-auditoria.md`
+(25+ commits on the base `9ad4df0`). Each task was implemented with a subagent, reviewed (spec compliance and
+quality), corrected and reviewed again; at the end there was a review of the whole branch and a final round
+of corrections. The decisions taken by the controller on behalf of the author appear as `Ruling: R<n>`
+with their reason and what they would cost if they were wrong. Deferred minor findings appear as
+`minor (deferred)` or in the review lines of each task.
 
-Cierre (verificado por el controlador): suite completa **1.174 passed, 0 failed** (línea base previa a la serie: 1.049),
-árbol limpio, sin escrituras en `outputs/metrics`, `outputs/models` (solo se versionó `promotion.json`) ni `data/`.
-Menores diferidos al cierre: estampado del runner sin prueba; dos pruebas que prometen más de lo que comprueban;
-docstring de `ensure_allowed_output`; `informe_evaluacion --out` sin guardia; descriptores `inf` sin validar;
-columna `que_mide` de `comparacion_protocolos.csv` con el texto anterior de GroupKFold5 (CSV trazado por hash).
+Closing (verified by the controller): full suite **1,174 passed, 0 failed** (baseline before the series: 1,049),
+clean tree, no writes to `outputs/metrics`, `outputs/models` (only `promotion.json` was versioned) or `data/`.
+Minors deferred at closing: runner stamping without a test; two tests that promise more than they check;
+docstring of `ensure_allowed_output`; `informe_evaluacion --out` without a guard; unvalidated `inf` descriptors;
+`que_mide` column of `comparacion_protocolos.csv` with the previous GroupKFold5 text (hash-traced CSV).
 
-Texto original del libro de registro (sin editar):
+Original text of the ledger (unedited):
 
 ---
 

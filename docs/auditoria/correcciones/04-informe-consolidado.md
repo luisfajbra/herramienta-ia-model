@@ -1,220 +1,220 @@
-# Corrección 04 — Informe consolidado de las correcciones de la auditoría (pasos 1 a 6)
+# Correction 04 — Consolidated report of the audit corrections (steps 1 to 6)
 
-- **Fecha:** 2026-10-11
-- **Rama:** `worktree-optuna-tuning-familia-ganadora`, commits `b831f0f` … `867ce6e` más el commit de esta documentación. Base de la serie: `9ad4df0`. Sin push (pendiente de autorización).
-- **Spec y plan:** [`../../superpowers/specs/2026-10-11-correcciones-auditoria-design.md`](../../superpowers/specs/2026-10-11-correcciones-auditoria-design.md), [`../../superpowers/plans/2026-10-11-correcciones-auditoria.md`](../../superpowers/plans/2026-10-11-correcciones-auditoria.md).
-- **Auditoría de origen:** [`../2026-10-10-auditoria-completa.md`](../2026-10-10-auditoria-completa.md) y anexos 01–05.
-- **Documentos de detalle:** [`01-evaluacion-honesta.md`](01-evaluacion-honesta.md), [`02-trazabilidad-y-seguridad.md`](02-trazabilidad-y-seguridad.md), [`03-resolucion-de-la-etiqueta.md`](03-resolucion-de-la-etiqueta.md). Datos: [`datos/`](datos/README.md).
+- **Date:** 2026-10-11
+- **Branch:** `worktree-optuna-tuning-familia-ganadora`, commits `b831f0f` … `867ce6e` plus the commit of this documentation. Series base: `9ad4df0`. No push (pending authorization).
+- **Spec and plan:** [`../../superpowers/specs/2026-10-11-correcciones-auditoria-design.md`](../../superpowers/specs/2026-10-11-correcciones-auditoria-design.md), [`../../superpowers/plans/2026-10-11-correcciones-auditoria.md`](../../superpowers/plans/2026-10-11-correcciones-auditoria.md).
+- **Source audit:** [`../2026-10-10-auditoria-completa.md`](../2026-10-10-auditoria-completa.md) and annexes 01–05.
+- **Detail documents:** [`01-evaluacion-honesta.md`](01-evaluacion-honesta.md), [`02-trazabilidad-y-seguridad.md`](02-trazabilidad-y-seguridad.md), [`03-resolucion-de-la-etiqueta.md`](03-resolucion-de-la-etiqueta.md). Data: [`datos/`](datos/README.md).
 
-**Advertencia de alcance para todas las cifras de evaluación.** XGBoost con los hiperparámetros por defecto de `config.yaml` (no el modelo ajustado con Optuna); una sola red; contrato `tabular_v4_21`; 154 080 filas = 963 de las 1000 corridas (forma, factor) × 160 nodos, tras el filtro de continuidad de 5 % (`datos/tables_provenance.json`; `datos/runs/provenance.json`).
+**Scope warning for all the evaluation figures.** XGBoost with the default hyperparameters of `config.yaml` (not the model tuned with Optuna); a single network; `tabular_v4_21` contract; 154,080 rows = 963 of the 1000 runs (shape, factor) × 160 nodes, after the 5 % continuity filter (`datos/tables_provenance.json`; `datos/runs/provenance.json`).
 
 ---
 
-## 1. Estado por hallazgo
+## 1. Status per finding
 
-| Hallazgo | Sev. (auditoría) | Estado | Commits | Documento |
+| Finding | Sev. (audit) | Status | Commits | Document |
 |---|---|---|---|---|
-| M-01 — LOSO/GroupKFold5 miden interpolación; sin referencias | 🔴 | **Corregido en la evaluación.** Dos referencias sin aprendizaje en el banco; qué mide cada protocolo queda escrito en los reportes; LeaveOneShapeOut declarado como protocolo principal; medido con `tabular_v4_21` | `9c8db1b`, `02cdaab`, `6c48c46`, `833760d`, `5f0586d`; medición `a26155e`, `4a2a87c`, `4717885`, `395a2ee`, `e26fc5a`, `284927d` | [01 §1](01-evaluacion-honesta.md) |
-| M-02 — el volumen generaliza mal con formas nuevas | 🔴 | **Medido; mitigado en parte; abierto.** El contrato `tabular_v4_21` (anterior a esta serie) mejora el NSE oráculo, pero una forma concentra el 71,6 % del error cuadrático | `b831f0f`, `bd0f23f`; medición (ídem) | [01 §2](01-evaluacion-honesta.md) |
-| M-03 — F1 promediado por pliegue con ceros | 🟠 | **Corregido en el banco.** `classifier` es el valor agregado; el anterior se conserva con nombre explícito. `by_factor` y el evaluador legado no cambian | `b831f0f`, `2871917`, `bd0f23f`, `5528479` | [01 §3](01-evaluacion-honesta.md) |
-| M-08 / T-19 — el banco no persiste predicciones fuera de pliegue | 🟡 | **Corregido.** `--bench-evaluate` y el script `tabular_v4_21` guardan predicciones por fila y procedencia | `b95a480`, `4a2a87c`, `e26fc5a` | [01 §4](01-evaluacion-honesta.md) |
-| M-10 — faltan matriz de confusión y otras métricas | 🟡 | **Parcial.** Matriz de confusión, especificidad, desglose por forma, MAE y error de volumen total agregados. Faltan MCC, exactitud balanceada y PR-AUC | `b831f0f`, `bd0f23f` | [01 §4](01-evaluacion-honesta.md) |
-| V-01 (y M-13 en parte) — figuras en muestra sin rotular | 🟠 | **Corregido para las figuras nuevas** de curvas y comparación por factor y para `--evaluate-shapes`. Figuras existentes no regeneradas; `--evaluate-generalization` y `--evaluate-validation-shapes` sin rótulo | `93e34b4` | [02 §1](02-trazabilidad-y-seguridad.md) |
-| V-07 — `halve_timeseries.py` sobrescribe la red base | 🟠 | **Corregido** | `57dc170` | [02 §2](02-trazabilidad-y-seguridad.md) |
-| M-07 / V-04 — modelo ≠ `promotion.json`; figuras sin procedencia | 🟠 | **Corregido en `predict_network` y en las figuras de `main.py` y `runner.py`.** Otros cargadores siguen sin verificación | `8f17147`, `0c8a3f4` | [02 §3](02-trazabilidad-y-seguridad.md) |
-| Defecto nuevo: pruebas que escribían en `outputs/metrics` real | — | **Corregido** (pruebas aisladas y guardia automático) | `398d6bc` | [02 §4](02-trazabilidad-y-seguridad.md) |
-| D-04 / H-06 — resolución de la etiqueta | 🟠 / 🟡 | **Investigado (spike). Decisión A/B pendiente del autor.** Recomendación: ruta A | `2035a51`, `867ce6e` y el commit de esta documentación (dos correcciones menores) | [03](03-resolucion-de-la-etiqueta.md) |
+| M-01 — LOSO/GroupKFold5 measure interpolation; no references | 🔴 | **Corrected in the evaluation.** Two no-learning references in the benchmark; what each protocol measures is written in the reports; LeaveOneShapeOut declared as the main protocol; measured with `tabular_v4_21` | `9c8db1b`, `02cdaab`, `6c48c46`, `833760d`, `5f0586d`; measurement `a26155e`, `4a2a87c`, `4717885`, `395a2ee`, `e26fc5a`, `284927d` | [01 §1](01-evaluacion-honesta.md) |
+| M-02 — volume generalizes poorly to new shapes | 🔴 | **Measured; partly mitigated; open.** The `tabular_v4_21` contract (prior to this series) improves the oracle NSE, but one shape concentrates 71.6 % of the squared error | `b831f0f`, `bd0f23f`; measurement (same) | [01 §2](01-evaluacion-honesta.md) |
+| M-03 — F1 averaged per fold with zeros | 🟠 | **Corrected in the benchmark.** `classifier` is the pooled value; the previous one is kept under an explicit name. `by_factor` and the legacy evaluator do not change | `b831f0f`, `2871917`, `bd0f23f`, `5528479` | [01 §3](01-evaluacion-honesta.md) |
+| M-08 / T-19 — the benchmark does not persist out-of-fold predictions | 🟡 | **Corrected.** `--bench-evaluate` and the `tabular_v4_21` script save per-row predictions and provenance | `b95a480`, `4a2a87c`, `e26fc5a` | [01 §4](01-evaluacion-honesta.md) |
+| M-10 — confusion matrix and other metrics missing | 🟡 | **Partial.** Confusion matrix, specificity, per-shape breakdown, MAE and pooled total volume error added. MCC, balanced accuracy and PR-AUC missing | `b831f0f`, `bd0f23f` | [01 §4](01-evaluacion-honesta.md) |
+| V-01 (and M-13 in part) — in-sample figures without labels | 🟠 | **Corrected for the new curve and per-factor comparison figures** and for `--evaluate-shapes`. Existing figures not regenerated; `--evaluate-generalization` and `--evaluate-validation-shapes` without a label | `93e34b4` | [02 §1](02-trazabilidad-y-seguridad.md) |
+| V-07 — `halve_timeseries.py` overwrites the base network | 🟠 | **Corrected** | `57dc170` | [02 §2](02-trazabilidad-y-seguridad.md) |
+| M-07 / V-04 — model ≠ `promotion.json`; figures without provenance | 🟠 | **Corrected in `predict_network` and in the figures of `main.py` and `runner.py`.** Other loaders remain unverified | `8f17147`, `0c8a3f4` | [02 §3](02-trazabilidad-y-seguridad.md) |
+| New defect: tests that wrote to the real `outputs/metrics` | — | **Corrected** (isolated tests and automatic guard) | `398d6bc` | [02 §4](02-trazabilidad-y-seguridad.md) |
+| D-04 / H-06 — label resolution | 🟠 / 🟡 | **Investigated (spike). Path A/B decision pending for the author.** Recommendation: path A | `2035a51`, `867ce6e` and the commit of this documentation (two minor corrections) | [03](03-resolucion-de-la-etiqueta.md) |
 
 ---
 
-## 2. Antes y después de las métricas clave
+## 2. Before and after of the key metrics
 
-"Antes" = cifras de la auditoría, medidas con el contrato `tabular_v3_17` (17 features) sobre 160 000 filas sin filtro de continuidad (PreparedDataset `af3751551ca5df98`; anexo 02). "Después" = esta serie, contrato `tabular_v4_21` sobre 154 080 filas. **Cambian a la vez el contrato y el conjunto de filas: no es un experimento controlado.** La tabla describe dos estados del proyecto; las diferencias no se atribuyen a un cambio concreto. Siglas de fuentes: A02 = `../anexos/02-ml-protocolo-evaluacion.md`; AC = `../2026-10-10-auditoria-completa.md`; CP = `datos/comparacion_protocolos.csv`; MC = `datos/matriz_confusion.csv`; PF = `datos/por_forma.csv`.
+"Before" = audit figures, measured with the `tabular_v3_17` contract (17 features) on 160,000 rows without continuity filter (PreparedDataset `af3751551ca5df98`; annex 02). "After" = this series, `tabular_v4_21` contract on 154,080 rows. **The contract and the set of rows change at the same time: it is not a controlled experiment.** The table describes two states of the project; the differences are not attributed to a specific change. Source abbreviations: A02 = `../anexos/02-ml-protocolo-evaluacion.md`; AC = `../2026-10-10-auditoria-completa.md`; CP = `datos/comparacion_protocolos.csv`; MC = `datos/matriz_confusion.csv`; PF = `datos/por_forma.csv`.
 
-| Métrica | Modelo | Protocolo | Antes | Fuente antes | Después | Fuente después (columna) |
+| Metric | Model | Protocol | Before | Source before | After | Source after (column) |
 |---|---|---|---|---|---|---|
-| F1 agregado | XGBoost | LOSO | 0,9656 | A02 M-03 | 0,9667 | CP `f1_agregado` |
-| F1 media por pliegue con ceros (definición anterior) | XGBoost | LOSO | 0,7408 | A02 M-03 | 0,7379 | CP `f1_media_por_fold_con_ceros` |
-| F1 agregado | XGBoost | LeaveOneShapeOut | 0,9789 | A02 M-01 | 0,9817 | CP `f1_agregado` |
-| RMSE ext. a ext. agregado (m³) | XGBoost | LOSO | 68,43 | A02 M-01 | 57,89 | CP `rmse_vol_agregado_m3` |
-| RMSE ext. a ext. medio por pliegue (m³) | XGBoost | LOSO | 55,3 | A02 M-04 | 46,28 | CP `rmse_vol_media_por_fold_m3` |
-| RMSE ext. a ext. agregado (m³) | XGBoost | LeaveOneShapeOut | 136,1 | A02 M-04 | 106,21 | CP `rmse_vol_agregado_m3` |
-| RMSE ext. a ext. medio por forma (m³) | XGBoost | LeaveOneShapeOut | 79,7 | A02 M-04 | 56,81 | CP `rmse_vol_media_por_fold_m3` |
-| NSE del regresor oráculo | XGBoost | LeaveOneShapeOut | 0,8141 | AC §3.1 | 0,8906 | CP `nse_regresor_oracle` |
-| NSE del regresor oráculo | XGBoost | LOSO | 0,9530 | AC §3.1 | 0,9675 | CP `nse_regresor_oracle` |
-| NSE del regresor oráculo | XGBoost | GroupKFold5 | 0,9553 | AC §3.1 | 0,9694 | CP `nse_regresor_oracle` |
-| Error de vol. total por forma (mín.; máx.) | XGBoost | LeaveOneShapeOut | −63,3 %; +216,3 % | A02 M-02 | −52,1 %; +33,3 % | PF `error_vol_pct` |
-| Parte del error cuadrático de la peor forma (`shape_quasi_uniform_block`) | XGBoost | LeaveOneShapeOut | 61,35 % | A02 M-02 | 71,6 % | Derivado de PF (`rmse_vol² × n_rows`) |
-| RMSE ext. a ext. agregado (m³) | Interpolación de factor | LOSO | 9,00 | A02 M-01 | 9,13 | CP `rmse_vol_agregado_m3` |
-| F1 agregado | Interpolación de factor | LOSO | 0,9718 | A02 M-01 | 0,9718 | CP `f1_agregado` |
-| RMSE ext. a ext. agregado (m³) | Forma más cercana | LeaveOneShapeOut | 170,2 | A02 M-01 | 172,86 | CP `rmse_vol_agregado_m3` |
-| F1 agregado | Forma más cercana | LeaveOneShapeOut | 0,9758 | A02 M-01 | 0,9764 | CP `f1_agregado` |
-| Predictor perfecto, F1 media por pliegue con ceros / agregado | — | LOSO | 0,80 / — | A02 M-03 | 0,8000 / 1,0000 | Comando de [01 §5](01-evaluacion-honesta.md) |
+| Pooled F1 | XGBoost | LOSO | 0.9656 | A02 M-03 | 0.9667 | CP `f1_agregado` |
+| Zero-filled per-fold mean F1 (previous definition) | XGBoost | LOSO | 0.7408 | A02 M-03 | 0.7379 | CP `f1_media_por_fold_con_ceros` |
+| Pooled F1 | XGBoost | LeaveOneShapeOut | 0.9789 | A02 M-01 | 0.9817 | CP `f1_agregado` |
+| Pooled end-to-end RMSE (m³) | XGBoost | LOSO | 68.43 | A02 M-01 | 57.89 | CP `rmse_vol_agregado_m3` |
+| Per-fold mean end-to-end RMSE (m³) | XGBoost | LOSO | 55.3 | A02 M-04 | 46.28 | CP `rmse_vol_media_por_fold_m3` |
+| Pooled end-to-end RMSE (m³) | XGBoost | LeaveOneShapeOut | 136.1 | A02 M-04 | 106.21 | CP `rmse_vol_agregado_m3` |
+| Per-shape mean end-to-end RMSE (m³) | XGBoost | LeaveOneShapeOut | 79.7 | A02 M-04 | 56.81 | CP `rmse_vol_media_por_fold_m3` |
+| Oracle regressor NSE | XGBoost | LeaveOneShapeOut | 0.8141 | AC §3.1 | 0.8906 | CP `nse_regresor_oracle` |
+| Oracle regressor NSE | XGBoost | LOSO | 0.9530 | AC §3.1 | 0.9675 | CP `nse_regresor_oracle` |
+| Oracle regressor NSE | XGBoost | GroupKFold5 | 0.9553 | AC §3.1 | 0.9694 | CP `nse_regresor_oracle` |
+| Total vol. error per shape (min.; max.) | XGBoost | LeaveOneShapeOut | −63.3 %; +216.3 % | A02 M-02 | −52.1 %; +33.3 % | PF `error_vol_pct` |
+| Share of the squared error of the worst shape (`shape_quasi_uniform_block`) | XGBoost | LeaveOneShapeOut | 61.35 % | A02 M-02 | 71.6 % | Derived from PF (`rmse_vol² × n_rows`) |
+| Pooled end-to-end RMSE (m³) | Factor interpolation | LOSO | 9.00 | A02 M-01 | 9.13 | CP `rmse_vol_agregado_m3` |
+| Pooled F1 | Factor interpolation | LOSO | 0.9718 | A02 M-01 | 0.9718 | CP `f1_agregado` |
+| Pooled end-to-end RMSE (m³) | Nearest shape | LeaveOneShapeOut | 170.2 | A02 M-01 | 172.86 | CP `rmse_vol_agregado_m3` |
+| Pooled F1 | Nearest shape | LeaveOneShapeOut | 0.9758 | A02 M-01 | 0.9764 | CP `f1_agregado` |
+| Perfect predictor, zero-filled per-fold mean F1 / pooled | — | LOSO | 0.80 / — | A02 M-03 | 0.8000 / 1.0000 | Command of [01 §5](01-evaluacion-honesta.md) |
 
-**Matrices de confusión de XGBoost (TN / FP / FN / TP).**
+**XGBoost confusion matrices (TN / FP / FN / TP).**
 
-| Protocolo | Antes (160 000 filas; AC §6.2) | Después (154 080 filas; MC) |
+| Protocol | Before (160,000 rows; AC §6.2) | After (154,080 rows; MC) |
 |---|---|---|
-| GroupKFold5 | 111 431 / 2327 / 877 / 45 365 | 105 711 / 2144 / 844 / 45 381 |
-| LOSO | 111 412 / 2346 / 890 / 45 352 | 105 610 / 2245 / 879 / 45 346 |
-| LeaveOneShapeOut | 112 153 / 1605 / 373 / 45 869 | 106 526 / 1329 / 380 / 45 845 |
+| GroupKFold5 | 111,431 / 2,327 / 877 / 45,365 | 105,711 / 2,144 / 844 / 45,381 |
+| LOSO | 111,412 / 2,346 / 890 / 45,352 | 105,610 / 2,245 / 879 / 45,346 |
+| LeaveOneShapeOut | 112,153 / 1,605 / 373 / 45,869 | 106,526 / 1,329 / 380 / 45,845 |
 
-Las matrices "antes" vienen de predicciones regeneradas por la auditoría en una carpeta temporal; no se persistieron. Las "después" se reconstruyen desde archivos con SHA-256 registrado (`datos/tables_provenance.json`).
+The "before" matrices come from predictions regenerated by the audit in a temporary folder; they were not persisted. The "after" ones are reconstructed from files with a recorded SHA-256 (`datos/tables_provenance.json`).
 
-La única comparación **controlada** entre contratos (mismas filas) es la del RMSE medio por forma en LeaveOneShapeOut: 78,0368 m³ (`tabular_v3_17`) frente a 56,8088 m³ (`tabular_v4_21`), en `../../resultados/2026-10-06-explicacion-completa.md` §11.1. No se re-ejecutó aquí; la corrida de esta serie reproduce el 56,8088 (CP `rmse_vol_media_por_fold_m3`).
+The only **controlled** comparison between contracts (same rows) is that of the per-shape mean RMSE in LeaveOneShapeOut: 78.0368 m³ (`tabular_v3_17`) versus 56.8088 m³ (`tabular_v4_21`), in `../../resultados/2026-10-06-explicacion-completa.md` §11.1. It was not re-run here; the run of this series reproduces 56.8088 (CP `rmse_vol_media_por_fold_m3`).
 
 ---
 
-## 3. Resultados vigentes: XGBoost frente a las referencias en los tres protocolos
+## 3. Current results: XGBoost versus the references in the three protocols
 
-Fuente: CP (métricas) y MC (matriz). Todas sobre 154 080 filas.
+Source: CP (metrics) and MC (matrix). All on 154,080 rows.
 
-| Protocolo | Qué mide | Modelo | F1 agregado | RMSE agregado (m³) | RMSE medio por pliegue (m³) | Error vol. total (%) | NSE oráculo | TN | FP | FN | TP |
+| Protocol | What it measures | Model | Pooled F1 | Pooled RMSE (m³) | Per-fold mean RMSE (m³) | Total vol. error (%) | Oracle NSE | TN | FP | FN | TP |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| LOSO | Interpolación entre factores | Interpolación de factor | 0,9718 | 9,13 | 4,77 | −0,39 | 0,9992 | 105 617 | 2238 | 416 | 45 809 |
-| LOSO | ídem | XGBoost | 0,9667 | 57,89 | 46,28 | −5,03 | 0,9675 | 105 610 | 2245 | 879 | 45 346 |
-| GroupKFold5 | ídem, 5 factores por pliegue | Interpolación de factor | 0,9718 | 9,13 | 7,47 | −0,39 | 0,9992 | 105 617 | 2238 | 416 | 45 809 |
-| GroupKFold5 | ídem | XGBoost | 0,9681 | 56,19 | 55,44 | −4,64 | 0,9694 | 105 711 | 2144 | 844 | 45 381 |
-| **LeaveOneShapeOut** | **Formas de hidrograma no vistas (principal)** | Forma más cercana | 0,9764 | 172,86 | 98,14 | −2,98 | 0,7102 | 106 556 | 1299 | 889 | 45 336 |
-| **LeaveOneShapeOut** | ídem | **XGBoost** | **0,9817** | **106,21** | **56,81** | −7,98 | **0,8906** | 106 526 | 1329 | 380 | 45 845 |
+| LOSO | Interpolation between factors | Factor interpolation | 0.9718 | 9.13 | 4.77 | −0.39 | 0.9992 | 105,617 | 2,238 | 416 | 45,809 |
+| LOSO | same | XGBoost | 0.9667 | 57.89 | 46.28 | −5.03 | 0.9675 | 105,610 | 2,245 | 879 | 45,346 |
+| GroupKFold5 | same, 5 factors per fold | Factor interpolation | 0.9718 | 9.13 | 7.47 | −0.39 | 0.9992 | 105,617 | 2,238 | 416 | 45,809 |
+| GroupKFold5 | same | XGBoost | 0.9681 | 56.19 | 55.44 | −4.64 | 0.9694 | 105,711 | 2,144 | 844 | 45,381 |
+| **LeaveOneShapeOut** | **Unseen hydrograph shapes (main)** | Nearest shape | 0.9764 | 172.86 | 98.14 | −2.98 | 0.7102 | 106,556 | 1,299 | 889 | 45,336 |
+| **LeaveOneShapeOut** | same | **XGBoost** | **0.9817** | **106.21** | **56.81** | −7.98 | **0.8906** | 106,526 | 1,329 | 380 | 45,845 |
 
-**Cómo leerla.**
+**How to read it.**
 
-- En LOSO y GroupKFold5 la referencia sin aprendizaje gana: esos protocolos miden interpolación entre factores. Con esta malla, GroupKFold5 da a la referencia de interpolación exactamente las mismas predicciones que LOSO (diferencia máxima 0,0), porque ningún pliegue retiene dos factores contiguos; comprobado por el implementador (informe de la tarea 8) y repetido para [01 §5](01-evaluacion-honesta.md).
-- En LeaveOneShapeOut, XGBoost supera a la forma más cercana en volumen y, por poco, en F1; la referencia tiene menor error de volumen total.
-- La interpolación usa respaldo en 1,25 % de sus filas y la forma más cercana en 0,42 % (`datos/runs/provenance.json`, `baseline_fallback`).
-- La AUC-ROC de las referencias no se interpreta (no producen probabilidades).
-
----
-
-## 4. Resolución de la etiqueta (D-04 / H-06): decisión pendiente
-
-Resumen de [`03-resolucion-de-la-etiqueta.md`](03-resolucion-de-la-etiqueta.md):
-
-- En la muestra re-simulada (17 escenarios, 15 con desborde; registro por nodo en 15 escenarios, 13 con desborde), la etiqueta `V_rpt ≥ 1 m³` equivale a `V_continuo ≥ t` con t en (0,4988; 0,5002] m³, sin discrepancias en 2400 casos nodo-escenario: es una cuantización determinista, no ruido (03 §4).
-- La integral del `.out` con el `REPORT_STEP` actual (3 min) no es una fuente mejor: se aleja del volumen continuo hasta 9,5 m³ por nodo (03 §3.2).
-- En LeaveOneShapeOut, 333 de los 380 falsos negativos de XGBoost tienen `V_rpt = 1` (`datos/banda_limitrofe.csv`); sin esa banda, el F1 pasa de 0,9817 a 0,9847 (03 §6.2, solo como sensibilidad, con exclusión asimétrica).
-- Re-simular las 1000 corridas costaría del orden de 17–20 min de SWMM, pero obligaría a rehacer el dataset, la BD, el `prep_id`, el banco, Optuna, la validación y todas las cifras (03 §5).
-
-**Recomendación del spike: ruta A** (mantener la resolución y el umbral, declararlos como supuesto y reportar la matriz con la banda separada). **La decisión es del autor y está pendiente.** El texto de la tesis sobre la etiqueta (03 §8.2) y la presentación de la Tabla 4.2 de `01` dependen de esa decisión: con la ruta B cambiarían las etiquetas, el `prep_id` y todas las cifras de este informe.
+- In LOSO and GroupKFold5 the no-learning reference wins: those protocols measure interpolation between factors. With this grid, GroupKFold5 gives the interpolation reference exactly the same predictions as LOSO (maximum difference 0.0), because no fold holds out two contiguous factors; checked by the implementer (report of task 8) and repeated for [01 §5](01-evaluacion-honesta.md).
+- In LeaveOneShapeOut, XGBoost beats the nearest shape in volume and, narrowly, in F1; the reference has a smaller total volume error.
+- The interpolation uses a fallback in 1.25 % of its rows and the nearest shape in 0.42 % (`datos/runs/provenance.json`, `baseline_fallback`).
+- The ROC-AUC of the references is not interpreted (they do not produce probabilities).
 
 ---
 
-## 5. Limitaciones de las cifras de este informe
+## 4. Label resolution (D-04 / H-06): pending decision
 
-1. **XGBoost sin ajustar.** Hiperparámetros por defecto de `config.yaml` (200 árboles, profundidad 6, tasa 0,05, submuestreo 0,8). El modelo ajustado con Optuna no se evaluó contra las referencias. La corrida usa un script propio (`scripts/ejecutar_evaluacion_v4_21.py`) y no el CLI del banco, para no sobrescribir los reportes históricos ni `outputs/models` (registro de decisiones R1).
-2. **Una sola red, 160 nodos.** Ningún protocolo retiene nodos ni redes.
-3. **963 de 1000 corridas.** El filtro de continuidad deja fuera 37 celdas (forma, factor), concentradas en las formas cortas o extremas (`shape_ultra_short_impulse` 10, `rare_extreme` 7, `common_bogota` 5; informe de la tarea 8). Esas formas son también las peor clasificadas (`datos/por_forma.csv`).
-4. **Referencias con respaldo.** 1,25 % (interpolación) y 0,42 % (forma más cercana) de sus filas no usan su fuente primaria.
-5. **La referencia de forma más cercana** define "cercana" solo por duración y tiempo al pico, con descriptores tomados del conjunto `tabular_v3_17` `2db0578f875526cb` (mismas 40 formas; R7).
-6. **Comparaciones antes/después no controladas** (§2).
-7. **Sin intervalos de confianza.** Se reporta la dispersión por pliegue, pero no IC por remuestreo de grupos (M-04, M-11). Las unidades independientes son 25 factores y 40 formas, no 154 080 filas.
-8. **Concentración del error.** El RMSE agregado de LeaveOneShapeOut depende en un 71,6 % de una forma; sin ella sería 57,32 m³ (derivado de `datos/por_forma.csv`, [01 §2](01-evaluacion-honesta.md)).
-9. **Etiqueta con resolución de 1 m³** (decisión pendiente, §4).
-10. **Predicciones por fila no versionadas** en git (`outputs/` ignorado); se reproducen y se verifican con los SHA-256 de `datos/tables_provenance.json`.
+Summary of [`03-resolucion-de-la-etiqueta.md`](03-resolucion-de-la-etiqueta.md):
+
+- In the re-simulated sample (17 scenarios, 15 with overflow; per-node record in 15 scenarios, 13 with overflow), the label `V_rpt ≥ 1 m³` is equivalent to `V_continuo ≥ t` (continuous volume) with t in (0.4988, 0.5002] m³, with no discrepancies in 2,400 node-scenario cases: it is a deterministic quantization, not noise (03 §4).
+- The integral of the `.out` with the current `REPORT_STEP` (3 min) is not a better source: it departs from the continuous volume by up to 9.5 m³ per node (03 §3.2).
+- In LeaveOneShapeOut, 333 of the 380 false negatives of XGBoost have `V_rpt = 1` (`datos/banda_limitrofe.csv`); without that band, F1 goes from 0.9817 to 0.9847 (03 §6.2, only as a sensitivity analysis, with asymmetric exclusion).
+- Re-simulating the 1000 runs would cost on the order of 17–20 min of SWMM, but would force redoing the dataset, the DB, the `prep_id`, the benchmark, Optuna, the validation and all the figures (03 §5).
+
+**Spike recommendation: path A** (keep the resolution and the threshold, declare them as an assumption and report the matrix with the band separated). **The decision belongs to the author and is pending.** The thesis text about the label (03 §8.2) and the presentation of Table 4.2 of `01` depend on that decision: with path B the labels, the `prep_id` and all the figures of this report would change.
 
 ---
 
-## 6. Lo que no se hizo y por qué
+## 5. Limitations of the figures of this report
 
-| Tema | Hallazgo | Por qué no se hizo | Dónde queda |
+1. **Untuned XGBoost.** Default hyperparameters of `config.yaml` (200 trees, depth 6, learning rate 0.05, subsampling 0.8). The model tuned with Optuna was not evaluated against the references. The run uses its own script (`scripts/ejecutar_evaluacion_v4_21.py`) and not the benchmark CLI, so as not to overwrite the historical reports or `outputs/models` (decision log R1).
+2. **A single network, 160 nodes.** No protocol holds out nodes or networks.
+3. **963 of 1000 runs.** The continuity filter leaves out 37 (shape, factor) cells, concentrated in the short or extreme shapes (`shape_ultra_short_impulse` 10, `rare_extreme` 7, `common_bogota` 5; report of task 8). Those shapes are also the worst classified (`datos/por_forma.csv`).
+4. **References with fallback.** 1.25 % (interpolation) and 0.42 % (nearest shape) of their rows do not use their primary source.
+5. **The nearest-shape reference** defines "nearest" only by duration and time to peak, with descriptors taken from the `tabular_v3_17` dataset `2db0578f875526cb` (same 40 shapes; R7).
+6. **Uncontrolled before/after comparisons** (§2).
+7. **No confidence intervals.** The per-fold dispersion is reported, but not a CI by group resampling (M-04, M-11). The independent units are 25 factors and 40 shapes, not 154,080 rows.
+8. **Error concentration.** The pooled RMSE of LeaveOneShapeOut depends 71.6 % on one shape; without it, it would be 57.32 m³ (derived from `datos/por_forma.csv`, [01 §2](01-evaluacion-honesta.md)).
+9. **Label with 1 m³ resolution** (pending decision, §4).
+10. **Per-row predictions not versioned** in git (`outputs/` ignored); they are reproduced and verified with the SHA-256 values of `datos/tables_provenance.json`.
+
+---
+
+## 6. What was not done and why
+
+| Topic | Finding | Why it was not done | Where it stands |
 |---|---|---|---|
-| `InitFlow` fijo en todas las corridas | H-01 🟠 | Exige re-simular un subconjunto para medir sensibilidad; fuera del alcance de los pasos 1–6 (spec). Su impacto es la cifra del auditor (anexo 01) y no se re-simuló | Plan de la auditoría, P1 punto 9 |
-| Variables de volumen del evento más allá de `tabular_v4_21` | H-02 / M-02 | Fuera de alcance por diseño (spec §7): se decide después de medir, y la medición está en `01` §2 | Decisión de investigación del autor |
-| Ablación de las features de volumen bajo LeaveOneShapeOut | M-02, M-12 | No estaba en la spec | — |
-| Error de continuidad y evidencia SWMM en la BD; proveniencia de modelos en SQL | D-02, D-03, H-04 | Fuera del alcance de los pasos 1–6 | Plan de la auditoría, P1 punto 11 |
-| Verificación de `promotion.json` en otros cargadores (`ScenarioPredictor`, SHAP, `predict_from_inp` y escritorio) | M-07 / V-04 | La spec §2.8 acota la verificación a `ml/predict.py` (R8) | `02` §3 |
-| Regenerar las figuras existentes con el modelo declarado | V-01, V-04 | El modelo final de la tesis no está fijado (Parte 2) | — |
-| Rótulo en `--evaluate-generalization` y `--evaluate-validation-shapes` | M-13 | La spec §2.6 solo cubría `--evaluate-shapes` | — |
-| Curvas fuera de muestra a partir de las predicciones fuera de pliegue | V-01 | Mejora opcional (spec §7) | — |
-| Métrica principal del ranking (media por pliegue) e IC por grupo | M-04, M-11 | No estaba en la spec; `end_to_end_pooled` ya da el agregado | — |
-| Sesgo de retransformación `expm1(log1p)`; regresor subajustado | M-05 | No estaba en la spec | — |
-| Familias con hiperparámetros heredados; SVM justo; selección final XGBoost + MLP | M-06, M-09 (SVM) | Es la **Parte 2**, subproyecto aparte con su propia spec | Parte 2 |
-| Umbral de decisión explícito y calibración | M-09 | No estaba en la spec | — |
-| Tuning con Optuna no anidado | M-15 | No estaba en la spec | Parte 2 |
-| `python -m swmm_resilience.ml.train --help` entrena | T-04 | No estaba en la spec, aunque la auditoría lo emparejaba con V-07 | — |
-| Parser de respaldo que lee "Ponded Depth" | H-07 | Fuera del alcance del spike (sin cambios de código); recomendado en `03` §8 | Independiente de la ruta A/B |
-| GUI: tabla y mapa con modelos distintos | V-06 | No estaba en la spec | — |
-| Push a `origin` | — | Se pide al autor al final (R3) | — |
+| Fixed `InitFlow` in all runs | H-01 🟠 | Requires re-simulating a subset to measure sensitivity; outside the scope of steps 1–6 (spec). Its impact is the auditor's figure (annex 01) and it was not re-simulated | Audit plan, P1 item 9 |
+| Event volume variables beyond `tabular_v4_21` | H-02 / M-02 | Out of scope by design (spec §7): decided after measuring, and the measurement is in `01` §2 | Research decision of the author |
+| Ablation of the volume features under LeaveOneShapeOut | M-02, M-12 | Was not in the spec | — |
+| Continuity error and SWMM evidence in the DB; model provenance in SQL | D-02, D-03, H-04 | Outside the scope of steps 1–6 | Audit plan, P1 item 11 |
+| Verification of `promotion.json` in other loaders (`ScenarioPredictor`, SHAP, `predict_from_inp` and desktop) | M-07 / V-04 | Spec §2.8 limits the verification to `ml/predict.py` (R8) | `02` §3 |
+| Regenerate the existing figures with the declared model | V-01, V-04 | The final model of the thesis is not fixed (Part 2) | — |
+| Label in `--evaluate-generalization` and `--evaluate-validation-shapes` | M-13 | Spec §2.6 covered only `--evaluate-shapes` | — |
+| Out-of-sample curves from the out-of-fold predictions | V-01 | Optional improvement (spec §7) | — |
+| Main ranking metric (per-fold mean) and group CI | M-04, M-11 | Was not in the spec; `end_to_end_pooled` already gives the pooled value | — |
+| `expm1(log1p)` retransformation bias; underfitted regressor | M-05 | Was not in the spec | — |
+| Families with inherited hyperparameters; fair SVM; final XGBoost + MLP selection | M-06, M-09 (SVM) | It is **Part 2**, a separate subproject with its own spec | Part 2 |
+| Explicit decision threshold and calibration | M-09 | Was not in the spec | — |
+| Non-nested Optuna tuning | M-15 | Was not in the spec | Part 2 |
+| `python -m swmm_resilience.ml.train --help` trains | T-04 | Was not in the spec, although the audit paired it with V-07 | — |
+| Fallback parser that reads "Ponded Depth" | H-07 | Outside the scope of the spike (no code changes); recommended in `03` §8 | Independent of path A/B |
+| GUI: table and map with different models | V-06 | Was not in the spec | — |
+| Push to `origin` | — | Requested from the author at the end (R3) | — |
 
 ---
 
-## 7. Pruebas
+## 7. Tests
 
-| Momento | Resultado | Fuente |
+| Moment | Result | Source |
 |---|---|---|
-| Línea base (commit `1ecca50`) | 1049 pasan, 0 fallan | Spec §1; commit `3f7a628` corrige una cifra inicial de 1058 que contaba puntos de líneas de advertencia |
-| Tras cada tarea | 1065 (T1) · 1073 (T2) · 1093 (T3) · 1098 (T4) · 1103 (T5) · 1107 (T6) · 1128 (T7) · 1145 (R10) · 1154 (R9) · 1159 · 1165 (T8) | Registro de ejecución (notas de trabajo no versionadas) |
-| **Cierre de la serie (esta documentación)** | **1164 pasan, 1 falla, 3 deseleccionadas (`scale`), 187 s.** La falla es `tests/desktop/test_results_tab.py::test_refresh_tree_populates_children` (`TclError: invalid command name "tcl_findLibrary"`), un fallo de entorno de Tcl/Tk conocido desde la auditoría (AC §3.2). Re-ejecutado ese archivo: **7 pasan**. Total en verde: **1165** (116 más que la línea base) | `../../../venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=<temporal corto> -o addopts="-m 'not scale'"` |
+| Baseline (commit `1ecca50`) | 1,049 pass, 0 fail | Spec §1; commit `3f7a628` corrects an initial figure of 1,058 that counted dots of warning lines |
+| After each task | 1,065 (T1) · 1,073 (T2) · 1,093 (T3) · 1,098 (T4) · 1,103 (T5) · 1,107 (T6) · 1,128 (T7) · 1,145 (R10) · 1,154 (R9) · 1,159 · 1,165 (T8) | Execution log (unversioned working notes) |
+| **Close of the series (this documentation)** | **1,164 pass, 1 fails, 3 deselected (`scale`), 187 s.** The failure is `tests/desktop/test_results_tab.py::test_refresh_tree_populates_children` (`TclError: invalid command name "tcl_findLibrary"`), a Tcl/Tk environment failure known since the audit (AC §3.2). Re-running that file: **7 pass**. Total green: **1,165** (116 more than the baseline) | `../../../venv/Scripts/python.exe -m pytest -q -p no:cacheprovider --basetemp=<short temporary> -o addopts="-m 'not scale'"` |
 
 ---
 
-## 8. Minucias diferidas (registro de revisiones)
+## 8. Deferred nitpicks (review log)
 
-No cambian ninguna cifra; se registran para no perderlas.
+They do not change any figure; they are recorded so as not to lose them.
 
-| Tarea | Minucia |
+| Task | Nitpick |
 |---|---|
-| T1 (métricas) | El RMSE se calcula de dos formas (`np.sqrt(np.mean(...))` y `mean_squared_error`); `shape_breakdown_entry` con arreglos vacíos emite un aviso |
-| T2 (`score_predictions`) | La prueba de enrutamiento no lo ejercita (todas las clasificaciones son correctas); el nombre de una prueba de paridad promete más de lo que comprueba; `score_predictions` y `pooled_classifier_metrics` duplican la concatenación y los conteos; `protocols` no se valida contra el dataset (un nombre mal escrito o una cadena suelta); se perdió el razonamiento de un docstring de la prueba de paridad |
-| T3 (referencias) | Las pruebas de interpolación usan sobre todo puntos medios (sin malla irregular ni prueba específica de GroupKFold5); ninguna prueba detecta estandarizar con estadísticos de la forma de test; aserción débil `match="C"`; no se comprueba `inf` en los descriptores; los mensajes de duplicados/NaN de la forma más cercana no tienen prueba; los contadores de respaldo son totales sobre protocolos (documentado); uso de `assert` (se omite con `-O`) |
-| T4 (persistencia) | La prueba del CLI no relee el contenido del parquet/JSON de las referencias; `metrics_<familia>.json` no lleva `prep_id` y puede quedar junto a un `provenance.json` más nuevo; importaciones a mitad de `test_reports.py`; sin prueba de NaN→null en la procedencia; sin prueba de que otro `ValueError` se propague |
-| T5 (en muestra) | La prueba comprueba el texto de la nota, no su posición; la comprobación de código fuente se ancla al primer `if args.evaluate_shapes:`; con más de 30 nodos la nota queda cerca del rótulo "Node ID" |
-| T6 (`halve_timeseries`) | Aserciones laxas (`in`); `main()` sin prueba; ventana de carrera entre comprobar y escribir; sin aviso si no hay filas que dividir |
-| T7 (promoción) | `promotion.json`/`manifest.json` malformados dan `JSONDecodeError` sin mensaje de dominio; granularidad de procedencia por carpeta; el guardia de `outputs/metrics` no tiene prueba propia; queda una carpeta vacía `outputs/metrics/factor_comparison/` |
-| T8 (corrida y tablas) | Las funciones internas de `main()` del script de corrida no tienen prueba; el docstring sobre `ensure_allowed_output` promete más de lo que hace; `informe_evaluacion.py --out` no tiene guardia; `runs/*.json` no tienen los campos `n_runs`/`git_dirty` (declarado en `datos/README.md`); `git_dirty` ignora archivos sin seguimiento (definición escrita en el JSON) |
-| T9 (spike) | Afirmaciones prudentes pero no sostenidas por medición: el sesgo del regresor como regresión a la media (03 §6.4), la cercanía de los FP a la frontera (03 §6.2), la conclusión de diseño de 03 §7.1 y la redacción de 03 §3; el commit del spike lleva la firma de otro modelo distinto del previsto (solo nota) |
+| T1 (metrics) | RMSE is computed in two ways (`np.sqrt(np.mean(...))` and `mean_squared_error`); `shape_breakdown_entry` with empty arrays emits a warning |
+| T2 (`score_predictions`) | The routing test does not exercise it (all classifications are correct); the name of a parity test promises more than it checks; `score_predictions` and `pooled_classifier_metrics` duplicate the concatenation and the counts; `protocols` is not validated against the dataset (a misspelled name or a bare string); the reasoning of a docstring of the parity test was lost |
+| T3 (references) | The interpolation tests mostly use midpoints (no irregular grid or specific GroupKFold5 test); no test detects standardizing with statistics of the test shape; weak assertion `match="C"`; `inf` is not checked in the descriptors; the duplicate/NaN messages of the nearest shape have no test; the fallback counters are totals over protocols (documented); use of `assert` (skipped with `-O`) |
+| T4 (persistence) | The CLI test does not re-read the contents of the parquet/JSON of the references; `metrics_<familia>.json` carries no `prep_id` and may sit next to a newer `provenance.json`; mid-file imports in `test_reports.py`; no NaN→null test in the provenance; no test that another `ValueError` propagates |
+| T5 (in-sample) | The test checks the text of the note, not its position; the source-code check is anchored to the first `if args.evaluate_shapes:`; with more than 30 nodes the note sits close to the "Node ID" label |
+| T6 (`halve_timeseries`) | Loose assertions (`in`); `main()` without a test; race window between checking and writing; no warning if there are no rows to divide |
+| T7 (promotion) | Malformed `promotion.json`/`manifest.json` give `JSONDecodeError` without a domain message; provenance granularity per folder; the `outputs/metrics` guard has no test of its own; an empty folder `outputs/metrics/factor_comparison/` remains |
+| T8 (run and tables) | The inner functions of `main()` of the run script have no test; the docstring about `ensure_allowed_output` promises more than it does; `informe_evaluacion.py --out` has no guard; `runs/*.json` lack the `n_runs`/`git_dirty` fields (declared in `datos/README.md`); `git_dirty` ignores untracked files (definition written in the JSON) |
+| T9 (spike) | Prudent claims but not supported by measurement: the regressor bias as regression to the mean (03 §6.4), the closeness of the FPs to the boundary (03 §6.2), the design conclusion of 03 §7.1 and the wording of 03 §3; the spike commit carries the signature of a model other than the intended one (note only) |
 
 ---
 
-## 9. Seguimiento: correcciones pendientes en otros documentos
+## 9. Follow-up: pending corrections in other documents
 
-Este commit corrige en `03` el conteo de escenarios (17 simulados, 15 con desborde; 15 con registro por nodo, 13 con desborde) y la cota de cuantización de §7.6 (≤ 0,51 m³, por el nodo `8C`, que difiere en 0,508 m³). Las mismas cifras aparecían en notas fechadas de otros documentos. **Las cuatro primeras filas se aplicaron en la ola final de correcciones** (texto de las notas corregido a "17 escenarios simulados, 15 con desborde" y "≤ 0,51 m³"); las dos últimas siguen sin tocarse a propósito:
+This commit corrects in `03` the scenario count (17 simulated, 15 with overflow; 15 with per-node record, 13 with overflow) and the quantization bound of §7.6 (≤ 0.51 m³, due to node `8C`, which differs by 0.508 m³). The same figures appeared in dated notes of other documents. **The first four rows were applied in the final correction wave** (text of the notes corrected to "17 simulated scenarios, 15 with overflow" and "≤ 0.51 m³"); the last two remain untouched on purpose:
 
-| Documento y línea | Texto actual | Corrección sugerida |
+| Document and line | Current text | Suggested correction |
 |---|---|---|
-| `../2026-10-10-auditoria-completa.md`, l. 275 (nota del supuesto 3) | "en la muestra re-simulada (una red, 13 escenarios con desborde)" | "17 escenarios simulados (15 con desborde); la cota del umbral se calculó en los 15 con registro por nodo (13 con desborde)" |
-| `../anexos/03-datos-persistencia-sql.md`, l. 76 (nota sobre D-04, punto 1) | ídem | ídem |
-| `datos/README.md`, l. 22 | ídem | ídem |
-| `../anexos/01-hidraulica-swmm.md`, l. 113 (nota de H-06) | "(≤ 0,5 m³ por debajo de 100 m³)" | "(≤ 0,51 m³)" |
-| `../2026-10-10-auditoria-completa.md`, l. 215 (decisión 4, "banda 1–2 m³") | Sin precisar que es solo el entero 1 | Ya listado como no aplicado en 03 §8.1 |
-| `03-resolucion-de-la-etiqueta.md`, Apéndice, `s09_notas.py` | Contiene el texto original de las notas | Se deja igual: es el registro del script que se ejecutó |
+| `../2026-10-10-auditoria-completa.md`, l. 275 (note of assumption 3) | "in the re-simulated sample (one network, 13 scenarios with overflow)" | "17 simulated scenarios (15 with overflow); the threshold bound was computed on the 15 with per-node record (13 with overflow)" |
+| `../anexos/03-datos-persistencia-sql.md`, l. 76 (note on D-04, point 1) | same | same |
+| `datos/README.md`, l. 22 | same | same |
+| `../anexos/01-hidraulica-swmm.md`, l. 113 (note of H-06) | "(≤ 0.5 m³ below 100 m³)" | "(≤ 0.51 m³)" |
+| `../2026-10-10-auditoria-completa.md`, l. 215 (decision 4, "1–2 m³ band") | Without specifying that it is only the integer 1 | Already listed as not applied in 03 §8.1 |
+| `03-resolucion-de-la-etiqueta.md`, Appendix, `s09_notas.py` | Contains the original text of the notes | Left as is: it is the record of the script that was executed |
 
-Pendiente tras la ola final: la columna `que_mide` de `datos/comparacion_protocolos.csv` conserva el texto anterior de `PROTOCOL_INTERPRETATION["GroupKFold5"]` ("5 bloques retenidos"), porque el CSV está trazado por hash en `tables_provenance.json` y no se regeneró. La redacción vigente es "Interpolación entre factores en 5 grupos de factores intercalados; ningún pliegue retiene dos factores contiguos; todas las formas siguen presentes en el entrenamiento." Regenerar el CSV y `tables_provenance.json` con `scripts/informe_evaluacion.py` cuando se vuelva a ejecutar la corrida.
+Pending after the final wave: the `que_mide` column of `datos/comparacion_protocolos.csv` keeps the previous text of `PROTOCOL_INTERPRETATION["GroupKFold5"]` ("5 bloques retenidos", i.e. "5 held-out blocks"), because the CSV is hash-traced in `tables_provenance.json` and was not regenerated. The current wording is "Interpolación entre factores en 5 grupos de factores intercalados; ningún pliegue retiene dos factores contiguos; todas las formas siguen presentes en el entrenamiento." (i.e. "Interpolation between factors in 5 groups of interleaved factors; no fold holds out two contiguous factors; all shapes remain present in training."). Regenerate the CSV and `tables_provenance.json` with `scripts/informe_evaluacion.py` when the run is executed again.
 
 ---
 
-## 10. Decisiones tomadas durante la ejecución (resumen)
+## 10. Decisions taken during execution (summary)
 
-Del registro de ejecución (no versionado), las que afectan a la lectura de las cifras:
+From the execution log (unversioned), those that affect the reading of the figures:
 
-| Id | Decisión | Consecuencia |
+| Id | Decision | Consequence |
 |---|---|---|
-| R1 | La medición sobre datos reales usa `scripts/ejecutar_evaluacion_v4_21.py`, no el CLI, con los hiperparámetros por defecto de `config.yaml` | Las cifras describen XGBoost sin ajustar; `outputs/models`, `outputs/bench/reports` y `ranking.csv` no se tocaron |
-| R7 | La referencia de forma más cercana recibe descriptores de forma explícitos, tomados del conjunto `tabular_v3_17` | "Cercana" = por duración y tiempo al pico |
-| R9 | Las referencias funcionan sobre la malla incompleta (963 de 1000 corridas) en lugar de re-ejecutar sobre las 160 000 filas sin filtrar | Referencias y XGBoost se puntúan sobre exactamente las mismas filas; 1,25 % y 0,42 % de filas de respaldo |
-| R10 | Aislar las pruebas que escribían en `outputs/metrics` y añadir un guardia | Ver `02` §4 |
-| R11 | El contador de respaldo de la interpolación se define frente a la malla de entrenamiento del pliegue | Los factores retenidos a propósito por GroupKFold5 no cuentan como respaldo |
-| R13 | El spike añadió notas fechadas a los documentos anteriores sin reescribir el texto original | Ver `03` §8.1 y §9 de este informe |
+| R1 | The measurement on real data uses `scripts/ejecutar_evaluacion_v4_21.py`, not the CLI, with the default hyperparameters of `config.yaml` | The figures describe untuned XGBoost; `outputs/models`, `outputs/bench/reports` and `ranking.csv` were not touched |
+| R7 | The nearest-shape reference receives explicit shape descriptors, taken from the `tabular_v3_17` dataset | "Nearest" = by duration and time to peak |
+| R9 | The references work on the incomplete grid (963 of 1000 runs) instead of re-running on the 160,000 unfiltered rows | References and XGBoost are scored on exactly the same rows; 1.25 % and 0.42 % fallback rows |
+| R10 | Isolate the tests that wrote to `outputs/metrics` and add a guard | See `02` §4 |
+| R11 | The fallback counter of the interpolation is defined against the training grid of the fold | The factors deliberately held out by GroupKFold5 do not count as fallback |
+| R13 | The spike added dated notes to the earlier documents without rewriting the original text | See `03` §8.1 and §9 of this report |
 
 ---
 
-## 11. Resumen para el informe de la investigación
+## 11. Summary for the research report
 
-> **Evaluación del modelo sustituto tras la auditoría del protocolo**
+> **Evaluation of the surrogate model after the protocol audit**
 >
-> Una auditoría interna del protocolo de evaluación identificó tres problemas que afectaban la lectura de los resultados: dos de los protocolos de validación cruzada medían interpolación y no generalización, faltaban referencias sin aprendizaje con las que comparar, y las métricas de clasificación se promediaban por pliegue de un modo que las subestimaba. Se corrigieron la evaluación y su trazabilidad, y se repitió la medición con el contrato de 21 variables, que incluye variables integradas del volumen del evento. Las cifras siguientes corresponden a XGBoost con hiperparámetros por defecto (no al modelo final ajustado), a una sola red de drenaje de 160 nodos y a 963 de las 1000 simulaciones (forma de hidrograma, factor de intensidad), las que cumplen un error de continuidad de a lo sumo 5 %, es decir, 154 080 casos nodo-escenario.
+> An internal audit of the evaluation protocol identified three problems that affected the reading of the results: two of the cross-validation protocols measured interpolation and not generalization, no-learning references to compare against were missing, and the classification metrics were averaged per fold in a way that underestimated them. The evaluation and its traceability were corrected, and the measurement was repeated with the 21-variable contract, which includes integrated variables of the event volume. The following figures correspond to XGBoost with default hyperparameters (not to the final tuned model), to a single drainage network of 160 nodes and to 963 of the 1000 simulations (hydrograph shape, intensity factor), those that meet a continuity error of at most 5 %, that is, 154,080 node-scenario cases.
 >
-> **Qué mide cada protocolo.** Cuando se retiene un factor de intensidad completo (LOSO) o cinco factores por pliegue (GroupKFold5), una referencia que solo interpola el volumen entre los factores vecinos de la misma forma y nodo obtiene un RMSE de volumen de 9,13 m³, frente a 57,89 m³ de XGBoost en LOSO, y un F1 de 0,9718 frente a 0,9667. Esos protocolos miden interpolación entre factores ya vistos y no se usan como evidencia de generalización. Con la malla de 25 factores, GroupKFold5 no es más exigente que LOSO, porque ningún pliegue retiene dos factores contiguos.
+> **What each protocol measures.** When a complete intensity factor is held out (LOSO) or five factors per fold (GroupKFold5), a reference that only interpolates the volume between the neighbouring factors of the same shape and node obtains a volume RMSE of 9.13 m³, versus 57.89 m³ for XGBoost in LOSO, and an F1 of 0.9718 versus 0.9667. Those protocols measure interpolation between already seen factors and are not used as evidence of generalization. With the 25-factor grid, GroupKFold5 is not more demanding than LOSO, because no fold holds out two contiguous factors.
 >
-> **Protocolo principal: forma de hidrograma no vista (LeaveOneShapeOut).** XGBoost supera a la referencia que copia el volumen de la forma de entrenamiento más parecida: RMSE agregado de 106,21 frente a 172,86 m³, NSE del volumen estimado en los nodos realmente inundados de 0,8906 frente a 0,7102 y F1 de 0,9817 frente a 0,9764. La matriz de confusión agregada de XGBoost tiene 45 845 verdaderos positivos, 106 526 verdaderos negativos, 1329 falsos positivos y 380 falsos negativos; 333 de esos falsos negativos son nodos con el volumen mínimo que la etiqueta considera inundación (1 m³ reportado) y ninguno supera los 100 m³.
+> **Main protocol: unseen hydrograph shape (LeaveOneShapeOut).** XGBoost beats the reference that copies the volume of the most similar training shape: pooled RMSE of 106.21 versus 172.86 m³, NSE of the volume estimated on the nodes that actually flooded of 0.8906 versus 0.7102 and F1 of 0.9817 versus 0.9764. The pooled confusion matrix of XGBoost has 45,845 true positives, 106,526 true negatives, 1,329 false positives and 380 false negatives; 333 of those false negatives are nodes with the minimum volume that the label considers flooding (1 m³ reported) and none exceeds 100 m³.
 >
-> **La magnitud del volumen es la parte débil.** El error del volumen total por forma va de −52,1 % a +33,3 %, y una sola forma, de aporte casi uniforme en bloque, concentra el 71,6 % del error cuadrático, con su volumen subestimado en un 52,1 %. Sin esa forma, el RMSE agregado de las otras 39 sería de 57,32 m³. Con el contrato anterior de 17 variables, la auditoría había medido un NSE de 0,8141 y un error por forma de −63,3 % a +216,3 %, sobre un conjunto de filas distinto; la comparación no aísla el efecto de las nuevas variables.
+> **The magnitude of the volume is the weak part.** The error of the total volume per shape ranges from −52.1 % to +33.3 %, and a single shape, with an almost uniform block inflow, concentrates 71.6 % of the squared error, with its volume underestimated by 52.1 %. Without that shape, the pooled RMSE of the other 39 would be 57.32 m³. With the previous 17-variable contract, the audit had measured an NSE of 0.8141 and a per-shape error of −63.3 % to +216.3 %, on a different set of rows; the comparison does not isolate the effect of the new variables.
 >
-> **Agregación de métricas.** Las métricas de clasificación se calculan sobre la matriz de confusión agregada. Promediar por pliegue asignando F1 = 0 a los pliegues sin inundaciones reducía el F1 de LOSO de 0,9667 a 0,7379, y daba 0,80 a un predictor perfecto; la aparente diferencia entre protocolos era un efecto de esa agregación.
+> **Metric aggregation.** The classification metrics are computed on the pooled confusion matrix. Averaging per fold while assigning F1 = 0 to the folds without flooding reduced the LOSO F1 from 0.9667 to 0.7379, and gave 0.80 to a perfect predictor; the apparent difference between protocols was an effect of that aggregation.
 >
-> **Trazabilidad.** Las predicciones fuera de pliegue se guardan por fila con la huella SHA-256 de cada archivo, de modo que todas las tablas pueden reconstruirse sin reentrenar; las figuras evaluadas sobre datos de entrenamiento se rotulan como ajuste en muestra, y la predicción con el modelo promovido se detiene si existe el registro de promoción (`promotion.json`, versionado junto a los modelos) y sus archivos no coinciden con él; si el registro falta, solo se advierte.
+> **Traceability.** The out-of-fold predictions are saved per row with the SHA-256 fingerprint of each file, so that all the tables can be reconstructed without retraining; the figures evaluated on training data are labelled as in-sample fit, and prediction with the promoted model stops if the promotion record exists (`promotion.json`, versioned together with the models) and its files do not match it; if the record is missing, it only warns.
 >
-> **Pendiente.** La etiqueta de inundación usa el volumen del reporte de SWMM, con resolución de 1 m³; en re-simulaciones de control equivale a un umbral de ≈ 0,5 m³ sobre el volumen continuo. Si se mantiene esa definición y se declara como supuesto (opción recomendada) o se re-simulan las 1000 corridas es una decisión aún abierta; la segunda cambiaría todas las cifras anteriores. Tampoco se han evaluado aún el modelo ajustado ni las demás familias con este protocolo.
+> **Pending.** The flooding label uses the volume of the SWMM report, with a resolution of 1 m³; in control re-simulations it is equivalent to a threshold of ≈ 0.5 m³ on the continuous volume. Whether to keep that definition and declare it as an assumption (recommended option) or to re-simulate the 1000 runs is a decision still open; the second would change all the figures above. The tuned model and the other families have also not yet been evaluated with this protocol.
 
-**Fuentes de las cifras del resumen:** `datos/comparacion_protocolos.csv` (F1, RMSE, NSE), `datos/matriz_confusion.csv` (matriz), `datos/banda_limitrofe.csv` (333 FN, 0 FN ≥ 100 m³), `datos/por_forma.csv` (rango por forma, 71,6 %, 57,32 m³; derivados en [01 §5](01-evaluacion-honesta.md)), `datos/tables_provenance.json` (154 080 filas, 963 de 1000), anexo 02 (0,8141; −63,3 % a +216,3 %), [01 §5](01-evaluacion-honesta.md) (predictor perfecto 0,80), [03](03-resolucion-de-la-etiqueta.md) (≈ 0,5 m³).
+**Sources of the summary figures:** `datos/comparacion_protocolos.csv` (F1, RMSE, NSE), `datos/matriz_confusion.csv` (matrix), `datos/banda_limitrofe.csv` (333 FN, 0 FN ≥ 100 m³), `datos/por_forma.csv` (per-shape range, 71.6 %, 57.32 m³; derived in [01 §5](01-evaluacion-honesta.md)), `datos/tables_provenance.json` (154,080 rows, 963 of 1000), annex 02 (0.8141; −63.3 % to +216.3 %), [01 §5](01-evaluacion-honesta.md) (perfect predictor 0.80), [03](03-resolucion-de-la-etiqueta.md) (≈ 0.5 m³).
