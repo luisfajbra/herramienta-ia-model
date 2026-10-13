@@ -1,17 +1,17 @@
-"""Tablas del informe de evaluación a partir de OOF persistidos.
+"""Evaluation report tables built from persisted OOFs.
 
-Uso:
+Usage:
     python scripts/informe_evaluacion.py --prep-id <ID>
         [--prepared-dir outputs/bench/prepared_v4_21] [--oof-root outputs/bench/oof]
         [--out docs/auditoria/correcciones/datos] [--flood-threshold 1.0]
 
-Lee el PreparedDataset ``<prepared-dir>/<prep-id>/`` y cada
-``<oof-root>/<prep-id>/<nombre>.parquet`` (un modelo o referencia por
-archivo) y escribe cuatro CSV: ``comparacion_protocolos``,
-``matriz_confusion``, ``banda_limitrofe`` y ``por_forma`` (fin de línea LF),
-más ``tables_provenance.json``: comando, commit y estado del árbol de git,
-SHA-256 de cada OOF leído y de cada CSV escrito. Solo lee datos ya
-calculados: no entrena ni toca la base.
+Reads the PreparedDataset ``<prepared-dir>/<prep-id>/`` and each
+``<oof-root>/<prep-id>/<name>.parquet`` (one model or baseline per
+file) and writes four CSVs: ``comparacion_protocolos``,
+``matriz_confusion``, ``banda_limitrofe`` and ``por_forma`` (LF line endings),
+plus ``tables_provenance.json``: command, commit and git tree state,
+SHA-256 of each OOF read and of each CSV written. It only reads data that
+is already computed: it neither trains nor touches the database.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def portable_path(path: Path | str) -> str:
     try:
         return target.resolve().relative_to(REPO_ROOT).as_posix()
     except ValueError:
-        return f"<externo>/{target.name}"
+        return f"<external>/{target.name}"
 
 
 def git_state() -> dict:
@@ -123,8 +123,8 @@ def build_tables(prepared, oof_by_name: dict, flood_threshold_m3: float) -> dict
     declared = prepared.manifest.get("flood_threshold_m3")
     if declared is None or float(declared) != float(flood_threshold_m3):
         raise ValueError(
-            f"flood_threshold_m3={flood_threshold_m3} no coincide con el del manifiesto "
-            f"del PreparedDataset {prepared.prep_id} ({declared})."
+            f"flood_threshold_m3={flood_threshold_m3} does not match the one in the manifest "
+            f"of the PreparedDataset {prepared.prep_id} ({declared})."
         )
     y_true = prepared.y_clf.to_numpy()
     volume = prepared.y_reg.to_numpy()
@@ -192,7 +192,7 @@ def write_tables(tables: dict, out_dir: Path | str) -> dict[str, Path]:
         # LF explícito: mismos bytes en Windows y en Linux (SHA-256 comparables).
         table.to_csv(path, index=False, lineterminator="\n")
         written[name] = path
-        print(f"{name}: {len(table)} filas -> {path}")
+        print(f"{name}: {len(table)} rows -> {path}")
     return written
 
 
@@ -226,7 +226,7 @@ def main(argv=None) -> int:
     oof_dir = args.oof_root / args.prep_id
     oof_paths = sorted(oof_dir.glob("*.parquet"))
     if not oof_paths:
-        raise SystemExit(f"No hay archivos OOF (*.parquet) en {oof_dir}.")
+        raise SystemExit(f"There are no OOF files (*.parquet) in {oof_dir}.")
     inputs_sha256 = {f"{args.prep_id}/{path.name}": _sha256(path) for path in oof_paths}
     oof_by_name = {path.stem: pd.read_parquet(path) for path in oof_paths}
     tables = build_tables(prepared, oof_by_name, args.flood_threshold)
@@ -241,7 +241,7 @@ def main(argv=None) -> int:
         "max_continuity_error_pct": prepared.manifest.get("max_continuity_error_pct"),
         "command": _command(args),
         **git,
-        "git_dirty_definition": "git status --porcelain --untracked-files=no no vacío al empezar",
+        "git_dirty_definition": "git status --porcelain --untracked-files=no non-empty at start",
         "oof_root": portable_path(args.oof_root),
         "inputs_sha256": inputs_sha256,
         "outputs_sha256": {path.name: _sha256(path) for path in sorted(written.values())},

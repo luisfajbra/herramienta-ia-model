@@ -1,11 +1,11 @@
-"""Divide por 2 los valores de [TIMESERIES] de un .inp de SWMM.
+"""Divide the [TIMESERIES] values of a SWMM .inp by 2.
 
-Uso (explícito, nunca al importar):
-    python halve_timeseries.py --src <entrada.inp> --dst <salida.inp> [--force]
+Usage (explicit, never on import):
+    python halve_timeseries.py --src <input.inp> --dst <output.inp> [--force]
 
-Se usó una vez para derivar la red Qx1 a partir de Qx2. El destino NO se
-sobrescribe sin ``--force``: una versión anterior de este script escribía sobre
-el .inp base de producción al importarse (hallazgo V-07 de la auditoría).
+It was used once to derive the Qx1 network from Qx2. The destination is NOT
+overwritten without ``--force``: a previous version of this script wrote over
+the production base .inp on import (audit finding V-07).
 """
 
 from __future__ import annotations
@@ -22,9 +22,9 @@ def halve_timeseries(src, dst, force: bool = False) -> int:
     """
     src, dst = Path(src), Path(dst)
     if src.resolve() == dst.resolve():
-        raise ValueError("El origen y el destino son el mismo archivo.")
+        raise ValueError("The source and destination are the same file.")
     if dst.exists() and not force:
-        raise FileExistsError(f"{dst} ya existe; usa force=True (--force) para sobrescribirlo.")
+        raise FileExistsError(f"{dst} already exists; use force=True (--force) to overwrite it.")
 
     in_timeseries = False
     out_lines: list[str] = []
@@ -60,7 +60,7 @@ def main(argv=None) -> int:
     parser.add_argument("--force", action="store_true")
     args = parser.parse_args(argv)
     count = halve_timeseries(args.src, args.dst, force=args.force)
-    print(f"Listo: {count} valores divididos. Escrito en: {args.dst}")
+    print(f"Done: {count} values divided. Written to: {args.dst}")
     return 0
 
 

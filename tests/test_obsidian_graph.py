@@ -33,7 +33,7 @@ def test_generate_module_note_empty_links():
         "depends_on": [],
     })
     assert "# Config" in note
-    assert "_ninguno_" in note
+    assert "_none_" in note
 
 
 def test_generate_file_note():
@@ -46,7 +46,7 @@ def test_generate_file_note():
     )
     assert "# predict.py" in note
     assert "[[ML Temporal]]" in note
-    assert "_ninguno_" in note
+    assert "_none_" in note
 
 
 def test_generate_artifact_note_with_files():
@@ -57,7 +57,7 @@ def test_generate_artifact_note_with_files():
         consumers=["ML Temporal"],
     )
     assert "# SQLite DB" in note
-    assert "**Archivos encontrados:** 1" in note
+    assert "**Files found:** 1" in note
     assert "data/training/swmm_resilience.db" in note
     assert "[[Database]]" in note
     assert "[[ML Temporal]]" in note
@@ -70,7 +70,7 @@ def test_generate_artifact_note_empty():
         producers=["ML Temporal"],
         consumers=["Desktop"],
     )
-    assert "**Archivos encontrados:** 0" in note
+    assert "**Files found:** 0" in note
 
 
 def test_generate_index_note():

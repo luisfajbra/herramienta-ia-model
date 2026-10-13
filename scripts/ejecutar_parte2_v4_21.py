@@ -1,39 +1,40 @@
-"""Parte 2: comparación justa XGBoost / MLP / SVM aproximado sobre ``tabular_v4_21``.
+"""Part 2: fair XGBoost / MLP / approximate SVM comparison on ``tabular_v4_21``.
 
 Spec: ``docs/superpowers/specs/2026-10-12-parte2-svm-comparacion-justa-design.md``.
 
-Uso (desde la raíz del repositorio; un proceso por familia, pueden correr a la vez)::
+Usage (from the repository root; one process per family, they can run at the same time)::
 
     venv/Scripts/python.exe scripts/ejecutar_parte2_v4_21.py --family mlp
     venv/Scripts/python.exe scripts/ejecutar_parte2_v4_21.py --family xgboost
     venv/Scripts/python.exe scripts/ejecutar_parte2_v4_21.py --family svm
     venv/Scripts/python.exe scripts/ejecutar_parte2_v4_21.py --build-tables
 
-Cada familia ejecuta tres etapas, en este orden, y deja cada una en
-``outputs/bench/parte2/<prep_id>/<familia>/<etapa>/``:
+Each family runs three stages, in this order, and leaves each one in
+``outputs/bench/parte2/<prep_id>/<family>/<stage>/``:
 
-1. ``default``: ``evaluate_candidate`` con los parámetros de ``config.yaml``
-   (más los parámetros fijos de la comparación) en LeaveOneShapeOut.
-2. ``tune``: estudio Optuna (``N_TRIALS`` trials, GroupKFold(5) interno por
-   forma, los 5 folds de cada trial en paralelo).
-3. ``tuned``: ``evaluate_candidate`` con los mejores parámetros del estudio.
+1. ``default``: ``evaluate_candidate`` with the ``config.yaml`` parameters
+   (plus the fixed parameters of the comparison) in LeaveOneShapeOut.
+2. ``tune``: Optuna study (``N_TRIALS`` trials, inner GroupKFold(5) by
+   shape, the 5 folds of each trial in parallel).
+3. ``tuned``: ``evaluate_candidate`` with the best parameters of the study.
 
-Una etapa con marca ``done`` se salta: tras una caída basta relanzar el mismo
-comando. ``--build-tables`` junta la referencia ya persistida y todos los OOF
-de las etapas en las tablas del informe
+A stage with a ``done`` marker is skipped: after a crash it is enough to
+relaunch the same command. ``--build-tables`` joins the already persisted
+baseline and all the stage OOFs into the report tables
 (``docs/auditoria/correcciones/datos_parte2/``).
 
-Paralelismo: los folds (40 de LeaveOneShapeOut; 5 internos por trial) corren en
-procesos aparte con un hilo cada uno. XGBoost queda fijado en ``n_jobs=1``
-porque dentro de esos procesos ``OMP_NUM_THREADS=1`` ya lo reduce a un hilo
-aunque se pida más (medido: ``n_jobs=4`` en un hijo da exactamente las
-predicciones de ``n_jobs=1`` y no las de ``n_jobs=4`` en el proceso principal);
-fijar 1 hace que afinación y evaluación sean reproducibles y coincidan.
+Parallelism: the folds (40 of LeaveOneShapeOut; 5 inner ones per trial) run in
+separate processes with one thread each. XGBoost is pinned to ``n_jobs=1``
+because inside those processes ``OMP_NUM_THREADS=1`` already reduces it to one
+thread even if more are requested (measured: ``n_jobs=4`` in a child gives
+exactly the predictions of ``n_jobs=1`` and not those of ``n_jobs=4`` in the
+main process); pinning 1 makes tuning and evaluation reproducible and
+consistent with each other.
 
-Nunca escribe en ``outputs/models``, ``outputs/bench/reports``,
-``outputs/bench/prepared*``, ``outputs/bench/oof`` (solo lectura), la base
-SQLite, ``data/``, ``config.yaml`` ni ``docs/auditoria/correcciones/datos/``
-(tablas con hash): ``ensure_parte2_output`` lo verifica antes de cada escritura.
+It never writes to ``outputs/models``, ``outputs/bench/reports``,
+``outputs/bench/prepared*``, ``outputs/bench/oof`` (read-only), the SQLite
+database, ``data/``, ``config.yaml`` or ``docs/auditoria/correcciones/datos/``
+(hashed tables): ``ensure_parte2_output`` verifies this before every write.
 """
 
 from __future__ import annotations
@@ -110,8 +111,8 @@ def check_manifest(manifest: dict) -> None:
         have = manifest.get(field)
         if have != want:
             raise ValueError(
-                f"El manifiesto no coincide en {field}: esperado {want!r}, tiene {have!r}. "
-                "Esta comparación solo es válida sobre el dataset fijado en la spec."
+                f"The manifest does not match on {field}: expected {want!r}, has {have!r}. "
+                "This comparison is only valid on the dataset fixed in the spec."
             )
 
 
@@ -133,10 +134,10 @@ def ensure_parte2_output(path: Path | str, repo_root: Path | str = REPO_ROOT) ->
         return
     parts = relative.parts
     if len(parts) >= 3 and parts[:2] == ("outputs", "bench") and parts[2].startswith("prepared"):
-        raise ValueError(f"Ruta protegida, no se escribe aquí: {relative.as_posix()}")
+        raise ValueError(f"Protected path, not written here: {relative.as_posix()}")
     for protected in _EXTRA_PROTECTED:
         if relative == protected or relative.is_relative_to(protected):
-            raise ValueError(f"Ruta protegida, no se escribe aquí: {relative.as_posix()}")
+            raise ValueError(f"Protected path, not written here: {relative.as_posix()}")
 
 
 # --- parámetros -----------------------------------------------------------------------
@@ -158,7 +159,7 @@ def config_params(config, family: str) -> dict:
 def model_name(family: str, stage: str) -> str:
     """Nombre del modelo en las tablas: ``<familia>_default`` o ``<familia>_tuned``."""
     if stage not in ("default", "tuned"):
-        raise ValueError(f"La etapa {stage!r} no produce un modelo evaluado (default|tuned).")
+        raise ValueError(f"The stage {stage!r} does not produce an evaluated model (default|tuned).")
     return f"{family}_{stage}"
 
 
@@ -215,10 +216,10 @@ def run_stage_once(path: Path | str, runner, *, header: dict, log=_log) -> bool:
     directory = Path(path)
     label = f"{header.get('family')}/{header.get('stage')}"
     if is_done(directory):
-        log(f"{label}: ya hecha ({directory}), se salta")
+        log(f"{label}: already done ({directory}), skipping")
         return False
     directory.mkdir(parents=True, exist_ok=True)
-    log(f"{label}: inicio")
+    log(f"{label}: start")
     started = datetime.now(timezone.utc)
     result = runner(directory) or {}
     finished = datetime.now(timezone.utc)
@@ -227,7 +228,7 @@ def run_stage_once(path: Path | str, runner, *, header: dict, log=_log) -> bool:
         json.dumps(record, indent=2, ensure_ascii=False, default=str) + "\n", encoding="utf-8"
     )
     (directory / "done").write_text(finished.isoformat() + "\n", encoding="utf-8")
-    log(f"{label}: fin en {record['duration_s']} s")
+    log(f"{label}: finished in {record['duration_s']} s")
     return True
 
 
@@ -236,7 +237,7 @@ def find_study_json(tune_dir: Path | str, family: str) -> Path:
     candidates = sorted(Path(tune_dir).glob(f"{family}/*/study.json"))
     if not candidates:
         raise FileNotFoundError(
-            f"No hay study.json en {tune_dir}: falta la etapa tune de {family!r}."
+            f"There is no study.json in {tune_dir}: the tune stage of {family!r} is missing."
         )
     return candidates[-1]
 
@@ -362,7 +363,7 @@ def assemble_tables(
     stages = _done_eval_stages(out_root)
     if not stages:
         raise FileNotFoundError(
-            f"No hay ninguna etapa de evaluación terminada (con marca done) en {out_root}."
+            f"There is no finished evaluation stage (with a done marker) in {out_root}."
         )
     baseline_path = Path(baseline_oof_path)
     baseline = pd.read_parquet(baseline_path)
@@ -422,7 +423,7 @@ def write_parte2_tables(
         "models": sorted(set(tables["comparacion_protocolos"]["modelo"])),
         "command": command,
         **git,
-        "git_dirty_definition": "git status --porcelain --untracked-files=no no vacío al empezar",
+        "git_dirty_definition": "git status --porcelain --untracked-files=no non-empty at start",
         "out_root": portable_path(root),
         "inputs_sha256": inputs,
         "outputs_sha256": {path.name: _sha256(path) for path in sorted(written.values())},
@@ -443,21 +444,21 @@ def parse_args(argv=None):
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--family", choices=FAMILIES, help="familia cuyas etapas se ejecutan")
+    mode.add_argument("--family", choices=FAMILIES, help="family whose stages are run")
     mode.add_argument(
         "--build-tables", action="store_true",
-        help="arma las tablas del informe con lo que haya terminado",
+        help="build the report tables from whatever has finished",
     )
     parser.add_argument(
         "--eval-jobs", type=int, default=40,
-        help="procesos para los folds de las evaluaciones (defecto 40 = una por forma)",
+        help="processes for the evaluation folds (default 40 = one per shape)",
     )
     parser.add_argument(
         "--fold-jobs", type=int, default=INNER_SPLITS,
-        help="procesos para los folds internos de cada trial (defecto 5)",
+        help="processes for the inner folds of each trial (default 5)",
     )
     parser.add_argument(
-        "--stages", default=",".join(STAGES), help="etapas a ejecutar, separadas por coma"
+        "--stages", default=",".join(STAGES), help="stages to run, comma-separated"
     )
     # Opciones de apoyo para pruebas; no forman parte de la corrida real.
     parser.add_argument("--n-trials", type=int, default=N_TRIALS, help=argparse.SUPPRESS)
@@ -478,8 +479,8 @@ def load_prepared(repo_root: Path = REPO_ROOT):
     check_manifest(prepared.manifest)
     if prepared.prep_id != PREP_ID or len(prepared.keys) != N_ROWS:
         raise ValueError(
-            f"El PreparedDataset cargado no es el esperado: {prepared.prep_id}, "
-            f"{len(prepared.keys)} filas."
+            f"The loaded PreparedDataset is not the expected one: {prepared.prep_id}, "
+            f"{len(prepared.keys)} rows."
         )
     return prepared
 
@@ -508,7 +509,7 @@ def run_family(args) -> int:
     stages = [stage.strip() for stage in args.stages.split(",") if stage.strip()]
     unknown = [stage for stage in stages if stage not in STAGES]
     if unknown:
-        raise SystemExit(f"Etapas desconocidas: {unknown}. Válidas: {list(STAGES)}")
+        raise SystemExit(f"Unknown stages: {unknown}. Valid: {list(STAGES)}")
 
     out_root = Path(args.out_root) if args.out_root else REPO_ROOT / DEFAULT_OUT_ROOT
     ensure_parte2_output(out_root)
@@ -525,8 +526,8 @@ def run_family(args) -> int:
         eval_prepared.folds["protocol"] == EVAL_PROTOCOL, "fold_id"
     ].nunique()
     _log(
-        f"familia={family} prep_id={prepared.prep_id} filas={len(prepared.keys)} "
-        f"protocolo={EVAL_PROTOCOL} folds={n_folds} smoke={args.smoke} out_root={out_root}"
+        f"family={family} prep_id={prepared.prep_id} rows={len(prepared.keys)} "
+        f"protocol={EVAL_PROTOCOL} folds={n_folds} smoke={args.smoke} out_root={out_root}"
     )
 
     def evaluate(directory: Path, params: dict) -> dict:
@@ -553,7 +554,7 @@ def run_family(args) -> int:
             fold_n_jobs=args.fold_jobs, fixed_params=fixed,
         )
         path = save_tune_result(result, directory)
-        _log(f"{family}: mejor valor {result.best_value:.3f} m3 en {result.duration_s:.0f} s ({path})")
+        _log(f"{family}: best value {result.best_value:.3f} m3 in {result.duration_s:.0f} s ({path})")
         return {
             "params": {
                 "n_trials": result.n_trials,
@@ -589,7 +590,7 @@ def run_family(args) -> int:
             "command": " ".join(["python", "scripts/ejecutar_parte2_v4_21.py", *sys.argv[1:]]),
         }
         run_stage_once(directory, runners[stage], header=header)
-    _log(f"{family}: terminado")
+    _log(f"{family}: finished")
     return 0
 
 
@@ -616,7 +617,7 @@ def run_build_tables(args) -> int:
     n_expected = len(prepared.keys) if max_folds is None else None
     totals = confusion[["tn", "fp", "fn", "tp"]].sum(axis=1)
     if n_expected is not None and not (totals == n_expected).all():
-        raise AssertionError(f"La matriz de confusión no suma n_rows:\n{confusion}")
+        raise AssertionError(f"The confusion matrix does not add up to n_rows:\n{confusion}")
     # En humo la provenance describe el subconjunto de folds usado.
     described = restrict_prepared(prepared, EVAL_PROTOCOL, max_folds) if max_folds else prepared
     write_parte2_tables(

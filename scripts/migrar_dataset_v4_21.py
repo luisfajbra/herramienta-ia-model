@@ -60,7 +60,7 @@ def base_node_series(inp, factor: float) -> dict[str, list[tuple[float, float]]]
 def main() -> None:
     config = load_config("config.yaml")
     df = pd.read_csv(SOURCE)
-    print(f"Dataset fuente: {len(df)} filas, {df['shape_id'].nunique()} formas (incl. 'base')")
+    print(f"Source dataset: {len(df)} rows, {df['shape_id'].nunique()} shapes (incl. 'base')")
 
     graph, _ = build_network_graph(load_inp(config.network.inp_path))
     inp_for_base = load_inp(config.network.inp_path)
@@ -96,7 +96,7 @@ def main() -> None:
         trib_df.index = group.index
         out_frames.append(trib_df)
         if done % 100 == 0 or done == len(groups):
-            print(f"  features tributarias: {done}/{len(groups)} escenarios")
+            print(f"  tributary features: {done}/{len(groups)} scenarios")
 
     tributary = pd.concat(out_frames).sort_index()
     merged = pd.concat([df, tributary], axis=1)
@@ -105,11 +105,11 @@ def main() -> None:
     expected = set(FEATURE_COLUMNS_V21)
     missing = expected - set(merged.columns)
     if missing:
-        raise RuntimeError(f"Faltan columnas del contrato tabular_v4_21: {sorted(missing)}")
+        raise RuntimeError(f"Missing columns of the tabular_v4_21 contract: {sorted(missing)}")
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     merged.to_csv(OUTPUT, index=False)
-    print(f"Guardado: {OUTPUT} ({merged.shape[0]} filas x {merged.shape[1]} cols)")
+    print(f"Saved: {OUTPUT} ({merged.shape[0]} rows x {merged.shape[1]} cols)")
 
 
 if __name__ == "__main__":

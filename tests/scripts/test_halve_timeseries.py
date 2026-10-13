@@ -56,5 +56,5 @@ def test_refuses_to_use_the_source_as_destination(tmp_path):
 
     src = tmp_path / "in.inp"
     src.write_text(INP, encoding="utf-8")
-    with pytest.raises(ValueError, match="mismo archivo"):
+    with pytest.raises(ValueError, match="same file"):
         halve_timeseries(src, src, force=True)

@@ -268,7 +268,7 @@ def test_restrict_prepared_keeps_only_the_first_folds_of_the_protocol():
 def test_output_guard_rejects_protected_paths(relative):
     from scripts.ejecutar_parte2_v4_21 import REPO_ROOT, ensure_parte2_output
 
-    with pytest.raises(ValueError, match="protegida"):
+    with pytest.raises(ValueError, match="Protected path"):
         ensure_parte2_output(REPO_ROOT / relative)
 
 
@@ -432,7 +432,7 @@ def test_assemble_tables_without_any_stage_fails(tmp_path):
     prepared = _prepared()
     _, baseline = _make_run(tmp_path, prepared)
 
-    with pytest.raises(FileNotFoundError, match="etapa"):
+    with pytest.raises(FileNotFoundError, match="evaluation stage"):
         assemble_tables(prepared, tmp_path / "vacio", baseline, 1.0)
 
 

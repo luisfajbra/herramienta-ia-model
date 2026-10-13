@@ -30,7 +30,7 @@ def main() -> None:
     config = load_config("config.yaml")
     xgboost_spec = config.bench.families["xgboost"]
 
-    print("Preparando tabular_v3_17 (legado)...")
+    print("Preparing tabular_v3_17 (legacy)...")
     prepared_v17 = prepare_dataset(
         config.dataset.db_path,
         protocols=(PROTOCOL,),
@@ -44,7 +44,7 @@ def main() -> None:
     rmse_v17 = metrics_v17[PROTOCOL]["end_to_end"]["rmse_vol_todos_nodos"]
     print(f"  RMSE ({PROTOCOL}, tabular_v3_17, {len(FEATURE_COLUMNS_V17)} features): {rmse_v17:.4f}")
 
-    print("\nPreparando tabular_v4_21 (con features tributarias)...")
+    print("\nPreparing tabular_v4_21 (with tributary features)...")
     prepared_v21 = prepare_dataset(
         config.dataset.db_path,
         protocols=(PROTOCOL,),
@@ -64,15 +64,15 @@ def main() -> None:
 
     delta = rmse_v17 - rmse_v21
     pct = 100 * delta / rmse_v17 if rmse_v17 else float("nan")
-    print(f"\nDelta oficial (protocolo {PROTOCOL}): {delta:+.4f} ({pct:+.2f}%) "
-          f"{'mejora' if delta > 0 else 'empeora o igual'}")
+    print(f"\nOfficial delta (protocol {PROTOCOL}): {delta:+.4f} ({pct:+.2f}%) "
+          f"{'improves' if delta > 0 else 'worsens or equal'}")
 
     if delta > 0:
         import joblib
 
         from swmm_resilience.ml.bench.models.xgboost_family import build_classifier, build_regressor
 
-        print("\nMejora confirmada -- entrenando el modelo final sobre el 100% de tabular_v4_21...")
+        print("\nImprovement confirmed -- training the final model on 100% of tabular_v4_21...")
         X = prepared_v21.X
         y_clf = prepared_v21.y_clf.to_numpy()
         y_reg = prepared_v21.y_reg.to_numpy()
@@ -109,7 +109,7 @@ def main() -> None:
                     "ordered_features": list(FEATURE_COLUMNS_V21),
                     "classifier_sha256": _sha256(models_dir / "classifier.joblib"),
                     "regressor_sha256": _sha256(models_dir / "regressor.joblib"),
-                    "source": "scripts/comparar_contratos_xgboost.py (migracion tabular_v4_21, delta confirmado)",
+                    "source": "scripts/comparar_contratos_xgboost.py (tabular_v4_21 migration, delta confirmed)",
                     "promoted_at_utc": datetime.now(timezone.utc).isoformat(),
                 },
                 indent=2,
@@ -126,7 +126,7 @@ def main() -> None:
             return digest.hexdigest()
 
         (models_dir / "training_inp_hash.txt").write_text(_md5(config.network.inp_path))
-        print(f"  Modelo tabular_v4_21 promovido a {models_dir}")
+        print(f"  tabular_v4_21 model promoted to {models_dir}")
 
 
 if __name__ == "__main__":

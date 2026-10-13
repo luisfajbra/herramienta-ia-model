@@ -38,7 +38,7 @@ def test_shape_descriptors_reject_a_descriptor_that_varies_within_a_shape():
     X = prepared.X.copy()
     X.loc[0, "duracion_horas"] = 99.0
 
-    with pytest.raises(ValueError, match="constante"):
+    with pytest.raises(ValueError, match="not constant"):
         shape_descriptors_from_frames(prepared.keys, X)
 
 
@@ -50,7 +50,7 @@ def test_shape_check_rejects_a_different_set_of_shapes():
     table = shape_descriptors_from_frames(source.keys, source.X)
 
     check_same_shapes(table, source.keys)  # mismo conjunto: no falla
-    with pytest.raises(ValueError, match="formas"):
+    with pytest.raises(ValueError, match="shapes"):
         check_same_shapes(table, target.keys)
 
 
@@ -68,7 +68,7 @@ def test_shape_check_rejects_a_different_set_of_shapes():
 def test_protected_paths_are_refused(tmp_path, relative):
     from scripts.ejecutar_evaluacion_v4_21 import ensure_allowed_output
 
-    with pytest.raises(ValueError, match="protegida"):
+    with pytest.raises(ValueError, match="Protected path"):
         ensure_allowed_output(tmp_path / relative, repo_root=tmp_path)
 
 

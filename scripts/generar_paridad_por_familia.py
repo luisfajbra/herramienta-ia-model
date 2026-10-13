@@ -1,10 +1,10 @@
-"""Genera graficos de paridad (SWMM vs. prediccion) para cada familia del banco.
+"""Generates parity plots (SWMM vs. prediction) for each bench family.
 
-Usa las mismas predicciones out-of-fold (protocolo LeaveOneShapeOut) que el
-ranking de `--bench-evaluate`, asi que los graficos son consistentes con los
-numeros ya reportados -- no es un ajuste optimista sobre el 100% de los datos.
+Uses the same out-of-fold predictions (LeaveOneShapeOut protocol) as the
+`--bench-evaluate` ranking, so the plots are consistent with the figures
+already reported -- it is not an optimistic fit on 100% of the data.
 
-Uso:
+Usage:
     venv/Scripts/python.exe scripts/generar_paridad_por_familia.py \
         --models xgboost,random_forest,linear,svm,mlp \
         --prep-id 2db0578f875526cb \
@@ -58,11 +58,11 @@ def _comparison_df(prepared, oof_protocol: pd.DataFrame) -> pd.DataFrame:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--models", required=True, help="Familias separadas por coma")
-    parser.add_argument("--prep-id", required=True, help="PreparedDataset a usar")
+    parser.add_argument("--models", required=True, help="Comma-separated families")
+    parser.add_argument("--prep-id", required=True, help="PreparedDataset to use")
     parser.add_argument(
         "--out-dir", default="outputs/bench/reports/paridad",
-        help="Directorio de salida (una subcarpeta por familia)",
+        help="Output directory (one subfolder per family)",
     )
     args = parser.parse_args()
 
@@ -74,7 +74,7 @@ def main() -> None:
     out_root = Path(args.out_dir)
 
     for family in families:
-        print(f"Evaluando {family} (OOF, protocolo {PROTOCOL})...")
+        print(f"Evaluating {family} (OOF, protocol {PROTOCOL})...")
         spec = config.bench.families[family]
         oof, metrics = evaluate_candidate(prepared, family, spec.classifier, spec.regressor)
 
@@ -92,7 +92,7 @@ def main() -> None:
         rmse = metrics[PROTOCOL]["end_to_end"]["rmse_vol_todos_nodos"]
         print(f"  {family}: RMSE OOF = {rmse:.2f}  ->  {out_dir}")
 
-    print("Listo.")
+    print("Done.")
 
 
 if __name__ == "__main__":

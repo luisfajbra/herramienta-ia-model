@@ -85,7 +85,7 @@ def _build_tributary_columns(df: pd.DataFrame, config) -> pd.DataFrame:
         out_frames.append(trib_df)
         done += 1
         if done % 200 == 0 or done == n_groups:
-            print(f"  features tributarias: {done}/{n_groups} escenarios")
+            print(f"  tributary features: {done}/{n_groups} scenarios")
 
     return pd.concat(out_frames).sort_index()
 
@@ -138,9 +138,9 @@ def main() -> None:
             df["continuity_error_pct"].isna()
             | (df["continuity_error_pct"].abs() <= config.validation.max_continuity_error_pct)
         ].reset_index(drop=True)
-    print(f"Filas tras excluir 'base' y continuidad: {len(df)} ({df['shape_id'].nunique()} formas)")
+    print(f"Rows after excluding 'base' and continuity: {len(df)} ({df['shape_id'].nunique()} shapes)")
 
-    print("Calculando las 6 features tributarias para cada escenario...")
+    print("Computing the 6 tributary features for each scenario...")
     trib = _build_tributary_columns(df, config)
     df_v21 = pd.concat([df.reset_index(drop=True), trib.reset_index(drop=True)], axis=1)
 
@@ -148,17 +148,17 @@ def main() -> None:
     y_reg = df["vol_inundacion_m3"].astype(float).to_numpy()
     groups = df["shape_id"].to_numpy()
 
-    print("\nEvaluando XGBoost con 17 features (tabular_v3_17)...")
+    print("\nEvaluating XGBoost with 17 features (tabular_v3_17)...")
     rmse_v17 = _routed_rmse(df[list(FEATURE_COLUMNS_V17)], y_clf, y_reg, groups)
     print(f"  RMSE end-to-end (v3_17, 17 features): {rmse_v17:.4f}")
 
-    print("\nEvaluando XGBoost con 17+6 features (ad-hoc, union simple)...")
+    print("\nEvaluating XGBoost with 17+6 features (ad-hoc, simple union)...")
     cols_union = list(FEATURE_COLUMNS_V17) + list(TRIBUTARY_COLUMNS)
     rmse_union = _routed_rmse(df_v21[cols_union], y_clf, y_reg, groups)
     print(f"  RMSE end-to-end (union, 23 features): {rmse_union:.4f}")
 
-    print("\nEvaluando XGBoost con el contrato EXACTO tabular_v4_21 (21 features, "
-          "sin duracion_horas ni tiempo_al_pico_h)...")
+    print("\nEvaluating XGBoost with the EXACT tabular_v4_21 contract (21 features, "
+          "without duracion_horas or tiempo_al_pico_h)...")
     rmse_v21 = _routed_rmse(df_v21[list(FEATURE_COLUMNS_V21)], y_clf, y_reg, groups)
     print(f"  RMSE end-to-end (tabular_v4_21, 21 features): {rmse_v21:.4f}")
 
@@ -166,7 +166,7 @@ def main() -> None:
         delta = rmse_v17 - rmse_alt
         pct = 100 * delta / rmse_v17 if rmse_v17 else float("nan")
         print(f"\nDelta vs. v3_17 ({label}): {delta:+.4f} ({pct:+.2f}%) "
-              f"{'mejora' if delta > 0 else 'empeora o igual'}")
+              f"{'improves' if delta > 0 else 'worsens or equal'}")
 
 
 if __name__ == "__main__":

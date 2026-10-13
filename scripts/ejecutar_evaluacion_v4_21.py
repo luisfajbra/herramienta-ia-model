@@ -67,15 +67,15 @@ _PROTECTED_DIRS = (
 _PROTECTED_FILE_PATTERN = "outputs/training_v17*.sqlite3*"
 
 XGBOOST_PARAMS_NOTE = (
-    "Los hiperparámetros de XGBoost son los valores por defecto de config.yaml "
-    "(bench.families.xgboost), no los del modelo ajustado con Optuna: esta corrida "
-    "mide el protocolo y las métricas, no el modelo promovido."
+    "The XGBoost hyperparameters are the config.yaml defaults "
+    "(bench.families.xgboost), not those of the Optuna-tuned model: this run "
+    "measures the protocol and the metrics, not the promoted model."
 )
 BASELINE_FALLBACK_NOTE = (
-    "n_rows y fallback_rows suman todas las filas OOF de los protocolos donde aplica "
-    "la referencia; fallback_rows cuenta las filas que no usaron su fuente primaria "
-    "porque el filtro de continuidad dejó huecos en la malla (forma, factor). "
-    "Definición exacta en swmm_resilience/ml/bench/baselines.py."
+    "n_rows and fallback_rows add up all the OOF rows of the protocols where the "
+    "baseline applies; fallback_rows counts the rows that did not use their primary "
+    "source because the continuity filter left gaps in the (shape, factor) grid. "
+    "Exact definition in swmm_resilience/ml/bench/baselines.py."
 )
 
 
@@ -83,7 +83,7 @@ def baseline_counters(oof: pd.DataFrame) -> dict:
     """``n_rows``/``fallback_rows`` de ``oof.attrs`` y su proporción."""
     missing = [key for key in ("n_rows", "fallback_rows") if key not in oof.attrs]
     if missing:
-        raise ValueError(f"El OOF de la referencia no trae attrs {missing}.")
+        raise ValueError(f"The baseline OOF does not carry attrs {missing}.")
     n_rows = int(oof.attrs["n_rows"])
     fallback_rows = int(oof.attrs["fallback_rows"])
     return {
@@ -119,7 +119,7 @@ def shape_descriptors_from_frames(keys: pd.DataFrame, X: pd.DataFrame) -> pd.Dat
     """
     missing = [column for column in SHAPE_DESCRIPTOR_COLUMNS if column not in X.columns]
     if missing:
-        raise ValueError(f"Faltan los descriptores de forma {missing} en las features.")
+        raise ValueError(f"The shape descriptors {missing} are missing from the features.")
     frame = pd.DataFrame(
         {"shape_id": keys["shape_id"].astype(str).to_numpy()}
         | {column: X[column].to_numpy(dtype=float) for column in SHAPE_DESCRIPTOR_COLUMNS}
@@ -129,11 +129,11 @@ def shape_descriptors_from_frames(keys: pd.DataFrame, X: pd.DataFrame) -> pd.Dat
     if varying.to_numpy().any():
         shapes = sorted(varying.index[varying.any(axis=1)])
         raise ValueError(
-            f"Los descriptores de forma no son constantes dentro de las formas {shapes}."
+            f"The shape descriptors are not constant within the shapes {shapes}."
         )
     table = grouped.first()
     if table.isna().to_numpy().any():
-        raise ValueError("Los descriptores de forma tienen NaN.")
+        raise ValueError("The shape descriptors contain NaN.")
     return table
 
 
@@ -143,8 +143,8 @@ def check_same_shapes(descriptors: pd.DataFrame, keys: pd.DataFrame) -> None:
     want = set(keys["shape_id"].astype(str))
     if have != want:
         raise ValueError(
-            "Los descriptores no cubren exactamente las mismas formas que el dataset: "
-            f"faltan {sorted(want - have)}, sobran {sorted(have - want)}."
+            "The descriptors do not cover exactly the same shapes as the dataset: "
+            f"missing {sorted(want - have)}, extra {sorted(have - want)}."
         )
 
 
@@ -159,9 +159,9 @@ def ensure_allowed_output(path: Path | str, repo_root: Path | str = REPO_ROOT) -
         return
     for protected in _PROTECTED_DIRS:
         if relative == protected or relative.is_relative_to(protected):
-            raise ValueError(f"Ruta protegida, no se escribe aquí: {relative.as_posix()}")
+            raise ValueError(f"Protected path, not written here: {relative.as_posix()}")
     if fnmatch.fnmatch(relative.as_posix(), _PROTECTED_FILE_PATTERN):
-        raise ValueError(f"Ruta protegida, no se escribe aquí: {relative.as_posix()}")
+        raise ValueError(f"Protected path, not written here: {relative.as_posix()}")
 
 
 def _versions() -> dict:
@@ -268,15 +268,15 @@ def main() -> int:
         view_name="training_samples_v4_21",
         node_features_table="node_features_v4_21",
     )
-    print(f"  prep_id={prepared.prep_id} filas={len(prepared.keys)} "
-          f"features={prepared.X.shape[1]} protocolos={sorted(prepared.folds['protocol'].unique())}")
+    print(f"  prep_id={prepared.prep_id} rows={len(prepared.keys)} "
+          f"features={prepared.X.shape[1]} protocols={sorted(prepared.folds['protocol'].unique())}")
 
     source = REPO_ROOT / SHAPE_SOURCE_DIR
     descriptors = shape_descriptors_from_frames(
         pd.read_parquet(source / "keys.parquet"), pd.read_parquet(source / "features.parquet")
     )
     check_same_shapes(descriptors, prepared.keys)
-    print(f"  descriptores de forma: {len(descriptors)} formas desde {SHAPE_SOURCE_DIR.as_posix()}")
+    print(f"  shape descriptors: {len(descriptors)} shapes from {SHAPE_SOURCE_DIR.as_posix()}")
 
     fallback: dict[str, dict] = {}
 
@@ -346,7 +346,7 @@ def main() -> int:
     confusion = tables["matriz_confusion"]
     totals = confusion[["tn", "fp", "fn", "tp"]].sum(axis=1)
     if not (totals == len(prepared.keys)).all():
-        raise AssertionError(f"La matriz de confusión no suma n_rows:\n{confusion}")
+        raise AssertionError(f"The confusion matrix does not add up to n_rows:\n{confusion}")
     write_tables(tables, REPO_ROOT / DATA_DIR)
     save_provenance(complete=True)
 
