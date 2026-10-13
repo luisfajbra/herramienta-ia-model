@@ -91,7 +91,7 @@ def test_model_provenance_summarises_the_active_model(tmp_path):
 
 def test_model_provenance_without_a_record_is_marked_unknown(tmp_path):
     info = model_provenance(_models_dir(tmp_path, record=False))
-    assert info["family"] == "desconocida"
+    assert info["family"] == "unknown"
 
 
 def test_predict_network_refuses_models_that_do_not_match_promotion_json(tmp_path):
@@ -134,7 +134,7 @@ def _artifact_dir(tmp_path):
 def test_provenance_without_a_record_hashes_the_artifact_files(tmp_path):
     models, expected = _artifact_dir(tmp_path)
     info = model_provenance(models)
-    assert info["family"] == "desconocida"
+    assert info["family"] == "unknown"
     assert info["artifact_sha256"] == expected
 
 

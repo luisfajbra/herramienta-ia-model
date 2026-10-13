@@ -114,7 +114,7 @@ def test_training_with_no_flooded_rows_raises_clearly(prepared, tmp_path):
         manifest=prepared.manifest,
         quality=prepared.quality,
     )
-    with pytest.raises(ValueError, match="ninguna fila inundada"):
+    with pytest.raises(ValueError, match="no flooded row"):
         train_candidate(dry, "xgboost", TINY, TINY, tmp_path / "candidates")
 
 

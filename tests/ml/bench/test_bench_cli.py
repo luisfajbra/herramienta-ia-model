@@ -246,7 +246,7 @@ def test_config_bench_none_gives_the_clear_systemexit_not_an_attributeerror(tmp_
     config.bench = None
     args = _make_args(bench_prepare=True)
 
-    with pytest.raises(SystemExit, match="bloque `bench:`"):
+    with pytest.raises(SystemExit, match="no `bench:` block"):
         main._run_bench(args, config)
 
 
@@ -312,7 +312,7 @@ def test_bench_promote_none_requires_an_explicit_family(
     )
     args = _make_args(bench_promote=True)
 
-    with pytest.raises(SystemExit, match="familia expl"):
+    with pytest.raises(SystemExit, match="explicit family"):
         main._run_bench(args, config)
 
 
@@ -418,7 +418,7 @@ def test_bench_train_rejects_a_prepared_dataset_with_stale_protocol_semantics(
         main._run_bench(_make_args(bench_train=True), config)
 
     message = str(excinfo.value)
-    assert "semántica" in message
+    assert "semantics" in message
     assert "protocol" in message
     assert "--bench-prepare" in message
 
@@ -516,7 +516,7 @@ def test_bench_tune_requires_exactly_one_family(sql_training_db, tmp_path):
     )
     args = _make_args(bench_tune=True)  # sin --models: toma las dos habilitadas
 
-    with pytest.raises(SystemExit, match="exactamente una familia"):
+    with pytest.raises(SystemExit, match="exactly one family"):
         main._run_bench(args, config)
 
 
@@ -596,7 +596,7 @@ def test_a_failing_baseline_does_not_lose_the_ranking_or_the_family_metrics(
     assert (reports / "ranking.csv").exists()
     assert (reports / "ranking.json").exists()
     assert (reports / "metrics_xgboost.json").exists()
-    assert "falló" in capsys.readouterr().out
+    assert "failed" in capsys.readouterr().out
     provenance = json.loads((reports / "provenance.json").read_text(encoding="utf-8"))
     assert provenance["baselines"] == []
     assert "baseline_interpolacion_factor" in provenance["baselines_failed"]
@@ -652,7 +652,7 @@ def test_baselines_use_the_manifest_threshold_and_warn_when_config_differs(
     main._run_bench(_make_args(bench_evaluate=True, models="xgboost"), config)
 
     assert seen and set(seen) == {1.0}
-    assert "umbral" in capsys.readouterr().out
+    assert "threshold" in capsys.readouterr().out
 
 
 def test_baselines_fail_clearly_when_the_manifest_has_no_threshold(

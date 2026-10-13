@@ -292,7 +292,7 @@ def test_resolve_prepared_rejects_manifest_without_protocol_semantics(prepared, 
     manifest.pop("protocol_definitions", None)
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    with pytest.raises(ValueError, match=r"semántica.*protocol"):
+    with pytest.raises(ValueError, match=r"protocol semantics"):
         resolve_prepared(tmp_path / "prepared", prepared.prep_id)
 
 
@@ -302,7 +302,7 @@ def test_resolve_prepared_rejects_incorrect_protocol_semantics(prepared, tmp_pat
     manifest["protocol_definitions"]["LOSO"]["group_column"] = "shape_id"
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    with pytest.raises(ValueError, match=r"semántica.*protocol"):
+    with pytest.raises(ValueError, match=r"protocol semantics"):
         resolve_prepared(tmp_path / "prepared", prepared.prep_id)
 
 

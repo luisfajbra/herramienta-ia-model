@@ -26,7 +26,7 @@ class RankingCriterion:
         for direction in [self.primary_direction] + [d for _, d in self.tie_breakers]:
             if direction not in _DIRECTIONS:
                 raise ValueError(
-                    f"Dirección desconocida: {direction!r}. Opciones: minimize, maximize"
+                    f"Unknown direction: {direction!r}. Options: minimize, maximize"
                 )
 
 
@@ -70,15 +70,15 @@ def rank_candidates(
 
         protocol_metrics = all_metrics.get(protocol)
         if protocol_metrics is None:
-            row["invalid_reason"] = f"el candidato no tiene resultados para {protocol}"
+            row["invalid_reason"] = f"the candidate has no results for {protocol}"
             rows.append(row)
             continue
 
         primary = resolve_metric(protocol_metrics, criterion.primary_metric)
         if primary is None:
-            row["invalid_reason"] = f"falta la métrica primaria {criterion.primary_metric}"
+            row["invalid_reason"] = f"missing primary metric {criterion.primary_metric}"
         elif math.isnan(primary):
-            row["invalid_reason"] = f"la métrica primaria {criterion.primary_metric} es NaN"
+            row["invalid_reason"] = f"the primary metric {criterion.primary_metric} is NaN"
         else:
             row["valid"] = 1
 

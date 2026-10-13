@@ -63,14 +63,14 @@ def test_load_config_rejects_missing_inp(tmp_path):
     cfg_path = write_config(tmp_path, inp_name="missing.inp")
     (tmp_path / "missing.inp").unlink()
 
-    with pytest.raises(FileNotFoundError, match="archivo .inp no existe"):
+    with pytest.raises(FileNotFoundError, match=".inp file does not exist"):
         load_config(cfg_path)
 
 
 def test_load_config_rejects_non_positive_step(tmp_path):
     cfg_path = write_config(tmp_path, factor_step=0)
 
-    with pytest.raises(ValueError, match="factor_step debe ser mayor que 0"):
+    with pytest.raises(ValueError, match="factor_step must be greater than 0"):
         load_config(cfg_path)
 
 
@@ -79,7 +79,7 @@ def test_load_config_rejects_unknown_algorithm(tmp_path):
     text = cfg_path.read_text(encoding="utf-8")
     cfg_path.write_text(text.replace('algorithm: "xgboost"', 'algorithm: "svm"', 1), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="Algoritmo de clasificador no soportado"):
+    with pytest.raises(ValueError, match="Unsupported classifier algorithm"):
         load_config(cfg_path)
 
 

@@ -34,7 +34,7 @@ def test_figure_provenance_without_a_record_stamps_the_artifact_hashes(tmp_path)
     path = write_figure_provenance(tmp_path / "figs", models)
 
     record = json.loads(path.read_text(encoding="utf-8"))
-    assert record["family"] == "desconocida"
+    assert record["family"] == "unknown"
     assert record["artifact_sha256"]["classification_Logistic.joblib"] == (
         hashlib.sha256(payload).hexdigest()
     )

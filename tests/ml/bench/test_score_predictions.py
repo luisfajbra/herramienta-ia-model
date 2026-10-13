@@ -122,14 +122,14 @@ def test_missing_prep_id_in_provenance_is_rejected(prepared):
 
 def test_incomplete_fold_coverage_is_rejected(prepared):
     oof = _perfect_oof(prepared).iloc[:-1]
-    with pytest.raises(ValueError, match="cobertura"):
+    with pytest.raises(ValueError, match="coverage"):
         score_predictions(prepared, oof, {"prep_id": prepared.prep_id})
 
 
 def test_duplicate_predictions_for_a_sample_are_rejected(prepared):
     oof = _perfect_oof(prepared)
     oof = pd.concat([oof, oof.iloc[[0]]], ignore_index=True)
-    with pytest.raises(ValueError, match="duplicad"):
+    with pytest.raises(ValueError, match="duplicated"):
         score_predictions(prepared, oof, {"prep_id": prepared.prep_id})
 
 
@@ -526,7 +526,7 @@ def test_protocols_restricts_the_coverage_required_from_the_oof_frame():
     assert set(oof["protocol"]) == {"LOSO"}
     assert set(prepared.folds["protocol"]) == {"LOSO", "LeaveOneShapeOut"}
 
-    with pytest.raises(ValueError, match="faltan"):
+    with pytest.raises(ValueError, match="missing"):
         score_predictions(prepared, oof, {"prep_id": prepared.prep_id})
 
     restricted = score_predictions(

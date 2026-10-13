@@ -181,7 +181,7 @@ def test_run_study_raises_a_clear_error_when_every_trial_fails(
 
     monkeypatch.setattr(tune_module, "_fit_predict_fold", _always_fail)
 
-    with pytest.raises(ValueError, match="fallaron todos"):
+    with pytest.raises(ValueError, match="Optuna trials for 'xgboost' failed"):
         run_study(prepared_six_shapes, "xgboost", n_trials=3, n_splits=5)
 
 

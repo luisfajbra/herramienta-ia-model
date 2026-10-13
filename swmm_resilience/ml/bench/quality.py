@@ -55,16 +55,16 @@ def build_quality_report(
     duplicated = keys.duplicated(subset=["run_id", "node_id"]).sum()
     if duplicated:
         raise DatasetQualityError(
-            f"El dataset tiene {duplicated} fila(s) duplicadas por (run_id, node_id). "
-            "Suele indicar que la base guarda más de un snapshot; repuebla la base "
-            "desde cero antes de entrenar."
+            f"The dataset has {duplicated} duplicated row(s) per (run_id, node_id). "
+            "This usually means the database holds more than one snapshot; repopulate "
+            "the database from scratch before training."
         )
 
     n_flooded = int((y_clf == 1).sum())
     if n_flooded == 0:
         raise DatasetQualityError(
-            "El dataset no tiene ninguna fila inundada (inunda == 1); el regresor "
-            "no se puede entrenar. Revisa el umbral de inundación o el rango de factores."
+            "The dataset has no flooded row (inunda == 1); the regressor "
+            "cannot be trained. Check the flood threshold or the factor range."
         )
 
     nulls = {column: int(X[column].isna().sum()) for column in feature_columns}
@@ -76,13 +76,13 @@ def build_quality_report(
     ]
     if all_null_features:
         raise DatasetQualityError(
-            f"La(s) columna(s) {all_null_features} son enteramente nulas. El "
-            "contrato las permite nullable, pero SimpleImputer(strategy='median') "
-            "con keep_empty_features=False por defecto las elimina en silencio, y "
-            "el modelo entrenaría con menos features de las que su metadata "
-            "(ordered_features) declara. Esta no es una decisión que el banco deba "
-            "tomar por su cuenta: corrige la extracción de datos, o si el vacío es "
-            "legítimo, retira la feature del contrato deliberadamente."
+            f"The column(s) {all_null_features} are entirely null. The "
+            "contract allows them to be nullable, but SimpleImputer(strategy='median') "
+            "with keep_empty_features=False by default silently drops them, and "
+            "the model would train with fewer features than its metadata "
+            "(ordered_features) declares. This is not a decision the bench should "
+            "make on its own: fix the data extraction, or if the emptiness is "
+            "legitimate, deliberately remove the feature from the contract."
         )
 
     unexpected = [

@@ -149,7 +149,7 @@ def _readonly_sqlite_snapshot(db_path: Path | str):
             snapshot_connection.commit()
         except Exception as exc:
             raise RuntimeError(
-                f"No se pudo capturar {db_path!s} mediante backup SQLite de solo lectura"
+                f"Could not capture {db_path!s} through a read-only SQLite backup"
             ) from exc
         finally:
             if snapshot_connection is not None:
@@ -282,13 +282,13 @@ def _validate_requested_protocols(
         if available.get(protocol) != definition
     ]
     if incompatible:
-        available_protocols = ", ".join(sorted(available)) or "(ninguno)"
+        available_protocols = ", ".join(sorted(available)) or "(none)"
         raise ValueError(
-            f"El PreparedDataset {prepared.prep_id} no cubre la semántica del/los "
-            f"protocolo(s) {', '.join(incompatible)} que pide config.yaml "
-            "(bench.protocols). Protocolos disponibles con la semántica actual: "
-            f"{available_protocols}. Corre `python main.py --bench-prepare` de nuevo "
-            "para regenerarlo con los protocolos actuales."
+            f"The PreparedDataset {prepared.prep_id} does not cover the semantics of the "
+            f"protocol(s) {', '.join(incompatible)} requested by config.yaml "
+            "(bench.protocols). Protocols available with the current semantics: "
+            f"{available_protocols}. Run `python main.py --bench-prepare` again "
+            "to regenerate it with the current protocols."
         )
     return prepared
 
@@ -304,8 +304,8 @@ def resolve_prepared(
         directory = root / prep_id
         if not directory.exists():
             raise FileNotFoundError(
-                f"No existe el PreparedDataset {prep_id} en {root}. "
-                "Corre `python main.py --bench-prepare` primero."
+                f"The PreparedDataset {prep_id} does not exist in {root}. "
+                "Run `python main.py --bench-prepare` first."
             )
         return _validate_requested_protocols(
             PreparedDataset.load(directory), protocols
@@ -314,8 +314,8 @@ def resolve_prepared(
     candidates = [path for path in root.glob("*") if (path / "manifest.json").exists()] if root.exists() else []
     if not candidates:
         raise FileNotFoundError(
-            f"No hay ningún PreparedDataset en {root}. "
-            "Corre `python main.py --bench-prepare` primero."
+            f"There is no PreparedDataset in {root}. "
+            "Run `python main.py --bench-prepare` first."
         )
     newest = max(candidates, key=lambda path: (path / "manifest.json").stat().st_mtime)
     return _validate_requested_protocols(PreparedDataset.load(newest), protocols)

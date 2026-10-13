@@ -165,7 +165,7 @@ def _validate_algorithm(value: str, label: str) -> str:
     normalized = str(value).strip().lower()
     if normalized not in SUPPORTED_MODEL_ALGORITHMS:
         allowed = ", ".join(sorted(SUPPORTED_MODEL_ALGORITHMS))
-        raise ValueError(f"Algoritmo de {label} no soportado: {value}. Opciones: {allowed}")
+        raise ValueError(f"Unsupported {label} algorithm: {value}. Options: {allowed}")
     return normalized
 
 
@@ -174,7 +174,7 @@ def _validate_methods(methods: list) -> list[str]:
     invalid = [method for method in normalized if method not in SUPPORTED_EVALUATION_METHODS]
     if invalid:
         allowed = ", ".join(sorted(SUPPORTED_EVALUATION_METHODS))
-        raise ValueError(f"Metodo de evaluacion no soportado: {', '.join(invalid)}. Opciones: {allowed}")
+        raise ValueError(f"Unsupported evaluation method: {', '.join(invalid)}. Options: {allowed}")
     return normalized
 
 
@@ -184,8 +184,8 @@ def _validate_csv_inflow_closure_mode(value: str) -> str:
     valid_modes = {"strict", "close"}
     if normalized not in valid_modes:
         raise ValueError(
-            f"Modo desconocido en validation.csv_inflow_closure_mode: {value}. "
-            f"Opciones válidas: {', '.join(sorted(valid_modes))}"
+            f"Unknown mode in validation.csv_inflow_closure_mode: {value}. "
+            f"Valid options: {', '.join(sorted(valid_modes))}"
         )
     return normalized
 
@@ -194,7 +194,7 @@ def _validate_drainage_extension_max_retries(value: int) -> int:
     """Validate that drainage_extension_max_retries is a non-negative integer."""
     if value < 0:
         raise ValueError(
-            f"validation.drainage_extension_max_retries debe ser >= 0: {value}"
+            f"validation.drainage_extension_max_retries must be >= 0: {value}"
         )
     return value
 
@@ -348,8 +348,8 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
     invalid = [item for item in protocols if item not in BENCH_PROTOCOLS]
     if invalid:
         raise ValueError(
-            f"Protocolo desconocido: {', '.join(invalid)}. "
-            f"Opciones: {', '.join(BENCH_PROTOCOLS)}"
+            f"Unknown protocol: {', '.join(invalid)}. "
+            f"Options: {', '.join(BENCH_PROTOCOLS)}"
         )
 
     known = set(BENCH_FAMILIES)
@@ -357,8 +357,8 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
     for name, spec in (raw_bench.get("families") or {}).items():
         if name not in known:
             raise ValueError(
-                f"Familia desconocida en config.yaml: {name!r}. "
-                f"Disponibles: {', '.join(sorted(known))}"
+                f"Unknown family in config.yaml: {name!r}. "
+                f"Available: {', '.join(sorted(known))}"
             )
         families[name] = BenchFamilyConfig(
             enabled=bool(spec.get("enabled", True)),
@@ -371,9 +371,9 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
     n_trials = int(tuning_raw.get("n_trials", 50))
     n_splits = int(tuning_raw.get("n_splits", 5))
     if n_trials <= 0:
-        raise ValueError(f"bench.tuning.n_trials debe ser positivo; recibido {n_trials}")
+        raise ValueError(f"bench.tuning.n_trials must be positive; received {n_trials}")
     if n_splits <= 0:
-        raise ValueError(f"bench.tuning.n_splits debe ser positivo; recibido {n_splits}")
+        raise ValueError(f"bench.tuning.n_splits must be positive; received {n_splits}")
     return BenchConfig(
         protocols=protocols,
         ranking=BenchRankingConfig(
@@ -406,11 +406,11 @@ def load_config(config_path: str = "config.yaml") -> Config:
 
     inp_path = base_dir / net["inp_path"]
     if not inp_path.exists():
-        raise FileNotFoundError(f"El archivo .inp no existe: {inp_path}")
+        raise FileNotFoundError(f"The .inp file does not exist: {inp_path}")
     if float(sim["factor_min"]) >= float(sim["factor_max"]):
-        raise ValueError("factor_min debe ser menor que factor_max")
+        raise ValueError("factor_min must be less than factor_max")
     if float(sim["factor_step"]) <= 0:
-        raise ValueError("factor_step debe ser mayor que 0")
+        raise ValueError("factor_step must be greater than 0")
 
     # Validation config
     csv_inflow_closure_mode = str(
@@ -443,7 +443,7 @@ def load_config(config_path: str = "config.yaml") -> Config:
         ),
         ml=MLConfig(
             classifier=ClassifierConfig(
-                algorithm=_validate_algorithm(clf["algorithm"], "clasificador"),
+                algorithm=_validate_algorithm(clf["algorithm"], "classifier"),
                 n_estimators=int(clf["n_estimators"]),
                 max_depth=int(clf["max_depth"]),
                 learning_rate=float(clf["learning_rate"]),
@@ -451,7 +451,7 @@ def load_config(config_path: str = "config.yaml") -> Config:
                 scale_pos_weight=clf["scale_pos_weight"],
             ),
             regressor=RegressorConfig(
-                algorithm=_validate_algorithm(reg["algorithm"], "regresor"),
+                algorithm=_validate_algorithm(reg["algorithm"], "regressor"),
                 n_estimators=int(reg["n_estimators"]),
                 max_depth=int(reg["max_depth"]),
                 learning_rate=float(reg["learning_rate"]),

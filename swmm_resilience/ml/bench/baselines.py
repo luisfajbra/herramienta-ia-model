@@ -95,7 +95,7 @@ def _reject_duplicate_cells(cells: pd.DataFrame, columns: list[str], where: str)
             for row in cells.loc[duplicated, columns].drop_duplicates().head(3).to_numpy()
         ]
         raise ValueError(
-            f"{where}: hay celdas duplicadas en el train {columns}; ejemplos: {examples}."
+            f"{where}: there are duplicated cells in train {columns}; examples: {examples}."
         )
 
 
@@ -105,7 +105,7 @@ def _reject_nan_volumes(volumes: np.ndarray, labels: np.ndarray, where: str) -> 
     if bad.any():
         names = sorted(set(labels[bad]))[:5]
         raise ValueError(
-            f"{where}: hay volúmenes NaN en las filas de entrenamiento; series: {names}."
+            f"{where}: there are NaN volumes in the training rows; series: {names}."
         )
 
 
@@ -135,8 +135,8 @@ def _interpolacion_factor_fold(
     if rows.isna().any():
         missing = sorted(set(series[test_idx][rows.isna().to_numpy()]))
         raise ValueError(
-            f"{where}: las series {missing[:5]} del test no tienen ningún valor de "
-            "entrenamiento en este fold."
+            f"{where}: the test series {missing[:5]} have no training value "
+            "in this fold."
         )
     rows = rows.to_numpy(dtype=int)
 
@@ -163,7 +163,7 @@ def _interpolacion_factor_fold(
     has_low, has_high = low >= 0, high < n_factors
     # Toda serie de la matriz tiene algún factor de train (los NaN y las series sin
     # train ya se rechazaron), así que siempre existe un vecino inferior o superior.
-    assert (has_low | has_high).all(), f"{where}: serie sin vecinos de entrenamiento"
+    assert (has_low | has_high).all(), f"{where}: series without training neighbors"
 
     low_c = np.clip(low, 0, n_factors - 1)
     high_c = np.clip(high, 0, n_factors - 1)
@@ -185,8 +185,8 @@ def _reject_nan(has_nan: pd.DataFrame, where: str) -> None:
         shapes = [str(shape) for shape in has_nan.index[has_nan.any(axis=1)]]
         columns = [str(col) for col in has_nan.columns[has_nan.any(axis=0)]]
         raise ValueError(
-            f"{where} tiene NaN en los descriptores de forma; formas: {shapes}; "
-            f"columnas: {columns}."
+            f"{where} has NaN in the shape descriptors; shapes: {shapes}; "
+            f"columns: {columns}."
         )
 
 
@@ -201,14 +201,14 @@ def _resolve_shape_descriptors(
         if table.index.has_duplicates:
             duplicated = sorted(set(table.index[table.index.duplicated()]))
             raise ValueError(
-                f"shape_descriptors tiene formas duplicadas en el índice: {duplicated}."
+                f"shape_descriptors has duplicated shapes in the index: {duplicated}."
             )
         if table.shape[1] == 0:
-            raise ValueError("shape_descriptors no tiene ninguna columna (sin columnas).")
+            raise ValueError("shape_descriptors has no columns (no columns).")
         missing = sorted(set(shapes) - set(table.index))
         if missing:
             raise ValueError(
-                "shape_descriptors no cubre todas las formas del dataset; faltan: "
+                "shape_descriptors does not cover all the dataset shapes; missing: "
                 f"{missing}"
             )
         table = table.astype(float)
@@ -216,9 +216,9 @@ def _resolve_shape_descriptors(
         return table
     if not all(column in prepared.X.columns for column in _SHAPE_DESCRIPTORS):
         raise BaselineNotApplicable(
-            f"{FORMA_MAS_CERCANA} no aplica: el contrato de features de este "
-            f"PreparedDataset no incluye los descriptores de forma {_SHAPE_DESCRIPTORS} "
-            "y no se pasó shape_descriptors."
+            f"{FORMA_MAS_CERCANA} does not apply: the feature contract of this "
+            f"PreparedDataset does not include the shape descriptors {_SHAPE_DESCRIPTORS} "
+            "and shape_descriptors was not provided."
         )
     descriptors = pd.DataFrame(
         {"shape": shapes, **{c: prepared.X[c].to_numpy(dtype=float) for c in _SHAPE_DESCRIPTORS}}
@@ -230,7 +230,7 @@ def _resolve_shape_descriptors(
     )
     if (grouped.nunique() > 1).any().any():
         raise ValueError(
-            "baseline_forma_mas_cercana: las features de forma no son constantes dentro de una forma."
+            "baseline_forma_mas_cercana: the shape features are not constant within a shape."
         )
     return grouped.first()
 
@@ -297,8 +297,8 @@ def _forma_mas_cercana_fold(
             }
         )[:3]
         raise ValueError(
-            f"{where}: ninguna forma de entrenamiento tiene la celda (nodo, factor) "
-            f"requerida; ejemplos (forma, nodo, factor): {examples}."
+            f"{where}: no training shape has the required (node, factor) "
+            f"cell; examples (shape, node, factor): {examples}."
         )
     return predicted, int((used_rank > 0).sum())
 
@@ -317,12 +317,12 @@ def baseline_oof(
     los protocolos aplicables y todos sus folds (definición en el docstring).
     """
     if name not in BASELINES:
-        raise ValueError(f"Referencia desconocida: {name!r}. Opciones: {BASELINES}")
+        raise ValueError(f"Unknown baseline: {name!r}. Options: {BASELINES}")
     protocols = _applicable_protocols(prepared, name)
     if not protocols:
         available = ", ".join(sorted(prepared.folds["protocol"].unique()))
         raise BaselineNotApplicable(
-            f"{name} no aplica a ningún protocolo de este PreparedDataset ({available})."
+            f"{name} does not apply to any protocol of this PreparedDataset ({available})."
         )
     if name == INTERPOLACION_FACTOR:
         predict_fold = _interpolacion_factor_fold

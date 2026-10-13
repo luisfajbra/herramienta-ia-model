@@ -46,8 +46,8 @@ def build_tuning_folds(
     distinct = int(groups.nunique())
     if distinct < n_splits:
         raise ValueError(
-            f"GroupKFold({n_splits}) para tuning necesita al menos {n_splits} "
-            f"formas (shape_id) distintas; el dataset tiene {distinct}."
+            f"GroupKFold({n_splits}) for tuning needs at least {n_splits} "
+            f"distinct shapes (shape_id); the dataset has {distinct}."
         )
     splitter = GroupKFold(n_splits=n_splits, shuffle=True, random_state=seed)
     x_dummy = np.zeros((len(groups), 1))
@@ -138,16 +138,16 @@ def _sample_params(trial, space: dict, *, prefix: str) -> dict:
         elif kind == "categorical":
             params[name] = trial.suggest_categorical(full_name, spec[1])
         else:
-            raise ValueError(f"Tipo de espacio desconocido: {kind!r}")
+            raise ValueError(f"Unknown space kind: {kind!r}")
     return params
 
 
 _STATUS_EXPLORATORY = "estimacion_exploratoria_condicionada"
 _STATUS_REASON_EXPLORATORY = (
-    "No se reservó un holdout de formas separado ni se aplicó selección de "
-    "familia anidada (spec §12 del diseño de cierre de auditoría, sección "
-    "'Optimización posterior'); este resultado no debe presentarse como "
-    "confirmatorio."
+    "No separate shape holdout was reserved and no nested family selection "
+    "was applied (spec §12 of the audit-closure design, section "
+    "'Subsequent optimization'); this result must not be presented as "
+    "confirmatory."
 )
 
 
@@ -258,8 +258,8 @@ def run_study(
     """
     if family_name not in SEARCH_SPACES:
         raise ValueError(
-            f"Familia sin espacio de búsqueda declarado: {family_name!r}. "
-            f"Disponibles: {', '.join(sorted(SEARCH_SPACES))}"
+            f"Family without a declared search space: {family_name!r}. "
+            f"Available: {', '.join(sorted(SEARCH_SPACES))}"
         )
 
     tuning_folds = build_tuning_folds(prepared.keys, n_splits=n_splits, seed=seed)
@@ -292,8 +292,8 @@ def run_study(
 
     if not any(t.state == optuna.trial.TrialState.COMPLETE for t in study.trials):
         raise ValueError(
-            f"Los {n_trials} trials de Optuna para {family_name!r} fallaron todos; "
-            "no hay ningún resultado válido que reportar."
+            f"All {n_trials} Optuna trials for {family_name!r} failed; "
+            "there is no valid result to report."
         )
 
     return TuneResult(

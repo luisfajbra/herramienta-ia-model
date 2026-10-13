@@ -106,7 +106,7 @@ bench:
       classifier: {}
       regressor: {}
 """
-    with pytest.raises(ValueError, match="Familia desconocida"):
+    with pytest.raises(ValueError, match="Unknown family"):
         load_config(_write_config(tmp_path, bad))
 
 
@@ -119,7 +119,7 @@ bench:
   families:
     xgboost: {enabled: true, classifier: {}, regressor: {}}
 """
-    with pytest.raises(ValueError, match="Protocolo desconocido"):
+    with pytest.raises(ValueError, match="Unknown protocol"):
         load_config(_write_config(tmp_path, bad))
 
 

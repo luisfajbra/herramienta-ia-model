@@ -133,7 +133,7 @@ def test_a_baseline_with_no_applicable_protocol_raises_the_dedicated_error():
 
 def test_unknown_baseline_name_is_rejected():
     prepared = make_prepared(_linear_rows(), ["LOSO"])
-    with pytest.raises(ValueError, match="desconocida"):
+    with pytest.raises(ValueError, match="Unknown baseline"):
         baseline_oof(prepared, "baseline_inventada", 1.0)
 
 
@@ -251,7 +251,7 @@ def test_descriptor_table_with_duplicate_shapes_is_rejected_naming_them():
         {"d1": [0.0, 1.0, 2.0, 3.0]}, index=["A", "B", "C", "C"]
     )
 
-    with pytest.raises(ValueError, match=r"duplicad.*'C'|duplicad.*\bC\b"):
+    with pytest.raises(ValueError, match=r"duplicated.*'C'|duplicated.*\bC\b"):
         baseline_oof(prepared, FORMA_MAS_CERCANA, 1.0, shape_descriptors=descriptors)
 
 
@@ -259,7 +259,7 @@ def test_descriptor_table_without_columns_is_rejected():
     prepared = _three_tied_shapes()
     descriptors = pd.DataFrame(index=["A", "B", "C"])
 
-    with pytest.raises(ValueError, match="sin columnas"):
+    with pytest.raises(ValueError, match="no columns"):
         baseline_oof(prepared, FORMA_MAS_CERCANA, 1.0, shape_descriptors=descriptors)
 
 
@@ -340,7 +340,7 @@ def test_interpolation_reports_duplicate_cells_with_a_domain_message():
     rows = _grid_rows(_volume) + _grid_rows(_volume, factors=(2.0,), nodes=("N0",))
     prepared = make_prepared(rows, ["LOSO"])
 
-    with pytest.raises(ValueError, match=r"duplicad.*s\|N0"):
+    with pytest.raises(ValueError, match=r"duplicated.*s\|N0"):
         baseline_oof(prepared, INTERPOLACION_FACTOR, 1.0)
 
 
@@ -349,7 +349,7 @@ def test_interpolation_reports_nan_volumes_in_train():
     rows[0]["vol"] = float("nan")
     prepared = make_prepared(rows, ["LOSO"])
 
-    with pytest.raises(ValueError, match=r"volúmenes NaN.*s\|N0"):
+    with pytest.raises(ValueError, match=r"NaN volumes.*s\|N0"):
         baseline_oof(prepared, INTERPOLACION_FACTOR, 1.0)
 
 
@@ -408,5 +408,5 @@ def test_nearest_shape_raises_when_no_training_shape_has_the_cell():
     ]
     prepared = make_prepared(rows, ["LeaveOneShapeOut"])
 
-    with pytest.raises(ValueError, match=r"ninguna forma.*N0"):
+    with pytest.raises(ValueError, match=r"no training shape.*N0"):
         baseline_oof(prepared, FORMA_MAS_CERCANA, 1.0)

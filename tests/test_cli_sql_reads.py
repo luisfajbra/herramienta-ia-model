@@ -325,7 +325,7 @@ def test_persist_sql_errors_when_the_filter_removes_every_flooded_row(
 
     assert exit_info.value.code == 2
     assert captured == [], "no debe entrenarse nada"
-    assert "continuidad" in capsys.readouterr().err
+    assert "continuity" in capsys.readouterr().err
 
 
 def test_resilience_curve_errors_when_sql_has_no_samples(monkeypatch, capsys):

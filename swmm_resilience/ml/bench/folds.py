@@ -28,7 +28,7 @@ def _validate_groupkfold5_groups(groups: pd.Series) -> None:
     distinct = int(groups.nunique())
     if distinct < _GROUPKFOLD_SPLITS:
         raise ValueError(
-            f"GroupKFold5 necesita al menos 5 grupos; el dataset tiene {distinct}"
+            f"GroupKFold5 needs at least 5 groups; the dataset has {distinct}"
         )
 
 
@@ -39,7 +39,7 @@ def n_folds_for(groups: pd.Series, protocol: str) -> int:
     if protocol == "GroupKFold5":
         _validate_groupkfold5_groups(groups)
         return _GROUPKFOLD_SPLITS
-    raise ValueError(f"Protocolo desconocido: {protocol!r}. Opciones: {PROTOCOLS}")
+    raise ValueError(f"Unknown protocol: {protocol!r}. Options: {PROTOCOLS}")
 
 
 def _splitter(groups: pd.Series, protocol: str):
@@ -48,7 +48,7 @@ def _splitter(groups: pd.Series, protocol: str):
     if protocol == "GroupKFold5":
         _validate_groupkfold5_groups(groups)
         return GroupKFold(n_splits=_GROUPKFOLD_SPLITS)
-    raise ValueError(f"Protocolo desconocido: {protocol!r}. Opciones: {PROTOCOLS}")
+    raise ValueError(f"Unknown protocol: {protocol!r}. Options: {PROTOCOLS}")
 
 
 def build_folds(groups: pd.Series, protocol: str) -> pd.DataFrame:
@@ -62,8 +62,8 @@ def build_folds(groups: pd.Series, protocol: str) -> pd.DataFrame:
     group_column = group_column_for(protocol)
     if groups.name != group_column:
         raise ValueError(
-            f"{protocol} requiere grupos de la columna {group_column!r}; "
-            f"recibido {groups.name!r}"
+            f"{protocol} requires groups from the column {group_column!r}; "
+            f"received {groups.name!r}"
         )
     splitter = _splitter(groups, protocol)
     x_dummy = np.zeros((len(groups), 1))

@@ -45,12 +45,12 @@ def _validate_oof(
 ) -> None:
     missing = [column for column in OOF_COLUMNS if column not in oof.columns]
     if missing:
-        raise ValueError(f"Al frame OOF le faltan columnas: {missing}")
+        raise ValueError(f"The OOF frame is missing columns: {missing}")
 
     duplicated = oof.duplicated(subset=["protocol", "fold_id", "sample_idx"]).sum()
     if duplicated:
         raise ValueError(
-            f"El frame OOF tiene {duplicated} predicción(es) duplicadas para la misma "
+            f"The OOF frame has {duplicated} duplicated prediction(s) for the same "
             "(protocol, fold_id, sample_idx)."
         )
 
@@ -65,8 +65,8 @@ def _validate_oof(
     )
     if expected_keys != got_keys:
         raise ValueError(
-            "La cobertura del frame OOF no coincide con las filas de test de los folds: "
-            f"faltan {len(expected_keys - got_keys)}, sobran {len(got_keys - expected_keys)}."
+            "The OOF frame coverage does not match the test rows of the folds: "
+            f"missing {len(expected_keys - got_keys)}, extra {len(got_keys - expected_keys)}."
         )
 
 
@@ -98,8 +98,8 @@ def score_predictions(
     """
     if provenance.get("prep_id") != prepared.prep_id:
         raise ProvenanceMismatchError(
-            f"prep_id de las predicciones ({provenance.get('prep_id')!r}) no coincide "
-            f"con el del dataset ({prepared.prep_id!r}). No son comparables."
+            f"prep_id of the predictions ({provenance.get('prep_id')!r}) does not match "
+            f"the dataset one ({prepared.prep_id!r}). They are not comparable."
         )
     _validate_oof(prepared, oof, protocols)
 
