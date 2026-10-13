@@ -218,3 +218,47 @@ def test_main_without_oof_files_fails_instead_of_writing_empty_tables(tmp_path, 
              "--out", str(tmp_path / "datos")]
         )
     assert not (tmp_path / "datos").exists()
+
+
+def test_comparison_table_has_the_pooled_auc_for_each_model_and_protocol():
+    from scripts.informe_evaluacion import build_tables
+
+    rows = [
+        dict(shape_id=shape, node_id=node, factor_mult=factor, vol=vol,
+             duracion_horas=1.0, tiempo_al_pico_h=0.5)
+        for shape in ("A", "B")
+        for factor in (1.0, 2.0)
+        for node, vol in (("N0", 0.5), ("N1", 20.0))  # una clase de cada tipo
+    ]
+    prepared = _with_threshold(make_prepared(rows, ["LOSO", "LeaveOneShapeOut"]))
+    perfect = perfect_oof(prepared)
+    inverted = perfect.copy()
+    inverted["y_prob_clf"] = 1.0 - inverted["y_prob_clf"]
+
+    table = build_tables(prepared, {"bueno": perfect, "malo": inverted}, 1.0)["comparacion_protocolos"]
+
+    assert "auc_roc_agregado" in table.columns
+    good = table[table["modelo"] == "bueno"]["auc_roc_agregado"]
+    bad = table[table["modelo"] == "malo"]["auc_roc_agregado"]
+    assert (good == 1.0).all()
+    assert (bad == 0.0).all()
+
+
+def test_comparison_table_labels_the_variant_from_the_model_name():
+    from scripts.informe_evaluacion import build_tables
+
+    prepared = _prepared()
+    names = ["xgboost_default", "xgboost_tuned", "baseline_forma_mas_cercana", "xgboost"]
+    tables = build_tables(prepared, {name: perfect_oof(prepared) for name in names}, 1.0)
+    table = tables["comparacion_protocolos"]
+
+    variant = dict(zip(table["modelo"], table["variante"]))
+    assert variant == {
+        "xgboost_default": "default",
+        "xgboost_tuned": "tuned",
+        "baseline_forma_mas_cercana": "referencia",
+        "xgboost": "default",
+    }
+    # las columnas previas siguen ahí, en el mismo orden relativo
+    assert list(table.columns[:2]) == ["modelo", "variante"]
+    assert "rmse_vol_agregado_m3" in table.columns and "nse_regresor_oracle" in table.columns

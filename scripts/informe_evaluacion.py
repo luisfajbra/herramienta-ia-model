@@ -96,6 +96,20 @@ def _scored(prepared, oof):
     return score_predictions(prepared, oof, {"prep_id": prepared.prep_id}, protocols=protocols)
 
 
+def variant_of(name: str) -> str:
+    """Variante de un modelo según su nombre: default | tuned | referencia.
+
+    ``*_tuned`` es el modelo afinado, ``baseline_*`` una referencia sin
+    aprendizaje y cualquier otro nombre (``xgboost``, ``*_default``) se
+    considera con los parámetros por defecto de ``config.yaml``.
+    """
+    if name.startswith("baseline_"):
+        return "referencia"
+    if name.endswith("_tuned"):
+        return "tuned"
+    return "default"
+
+
 def build_tables(prepared, oof_by_name: dict, flood_threshold_m3: float) -> dict:
     """Las cuatro tablas del informe, una fila por (modelo, protocolo[, forma]).
 
@@ -124,11 +138,15 @@ def build_tables(prepared, oof_by_name: dict, flood_threshold_m3: float) -> dict
             comparison.append(
                 {
                     "modelo": name,
+                    "variante": variant_of(name),
                     "protocolo": protocol,
                     "que_mide": PROTOCOL_INTERPRETATION.get(protocol, ""),
                     "f1_agregado": block["classifier"].get("f1"),
                     "recall_agregado": block["classifier"].get("recall"),
                     "precision_agregada": block["classifier"].get("precision"),
+                    # AUC agregado: no depende del umbral ni de class_weight, así que
+                    # compara clasificadores calibrados de forma distinta (el SVM con Platt).
+                    "auc_roc_agregado": block["classifier"].get("auc_roc"),
                     "f1_media_por_fold_con_ceros": block["classifier_legacy_mean_zero_fill"].get("f1"),
                     "folds_f1_indefinido": block["classifier_per_fold"]["f1"]["n_undefined"],
                     "rmse_vol_agregado_m3": block["end_to_end_pooled"].get("rmse_vol_todos_nodos"),
