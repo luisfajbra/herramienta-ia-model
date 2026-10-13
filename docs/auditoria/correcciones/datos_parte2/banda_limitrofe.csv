@@ -1,0 +1,8 @@
+modelo,protocolo,fn_total,fn_en_banda_1_2m3,fn_fuera_de_banda,fn_con_vol_ge_100m3
+baseline_forma_mas_cercana,LeaveOneShapeOut,889,611,278,0
+mlp_default,LeaveOneShapeOut,514,368,146,19
+mlp_tuned,LeaveOneShapeOut,473,354,119,4
+svm_default,LeaveOneShapeOut,6731,1185,5546,1098
+svm_tuned,LeaveOneShapeOut,9076,1217,7859,1443
+xgboost_default,LeaveOneShapeOut,373,325,48,0
+xgboost_tuned,LeaveOneShapeOut,378,333,45,0

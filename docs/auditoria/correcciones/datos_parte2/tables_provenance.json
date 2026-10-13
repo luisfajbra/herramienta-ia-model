@@ -1,0 +1,57 @@
+{
+  "prep_id": "ca706e27654e0cf5",
+  "feature_contract_id": "tabular_v4_21",
+  "n_rows": 154080,
+  "n_runs": 963,
+  "n_runs_full_grid": 1000,
+  "n_missing_cells": 37,
+  "flood_threshold_m3": 1.0,
+  "max_continuity_error_pct": 5.0,
+  "evaluation_protocol": "LeaveOneShapeOut",
+  "models": [
+    "baseline_forma_mas_cercana",
+    "mlp_default",
+    "mlp_tuned",
+    "svm_default",
+    "svm_tuned",
+    "xgboost_default",
+    "xgboost_tuned"
+  ],
+  "command": "python scripts/ejecutar_parte2_v4_21.py --build-tables",
+  "git_commit": "8a0660589425e59849813b9ca59c468458f9d287",
+  "git_dirty": false,
+  "git_dirty_definition": "git status --porcelain --untracked-files=no no vacío al empezar",
+  "out_root": "outputs/bench/parte2/ca706e27654e0cf5",
+  "inputs_sha256": {
+    "baseline_forma_mas_cercana.parquet": "106c791ca5513de2a5c136208c1d3f0a9879893489ad98d7fa9edef273abe72a",
+    "svm/default/oof.parquet": "415dda4f959ef57d519d30f97279559e9fa756d87b57e9dd6ae02f613313df26",
+    "svm/tuned/oof.parquet": "670b5a5c598a4a7c46603a74fa8a8ed63195ba9ca611925e6dd396d75c872ae3",
+    "xgboost/default/oof.parquet": "92813b18c30fc2a33a327068fcca9420e026987a8bddaa25de4ab53419c87612",
+    "xgboost/tuned/oof.parquet": "6fffc2d94f5213d925bd38d7d0d885ee61d6d2c9d6edd47728dcc1453faa53e0",
+    "mlp/default/oof.parquet": "6722acbb5dec3759e3f276f7b3fed95eddea3e0dae733d712bad632382c50054",
+    "mlp/tuned/oof.parquet": "ea27299ac6d0bf489f281e8801120fb6a958551963eaff2182abdda1a77286cb",
+    "svm/tune/svm/ca706e27654e0cf5_20261013T031423Z/study.json": "e2d07e1d9bbe7669d11aff6875cb1ebb3d8fbf6d7b6d8807d736682c321bae3b",
+    "xgboost/tune/xgboost/ca706e27654e0cf5_20261013T031143Z/study.json": "899ad3986c251889fcd787e185ce52670d48aebff70ca9a2016dcb8a31af0921",
+    "mlp/tune/mlp/ca706e27654e0cf5_20261013T040020Z/study.json": "aaff465ff144d6ff56f59f2723d125626928ff1b11ed79c585ef43667b673f69"
+  },
+  "outputs_sha256": {
+    "banda_limitrofe.csv": "018cd515095b13725e6b45decda17ed8176626ff4d252c3016087b6bbae53f23",
+    "comparacion_protocolos.csv": "94a9bf55eae19c75e7b08a41899c891cdb4ff7d907599d2f3f28cbb98604d542",
+    "convergencia_afinacion.csv": "630e0c1656ca76becb51bc77eb071c4cdf6dd396f1e84b8e8a45447d1f50e221",
+    "matriz_confusion.csv": "9389f20a5f5a0d8a5a4f651d2cd03cf75fc9ca89847989f9e743e3e40662ab8d",
+    "por_forma.csv": "d53643e10f47df0fd3e2845eb1b14ff4eaf64c268de459f1095351902661e460",
+    "resumen_afinacion.csv": "c64f4bda312f826b7c1bbbde7c2a0b03b2b3f12dceb67e3e4fd4377c9ccc1dd5"
+  },
+  "versions": {
+    "python": "3.12.10",
+    "numpy": "2.3.5",
+    "pandas": "2.3.3",
+    "scikit-learn": "1.8.0",
+    "xgboost": "3.2.0",
+    "torch": "2.6.0",
+    "optuna": "5.0.0",
+    "joblib": "1.5.3",
+    "pyarrow": "22.0.0"
+  },
+  "generated_at_utc": "2026-10-13T17:19:11.880923+00:00"
+}

@@ -1,0 +1,8 @@
+modelo,protocolo,tn,fp,fn,tp
+baseline_forma_mas_cercana,LeaveOneShapeOut,106556,1299,889,45336
+mlp_default,LeaveOneShapeOut,106340,1515,514,45711
+mlp_tuned,LeaveOneShapeOut,106302,1553,473,45752
+svm_default,LeaveOneShapeOut,101991,5864,6731,39494
+svm_tuned,LeaveOneShapeOut,101738,6117,9076,37149
+xgboost_default,LeaveOneShapeOut,106503,1352,373,45852
+xgboost_tuned,LeaveOneShapeOut,106472,1383,378,45847

@@ -46,3 +46,12 @@ Medición: `a26155e`, `4a2a87c`, `4717885`, `395a2ee`, `e26fc5a`, `284927d`. Det
 | [`datos/runs/provenance.json`](datos/runs/provenance.json) | Procedencia de la corrida: `prep_id`, features, hiperparámetros, filas de respaldo, versiones, tiempos |
 
 **Alcance de todas las cifras:** XGBoost con hiperparámetros por defecto de `config.yaml` (no el modelo ajustado con Optuna), una red, contrato `tabular_v4_21`, `prep_id` `ca706e27654e0cf5`, 154 080 filas = 963 de 1000 corridas × 160 nodos.
+
+## Parte 2 — comparación justa XGBoost / MLP / SVM aproximado (2026-10-12/13)
+
+| Documento / datos | Contenido |
+|---|---|
+| [06-seleccion-de-modelos.md](06-seleccion-de-modelos.md) | Diseño de la comparación, resultados con formas no vistas, efecto de la afinación, límites y texto para la tesis |
+| [datos_parte2/](datos_parte2/) | Tablas de la corrida (comparación, matriz de confusión, banda de 1–2 m³, por forma, resumen y convergencia de la afinación) y `tables_provenance.json` |
+| `../../superpowers/specs/2026-10-12-parte2-svm-comparacion-justa-design.md` | Spec de la parte 2 |
+| `scripts/ejecutar_parte2_v4_21.py` | Script resumible (`--family {xgboost,mlp,svm}` y `--build-tables`) |
