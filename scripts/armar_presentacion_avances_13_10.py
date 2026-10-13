@@ -18,6 +18,7 @@ Uso:
 from __future__ import annotations
 
 import csv
+import json
 import sys
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from pptx.chart.data import CategoryChartData  # noqa: E402
 from pptx.dml.color import RGBColor  # noqa: E402
 from pptx.enum.chart import (  # noqa: E402
     XL_CHART_TYPE,
+    XL_MARKER_STYLE,
     XL_LABEL_POSITION,
     XL_LEGEND_POSITION,
     XL_TICK_MARK,
@@ -277,7 +279,7 @@ def _chart_barras(slide, x, y, w, h, categorias, series, *, horizontal=False,
             if colores_puntos:
                 point.format.fill.solid()
                 point.format.fill.fore_color.rgb = _rgb(colores_puntos[s_idx][p_idx])
-            if etiquetas:
+            if etiquetas and etiquetas[s_idx] is not None:
                 label = point.data_label
                 label.position = XL_LABEL_POSITION.OUTSIDE_END
                 frame_text = label.text_frame
@@ -604,10 +606,48 @@ def slide_etiqueta(prs):
     return s
 
 
+def _n_trials(datos_parte2_dir) -> str:
+    """Presupuesto de Optuna (lee resumen_afinacion.csv si existe)."""
+    if datos_parte2_dir:
+        ruta = Path(datos_parte2_dir) / "resumen_afinacion.csv"
+        if ruta.exists():
+            ns = {r["n_trials"] for r in cargar_csv(ruta)}
+            if len(ns) == 1:
+                return f"{ns.pop()} trials de Optuna por familia"
+    return "Mismo número de trials de Optuna"
+
+
+def _tiempo_estudio_svm(datos_parte2_dir) -> dict:
+    """Costo medido del SVM aproximado. El tiempo por fold (8-13 s con
+    ~150.000 filas: svm por defecto 8 s; n_components 400, 13 s) viene del
+    estudio de costos; la duracion del estudio sale de resumen_afinacion.csv."""
+    if datos_parte2_dir:
+        ruta = Path(datos_parte2_dir) / "resumen_afinacion.csv"
+        if ruta.exists():
+            for r in cargar_csv(ruta):
+                if r["family"] == "svm":
+                    minutos = fmt(float(r["duration_s"]) / 60, 0)
+                    return {
+                        "slide": "Costo lineal en n: ~8-13 s por fold con 150.000 filas; "
+                                 f"estudio de {r['n_trials']} trials en ~{minutos} min",
+                        "notas": "ajuste y predicción de ~8 a 13 s por fold con 150.000 filas "
+                                 "(SVM por defecto 8 s; n_components 400, 13 s) y el estudio "
+                                 f"completo de {r['n_trials']} trials duró unos {minutos} minutos.",
+                        "fuente": f"{Path(datos_parte2_dir).as_posix()}/resumen_afinacion.csv "
+                                  "(family=svm, duration_s) y estudio de costos de la parte 2.",
+                    }
+    return {
+        "slide": "Costo lineal en n; se espera correr en segundos por fold (por medir)",
+        "notas": "el tiempo real por fold aún está por medir; hoy es una expectativa y no una cifra.",
+        "fuente": "tiempo por fold pendiente de medición.",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Diapositiva 5: arquitectura del SVM
 # ---------------------------------------------------------------------------
-def slide_svm(prs):
+def slide_svm(prs, datos_parte2_dir=None):
+    medido = _tiempo_estudio_svm(datos_parte2_dir)
     s = nueva_slide(
         prs, "Cambio de arquitectura del SVM",
         "El kernel RBF exacto no escala a 154.080 filas; se aproxima con un mapeo de Nystroem",
@@ -649,7 +689,7 @@ def slide_svm(prs):
     for ax in (x1 + w1, x2 + w2, x3 + w3):
         _arrow(s, ax + 25000, yb + hb // 2 - 110000, gap - 50000, 220000)
     _textbox(s, L, yb + hb + 40000, W, 280000, [P(
-        "Costo lineal en n; se espera correr en segundos por fold (por medir)", 13, True, GREEN)])
+        medido["slide"], 13, True, GREEN)])
 
     _shape(s, MSO_SHAPE.ROUNDED_RECTANGLE, L, 4280000, W, 440000, fill=None, line=AMBER,
            line_w=2.0, paras=[P("SVM aproximado (kernel aproximado), no un SVM de kernel exacto",
@@ -660,10 +700,11 @@ def slide_svm(prs):
         "El SVM original usaba SVC y SVR exactos con kernel RBF, cuyo costo crece entre n al cuadrado y n al cubo; con unas 154.000 filas la corrida del 5 de octubre acumuló más de un día y 15 horas de CPU "
         "(más de 39 horas) sin terminar y se canceló. La alternativa es un SVM aproximado: se estandariza, se aproxima el kernel RBF con un mapeo de Nystroem de n_components componentes y sobre ese mapeo se entrena "
         "un clasificador lineal de margen con pérdida hinge, calibrado con Platt para obtener probabilidades, y un regresor lineal con pérdida ε-insensible (SVR lineal). "
-        "El costo pasa a ser lineal en el número de filas; el tiempo real por fold lo vamos a medir en la corrida, hoy es una expectativa y no una cifra. "
+        f"El costo pasa a ser lineal en el número de filas y está medido: {medido['notas']} "
         "Hay que decirlo con claridad: no es un SVM de kernel exacto, es un SVM aproximado, y así se documenta en el descriptor de preprocesado (svm_aproximado_nystroem).\n\n"
         "Fuentes: docs/superpowers/specs/2026-10-12-parte2-svm-comparacion-justa-design.md §2 y §3.1; swmm_resilience/ml/bench/models/svm_family.py (docstring y build_classifier/build_regressor); "
-        "docs/resultados/2026-10-06-handoff-svm.md §2 (más de 1 día y 15 h de CPU, cancelada, ~154.000 filas)."
+        "docs/resultados/2026-10-06-handoff-svm.md §2 (más de 1 día y 15 h de CPU, cancelada, ~154.000 filas); "
+        + medido["fuente"]
     ))
     return s
 
@@ -671,9 +712,10 @@ def slide_svm(prs):
 # ---------------------------------------------------------------------------
 # Diapositiva 6: comparacion justa
 # ---------------------------------------------------------------------------
-def slide_comparacion_justa(prs, con_resultados: bool):
+def slide_comparacion_justa(prs, con_resultados: bool, datos_parte2_dir=None):
+    n_trials = _n_trials(datos_parte2_dir)
     pie = FOOTER_TEXT + (
-        "  ·  resultados en la siguiente diapositiva" if con_resultados
+        "  ·  resultados en las siguientes diapositivas" if con_resultados
         else "  ·  resultados: corridas en curso")
     s = nueva_slide(
         prs, "Cómo se hará la comparación justa",
@@ -694,7 +736,7 @@ def slide_comparacion_justa(prs, con_resultados: bool):
 
     filas = [
         ("Mismo dato", "tabular_v4_21 · 154.080 filas (prep_id ca706e27654e0cf5)"),
-        ("Mismo presupuesto", "Mismo número de trials de Optuna y mismo CV interno por forma"),
+        ("Mismo presupuesto", f"{n_trials} y mismo CV interno por forma"),
         ("Mismo protocolo", "LeaveOneShapeOut: 40 pliegues, una forma retenida por pliegue"),
         ("Mismas métricas", "RMSE de volumen · F1 · NSE del regresor · matriz de confusión"),
     ]
@@ -729,166 +771,338 @@ def slide_comparacion_justa(prs, con_resultados: bool):
 # ---------------------------------------------------------------------------
 # Diapositivas de resultados (solo si ya existen las tablas de la parte 2)
 # ---------------------------------------------------------------------------
-ETIQUETAS_MODELO = {
-    "xgboost": "XGBoost",
-    "mlp": "MLP",
-    "svm": "SVM aproximado",
-    "baseline_interpolacion_factor": "Interpolación (ref.)",
-    "baseline_forma_mas_cercana": "Forma más cercana (ref.)",
-}
-ORDEN_MODELO = ["xgboost", "mlp", "svm"]
+FAMILIAS = [("xgboost", "XGBoost"), ("mlp", "MLP"), ("svm", "SVM aproximado")]
+REFERENCIA = "baseline_forma_mas_cercana"
+COLOR_FAMILIA = {"xgboost": ACCENT, "mlp": GREEN, "svm": AMBER}
 
 
-def _etiqueta_modelo(modelo: str) -> str:
-    if modelo in ETIQUETAS_MODELO:
-        return ETIQUETAS_MODELO[modelo]
-    return modelo.replace("_", " ").replace("svm", "SVM").replace("xgboost", "XGBoost").replace(
-        "mlp", "MLP")
+def _datos_parte2(datos_dir) -> dict:
+    """Lee las tablas de la parte 2 (LeaveOneShapeOut) y las deja por modelo."""
+    datos_dir = Path(datos_dir)
+    filas = [r for r in cargar_csv(datos_dir / "comparacion_protocolos.csv")
+             if r["protocolo"] == "LeaveOneShapeOut"]
+    if not filas:
+        raise ValueError(f"{datos_dir} no tiene filas del protocolo LeaveOneShapeOut")
+    por_modelo = {r["modelo"]: r for r in filas}
+    for familia, _ in FAMILIAS:
+        for variante in ("default", "tuned"):
+            if f"{familia}_{variante}" not in por_modelo:
+                raise ValueError(f"Falta {familia}_{variante} en comparacion_protocolos.csv")
+    if REFERENCIA not in por_modelo:
+        raise ValueError(f"Falta {REFERENCIA} en comparacion_protocolos.csv")
+    matriz = {r["modelo"]: r for r in cargar_csv(datos_dir / "matriz_confusion.csv")
+              if r["protocolo"] == "LeaveOneShapeOut"}
+    banda = {r["modelo"]: r for r in cargar_csv(datos_dir / "banda_limitrofe.csv")
+             if r["protocolo"] == "LeaveOneShapeOut"}
+    resumen = {r["family"]: r for r in cargar_csv(datos_dir / "resumen_afinacion.csv")}
+    ensayos: dict = {}
+    for r in cargar_csv(datos_dir / "convergencia_afinacion.csv"):
+        ensayos.setdefault(r["family"], []).append((int(r["trial"]), float(r["value"])))
+    convergencia: dict = {}
+    for familia, lista in ensayos.items():
+        mejor, serie = float("inf"), []
+        for _, valor in sorted(lista):  # minimo acumulado por trial
+            mejor = min(mejor, valor)
+            serie.append(mejor)
+        convergencia[familia] = serie
+    return {"cp": por_modelo, "mc": matriz, "bl": banda, "resumen": resumen,
+            "convergencia": convergencia}
 
 
-def _color_modelo(modelo: str) -> str:
-    if modelo.startswith("baseline"):
-        return AMBER
-    if modelo.startswith("xgboost") or modelo.startswith("mlp"):
-        return ACCENT
-    if modelo.startswith("svm"):
-        return LINE
-    return MUTED
-
-
-def _ordenar_modelos(rows: list[dict]) -> list[dict]:
-    def clave(row):
-        modelo = row["modelo"]
-        if modelo.startswith("baseline"):
-            return (2, modelo)
-        for pos, nombre in enumerate(ORDEN_MODELO):
-            if modelo == nombre:
-                return (0, f"{pos}")
-        for pos, nombre in enumerate(ORDEN_MODELO):
-            if modelo.startswith(nombre):
-                return (0, f"{pos}{modelo}")
-        return (1, modelo)
-    return sorted(rows, key=clave)
-
-
-def agregar_slide_resultados(prs, datos_dir):
-    """Agrega la slide de resultados (tabla + barras de RMSE y F1) y la de
-    conclusiones/proximos pasos a partir de ``comparacion_protocolos.csv``
-    de ``datos_dir`` (protocolo LeaveOneShapeOut). Devuelve las dos slides."""
-    ruta = Path(datos_dir) / "comparacion_protocolos.csv"
-    rows = [r for r in cargar_csv(ruta) if r["protocolo"] == "LeaveOneShapeOut"]
-    if not rows:
-        raise ValueError(f"{ruta} no tiene filas del protocolo LeaveOneShapeOut")
-    rows = _ordenar_modelos(rows)
-    modelos = [r["modelo"] for r in rows]
-    etiquetas = [_etiqueta_modelo(m) for m in modelos]
-    rmse = [round(float(r["rmse_vol_agregado_m3"]), 2) for r in rows]
-    f1 = [round(float(r["f1_agregado"]), 4) for r in rows]
-    nse = [float(r["nse_regresor_oracle"]) for r in rows]
-    colores = [_color_modelo(m) for m in modelos]
-    candidatos = [i for i, m in enumerate(modelos) if not m.startswith("baseline")]
-
+def _slide_resultados(prs, d: dict, ruta: Path):
+    cp = d["cp"]
     s = nueva_slide(
-        prs, "Resultados: XGBoost, MLP y SVM aproximado",
-        "LeaveOneShapeOut · mismos datos, presupuesto y métricas · estimación exploratoria condicionada")
-    tabla = []
-    for i, row in enumerate(rows):
-        presentado = colores[i] == ACCENT
-        color = ACCENT if presentado else TEXT
-        tabla.append([[(etiquetas[i], color, presentado)],
-                      [(fmt(rmse[i]), color, presentado)],
-                      [(fmt(f1[i], 4), color, presentado)],
-                      [(fmt(nse[i], 4), color, presentado)]])
-    n = len(tabla)
-    row_h = min(420000, 2900000 // max(n, 1))
-    _tabla(s, L, Y0, [1900000, 800000, 750000, 800000],
-           ["Modelo", "RMSE", "F1", "NSE"], tabla, row_h=row_h, header_h=340000, size=12,
-           name="Table results")
+        prs, "XGBoost y MLP: resultados con formas no vistas",
+        "LeaveOneShapeOut · XGBoost y MLP son el par que se presenta; SVM aproximado, "
+        "tercer candidato")
 
-    leyenda_y = Y0 + 340000 + row_h * n + 120000
-    _textbox(s, L, leyenda_y, 4250000, 700000, [
-        P("RMSE de volumen agregado (m³) · F1 agregado · NSE del regresor en nodos inundados",
-          10, False, MUTED, 4),
-        P("Azul: XGBoost y MLP (par presentado)", 10, True, ACCENT, 1),
-        P("SVM aproximado: tercer candidato", 10, True, "7FA9D6", 1),
-        P("Ámbar: referencias sin aprendizaje", 10, True, AMBER),
-    ])
+    filas = []
+    for familia, nombre in FAMILIAS:
+        for variante, sufijo in (("tuned", "afinado"), ("default", "por defecto")):
+            r = cp[f"{familia}_{variante}"]
+            presentado = familia != "svm"
+            color = ACCENT if presentado else TEXT
+            filas.append([
+                [(f"{nombre.split()[0]} {sufijo}", color, presentado and variante == "tuned")],
+                [(fmt(r["rmse_vol_agregado_m3"]), color, False)],
+                [(fmt(r["f1_agregado"], 4), color, False)],
+                [(fmt(r["auc_roc_agregado"], 4), color, False)],
+                [(fmt(r["nse_regresor_oracle"], 3), color, False)],
+            ])
+    ref = cp[REFERENCIA]
+    filas.append([[("Ref. sin aprender", AMBER, True)],
+                  [(fmt(ref["rmse_vol_agregado_m3"]), AMBER, False)],
+                  [(fmt(ref["f1_agregado"], 4), AMBER, False)],
+                  [(fmt(ref["auc_roc_agregado"], 4), AMBER, False)],
+                  [(fmt(ref["nse_regresor_oracle"], 3), AMBER, False)]])
+    _tabla(s, L, Y0, [1950000, 700000, 750000, 750000, 700000],
+           ["Modelo", "RMSE", "F1", "AUC", "NSE"], filas, row_h=370000, header_h=340000,
+           size=12, name="Table results")
+    _textbox(s, L, Y0 + 340000 + 370000 * len(filas) + 110000, 4850000, 420000, [
+        P("RMSE de volumen agregado en m³ (menor es mejor); NSE del regresor en nodos "
+          "inundados. Barras: etiqueta del valor afinado; por defecto, en la tabla", 10, False, MUTED)])
 
-    cx = L + 4450000
-    cw = W - 4450000
-    _textbox(s, cx, Y0, cw, 230000, [P("RMSE de volumen (m³): menor es mejor", 11, False, MUTED)])
-    _chart_barras(
-        s, cx, Y0 + 220000, cw, 1620000, etiquetas,
-        [("RMSE", rmse, ACCENT)], horizontal=True,
-        etiquetas=[[fmt(v) for v in rmse]], colores_puntos=[colores],
-        leyenda=False, size=11, gap=45)
-    _textbox(s, cx, Y0 + 1900000, cw, 230000, [P("F1 agregado: mayor es mejor", 11, False, MUTED)])
-    _chart_barras(
-        s, cx, Y0 + 2120000, cw, 1620000, etiquetas,
-        [("F1", f1, ACCENT)], horizontal=True,
-        etiquetas=[[fmt(v, 4) for v in f1]], colores_puntos=[colores],
-        leyenda=False, size=11, gap=45, maximo=1.4)
+    cx, cw = L + 5000000, W - 5000000
+    nombres = [n for _, n in FAMILIAS]
+    for bloque, (rotulo, campo, decimales) in enumerate((
+            ("RMSE de volumen (m³): menor es mejor", "rmse_vol_agregado_m3", 2),
+            ("F1 agregado: mayor es mejor", "f1_agregado", 4))):
+        y = Y0 + bloque * 1840000
+        _textbox(s, cx, y, cw, 420000, [
+            P(rotulo, 11, False, MUTED, 1),
+            P(f"Referencia sin aprender: {fmt(ref[campo], decimales)}", 10, True, AMBER)])
+        defecto = [round(float(cp[f"{f}_default"][campo]), decimales + 1) for f, _ in FAMILIAS]
+        afinado = [round(float(cp[f"{f}_tuned"][campo]), decimales + 1) for f, _ in FAMILIAS]
+        holgura = 1.45
+        _chart_barras(
+            s, cx, y + 400000, cw, 1380000, nombres,
+            [("Por defecto", defecto, LINE), ("Afinado", afinado, ACCENT)],
+            etiquetas=[None, [fmt(v, decimales) for v in afinado]],
+            colores_puntos=[[LINE, LINE, "3F5A78"], [ACCENT, ACCENT, "7A8FA6"]],
+            horizontal=True, size=10, gap=40, maximo=max(defecto + afinado) * holgura)
 
-    mejor_rmse = min(candidatos, key=lambda i: rmse[i])
-    mejor_f1 = max(candidatos, key=lambda i: f1[i])
-    resumen = "; ".join(f"{etiquetas[i]} RMSE {fmt(rmse[i])} m³, F1 {fmt(f1[i], 4)}" for i in candidatos)
+    x_t, x_d, mlp_t = cp["xgboost_tuned"], cp["xgboost_default"], cp["mlp_tuned"]
+    mejora = 100 * (1 - float(x_t["rmse_vol_agregado_m3"]) / float(x_d["rmse_vol_agregado_m3"]))
+    svm_t = cp["svm_tuned"]
     _notas(s, (
-        "Resultados del protocolo principal, LeaveOneShapeOut, con la misma base de datos, el mismo presupuesto de Optuna y las mismas métricas para las tres familias. "
-        f"Menor RMSE de volumen entre los candidatos: {etiquetas[mejor_rmse]} ({fmt(rmse[mejor_rmse])} m³); mayor F1: {etiquetas[mejor_f1]} ({fmt(f1[mejor_f1], 4)}). "
-        f"Detalle por candidato: {resumen}. "
-        "Las barras ámbar son las referencias que no aprenden y sirven de piso. Estas cifras son una estimación exploratoria condicionada: los hiperparámetros se eligieron con todas las formas, "
-        "así que son optimistas por igual para las tres familias y no llevan intervalos de confianza (40 formas).\n\n"
-        f"Fuente: {ruta.as_posix()} (filas de LeaveOneShapeOut; columnas rmse_vol_agregado_m3, f1_agregado, nse_regresor_oracle); "
+        "Resultados del protocolo principal, LeaveOneShapeOut, con el mismo dato, el mismo presupuesto de Optuna y las mismas métricas para las tres familias. "
+        f"XGBoost afinado es el mejor: RMSE de volumen de {fmt(x_t['rmse_vol_agregado_m3'])} m³, {fmt(mejora, 0)} % menos que con sus parámetros por defecto ({fmt(x_d['rmse_vol_agregado_m3'])} m³). "
+        f"El MLP afinado queda segundo con {fmt(mlp_t['rmse_vol_agregado_m3'])} m³; ambos tienen F1 cercano a {fmt(x_t['f1_agregado'], 2)} y AUC cercano a {fmt(x_t['auc_roc_agregado'], 3)}. "
+        f"El SVM aproximado queda por debajo incluso de la referencia que no aprende ({fmt(svm_t['rmse_vol_agregado_m3'])} contra {fmt(ref['rmse_vol_agregado_m3'])} m³; F1 {fmt(svm_t['f1_agregado'], 3)} contra {fmt(ref['f1_agregado'], 3)}). "
+        "Son estimaciones exploratorias condicionadas: los hiperparámetros se eligieron con todas las formas, así que son optimistas por igual para las tres familias. "
+        "Nota: el XGBoost por defecto de esta corrida no coincide con el de la auditoría (106,21 m³ en datos/comparacion_protocolos.csv); son corridas distintas y no se comparan entre sí.\n\n"
+        f"Fuente: {ruta.as_posix()}/comparacion_protocolos.csv (filas LeaveOneShapeOut; columnas rmse_vol_agregado_m3, f1_agregado, auc_roc_agregado, nse_regresor_oracle); "
         "docs/superpowers/specs/2026-10-12-parte2-svm-comparacion-justa-design.md §3.2-§3.3."
     ))
+    return s
 
-    # --- Conclusiones y proximos pasos ------------------------------------
-    c = nueva_slide(
-        prs, "Conclusiones y próximos pasos",
-        "Lectura de la comparación y lo que queda por decidir")
-    tw = 4150000
-    tiles = [
-        ("Menor RMSE de volumen", etiquetas[mejor_rmse], f"{fmt(rmse[mejor_rmse])} m³"),
-        ("Mayor F1 agregado", etiquetas[mejor_f1], fmt(f1[mejor_f1], 4)),
+
+def _slide_afinacion(prs, d: dict, ruta: Path):
+    resumen, conv = d["resumen"], d["convergencia"]
+    n_trials = max(len(v) for v in conv.values())
+    s = nueva_slide(
+        prs, f"Afinación con Optuna: {n_trials} trials por familia",
+        f"{n_trials} trials por familia, mismos datos y protocolo; estimación exploratoria "
+        "(hiperparámetros elegidos con todas las formas)")
+
+    cd = CategoryChartData()
+    cd.categories = [str(i + 1) for i in range(n_trials)]
+    orden = [f for f, _ in FAMILIAS if f in conv]
+    for familia in orden:
+        cd.add_series(dict(FAMILIAS)[familia], [round(v, 2) for v in conv[familia]])
+    cw = 5000000
+    _textbox(s, L, Y0, cw, 260000, [P("Mejor RMSE interno hasta ese trial (m³)", 11, False, MUTED)])
+    frame = s.shapes.add_chart(XL_CHART_TYPE.LINE, Emu(L), Emu(Y0 + 250000), Emu(cw),
+                               Emu(3250000), cd)
+    chart = frame.chart
+    chart.has_title = False
+    chart.font.size = Pt(11)
+    chart.font.name = FONT
+    chart.font.color.rgb = _rgb(TEXT)
+    chart.has_legend = True
+    chart.legend.position = XL_LEGEND_POSITION.BOTTOM
+    chart.legend.include_in_layout = False
+    chart.legend.font.size = Pt(11)
+    chart.legend.font.color.rgb = _rgb(TEXT)
+    va = chart.value_axis
+    va.minimum_scale = 0
+    va.has_major_gridlines = True
+    va.major_gridlines.format.line.color.rgb = _rgb("2A4A6B")
+    va.format.line.fill.background()
+    va.tick_labels.font.size = Pt(10)
+    va.tick_labels.font.color.rgb = _rgb(MUTED)
+    va.tick_labels.number_format = "0"
+    va.tick_labels.number_format_is_linked = False
+    ca = chart.category_axis
+    ca.format.line.color.rgb = _rgb(LINE)
+    ca.tick_labels.font.size = Pt(10)
+    ca.tick_labels.font.color.rgb = _rgb(MUTED)
+    ca.has_major_gridlines = False
+    for serie, familia in zip(chart.plots[0].series, orden):
+        serie.smooth = False
+        serie.format.line.color.rgb = _rgb(COLOR_FAMILIA[familia])
+        serie.format.line.width = Pt(2.5)
+        serie.marker.style = XL_MARKER_STYLE.NONE
+
+    tx = L + cw + 200000
+    tw = W - cw - 200000
+    filas = []
+    for familia in orden:
+        r = resumen[familia]
+        filas.append([
+            [(dict(FAMILIAS)[familia].replace("aproximado", "aprox."), COLOR_FAMILIA[familia], True)],
+            [(fmt(r["best_value"], 1), TEXT, False)],
+            [(fmt(float(r["duration_s"]) / 60, 1), TEXT, False)],
+        ])
+    _tabla(s, tx, Y0 + 250000, [1200000, 1250000, tw - 2450000],
+           ["Familia", "Mejor RMSE", "Min"], filas, row_h=480000, header_h=340000, size=12,
+           name="Table tuning")
+    _textbox(s, tx, Y0 + 250000 + 340000 + 480000 * len(filas) + 120000, tw, 900000, [
+        P("RMSE interno: GroupKFold(5) por forma dentro de la búsqueda; no es la cifra de "
+          "LeaveOneShapeOut.", 10, False, MUTED, 4),
+        P("Min: duración del estudio completo.", 10, False, MUTED)])
+
+    detalle = "; ".join(
+        f"{dict(FAMILIAS)[f]} termina en {fmt(resumen[f]['best_value'], 1)} m³ tras "
+        f"{fmt(float(resumen[f]['duration_s']) / 60, 1)} min" for f in orden)
+    _notas(s, (
+        f"Cada familia recibió la misma búsqueda: {n_trials} trials de Optuna sobre el mismo dato y con el mismo CV interno por forma. "
+        f"La curva muestra el mejor RMSE interno alcanzado hasta cada trial: {detalle}. "
+        "El SVM aproximado queda lejos de las otras dos durante toda la búsqueda. "
+        "Es una estimación exploratoria condicionada: los hiperparámetros se eligen con todas las formas, y el valor interno no es el de LeaveOneShapeOut.\n\n"
+        f"Fuentes: {ruta.as_posix()}/convergencia_afinacion.csv (family, trial, value; mínimo acumulado) y resumen_afinacion.csv (n_trials, best_value, duration_s, status)."
+    ))
+    return s
+
+
+def _panel_matriz(s, x, y, ancho, titulo, matriz, metricas, banda):
+    tn, fp, fn, tp = (int(matriz[k]) for k in ("tn", "fp", "fn", "tp"))
+    _textbox(s, x, y, ancho, 300000, [P(titulo, 16, True, ACCENT)])
+    rh, gap = 950000, 40000
+    cell_w, cell_h = (ancho - rh - gap) // 2, 800000
+    mx = x + rh
+    for i, texto in enumerate(("no inunda", "inunda")):
+        _textbox(s, mx + i * (cell_w + gap), y + 340000, cell_w, 380000,
+                 [P("PREDICHO", 9, True, MUTED), P(texto, 12, True, TEXT)])
+    celdas = [
+        (tn, "TN", PANEL_ALT, LINE, 1.0, TEXT), (fp, "FP", PANEL, AMBER, 1.0, AMBER),
+        (fn, "FN", PANEL, AMBER, 3.0, AMBER), (tp, "TP", HEAD, ACCENT, 1.5, TEXT),
     ]
-    for i, (rotulo, nombre, valor) in enumerate(tiles):
-        _card(c, L, Y0 + 20000 + i * 950000, tw, 880000, [
-            P(rotulo, 12, False, MUTED, 1),
-            P("", 20, runs=[(valor, ACCENT, True), ("   " + nombre, TEXT, False)])],
-            fill=PANEL_ALT, line=ACCENT)
-    _card(c, L, Y0 + 20000 + 2 * 950000, tw, 1230000, [
-        P("Cómo leerlo", 12, True, AMBER, 3),
-        P("Estimación exploratoria condicionada: hiperparámetros elegidos con todas las formas, "
-          "sin intervalos de confianza", 12, False, TEXT)],
-        fill=PANEL, line=AMBER, line_w=2.0)
+    for idx, (valor, sigla, fill, line, line_w, color) in enumerate(celdas):
+        fila, col = divmod(idx, 2)
+        cy = y + 740000 + fila * (cell_h + gap)
+        _shape(s, MSO_SHAPE.ROUNDED_RECTANGLE, mx + col * (cell_w + gap), cy, cell_w, cell_h,
+               fill, line, line_w,
+               paras=[P(fmt(valor, 0), 20, True, color, 1), P(sigla, 11, False, MUTED)],
+               anchor=MSO_ANCHOR.TOP, margins=(110000, 70000, 80000, 30000))
+    for fila, texto in enumerate(("no inunda", "inunda")):
+        _textbox(s, x, y + 740000 + fila * (cell_h + gap), rh - 60000, cell_h,
+                 [P("REAL", 9, True, MUTED), P(texto, 12, True, TEXT)], anchor=MSO_ANCHOR.MIDDLE)
+    ym = y + 740000 + 2 * cell_h + gap + 90000
+    _textbox(s, x, ym, ancho, 280000, [P("", 12, runs=[
+        ("Recall ", MUTED, False), (fmt(metricas["recall_agregado"], 4), TEXT, True),
+        ("  ·  Precisión ", MUTED, False), (fmt(metricas["precision_agregada"], 4), TEXT, True),
+        ("  ·  F1 ", MUTED, False), (fmt(metricas["f1_agregado"], 4), ACCENT, True)])])
+    _shape(s, MSO_SHAPE.ROUNDED_RECTANGLE, x, ym + 330000, ancho, 480000, fill=PANEL,
+           line=AMBER, line_w=1.5, paras=[P(
+               f"FN en la banda de 1 m³: {int(banda['fn_en_banda_1_2m3'])} de {int(banda['fn_total'])}",
+               12, True, TEXT)], margins=(110000, 30000, 110000, 30000))
+
+
+def _slide_matrices(prs, d: dict, ruta: Path):
+    s = nueva_slide(
+        prs, "Matrices de confusión: XGBoost y MLP afinados",
+        "LeaveOneShapeOut · 154.080 nodos-escenario · FN en la banda de 1 m³: "
+        "ver banda_limitrofe.csv")
+    pw = (W - 300000) // 2
+    detalle = []
+    for i, (modelo, titulo) in enumerate((("xgboost_tuned", "XGBoost afinado"),
+                                          ("mlp_tuned", "MLP afinado"))):
+        _panel_matriz(s, L + i * (pw + 300000), Y0 + 20000, pw, titulo, d["mc"][modelo],
+                      d["cp"][modelo], d["bl"][modelo])
+        m, b = d["mc"][modelo], d["bl"][modelo]
+        detalle.append(
+            f"{titulo}: TN {fmt(m['tn'], 0)}, FP {fmt(m['fp'], 0)}, FN {fmt(m['fn'], 0)}, "
+            f"TP {fmt(m['tp'], 0)}; FN en banda de 1 m³: {b['fn_en_banda_1_2m3']} de "
+            f"{b['fn_total']}; FN con volumen real de 100 m³ o más: {b['fn_con_vol_ge_100m3']}")
+    _notas(s, (
+        "Matrices agregadas de las dos familias que se presentan, con hiperparámetros afinados, reteniendo una forma de hidrograma completa cada vez. "
+        "Clasifican casi igual; la diferencia está en los falsos positivos y en los pocos falsos negativos grandes. "
+        + " | ".join(detalle) + ". "
+        "La mayoría de los falsos negativos son nodos con volumen reportado de 1 m³, el mínimo que la etiqueta cuenta como inundación.\n\n"
+        f"Fuentes: {ruta.as_posix()}/matriz_confusion.csv (tn, fp, fn, tp), comparacion_protocolos.csv (recall_agregado, precision_agregada, f1_agregado) "
+        "y banda_limitrofe.csv (fn_total, fn_en_banda_1_2m3, fn_con_vol_ge_100m3)."
+    ))
+    return s
+
+
+def _slide_conclusiones(prs, d: dict, ruta: Path):
+    cp, resumen = d["cp"], d["resumen"]
+    xt, xd, mt = cp["xgboost_tuned"], cp["xgboost_default"], cp["mlp_tuned"]
+    st, ref = cp["svm_tuned"], cp[REFERENCIA]
+    mejora = 100 * (1 - float(xt["rmse_vol_agregado_m3"]) / float(xd["rmse_vol_agregado_m3"]))
+    prov = {}
+    ruta_prov = Path(ruta) / "tables_provenance.json"
+    if ruta_prov.exists():
+        prov = json.loads(ruta_prov.read_text(encoding="utf-8"))
+    corridas = (f"{prov['n_runs']} de {prov['n_runs_full_grid']} corridas"
+                if "n_runs" in prov else "963 de 1000 corridas")
+
+    def fijos(familia):
+        crudo = resumen.get(familia, {}).get("fixed_params") or "{}"
+        return json.loads(crudo).get("classifier", {})
+
+    mlp, xgb = fijos("mlp"), fijos("xgboost")
+    alcance = (f"MLP: {mlp.get('epochs', 200)} épocas, batch {mlp.get('batch_size', 1024)} · "
+               f"XGBoost: n_jobs={xgb.get('n_jobs', 1)}")
+
+    s = nueva_slide(
+        prs, "Conclusiones y próximos pasos",
+        "XGBoost afinado es el mejor; el SVM aproximado queda por debajo de la referencia")
+    tw = 4300000
+    _card(s, L, Y0 + 20000, tw, 1000000, [
+        P("XGBoost afinado es el mejor", 14, True, ACCENT, 2),
+        P(f"RMSE {fmt(xt['rmse_vol_agregado_m3'], 1)} m³ (−{fmt(mejora, 0)} % frente a sus "
+          f"parámetros por defecto); MLP afinado 2.º: {fmt(mt['rmse_vol_agregado_m3'], 1)} m³. "
+          f"Ambos con F1 ≈ {fmt(xt['f1_agregado'], 2)} y AUC ≈ {fmt(xt['auc_roc_agregado'], 3)}",
+          12, False, TEXT)], fill=PANEL_ALT, line=ACCENT, line_w=2.0, anchor=MSO_ANCHOR.TOP)
+    _card(s, L, Y0 + 1100000, tw, 1170000, [
+        P("SVM aproximado: bajo la referencia", 14, True, AMBER, 2),
+        P(f"RMSE ≈ {fmt(st['rmse_vol_agregado_m3'], 0)} vs {fmt(ref['rmse_vol_agregado_m3'], 0)} m³; "
+          f"F1 {fmt(st['f1_agregado'], 2)} vs {fmt(ref['f1_agregado'], 3)}. Atribuible: kernel "
+          "aproximado, espacio de búsqueda limitado y Platt, que neutraliza class_weight "
+          "(declarado)", 12, False, TEXT)], fill=PANEL, line=AMBER, line_w=1.5,
+          anchor=MSO_ANCHOR.TOP)
+    _card(s, L, Y0 + 2350000, tw, 1080000, [
+        P("Alcance honesto", 14, True, MUTED, 2),
+        P("Hiperparámetros elegidos con todas las formas (optimista por igual) · una red · "
+          f"{corridas} · {alcance}", 12, False, TEXT)], fill=PANEL, line=LINE,
+          anchor=MSO_ANCHOR.TOP)
 
     px = L + tw + 250000
     pw = W - tw - 250000
+    _textbox(s, px, Y0 + 20000, pw, 240000, [P("PRÓXIMOS PASOS", 10, True, MUTED)])
     pasos = [
         "Decidir la etiqueta: ruta A (recomendada) o B",
-        "Documento 06: selección de modelos y texto de la tesis",
-        "Afinación anidada por forma (trabajo futuro)",
-        "Regenerar las figuras con el modelo declarado",
+        "Afinación anidada por forma",
+        "Más trials y espacio más amplio para el SVM",
+        "Matriz de confusión por forma extrema",
+        "Propagar a mapas por familia",
     ]
-    _textbox(c, px, Y0 + 20000, pw, 260000, [P("PRÓXIMOS PASOS", 10, True, MUTED)])
     for i, paso in enumerate(pasos):
-        py = Y0 + 330000 + i * 840000
-        badge = _shape(c, MSO_SHAPE.OVAL, px, py + 90000, 420000, 420000, fill=ACCENT,
-                       line=None, paras=[P(str(i + 1), 16, True, BG)], margins=(0, 0, 0, 0))
+        py = Y0 + 300000 + i * 680000
+        badge = _shape(s, MSO_SHAPE.OVAL, px, py + 60000, 400000, 400000, fill=ACCENT,
+                       line=None, paras=[P(str(i + 1), 15, True, BG)], margins=(0, 0, 0, 0))
         badge.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
-        _card(c, px + 520000, py, pw - 520000, 600000, [P(paso, 13, False, TEXT)],
+        _card(s, px + 500000, py, pw - 500000, 520000, [P(paso, 12, False, TEXT)],
               fill=PANEL, line=LINE)
 
-    _notas(c, (
-        "Cierre: con el mismo dato, presupuesto de afinación y protocolo, "
-        f"{etiquetas[mejor_rmse]} tiene el menor RMSE de volumen ({fmt(rmse[mejor_rmse])} m³) y {etiquetas[mejor_f1]} el mayor F1 ({fmt(f1[mejor_f1], 4)}) entre los candidatos. "
-        "Hay que leerlo con la salvedad de siempre: son estimaciones exploratorias condicionadas, sin intervalos de confianza y con una sola red. "
-        "Quedan cuatro pendientes: decidir la etiqueta (recomiendo la ruta A), escribir el documento 06 de selección de modelos, "
-        "la afinación anidada por forma como trabajo futuro y regenerar las figuras con el modelo que se declare.\n\n"
-        f"Fuentes: {ruta.as_posix()}; docs/superpowers/specs/2026-10-12-parte2-svm-comparacion-justa-design.md §3.2-§3.3 y §5; "
-        "docs/auditoria/correcciones/04-informe-consolidado.md §4, §5 y §6."
+    _notas(s, (
+        f"Mensaje principal: XGBoost afinado es el mejor, con RMSE de volumen de {fmt(xt['rmse_vol_agregado_m3'], 1)} m³, {fmt(mejora, 0)} % menos que con sus parámetros por defecto; "
+        f"el MLP afinado queda segundo con {fmt(mt['rmse_vol_agregado_m3'], 1)} m³ y ambos tienen F1 cercano a {fmt(xt['f1_agregado'], 2)} y AUC cercano a {fmt(xt['auc_roc_agregado'], 3)}. "
+        f"El SVM aproximado queda por debajo incluso de la referencia que no aprende: {fmt(st['rmse_vol_agregado_m3'], 0)} contra {fmt(ref['rmse_vol_agregado_m3'], 0)} m³ y F1 {fmt(st['f1_agregado'], 2)} contra {fmt(ref['f1_agregado'], 3)}; "
+        "lo atribuible es el kernel aproximado, un espacio de búsqueda limitado y la calibración de Platt, que neutraliza class_weight (declarado). "
+        f"Alcance: hiperparámetros elegidos con todas las formas, una red, {corridas}; {alcance}. "
+        "Próximos pasos: decidir la etiqueta (recomiendo A), afinación anidada por forma, más trials o espacio más amplio para el SVM, matriz de confusión por forma extrema y propagar a mapas por familia.\n\n"
+        f"Fuentes: {ruta.as_posix()}/comparacion_protocolos.csv, resumen_afinacion.csv (fixed_params), tables_provenance.json (n_runs, n_runs_full_grid); "
+        "docs/auditoria/correcciones/04-informe-consolidado.md §4 y §5."
     ))
-    return [s, c]
+    return s
+
+
+def agregar_slide_resultados(prs, datos_dir):
+    """Agrega las slides de resultados de la parte 2 desde las tablas de
+    ``datos_dir``: resultados (tabla + barras), afinacion (curvas de
+    convergencia), matrices de confusion y conclusiones/proximos pasos.
+    Devuelve la lista de slides agregadas."""
+    datos_dir = Path(datos_dir)
+    d = _datos_parte2(datos_dir)
+    return [
+        _slide_resultados(prs, d, datos_dir),
+        _slide_afinacion(prs, d, datos_dir),
+        _slide_matrices(prs, d, datos_dir),
+        _slide_conclusiones(prs, d, datos_dir),
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -906,8 +1120,8 @@ def construir(base: Path = BASE, salida: Path = OUTPUT, datos_dir: Path = DATOS_
     slide_protocolos(prs, datos_dir)
     slide_matriz(prs, datos_dir)
     slide_etiqueta(prs)
-    slide_svm(prs)
-    slide_comparacion_justa(prs, con_resultados)
+    slide_svm(prs, datos_parte2_dir if con_resultados else None)
+    slide_comparacion_justa(prs, con_resultados, datos_parte2_dir if con_resultados else None)
     if con_resultados:
         agregar_slide_resultados(prs, datos_parte2_dir)
 

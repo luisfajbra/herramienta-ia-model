@@ -18,38 +18,72 @@ DATOS_REALES = (
 )
 
 CAMPOS = [
-    "modelo", "protocolo", "que_mide", "f1_agregado", "recall_agregado",
-    "precision_agregada", "f1_media_por_fold_con_ceros", "folds_f1_indefinido",
-    "rmse_vol_agregado_m3", "rmse_vol_media_por_fold_m3", "error_vol_total_pct",
-    "nse_regresor_oracle",
+    "modelo", "variante", "protocolo", "que_mide", "f1_agregado", "recall_agregado",
+    "precision_agregada", "auc_roc_agregado", "f1_media_por_fold_con_ceros",
+    "folds_f1_indefinido", "rmse_vol_agregado_m3", "rmse_vol_media_por_fold_m3",
+    "error_vol_total_pct", "nse_regresor_oracle",
+]
+
+# (modelo, variante, f1, auc, rmse, nse)
+MODELOS_FALSOS = [
+    ("baseline_forma_mas_cercana", "referencia", 0.9764, 0.9844, 172.86, 0.71),
+    ("xgboost_default", "default", 0.9815, 0.9993, 112.80, 0.877),
+    ("xgboost_tuned", "tuned", 0.9812, 0.9993, 69.64, 0.953),
+    ("mlp_default", "default", 0.9783, 0.9992, 114.38, 0.878),
+    ("mlp_tuned", "tuned", 0.9783, 0.9994, 101.12, 0.902),
+    ("svm_default", "default", 0.8625, 0.9719, 222.46, 0.548),
+    ("svm_tuned", "tuned", 0.8302, 0.9626, 214.87, 0.583),
 ]
 
 
-def _fila(modelo, protocolo, f1, rmse, nse):
+def _escribir(ruta: Path, campos, filas):
+    with open(ruta, "w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=campos)
+        writer.writeheader()
+        writer.writerows(filas)
+
+
+def _fila(modelo, variante, protocolo, f1, auc, rmse, nse):
     return {
-        "modelo": modelo, "protocolo": protocolo, "que_mide": "x", "f1_agregado": f1,
-        "recall_agregado": 0.9, "precision_agregada": 0.9,
-        "f1_media_por_fold_con_ceros": 0.9, "folds_f1_indefinido": 0,
-        "rmse_vol_agregado_m3": rmse, "rmse_vol_media_por_fold_m3": rmse,
-        "error_vol_total_pct": -1.0, "nse_regresor_oracle": nse,
+        "modelo": modelo, "variante": variante, "protocolo": protocolo, "que_mide": "x",
+        "f1_agregado": f1, "recall_agregado": 0.99, "precision_agregada": 0.97,
+        "auc_roc_agregado": auc, "f1_media_por_fold_con_ceros": 0.9,
+        "folds_f1_indefinido": 0, "rmse_vol_agregado_m3": rmse,
+        "rmse_vol_media_por_fold_m3": rmse, "error_vol_total_pct": -1.0,
+        "nse_regresor_oracle": nse,
     }
 
 
-def _csv_falso(carpeta: Path) -> Path:
+def _datos_parte2_falsos(carpeta: Path) -> Path:
+    """Tablas con las columnas y nombres de modelo REALES de la parte 2."""
     carpeta.mkdir(parents=True, exist_ok=True)
-    filas = [
-        _fila("xgboost", "LeaveOneShapeOut", 0.9801, 90.5, 0.91),
-        _fila("mlp", "LeaveOneShapeOut", 0.9755, 95.25, 0.9),
-        _fila("svm", "LeaveOneShapeOut", 0.9, 150.5, 0.5),
-        _fila("baseline_forma_mas_cercana", "LeaveOneShapeOut", 0.9764, 172.86, 0.71),
-        _fila("xgboost", "LOSO", 0.9667, 57.89, 0.96),  # otro protocolo: se ignora
-    ]
-    ruta = carpeta / "comparacion_protocolos.csv"
-    with open(ruta, "w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=CAMPOS)
-        writer.writeheader()
-        writer.writerows(filas)
-    return ruta
+    filas = [_fila(m, v, "LeaveOneShapeOut", f1, auc, rmse, nse)
+             for m, v, f1, auc, rmse, nse in MODELOS_FALSOS]
+    filas.append(_fila("xgboost_tuned", "tuned", "LOSO", 0.9, 0.9, 50.0, 0.9))  # se ignora
+    _escribir(carpeta / "comparacion_protocolos.csv", CAMPOS, filas)
+    _escribir(carpeta / "matriz_confusion.csv", ["modelo", "protocolo", "tn", "fp", "fn", "tp"],
+              [{"modelo": m, "protocolo": "LeaveOneShapeOut", "tn": 100000 + k, "fp": 1000 + k,
+                "fn": 300 + k, "tp": 45000 + k} for k, (m, *_) in enumerate(MODELOS_FALSOS)])
+    _escribir(carpeta / "banda_limitrofe.csv",
+              ["modelo", "protocolo", "fn_total", "fn_en_banda_1_2m3", "fn_fuera_de_banda",
+               "fn_con_vol_ge_100m3"],
+              [{"modelo": m, "protocolo": "LeaveOneShapeOut", "fn_total": 300 + k,
+                "fn_en_banda_1_2m3": 200 + k, "fn_fuera_de_banda": 100,
+                "fn_con_vol_ge_100m3": 0} for k, (m, *_) in enumerate(MODELOS_FALSOS)])
+    _escribir(carpeta / "resumen_afinacion.csv",
+              ["family", "n_trials", "best_value", "duration_s", "fixed_params", "status"],
+              [{"family": f, "n_trials": 3, "best_value": b, "duration_s": d,
+                "fixed_params": '{"classifier": {"n_jobs": 1, "epochs": 200, "batch_size": 1024}}',
+                "status": "estimacion_exploratoria_condicionada"}
+               for f, b, d in (("svm", 200.0, 840.0), ("xgboost", 65.0, 756.0),
+                               ("mlp", 77.0, 3100.0))])
+    ensayos = {"svm": [220.0, 230.0, 210.0], "xgboost": [300.0, 100.0, 120.0],
+               "mlp": [150.0, 90.0, 95.0]}
+    _escribir(carpeta / "convergencia_afinacion.csv",
+              ["family", "trial", "value", "duration_s", "best_so_far"],
+              [{"family": f, "trial": t, "value": v, "duration_s": 1.0, "best_so_far": v}
+               for f, valores in ensayos.items() for t, v in enumerate(valores)])
+    return carpeta
 
 
 def _prs_base():
@@ -88,70 +122,88 @@ def test_fmt_usa_formato_espanol():
     assert deck.fmt(172.8642, 2) == "172,86"
 
 
-def test_agregar_slide_resultados_agrega_dos_slides_con_tabla_y_graficos(tmp_path):
-    datos = tmp_path / "datos_parte2"
-    _csv_falso(datos)
+def test_agregar_slide_resultados_agrega_cuatro_slides_con_los_nombres_reales(tmp_path):
+    datos = _datos_parte2_falsos(tmp_path / "datos_parte2")
     prs = _prs_base()
     nuevas = deck.agregar_slide_resultados(prs, datos)
-    assert len(nuevas) == 2 and len(prs.slides) == 3
-
-    resultados, conclusiones = nuevas
-    assert _titulo(resultados) == "Resultados: XGBoost, MLP y SVM aproximado"
-    assert _titulo(conclusiones) == "Conclusiones y próximos pasos"
-    for slide in nuevas:  # los titulos no terminan en punto
+    assert len(nuevas) == 4 and len(prs.slides) == 5
+    assert [_titulo(x) for x in nuevas] == [
+        "XGBoost y MLP: resultados con formas no vistas",
+        "Afinación con Optuna: 3 trials por familia",
+        "Matrices de confusión: XGBoost y MLP afinados",
+        "Conclusiones y próximos pasos",
+    ]
+    for slide in nuevas:
         assert not _titulo(slide).rstrip().endswith(".")
+        assert len(slide.notes_slide.notes_text_frame.text) > 300
+    assert [_numero(x) for x in nuevas] == ["2", "3", "4", "5"]
 
-    tabla = next(s for s in resultados.shapes if s.has_table).table
+    resultados = nuevas[0]
+    tabla = next(x for x in resultados.shapes if x.has_table).table
     celdas = [[c.text for c in row.cells] for row in tabla.rows]
-    assert celdas[0] == ["Modelo", "RMSE", "F1", "NSE"]
-    assert [fila[0] for fila in celdas[1:]] == [
-        "XGBoost", "MLP", "SVM aproximado", "Forma más cercana (ref.)"]
-    assert celdas[1][1:] == ["90,50", "0,9801", "0,9100"]
-    assert celdas[3][1] == "150,50"
+    assert celdas[0] == ["Modelo", "RMSE", "F1", "AUC", "NSE"]
+    assert [f[0] for f in celdas[1:]] == [
+        "XGBoost afinado", "XGBoost por defecto", "MLP afinado", "MLP por defecto",
+        "SVM afinado", "SVM por defecto", "Ref. sin aprender"]
+    assert celdas[1][1:] == ["69,64", "0,9812", "0,9993", "0,953"]
+    graficos = [x.chart for x in resultados.shapes if x.has_chart]
+    assert len(graficos) == 2  # RMSE y F1, por familia: por defecto vs afinado
+    rmse = graficos[0].plots[0]
+    assert list(rmse.categories) == ["XGBoost", "MLP", "SVM aproximado"]
+    assert list(rmse.series[0].values) == [112.8, 114.38, 222.46]  # por defecto
+    assert list(rmse.series[1].values) == [69.64, 101.12, 214.87]  # afinado
+    assert "172,86" in _textos(resultados)  # referencia
 
-    graficos = [s.chart for s in resultados.shapes if s.has_chart]
-    assert len(graficos) == 2
-    rmse, f1 = graficos
-    assert list(rmse.plots[0].categories) == [
-        "XGBoost", "MLP", "SVM aproximado", "Forma más cercana (ref.)"]
-    assert list(rmse.plots[0].series[0].values) == [90.5, 95.25, 150.5, 172.86]
-    assert list(f1.plots[0].series[0].values) == [0.9801, 0.9755, 0.9, 0.9764]
 
+def test_slide_de_afinacion_usa_el_minimo_acumulado(tmp_path):
+    datos = _datos_parte2_falsos(tmp_path / "datos_parte2")
+    _, afinacion, _, _ = deck.agregar_slide_resultados(_prs_base(), datos)
+    grafico = next(x.chart for x in afinacion.shapes if x.has_chart)
+    series = {s.name: list(s.values) for s in grafico.plots[0].series}
+    assert series["XGBoost"] == [300.0, 100.0, 100.0]
+    assert series["MLP"] == [150.0, 90.0, 90.0]
+    assert series["SVM aproximado"] == [220.0, 220.0, 210.0]
+    tabla = next(x for x in afinacion.shapes if x.has_table).table
+    assert [c.text for c in tabla.rows[1].cells] == ["XGBoost", "65,0", "12,6"]
+    assert "20 trials" not in _textos(afinacion)  # el numero sale del CSV (3)
+
+
+def test_slide_de_matrices_usa_xgboost_y_mlp_afinados(tmp_path):
+    datos = _datos_parte2_falsos(tmp_path / "datos_parte2")
+    matrices = deck.agregar_slide_resultados(_prs_base(), datos)[2]
+    texto = _textos(matrices)
+    # xgboost_tuned es la fila 2 del CSV falso (k=2) y mlp_tuned la 4
+    for valor in ("100.002", "1.002", "302", "45.002", "100.004", "1.004", "304", "45.004"):
+        assert valor in texto
+    assert "FN en la banda de 1 m³: 202 de 302" in texto
+    assert "FN en la banda de 1 m³: 204 de 304" in texto
+    assert "banda_limitrofe.csv" in texto
+
+
+def test_conclusiones_leen_las_cifras_de_las_tablas(tmp_path):
+    datos = _datos_parte2_falsos(tmp_path / "datos_parte2")
+    conclusiones = deck.agregar_slide_resultados(_prs_base(), datos)[3]
     texto = _textos(conclusiones)
-    assert "90,50 m³" in texto and "XGBoost" in texto  # menor RMSE entre candidatos
-    assert "0,9801" in texto  # mayor F1
+    assert "69,6 m³" in texto and "−38 %" in texto and "101,1 m³" in texto
+    assert "215 vs 173" in texto and "0,83 vs 0,976" in texto
+    assert "200 épocas, batch 1024" in texto and "n_jobs=1" in texto
+    assert "963 de 1000 corridas" in texto  # sin tables_provenance.json: valor por omision
 
 
-def test_las_referencias_no_se_presentan_como_ganadoras(tmp_path):
-    datos = tmp_path / "datos_parte2"
-    _csv_falso(datos)
-    ruta = datos / "comparacion_protocolos.csv"
-    with open(ruta, "a", encoding="utf-8", newline="") as handle:
-        csv.DictWriter(handle, fieldnames=CAMPOS).writerow(
-            _fila("baseline_interpolacion_factor", "LeaveOneShapeOut", 0.999, 1.0, 0.99))
-    _, conclusiones = deck.agregar_slide_resultados(_prs_base(), datos)
-    assert "Interpolación" not in _textos(conclusiones)
-    assert "1,00 m³" not in _textos(conclusiones)
-
-
-def test_los_slides_de_resultados_tienen_notas_y_numeracion_continua(tmp_path):
-    datos = tmp_path / "datos_parte2"
-    _csv_falso(datos)
-    prs = _prs_base()
-    resultados, conclusiones = deck.agregar_slide_resultados(prs, datos)
-    assert [_numero(resultados), _numero(conclusiones)] == ["2", "3"]
-    for slide in (resultados, conclusiones):
-        assert "comparacion_protocolos.csv" in slide.notes_slide.notes_text_frame.text
-    assert "90,50" in resultados.notes_slide.notes_text_frame.text
+def test_agregar_slide_resultados_falla_si_falta_una_variante(tmp_path):
+    datos = _datos_parte2_falsos(tmp_path / "datos_parte2")
+    filas = [r for r in deck.cargar_csv(datos / "comparacion_protocolos.csv")
+             if r["modelo"] != "mlp_tuned"]
+    _escribir(datos / "comparacion_protocolos.csv", CAMPOS, filas)
+    with pytest.raises(ValueError, match="mlp_tuned"):
+        deck.agregar_slide_resultados(_prs_base(), datos)
 
 
 def test_agregar_slide_resultados_falla_sin_filas_de_leave_one_shape_out(tmp_path):
     datos = tmp_path / "datos_parte2"
     datos.mkdir()
-    with open(datos / "comparacion_protocolos.csv", "w", encoding="utf-8", newline="") as handle:
-        writer = csv.DictWriter(handle, fieldnames=CAMPOS)
-        writer.writeheader()
-        writer.writerow(_fila("xgboost", "LOSO", 0.9, 50.0, 0.9))
+    _escribir(datos / "comparacion_protocolos.csv", CAMPOS,
+              [_fila("xgboost_tuned", "tuned", "LOSO", 0.9, 0.9, 50.0, 0.9)])
     with pytest.raises(ValueError, match="LeaveOneShapeOut"):
         deck.agregar_slide_resultados(_prs_base(), datos)
 
@@ -185,17 +237,21 @@ def test_construir_sin_datos_parte2_agrega_seis_slides_y_no_toca_la_base(tmp_pat
         assert _numero(slide) == str(pos)
         assert _pie(slide).startswith(deck.FOOTER_TEXT)
         assert len(slide.notes_slide.notes_text_frame.text) > 300
-    assert "resultados en la siguiente diapositiva" not in _pie(nuevas[-1])
+    assert "resultados en las siguientes diapositivas" not in _pie(nuevas[-1])
+    assert "por medir" in _textos(nuevas[4])  # sin resumen_afinacion.csv: expectativa
 
 
 def test_construir_con_datos_parte2_agrega_los_slides_de_resultados(tmp_path):
     base = tmp_path / "base.pptx"
     _prs_base().save(str(base))
-    datos2 = tmp_path / "datos_parte2"
-    _csv_falso(datos2)
+    datos2 = _datos_parte2_falsos(tmp_path / "datos_parte2")
     prs = deck.construir(base, tmp_path / "salida.pptx", DATOS_REALES, datos2)
-    assert len(prs.slides) == 1 + 6 + 2
-    assert _pie(list(prs.slides)[6]).endswith("resultados en la siguiente diapositiva")
+    assert len(prs.slides) == 1 + 6 + 4
+    assert _pie(list(prs.slides)[6]).endswith("resultados en las siguientes diapositivas")
+    # la slide del SVM cita el costo medido (840 s = 14 min) del CSV de afinacion
+    assert "~14 min" in _textos(list(prs.slides)[5])
+    assert "por medir" not in _textos(list(prs.slides)[5])
+    assert "3 trials de Optuna por familia" in _textos(list(prs.slides)[6])
 
 
 def test_construir_se_niega_a_sobrescribir_la_base(tmp_path):
