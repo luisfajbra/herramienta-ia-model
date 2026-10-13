@@ -88,7 +88,7 @@ def _set_text(slide, contains: str, new_text: str) -> None:
                 r._r.getparent().remove(r._r)
             first_run.text = new_text
             return
-    raise ValueError(f"No se encontro texto con {contains!r}")
+    raise ValueError(f"No text containing {contains!r} was found")
 
 
 def _set_page_number(slide, n: int) -> None:
@@ -138,7 +138,7 @@ def _fill_table(slide, rows: list[list[str]]) -> None:
                     else:
                         tf.text = value
             return
-    raise ValueError("No se encontro tabla en el slide")
+    raise ValueError("No table was found in the slide")
 
 
 def _clear_table(slide) -> None:
@@ -151,14 +151,14 @@ def _clear_table(slide) -> None:
 
 def _add_picture_safe(slide, image_path: Path, left, top, width=None, height=None):
     if not image_path.exists():
-        print(f"  AVISO: no existe {image_path}, se omite")
+        print(f"  WARNING: {image_path} does not exist, skipping")
         return None
     return slide.shapes.add_picture(str(image_path), Emu(left), Emu(top), Emu(width) if width else None, Emu(height) if height else None)
 
 
 def main() -> None:
     if not ORIGINAL.exists():
-        raise SystemExit(f"No existe {ORIGINAL}")
+        raise SystemExit(f"{ORIGINAL} does not exist")
     prs = Presentation(str(ORIGINAL))
     base_index = len(prs.slides)  # las slides nuevas empiezan despues de esta cantidad
     donor_table_slide = 16  # slide 17 (0-indexed), title+subtitle+tabla+footer+numero
@@ -271,7 +271,7 @@ def main() -> None:
     _set_page_number(s, base_index + 7)
 
     prs.save(str(OUTPUT))
-    print(f"Guardado: {OUTPUT} ({len(prs.slides)} slides)")
+    print(f"Saved: {OUTPUT} ({len(prs.slides)} slides)")
 
 
 if __name__ == "__main__":
