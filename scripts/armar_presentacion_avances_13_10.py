@@ -1174,11 +1174,14 @@ def _slide_error_por_forma(prs, fig, figuras_dir):
         return " · ".join(f"{forma['err_pct_' + m]:+.1f}%" for m, _, _ in MODELOS_FIG)
 
     vol_q = fmt(q["vol_swmm"] / 1e6, 2)
+    sse_total = sum(r["sse_xgboost"] for r in f.values())
+    parte_sse = fmt(100 * q["sse_xgboost"] / sse_total, 0)
     _card(s, px, Y0, pw, 1380000, [
         P("A few shapes concentrate the failures", 13, True, ACCENT, 3),
         P(f"shape_quasi_uniform_block is under-predicted by all three "
           f"(XGBoost / MLP / SVM: {pct(q)}). It carries the largest SWMM volume "
-          f"({vol_q} million m³), so it dominates the pooled RMSE", 12, False, TEXT)],
+          f"({vol_q} million m³) and holds {parte_sse}% of XGBoost's squared error",
+          12, False, TEXT)],
           fill=PANEL_ALT, line=ACCENT, line_w=2.0, anchor=MSO_ANCHOR.TOP)
     _card(s, px, Y0 + 1480000, pw, 1100000, [
         P("common_bogota is over-predicted", 13, True, AMBER, 3),
@@ -1193,7 +1196,7 @@ def _slide_error_por_forma(prs, fig, figuras_dir):
           fill=PANEL, line=LINE, anchor=MSO_ANCHOR.TOP)
     _notas(s, (
         "This chart breaks the error down by hydrograph shape: bars to the right are over-prediction and to the left under-prediction, sorted by the absolute XGBoost error. "
-        f"The failures are concentrated in a few shapes rather than spread evenly: shape_quasi_uniform_block is under-predicted by all three models ({pct(q)} for XGBoost, MLP and SVM) and carries the largest SWMM volume of all shapes, {vol_q} million m³, which is why it dominates the pooled RMSE. "
+        f"The failures are concentrated in a few shapes rather than spread evenly: shape_quasi_uniform_block is under-predicted by all three models ({pct(q)} for XGBoost, MLP and SVM) and carries the largest SWMM volume of all shapes, {vol_q} million m³; it also holds {parte_sse}% of the XGBoost squared error summed over shapes (sse_xgboost in figure_numbers.json), so it weighs heavily in the pooled RMSE. "
         f"common_bogota is over-predicted by all three ({pct(cb)}), but it is a small-volume shape. "
         f"The MLP has the smaller median shape error ({fmt(ex['mlp']['mediana_abs'], 1)}% vs {fmt(ex['xgboost']['mediana_abs'], 1)}% for XGBoost) but a larger worst case on common_bogota. "
         "Caveat: the error is pooled over all factors of a shape, so over- and under-prediction at different factors can cancel.\n\n"
@@ -1220,8 +1223,8 @@ _DECIR_MAPA = {
         "XGBoost and MLP reproduce the spatial pattern node by node: the same 60 flooded nodes and a node RMSE of about 20 m³. "
         "The SVM misses 10 flooded nodes, invents 5 and has a node RMSE about four times larger."),
     "min_error": (
-        "The low squared error is a consequence of tiny volumes, 283 m³ in total, so this is not an easy scenario in relative terms: "
-        "every model over-predicts and flags 20 to 23 extra nodes. The rule favors low-volume shapes, so this is not a typical good case."),
+        "The squared error is low here and the volumes are tiny, 283 m³ in total; in relative terms it is not an easy scenario: "
+        "every model over-predicts and flags 20 to 23 extra nodes. The rule picks the lowest absolute squared error, which tends to favor low-volume shapes, so this is not a typical good case."),
 }
 
 
@@ -1387,9 +1390,9 @@ def _slide_conclusiones(prs, d: dict, ruta: Path, fig: dict | None = None):
     _card(s, L, y2, tw, 1250000, [
         P("SVM: third, below the baseline", 14, True, AMBER, 2),
         P(f"RMSE ≈ {fmt(st['rmse_vol_agregado_m3'], 0)} vs {fmt(ref['rmse_vol_agregado_m3'], 0)} m³; "
-          f"F1 {fmt(st['f1_agregado'], 2)} vs {fmt(ref['f1_agregado'], 3)}. Attributable: approximate "
-          "kernel, limited search space, and Platt calibration, which neutralizes class_weight "
-          "(declared)", 12, False, TEXT)], fill=PANEL, line=AMBER, line_w=1.5,
+          f"F1 {fmt(st['f1_agregado'], 2)} vs {fmt(ref['f1_agregado'], 3)}. Plausible causes (not "
+          "tested): approximate kernel, limited search space, Platt calibration neutralizing "
+          "class_weight (seen on a toy problem only)", 12, False, TEXT)], fill=PANEL, line=AMBER, line_w=1.5,
           anchor=MSO_ANCHOR.TOP)
     y3 = y2 + 1250000 + 80000
     _card(s, L, y3, tw, Y0 + 3720000 - y3, [
@@ -1426,14 +1429,14 @@ def _slide_conclusiones(prs, d: dict, ruta: Path, fig: dict | None = None):
         + f"; tuned MLP comes second with {fmt(mt['rmse_vol_agregado_m3'], 1)} m³ and both have an F1 close to {fmt(xt['f1_agregado'], 2)} and an AUC close to {fmt(xt['auc_roc_agregado'], 3)}."
         + escenario +
         f" The approximate SVM falls below even the no-learning baseline: {fmt(st['rmse_vol_agregado_m3'], 0)} against {fmt(ref['rmse_vol_agregado_m3'], 0)} m³ and F1 {fmt(st['f1_agregado'], 2)} against {fmt(ref['f1_agregado'], 3)}; "
-        "what is attributable is the approximate kernel, a limited search space, and Platt calibration, which neutralizes class_weight (declared). "
+        "the plausible causes are the approximate kernel, a limited search space, and Platt calibration neutralizing class_weight, but none was tested on the real data: only the Platt/class_weight effect was measured, on a toy problem (mean predicted probability 0.429 with scale_pos_weight 1 vs 0.426 with 8), and it is declared as a known bias. "
         f"Scope: hyperparameters chosen with all shapes, one network, {corridas}; {alcance}. "
         "Next steps: decide the label (I recommend A), nested tuning by shape, more trials or a wider search space for the SVM, a confusion matrix for the extreme shapes, propagating to per-family maps, "
         "and regenerating the base-deck pictures that still contain Spanish text.\n\n"
         f"To regenerate: {_PARA_REGENERAR}. Their English versions were not produced because the shapes in slide 5 are not in any versioned data file and the slide 34 parity plots need a full out-of-fold re-evaluation of each family.\n\n"
         f"Sources: {_rel(ruta)}/comparacion_protocolos.csv, resumen_afinacion.csv (fixed_params), tables_provenance.json (n_runs, n_runs_full_grid); "
         "docs/figures_part2/figure_numbers.json and INDEX.md (R², median scenario error); docs/figures_en/INDEX.md (pictures to regenerate); "
-        "docs/auditoria/correcciones/04-informe-consolidado.md §4 and §5."
+        "docs/auditoria/correcciones/04-informe-consolidado.md §4 and §5; docs/auditoria/correcciones/05-bitacora-de-decisiones.md (P2-Task1 review: Platt vs class_weight on a toy problem; R22)."
     ))
     return s
 
