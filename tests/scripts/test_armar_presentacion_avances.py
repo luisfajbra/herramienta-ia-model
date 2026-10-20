@@ -214,13 +214,15 @@ def test_construir_sin_datos_parte2_agrega_seis_slides_y_no_toca_la_base(tmp_pat
     huella = hashlib.sha256(base.read_bytes()).hexdigest()
     salida = tmp_path / "salida.pptx"
 
-    prs = deck.construir(base, salida, DATOS_REALES, tmp_path / "no_existe")
+    prs = deck.construir(base, salida, DATOS_REALES, tmp_path / "no_existe",
+                          figuras_dir=None, figuras_en_dir=None)
     assert len(prs.slides) == 1 + 6
     assert hashlib.sha256(base.read_bytes()).hexdigest() == huella
     assert len(Presentation(str(salida)).slides) == 7
 
     # Idempotente: reconstruir da el mismo numero de slides, no acumula.
-    prs2 = deck.construir(base, salida, DATOS_REALES, tmp_path / "no_existe")
+    prs2 = deck.construir(base, salida, DATOS_REALES, tmp_path / "no_existe",
+                          figuras_dir=None, figuras_en_dir=None)
     assert len(prs2.slides) == 7
 
     nuevas = list(prs2.slides)[1:]
@@ -245,7 +247,8 @@ def test_construir_con_datos_parte2_agrega_los_slides_de_resultados(tmp_path):
     base = tmp_path / "base.pptx"
     _prs_base().save(str(base))
     datos2 = _datos_parte2_falsos(tmp_path / "datos_parte2")
-    prs = deck.construir(base, tmp_path / "salida.pptx", DATOS_REALES, datos2)
+    prs = deck.construir(base, tmp_path / "salida.pptx", DATOS_REALES, datos2,
+                          figuras_dir=None, figuras_en_dir=None)
     assert len(prs.slides) == 1 + 6 + 4
     assert _pie(list(prs.slides)[6]).endswith("results on the following slides")
     # the SVM slide cites the measured cost (840 s = 14 min) from the tuning CSV
@@ -352,3 +355,126 @@ def test_the_real_base_deck_has_no_spanish_left_after_translating():
     assert not deck._parece_espanol(_textos(prs.slides[16]))  # slide 17 (was Spanish)
     assert next(
         s for s in prs.slides[36].shapes if s.name == "TextBox 3").text_frame.text == "Next steps"
+
+
+# --- Figure slides and English pictures --------------------------------------
+FIGURAS_REALES = Path(deck.FIGURAS_DIR)
+
+
+def _png(path: Path, color, size=(40, 20)):
+    from PIL import Image
+    Image.new("RGB", size, color).save(path)
+    return path
+
+
+def _prs_con_imagen(tmp_path):
+    prs = Presentation()
+    prs.slide_width, prs.slide_height = Emu(deck.SLIDE_W), Emu(deck.SLIDE_H)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    pic = slide.shapes.add_picture(str(_png(tmp_path / "es.png", (255, 0, 0))),
+                                   Emu(100000), Emu(200000), Emu(4000000), Emu(2000000))
+    pic.name = "Imagen 7"
+    pic.crop_left = 0.25
+    return prs, slide, pic
+
+
+def test_replace_base_pictures_keeps_geometry_and_crop(tmp_path):
+    prs, slide, pic = _prs_con_imagen(tmp_path)
+    antes = (pic.left, pic.top, pic.width, pic.height, pic.crop_left)
+    nueva = _png(tmp_path / "en.png", (0, 0, 255))
+    n = deck.replace_base_pictures(prs, {(1, "Imagen 7"): nueva})
+    pic2 = next(sh for sh in slide.shapes if sh.name == "Imagen 7")
+    assert n == 1
+    assert (pic2.left, pic2.top, pic2.width, pic2.height, pic2.crop_left) == antes
+    assert pic2.image.blob == nueva.read_bytes()
+    # the old image relationship is gone (no orphan picture kept in the slide)
+    rids = [r for r in slide.part.rels.values() if "image" in r.reltype]
+    assert len(rids) == 1
+
+
+def test_replace_base_pictures_can_refit_into_a_box_dropping_the_crop(tmp_path):
+    prs, slide, pic = _prs_con_imagen(tmp_path)
+    nueva = _png(tmp_path / "en.png", (0, 0, 255), size=(400, 100))  # aspect 4
+    deck.replace_base_pictures(prs, {(1, "Imagen 7"): {"file": nueva, "box": (0, 0, 2000000, 2000000)}})
+    pic2 = next(sh for sh in slide.shapes if sh.name == "Imagen 7")
+    assert pic2.crop_left == 0.0
+    assert pic2.width == 2000000 and pic2.height == 500000
+    assert pic2.top == 750000  # centered vertically in the box
+
+
+def test_replace_base_pictures_fails_for_unknown_picture_or_file(tmp_path):
+    prs, _, _ = _prs_con_imagen(tmp_path)
+    nueva = _png(tmp_path / "en.png", (0, 0, 255))
+    with pytest.raises(ValueError, match="not found"):
+        deck.replace_base_pictures(prs, {(1, "Nope"): nueva})
+    with pytest.raises(FileNotFoundError):
+        deck.replace_base_pictures(prs, {(1, "Imagen 7"): tmp_path / "missing.png"})
+
+
+@pytest.mark.skipif(not (FIGURAS_REALES / "figure_numbers.json").exists(),
+                    reason="docs/figures_part2 not available")
+def test_figure_slides_use_the_numbers_of_figure_numbers_json():
+    import json
+    nums = json.loads((FIGURAS_REALES / "figure_numbers.json").read_text(encoding="utf-8"))
+    prs = _prs_base()
+    nuevas = deck.agregar_slides_figuras(prs, FIGURAS_REALES)
+    assert [_titulo(x) for x in nuevas] == [
+        "Parity per node: predicted vs SWMM volume",
+        "Parity per scenario: total flooded volume",
+        "Where the models fail: error by shape",
+        "Flood map: largest-error shape",
+        "Flood map: median-error shape",
+        "Flood map: smallest-error shape",
+    ]
+    for slide in nuevas:
+        assert sum(1 for x in slide.shapes if x.shape_type == 13) == 1  # one figure each
+        assert len(slide.notes_slide.notes_text_frame.text) > 400
+        assert "docs/figures_part2/" in slide.notes_slide.notes_text_frame.text
+    p = nums["pooled"]
+    nodos = _textos(nuevas[0])
+    for m in ("xgboost", "mlp", "svm"):
+        assert deck.fmt(p[m]["r2"], 3) in nodos
+    assert "379" in nodos and "9,076" in nodos  # missed rows, from INDEX.md
+    esc = _textos(nuevas[1])
+    for m in ("xgboost", "mlp", "svm"):
+        assert deck.fmt(nums["scenario_median_ape_pct"][m], 1) + "%" in esc
+    assert "MLP has the lower median scenario error" in esc  # honest split of metrics
+    mapa = _textos(nuevas[3])
+    st = nums["scenario_stats"]["max_error"]
+    assert deck.fmt(st["swmm_total_m3"], 0) in mapa and "shape_quasi_uniform_block" in mapa
+    assert deck.fmt(st["xgboost"]["rmse_nodes_m3"], 1) in mapa
+
+
+@pytest.mark.skipif(not (FIGURAS_REALES / "figure_numbers.json").exists(),
+                    reason="docs/figures_part2 not available")
+def test_results_with_figures_puts_them_before_the_conclusions(tmp_path):
+    datos = _datos_parte2_falsos(tmp_path / "datos_parte2")
+    nuevas = deck.agregar_slide_resultados(_prs_base(), datos, FIGURAS_REALES)
+    assert len(nuevas) == 3 + 6 + 1
+    assert _titulo(nuevas[-1]) == "Conclusions and next steps"
+    assert _titulo(nuevas[2]).startswith("Confusion matrices")
+    assert _titulo(nuevas[3]).startswith("Parity per node")
+    texto = _textos(nuevas[-1])
+    assert "12.7% vs 15.5%" in texto and "R² 0.96" in texto
+    assert "slides 5, 34" in texto
+    assert "to regenerate" in nuevas[-1].notes_slide.notes_text_frame.text.lower()
+
+
+def test_footer_has_no_specific_day():
+    assert deck.FOOTER_TEXT.endswith("October 2026")
+    assert "13" not in deck.FOOTER_TEXT
+
+
+def test_default_output_is_the_20_10_file_and_legacy_name_is_a_flag(monkeypatch):
+    assert deck.OUTPUT.name == "Presentacion_MLSMFP_20-10_avances_auditoria_svm.pptx"
+    llamadas = []
+
+    def falso(**kw):
+        llamadas.append(kw["salida"])
+        return _prs_base()
+
+    monkeypatch.setattr(deck, "construir", falso)
+    deck.main([])
+    deck.main(["--legacy-output"])
+    assert llamadas == [deck.OUTPUT, deck.OUTPUT_LEGACY]
+    assert deck.OUTPUT_LEGACY.name == "Presentacion_MLSMFP_13-10_avances_auditoria_svm.pptx"

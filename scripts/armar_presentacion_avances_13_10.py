@@ -22,6 +22,7 @@ from __future__ import annotations
 import csv
 import json
 import re
+import statistics
 import sys
 from pathlib import Path
 
@@ -44,12 +45,15 @@ from pptx.oxml.ns import qn  # noqa: E402
 from pptx.util import Emu, Pt  # noqa: E402
 
 BASE = REPO_ROOT / "Presentacion_MLSMFP_05-10_resultados_fase_c2.pptx"
-OUTPUT = REPO_ROOT / "Presentacion_MLSMFP_13-10_avances_auditoria_svm.pptx"
+OUTPUT = REPO_ROOT / "Presentacion_MLSMFP_20-10_avances_auditoria_svm.pptx"
+OUTPUT_LEGACY = REPO_ROOT / "Presentacion_MLSMFP_13-10_avances_auditoria_svm.pptx"
 DATOS_DIR = REPO_ROOT / "docs" / "auditoria" / "correcciones" / "datos"
 DATOS_PARTE2_DIR = REPO_ROOT / "docs" / "auditoria" / "correcciones" / "datos_parte2"
+FIGURAS_DIR = REPO_ROOT / "docs" / "figures_part2"
+FIGURAS_EN_DIR = REPO_ROOT / "docs" / "figures_en"
 
 FOOTER_TEXT = (
-    "MLSMFP  |  Progress: audit, approximate SVM and fair comparison  |  October 13, 2026"
+    "MLSMFP  |  Progress: audit, approximate SVM and fair comparison  |  October 2026"
 )
 
 # --- Estilo de la presentacion base (colores, tipografias y posiciones) -----
@@ -1028,7 +1032,314 @@ def _slide_matrices(prs, d: dict, ruta: Path):
     return s
 
 
-def _slide_conclusiones(prs, d: dict, ruta: Path):
+# ---------------------------------------------------------------------------
+# Figure slides (parity plots, error by shape, flood maps) from docs/figures_part2
+# ---------------------------------------------------------------------------
+MODELOS_FIG = [("xgboost", "XGBoost", ACCENT), ("mlp", "MLP", "F2A65A"),
+               ("svm", "SVM", GREEN)]
+_PARA_REGENERAR = ("Slide 5 (title picture whose shapes are not versioned) and slide 34 "
+                   "(four parity pictures with a Spanish run identifier in the title)")
+
+
+def _datos_figuras(figuras_dir) -> dict:
+    """Numbers behind the figures: figure_numbers.json plus the pooled table of INDEX.md."""
+    figuras_dir = Path(figuras_dir)
+    nums = json.loads((figuras_dir / "figure_numbers.json").read_text(encoding="utf-8"))
+    faltan = {}
+    for linea in (figuras_dir / "INDEX.md").read_text(encoding="utf-8").splitlines():
+        celdas = [c.strip() for c in linea.strip().strip("|").split("|")]
+        if len(celdas) == 7 and re.match(r"(XGBoost|MLP|Approx\. SVM)", celdas[0]):
+            clave = {"XGBoost": "xgboost", "MLP": "mlp", "Approx. SVM": "svm"}[
+                re.match(r"(XGBoost|MLP|Approx\. SVM)", celdas[0]).group(1)]
+            faltan[clave] = int(celdas[6].replace(",", ""))
+    if set(faltan) != {"xgboost", "mlp", "svm"}:
+        raise ValueError("The pooled summary table of INDEX.md was not found")
+    formas = nums["shapes"]
+    stats = {}
+    for m, _, _ in MODELOS_FIG:
+        errs = [abs(f[f"err_pct_{m}"]) for f in formas]
+        stats[m] = {"mediana_abs": statistics.median(errs), "mayor_20": sum(e > 20 for e in errs)}
+    return {"nums": nums, "missed": faltan, "formas": {f["shape_id"]: f for f in formas},
+            "stats_formas": stats}
+
+
+def _imagen_ajustada(slide, path, x, y, max_w, max_h, centrar=True):
+    """Picture scaled to fit inside (max_w, max_h) keeping its aspect ratio."""
+    from PIL import Image
+    with Image.open(path) as im:
+        ancho, alto = im.size
+    escala = min(max_w / ancho, max_h / alto)
+    w, h = int(ancho * escala), int(alto * escala)
+    dx = (max_w - w) // 2 if centrar else 0
+    return slide.shapes.add_picture(str(path), Emu(x + dx), Emu(y), Emu(w), Emu(h))
+
+
+def _tarjeta_valores(s, x, y, w, h, rotulo, valores, fill=PANEL, line=LINE):
+    """Card with a label and one value per model, each in the model colour."""
+    runs = []
+    for i, (txt, color) in enumerate(valores):
+        if i:
+            runs.append(("  ·  ", MUTED, False))
+        runs.append((txt, color, True))
+    return _card(s, x, y, w, h, [P(rotulo, 10, False, MUTED, 2), P("", 15, runs=runs)],
+                 fill=fill, line=line)
+
+
+def _slide_paridad_nodos(prs, fig, figuras_dir):
+    p = fig["nums"]["pooled"]
+    s = nueva_slide(
+        prs, "Parity per node: predicted vs SWMM volume",
+        "LeaveOneShapeOut · tuned models, out-of-fold · 154,080 node-scenario rows")
+    _imagen_ajustada(s, figuras_dir / "parity_nodes_3models.png", L, Y0, W, 3080000)
+    gap = 120000
+    w3 = (W - 2 * gap) // 3
+    y = Y0 + 3150000
+    col = {m: c for m, _, c in MODELOS_FIG}
+    orden = [m for m, _, _ in MODELOS_FIG]
+    _tarjeta_valores(s, L, y, w3, 560000, "R² · XGBoost / MLP / SVM",
+                     [(fmt(p[m]["r2"], 3), col[m]) for m in orden])
+    _tarjeta_valores(s, L + w3 + gap, y, w3, 560000, "Pooled RMSE (m³)",
+                     [(fmt(p[m]["rmse_m3"]), col[m]) for m in orden])
+    _tarjeta_valores(s, L + 2 * (w3 + gap), y, w3, 560000, "SWMM-flooded rows missed",
+                     [(fmt(fig["missed"][m], 0), col[m]) for m in orden], line=AMBER)
+    r2 = [fmt(p[m]["r2"], 3) for m in orden]
+    _notas(s, (
+        "Each panel compares the predicted routed volume of every node-scenario row with the SWMM volume, for the three tuned models, always on shapes the model never saw. "
+        f"XGBoost and MLP hug the diagonal over four orders of magnitude; the pooled R² is {r2[0]} for XGBoost, {r2[1]} for the MLP and {r2[2]} for the approximate SVM, and the RMSE is {fmt(p['xgboost']['rmse_m3'])}, {fmt(p['mlp']['rmse_m3'])} and {fmt(p['svm']['rmse_m3'])} m³. "
+        f"The SVM is visibly wider around the diagonal and has two failure strips: it misses {fmt(fig['missed']['svm'], 0)} flooded rows (XGBoost {fmt(fig['missed']['xgboost'], 0)}) and predicts flooding on dry rows. "
+        "RMSE is dominated by a few large-volume rows that the density plot hides, so quote it together with the scenario-level figure on the next slide. "
+        "Caveat: the axes are log10(1 + volume), which makes small-volume errors look larger than they are in absolute terms.\n\n"
+        "Sources: docs/figures_part2/parity_nodes_3models.png; docs/figures_part2/INDEX.md (pooled summary table, section 1); "
+        "docs/figures_part2/figure_numbers.json (pooled)."
+    ))
+    return s
+
+
+def _slide_paridad_escenarios(prs, fig, figuras_dir):
+    n = fig["nums"]
+    mediana, p90 = n["scenario_median_ape_pct"], n["scenario_p90_ape_pct"]
+    s = nueva_slide(
+        prs, "Parity per scenario: total flooded volume",
+        f"One marker per scenario (shape × factor), {n['scenarios_total']} scenarios · "
+        "log-log axes · out-of-fold")
+    img = _imagen_ajustada(s, figuras_dir / "parity_scenario_totals_3models.png", L, Y0,
+                           3650000, 3700000, centrar=False)
+    px = L + img.width + 200000
+    pw = L + W - px
+    col = {m: c for m, _, c in MODELOS_FIG}
+    orden = [m for m, _, _ in MODELOS_FIG]
+    _tarjeta_valores(s, px, Y0, pw, 900000,
+                     f"Median scenario error, % ({n['scenarios_swmm_ge_1m3']} scenarios ≥ 1 m³)"
+                     " · XGBoost / MLP / SVM",
+                     [(fmt(mediana[m], 1) + "%", col[m]) for m in orden])
+    _card(s, px, Y0 + 1000000, pw, 1330000, [
+        P("An honest split between metrics", 13, True, ACCENT, 3),
+        P(f"MLP has the lower median scenario error ({fmt(mediana['mlp'], 1)}% vs "
+          f"{fmt(mediana['xgboost'], 1)}%), while XGBoost has the lower pooled RMSE "
+          f"({fmt(n['pooled']['xgboost']['rmse_m3'])} vs {fmt(n['pooled']['mlp']['rmse_m3'])} m³): "
+          "they answer different questions", 12, False, TEXT)],
+          fill=PANEL_ALT, line=ACCENT, line_w=2.0, anchor=MSO_ANCHOR.TOP)
+    _card(s, px, Y0 + 2430000, pw, 1270000, [
+        P("The SVM saturates at the top", 13, True, AMBER, 3),
+        P("On the five largest scenarios (SWMM 142,000–183,000 m³) it predicts about "
+          "67,000–75,000 m³, and it predicts volume in 102 of the 173 scenarios that are dry "
+          "in SWMM (XGBoost 3, MLP 2)", 12, False, TEXT)],
+          fill=PANEL, line=AMBER, line_w=1.5, anchor=MSO_ANCHOR.TOP)
+    _notas(s, (
+        "Here each marker is a whole scenario, and the distance to the dashed line is the relative error of its total flooded volume. "
+        f"All three models follow the diagonal from about 10 to 180,000 m³; the median absolute percentage error is {fmt(mediana['xgboost'], 1)}% for XGBoost, {fmt(mediana['mlp'], 1)}% for the MLP and {fmt(mediana['svm'], 1)}% for the SVM (90th percentile {fmt(p90['xgboost'], 1)}% / {fmt(p90['mlp'], 1)}% / {fmt(p90['svm'], 1)}%). "
+        "To be honest about it: at this level the MLP is slightly better than XGBoost on the median, even though XGBoost is clearly better on the pooled node RMSE; the two metrics answer different questions. "
+        "The SVM saturates on the largest scenarios, all shape_quasi_uniform_block at factors 4 to 5, predicting about 67,000 to 75,000 m³ where SWMM gives 142,000 to 183,000 m³. "
+        "Caveat: the median is taken over the 790 scenarios with SWMM total of at least 1 m³; values below 1 m³ are drawn at 1 m³.\n\n"
+        "Sources: docs/figures_part2/parity_scenario_totals_3models.png; docs/figures_part2/figure_numbers.json (scenario_median_ape_pct, scenario_p90_ape_pct, scenarios_swmm_ge_1m3); "
+        "docs/figures_part2/INDEX.md (section 2)."
+    ))
+    return s
+
+
+def _slide_error_por_forma(prs, fig, figuras_dir):
+    f, st = fig["formas"], fig["stats_formas"]
+    q, cb = f["shape_quasi_uniform_block"], f["common_bogota"]
+    ex = {"xgboost": st["xgboost"], "mlp": st["mlp"], "svm": st["svm"]}
+    s = nueva_slide(
+        prs, "Where the models fail: error by shape",
+        "Total flood volume error per hydrograph shape (all factors pooled) · "
+        "40 shapes · out-of-fold")
+    img = _imagen_ajustada(s, figuras_dir / "error_by_shape.png", L, Y0, 3400000, 3700000,
+                           centrar=False)
+    px = L + img.width + 200000
+    pw = L + W - px
+
+    def pct(forma, sig=True):
+        return " · ".join(f"{forma['err_pct_' + m]:+.1f}%" for m, _, _ in MODELOS_FIG)
+
+    vol_q = fmt(q["vol_swmm"] / 1e6, 2)
+    _card(s, px, Y0, pw, 1380000, [
+        P("A few shapes concentrate the failures", 13, True, ACCENT, 3),
+        P(f"shape_quasi_uniform_block is under-predicted by all three "
+          f"(XGBoost / MLP / SVM: {pct(q)}). It carries the largest SWMM volume "
+          f"({vol_q} million m³), so it dominates the pooled RMSE", 12, False, TEXT)],
+          fill=PANEL_ALT, line=ACCENT, line_w=2.0, anchor=MSO_ANCHOR.TOP)
+    _card(s, px, Y0 + 1480000, pw, 1100000, [
+        P("common_bogota is over-predicted", 13, True, AMBER, 3),
+        P(f"{pct(cb)}; a small-volume shape ({fmt(cb['vol_swmm'], 0)} m³ in SWMM), so its "
+          "absolute impact is small", 12, False, TEXT)],
+          fill=PANEL, line=AMBER, line_w=1.5, anchor=MSO_ANCHOR.TOP)
+    _card(s, px, Y0 + 2680000, pw, 1020000, [
+        P("Across shapes", 13, True, MUTED, 3),
+        P("Median |error|: " + " · ".join(fmt(ex[m]["mediana_abs"], 1) + "%" for m, _, _ in MODELOS_FIG)
+          + ". Shapes with |error| > 20%: " + " · ".join(str(ex[m]["mayor_20"]) for m, _, _ in MODELOS_FIG)
+          + " (XGBoost / MLP / SVM)", 12, False, TEXT)],
+          fill=PANEL, line=LINE, anchor=MSO_ANCHOR.TOP)
+    _notas(s, (
+        "This chart breaks the error down by hydrograph shape: bars to the right are over-prediction and to the left under-prediction, sorted by the absolute XGBoost error. "
+        f"The failures are concentrated in a few shapes rather than spread evenly: shape_quasi_uniform_block is under-predicted by all three models ({pct(q)} for XGBoost, MLP and SVM) and carries the largest SWMM volume of all shapes, {vol_q} million m³, which is why it dominates the pooled RMSE. "
+        f"common_bogota is over-predicted by all three ({pct(cb)}), but it is a small-volume shape. "
+        f"The MLP has the smaller median shape error ({fmt(ex['mlp']['mediana_abs'], 1)}% vs {fmt(ex['xgboost']['mediana_abs'], 1)}% for XGBoost) but a larger worst case on common_bogota. "
+        "Caveat: the error is pooled over all factors of a shape, so over- and under-prediction at different factors can cancel.\n\n"
+        "Sources: docs/figures_part2/error_by_shape.png; docs/figures_part2/figure_numbers.json (shapes: err_pct_*, vol_swmm); docs/figures_part2/INDEX.md (section 3)."
+    ))
+    return s
+
+
+_REGLAS_MAPA = {
+    "max_error": ("Flood map: largest-error shape",
+                  "Largest XGBoost error of the 40 shapes"),
+    "median_error": ("Flood map: median-error shape",
+                     "Median XGBoost error (position 21 of 40 shapes)"),
+    "min_error": ("Flood map: smallest-error shape",
+                  "Smallest XGBoost error (shapes with ≥ 20 flooded rows)"),
+}
+_DECIR_MAPA = {
+    "max_error": (
+        "The spatial pattern is right but the magnitude is systematically low for all three models. "
+        "XGBoost finds the right set of 61 flooded nodes, with no false and no missed nodes, but underestimates the hot spots; "
+        "the largest node, about 6,000 m³ in SWMM, is about 4,500 m³ in XGBoost. "
+        "The SVM misclassifies 20 nodes."),
+    "median_error": (
+        "XGBoost and MLP reproduce the spatial pattern node by node: the same 60 flooded nodes and a node RMSE of about 20 m³. "
+        "The SVM misses 10 flooded nodes, invents 5 and has a node RMSE about four times larger."),
+    "min_error": (
+        "The low squared error is a consequence of tiny volumes, 283 m³ in total, so this is not an easy scenario in relative terms: "
+        "every model over-predicts and flags 20 to 23 extra nodes. The rule favors low-volume shapes, so this is not a typical good case."),
+}
+
+
+def _slide_mapa(prs, fig, figuras_dir, regla):
+    sel = next(x for x in fig["nums"]["selected_scenarios"] if x["rule"] == regla)
+    st = fig["nums"]["scenario_stats"][regla]
+    titulo, regla_txt = _REGLAS_MAPA[regla]
+    sufijo = f"{regla}_{sel['shape']}_f{sel['factor']:.1f}"
+    s = nueva_slide(
+        prs, titulo,
+        f"{regla_txt} · {sel['shape']} · factor {sel['factor']:.1f}")
+    _imagen_ajustada(s, figuras_dir / f"flood_map_{sufijo}.png", L, Y0, W, 2400000)
+    gap = 110000
+    w4 = (W - 3 * gap) // 4
+    y, h = Y0 + 2500000, 1180000
+    _card(s, L, y, w4, h, [
+        P("SWMM", 13, True, MUTED, 2), P(f"{fmt(st['swmm_total_m3'], 0)} m³", 15, True, TEXT, 1),
+        P(f"{st['swmm_flooded_nodes']} flooded nodes", 12, False, MUTED)],
+        fill=PANEL, line=LINE, anchor=MSO_ANCHOR.TOP)
+    detalle = []
+    for i, (m, nombre, color) in enumerate(MODELOS_FIG, start=1):
+        d = st[m]
+        _card(s, L + i * (w4 + gap), y, w4, h, [
+            P(nombre, 13, True, color, 2),
+            P(f"{fmt(d['total_m3'], 0)} m³ ({d['total_error_pct']:+.1f}%)", 12, True, TEXT, 1),
+            P(f"+{d['false_positive_nodes']} false · −{d['missed_nodes']} missed", 11, False, MUTED, 1),
+            P(f"Node RMSE {fmt(d['rmse_nodes_m3'], 1)} m³", 11, False, MUTED)],
+            fill=PANEL, line=color, line_w=1.5, anchor=MSO_ANCHOR.TOP)
+        detalle.append(f"{nombre} {fmt(d['total_m3'], 0)} m³ ({d['total_error_pct']:+.1f}%), +{d['false_positive_nodes']} false and −{d['missed_nodes']} missed nodes, node RMSE {fmt(d['rmse_nodes_m3'], 1)} m³")
+    _notas(s, (
+        f"This is one scenario, chosen by a documented rule and not by hand: {regla_txt[0].lower() + regla_txt[1:]}, shape {sel['shape']} at factor {sel['factor']:.1f}. "
+        f"SWMM floods {st['swmm_flooded_nodes']} nodes with {fmt(st['swmm_total_m3'], 0)} m³ in total; "
+        + "; ".join(detalle) + ". "
+        + _DECIR_MAPA[regla] + " "
+        "To read the map, compare the color and size of the same node across panels; an orange or green marker on a node that is grey in the SWMM panel is a false positive. "
+        "The colors use a square-root scale shared by the four panels.\n\n"
+        f"Sources: docs/figures_part2/flood_map_{sufijo}.png (the matching per-node bar chart is docs/figures_part2/node_profile_{sufijo}.png, not embedded); "
+        "docs/figures_part2/figure_numbers.json (selected_scenarios, scenario_stats); docs/figures_part2/INDEX.md (section 4)."
+    ))
+    return s
+
+
+def agregar_slides_figuras(prs, figuras_dir):
+    """Parity (nodes and scenarios), error by shape and three flood-map slides."""
+    figuras_dir = Path(figuras_dir)
+    fig = _datos_figuras(figuras_dir)
+    return [
+        _slide_paridad_nodos(prs, fig, figuras_dir),
+        _slide_paridad_escenarios(prs, fig, figuras_dir),
+        _slide_error_por_forma(prs, fig, figuras_dir),
+        _slide_mapa(prs, fig, figuras_dir, "max_error"),
+        _slide_mapa(prs, fig, figuras_dir, "median_error"),
+        _slide_mapa(prs, fig, figuras_dir, "min_error"),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# English pictures for the base deck (output deck only)
+# ---------------------------------------------------------------------------
+FIGURAS_EN_MAPA = {
+    # the English Gantt has a wider label panel: drop the original crop and fit the box
+    (2, "Imagen 7"): {"file": "slide02_gantt_schedule_en.png",
+                      "box": (190000, 1150000, 8760000, 3980000)},
+    (3, "Imagen 2"): "slide03_hydrograph_shapes_en.png",
+    (4, "Imagen 4"): "slide03_hydrograph_shapes_en.png",
+    (6, "Imagen 2"): "slide06_new_training_shapes_en.png",
+    (11, "Imagen 5"): "slide11_validation_shapes_en.png",
+    (15, "Imagen 4"): "slide15_flowchart_training_en.png",
+    (15, "Imagen 12"): "slide15_flowchart_validation_en.png",
+}
+
+
+def replace_base_pictures(prs, mapping: dict, base_dir=None) -> int:
+    """Swap the image of picture shapes, keeping geometry and crop.
+
+    ``mapping`` = {(slide number, picture name): file}; relative files are
+    resolved against ``base_dir``. A value may also be a dict
+    {"file": ..., "box": (x, y, w, h)}: then the crop is removed and the
+    picture is fitted (aspect kept, centered) inside that box. Returns the
+    number of pictures replaced. Raises ValueError if a picture is not found."""
+    n = 0
+    for (numero, nombre), archivo in mapping.items():
+        caja = None
+        if isinstance(archivo, dict):
+            caja, archivo = archivo.get("box"), archivo["file"]
+        ruta = Path(archivo)
+        if base_dir is not None and not ruta.is_absolute():
+            ruta = Path(base_dir) / ruta
+        if not ruta.exists():
+            raise FileNotFoundError(ruta)
+        slide = prs.slides[numero - 1]
+        pics = [sh for sh in slide.shapes if sh.shape_type == 13 and sh.name == nombre]
+        if not pics:
+            raise ValueError(f"Picture {nombre!r} not found on slide {numero}")
+        for pic in pics:
+            blip = pic._element.blipFill.find(qn("a:blip"))
+            antiguo = blip.get(qn("r:embed"))
+            _, nuevo = slide.part.get_or_add_image_part(str(ruta))
+            blip.set(qn("r:embed"), nuevo)
+            if antiguo != nuevo:
+                slide.part.drop_rel(antiguo)
+            if caja is not None:
+                from PIL import Image
+                recorte = pic._element.blipFill.find(qn("a:srcRect"))
+                if recorte is not None:
+                    pic._element.blipFill.remove(recorte)
+                with Image.open(ruta) as im:
+                    ancho, alto = im.size
+                escala = min(caja[2] / ancho, caja[3] / alto)
+                w, h = int(ancho * escala), int(alto * escala)
+                pic.left = Emu(caja[0] + (caja[2] - w) // 2)
+                pic.top = Emu(caja[1] + (caja[3] - h) // 2)
+                pic.width, pic.height = Emu(w), Emu(h)
+            n += 1
+    return n
+
+
+def _slide_conclusiones(prs, d: dict, ruta: Path, fig: dict | None = None):
     cp, resumen = d["cp"], d["resumen"]
     xt, xd, mt = cp["xgboost_tuned"], cp["xgboost_default"], cp["mlp_tuned"]
     st, ref = cp["svm_tuned"], cp[REFERENCIA]
@@ -1048,24 +1359,40 @@ def _slide_conclusiones(prs, d: dict, ruta: Path):
     alcance = (f"MLP: {mlp.get('epochs', 200)} epochs, batch {mlp.get('batch_size', 1024)} · "
                f"XGBoost: n_jobs={xgb.get('n_jobs', 1)}")
 
+    # figure-based claims (only when the part 2 figures are available)
+    r2 = mediana = None
+    if fig is not None:
+        r2 = fig["nums"]["pooled"]["xgboost"]["r2"]
+        mediana = fig["nums"]["scenario_median_ape_pct"]
+
     s = nueva_slide(
         prs, "Conclusions and next steps",
-        "Tuned XGBoost is the best; the approximate SVM falls below the baseline")
+        "Tuned XGBoost is the best on pooled RMSE; the approximate SVM falls below the baseline")
     tw = 4300000
-    _card(s, L, Y0 + 20000, tw, 1000000, [
+    texto_xgb = (f"RMSE {fmt(xt['rmse_vol_agregado_m3'], 1)} m³ (−{fmt(mejora, 0)}% vs its "
+                 f"default parameters)"
+                 + (f" and node parity R² {fmt(r2, 2)}" if r2 is not None else "")
+                 + f"; tuned MLP 2nd: {fmt(mt['rmse_vol_agregado_m3'], 1)} m³. ")
+    if mediana is not None:
+        texto_xgb += (f"But the MLP has the best median scenario error "
+                      f"({fmt(mediana['mlp'], 1)}% vs {fmt(mediana['xgboost'], 1)}%). ")
+    texto_xgb += (f"Both with F1 ≈ {fmt(xt['f1_agregado'], 2)} and "
+                  f"AUC ≈ {fmt(xt['auc_roc_agregado'], 3)}")
+    alto1 = 1300000 if mediana is not None else 1000000
+    _card(s, L, Y0 + 20000, tw, alto1, [
         P("Tuned XGBoost is the best", 14, True, ACCENT, 2),
-        P(f"RMSE {fmt(xt['rmse_vol_agregado_m3'], 1)} m³ (−{fmt(mejora, 0)}% vs its "
-          f"default parameters); tuned MLP 2nd: {fmt(mt['rmse_vol_agregado_m3'], 1)} m³. "
-          f"Both with F1 ≈ {fmt(xt['f1_agregado'], 2)} and AUC ≈ {fmt(xt['auc_roc_agregado'], 3)}",
-          12, False, TEXT)], fill=PANEL_ALT, line=ACCENT, line_w=2.0, anchor=MSO_ANCHOR.TOP)
-    _card(s, L, Y0 + 1100000, tw, 1170000, [
-        P("Approximate SVM: below the baseline", 14, True, AMBER, 2),
+        P(texto_xgb, 12, False, TEXT)],
+        fill=PANEL_ALT, line=ACCENT, line_w=2.0, anchor=MSO_ANCHOR.TOP)
+    y2 = Y0 + 20000 + alto1 + 80000
+    _card(s, L, y2, tw, 1250000, [
+        P("SVM: third, below the baseline", 14, True, AMBER, 2),
         P(f"RMSE ≈ {fmt(st['rmse_vol_agregado_m3'], 0)} vs {fmt(ref['rmse_vol_agregado_m3'], 0)} m³; "
           f"F1 {fmt(st['f1_agregado'], 2)} vs {fmt(ref['f1_agregado'], 3)}. Attributable: approximate "
           "kernel, limited search space, and Platt calibration, which neutralizes class_weight "
           "(declared)", 12, False, TEXT)], fill=PANEL, line=AMBER, line_w=1.5,
           anchor=MSO_ANCHOR.TOP)
-    _card(s, L, Y0 + 2350000, tw, 1080000, [
+    y3 = y2 + 1250000 + 80000
+    _card(s, L, y3, tw, Y0 + 3720000 - y3, [
         P("Honest scope", 14, True, MUTED, 2),
         P("Hyperparameters chosen with all shapes (optimistic equally) · one network · "
           f"{corridas} · {alcance}", 12, False, TEXT)], fill=PANEL, line=LINE,
@@ -1080,41 +1407,56 @@ def _slide_conclusiones(prs, d: dict, ruta: Path):
         "More trials and a wider search space for the SVM",
         "Confusion matrix for the extreme shapes",
         "Propagate to per-family maps",
+        "Regenerate base-deck pictures with Spanish text (slides 5, 34)",
     ]
+    pitch = 560000
     for i, paso in enumerate(pasos):
-        py = Y0 + 300000 + i * 680000
-        badge = _shape(s, MSO_SHAPE.OVAL, px, py + 60000, 400000, 400000, fill=ACCENT,
-                       line=None, paras=[P(str(i + 1), 15, True, BG)], margins=(0, 0, 0, 0))
+        py = Y0 + 280000 + i * pitch
+        badge = _shape(s, MSO_SHAPE.OVAL, px, py + 50000, 380000, 380000, fill=ACCENT,
+                       line=None, paras=[P(str(i + 1), 14, True, BG)], margins=(0, 0, 0, 0))
         badge.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
-        _card(s, px + 500000, py, pw - 500000, 520000, [P(paso, 12, False, TEXT)],
+        _card(s, px + 480000, py, pw - 480000, 480000, [P(paso, 12, False, TEXT)],
               fill=PANEL, line=LINE)
 
+    escenario = (f" At scenario level the MLP has the lower median error ({fmt(mediana['mlp'], 1)}% vs {fmt(mediana['xgboost'], 1)}% for XGBoost), "
+                 "so XGBoost does not win on every metric." if mediana is not None else "")
     _notas(s, (
-        f"Main message: tuned XGBoost is the best, with a volume RMSE of {fmt(xt['rmse_vol_agregado_m3'], 1)} m³, {fmt(mejora, 0)}% lower than with its default parameters; "
-        f"tuned MLP comes second with {fmt(mt['rmse_vol_agregado_m3'], 1)} m³ and both have an F1 close to {fmt(xt['f1_agregado'], 2)} and an AUC close to {fmt(xt['auc_roc_agregado'], 3)}. "
-        f"The approximate SVM falls below even the no-learning baseline: {fmt(st['rmse_vol_agregado_m3'], 0)} against {fmt(ref['rmse_vol_agregado_m3'], 0)} m³ and F1 {fmt(st['f1_agregado'], 2)} against {fmt(ref['f1_agregado'], 3)}; "
+        f"Main message: tuned XGBoost is the best on pooled volume RMSE, {fmt(xt['rmse_vol_agregado_m3'], 1)} m³, {fmt(mejora, 0)}% lower than with its default parameters"
+        + (f", and on per-node parity (R² {fmt(r2, 2)})" if r2 is not None else "")
+        + f"; tuned MLP comes second with {fmt(mt['rmse_vol_agregado_m3'], 1)} m³ and both have an F1 close to {fmt(xt['f1_agregado'], 2)} and an AUC close to {fmt(xt['auc_roc_agregado'], 3)}."
+        + escenario +
+        f" The approximate SVM falls below even the no-learning baseline: {fmt(st['rmse_vol_agregado_m3'], 0)} against {fmt(ref['rmse_vol_agregado_m3'], 0)} m³ and F1 {fmt(st['f1_agregado'], 2)} against {fmt(ref['f1_agregado'], 3)}; "
         "what is attributable is the approximate kernel, a limited search space, and Platt calibration, which neutralizes class_weight (declared). "
         f"Scope: hyperparameters chosen with all shapes, one network, {corridas}; {alcance}. "
-        "Next steps: decide the label (I recommend A), nested tuning by shape, more trials or a wider search space for the SVM, a confusion matrix for the extreme shapes, and propagating to per-family maps.\n\n"
+        "Next steps: decide the label (I recommend A), nested tuning by shape, more trials or a wider search space for the SVM, a confusion matrix for the extreme shapes, propagating to per-family maps, "
+        "and regenerating the base-deck pictures that still contain Spanish text.\n\n"
+        f"To regenerate: {_PARA_REGENERAR}. Their English versions were not produced because the shapes in slide 5 are not in any versioned data file and the slide 34 parity plots need a full out-of-fold re-evaluation of each family.\n\n"
         f"Sources: {_rel(ruta)}/comparacion_protocolos.csv, resumen_afinacion.csv (fixed_params), tables_provenance.json (n_runs, n_runs_full_grid); "
+        "docs/figures_part2/figure_numbers.json and INDEX.md (R², median scenario error); docs/figures_en/INDEX.md (pictures to regenerate); "
         "docs/auditoria/correcciones/04-informe-consolidado.md §4 and §5."
     ))
     return s
 
 
-def agregar_slide_resultados(prs, datos_dir):
+def agregar_slide_resultados(prs, datos_dir, figuras_dir=None):
     """Add the part 2 results slides from the tables in ``datos_dir``:
     results (table + bars), tuning (convergence curves), confusion matrices,
-    and conclusions/next steps. Returns the list of added slides. The CSV
-    column names are code identifiers (kept in Spanish)."""
+    optionally the figure slides (parity, error by shape, flood maps) when
+    ``figuras_dir`` exists, and conclusions/next steps. Returns the added
+    slides. CSV column names are code identifiers (kept in Spanish)."""
     datos_dir = Path(datos_dir)
     d = _datos_parte2(datos_dir)
-    return [
+    nuevas = [
         _slide_resultados(prs, d, datos_dir),
         _slide_afinacion(prs, d, datos_dir),
         _slide_matrices(prs, d, datos_dir),
-        _slide_conclusiones(prs, d, datos_dir),
     ]
+    fig = None
+    if figuras_dir is not None and (Path(figuras_dir) / "figure_numbers.json").exists():
+        nuevas += agregar_slides_figuras(prs, figuras_dir)
+        fig = _datos_figuras(figuras_dir)
+    nuevas.append(_slide_conclusiones(prs, d, datos_dir, fig))
+    return nuevas
 
 
 # ---------------------------------------------------------------------------
@@ -1219,7 +1561,9 @@ def translate_base(prs, translations: dict | None = None, n_base: int | None = N
 
 # ---------------------------------------------------------------------------
 def construir(base: Path = BASE, salida: Path = OUTPUT, datos_dir: Path = DATOS_DIR,
-              datos_parte2_dir: Path = DATOS_PARTE2_DIR, traducir: bool = True):
+              datos_parte2_dir: Path = DATOS_PARTE2_DIR, traducir: bool = True,
+              figuras_dir: Path | None = FIGURAS_DIR,
+              figuras_en_dir: Path | None = FIGURAS_EN_DIR):
     base, salida = Path(base), Path(salida)
     if not base.exists():
         raise SystemExit(f"{base} does not exist")
@@ -1230,6 +1574,10 @@ def construir(base: Path = BASE, salida: Path = OUTPUT, datos_dir: Path = DATOS_
     if traducir:
         contadores = translate_base(prs, n_base=n_base)
         print(f"Base deck translated to English: {contadores}")
+    if figuras_en_dir is not None and Path(figuras_en_dir).is_dir():
+        mapa = {k: v for k, v in FIGURAS_EN_MAPA.items() if k[0] <= n_base}
+        reemplazadas = replace_base_pictures(prs, mapa, figuras_en_dir)
+        print(f"English pictures swapped into the base deck: {reemplazadas}")
     con_resultados = (Path(datos_parte2_dir) / "comparacion_protocolos.csv").exists()
 
     slide_auditoria(prs, datos_dir)
@@ -1239,15 +1587,22 @@ def construir(base: Path = BASE, salida: Path = OUTPUT, datos_dir: Path = DATOS_
     slide_svm(prs, datos_parte2_dir if con_resultados else None)
     slide_comparacion_justa(prs, con_resultados, datos_parte2_dir if con_resultados else None)
     if con_resultados:
-        agregar_slide_resultados(prs, datos_parte2_dir)
+        agregar_slide_resultados(prs, datos_parte2_dir, figuras_dir)
 
     prs.save(str(salida))
     return prs
 
 
-def main() -> None:
-    prs = construir()
-    print(f"Saved: {OUTPUT} ({len(prs.slides)} slides)")
+def main(argv=None) -> None:
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    ap.add_argument("--legacy-output", action="store_true",
+                    help="write the old file name (Presentacion_MLSMFP_13-10_...) instead "
+                         "of the 20-10 one; fails if that file is open in PowerPoint")
+    args = ap.parse_args(argv)
+    destino = OUTPUT_LEGACY if args.legacy_output else OUTPUT
+    prs = construir(salida=destino)
+    print(f"Saved: {destino} ({len(prs.slides)} slides)")
 
 
 if __name__ == "__main__":
