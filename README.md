@@ -45,6 +45,25 @@ Salidas principales:
 - `python main.py --predict --factor 3.5`: predice nodos inundados y volumen
   usando los modelos guardados en `outputs/models`.
 
+## Flujo SQLite De Entrenamiento
+
+La lectura de datos de entrenamiento ya no crea ni actualiza la base de datos.
+Ejecuta los pasos de escritura en este orden:
+
+```powershell
+python main.py --migrate-db
+python main.py --persist-sql
+python main.py --bench-prepare
+```
+
+`--migrate-db` inicializa o actualiza `config.dataset.db_path`. `--persist-sql`
+importa el dataset y las corridas en esa base ya migrada. `--bench-prepare`
+lee una instantánea de solo lectura y genera el conjunto preparado; si detecta
+migraciones pendientes, informa cuáles faltan y no cambia el archivo SQLite.
+En esta etapa `--bench-prepare` conserva su contrato predeterminado
+`tabular_v3_17`; la selección explícita de `tabular_v4_21` se incorporará en
+el siguiente paso del plan multired.
+
 ## Arquitectura Actual
 
 ```text

@@ -1,4 +1,8 @@
+import hashlib
+from contextlib import nullcontext
 from pathlib import Path
+import shutil
+import sqlite3
 
 import pandas as pd
 import pytest
@@ -45,8 +49,69 @@ def test_shared_columns_match_the_csv_shaped_source(
 
 
 def test_raises_for_a_database_with_no_complete_samples(tmp_path):
-    with pytest.raises(ValueError, match="No COMPLETE v17 training samples found"):
-        load_training_frame(tmp_path / "empty.sqlite3")
+    db_path = tmp_path / "empty.sqlite3"
+    with pytest.raises(ValueError, match="does not exist"):
+        load_training_frame(db_path)
+    assert not db_path.exists()
+
+
+@pytest.mark.parametrize("reader", ["load_training_frame", "prepare_dataset"])
+def test_reader_missing_migration_is_read_only(tmp_path, reader, monkeypatch):
+    from swmm_resilience.database.connection import connect_managed_database
+    from swmm_resilience.database.migrations import apply_migrations
+
+    sql_dir = Path(__file__).parents[2] / "swmm_resilience" / "database" / "sql"
+    migration_dir = tmp_path / "m"
+    migration_dir.mkdir()
+    for migration in sorted(sql_dir.glob("00[1-7]_*.sql")):
+        shutil.copyfile(migration, migration_dir / migration.name)
+
+    db_path = tmp_path / "schema_7.sqlite3"
+    conn = connect_managed_database(db_path)
+    apply_migrations(conn, migration_dir=migration_dir)
+    conn.close()
+
+    def schema_fingerprint():
+        readonly = sqlite3.connect(
+            f"file:{db_path.as_posix()}?mode=ro", uri=True
+        )
+        try:
+            schema_rows = readonly.execute(
+                "SELECT type, name, tbl_name, sql FROM sqlite_master "
+                "ORDER BY type, name, tbl_name"
+            ).fetchall()
+            return hashlib.sha256(repr(schema_rows).encode("utf-8")).hexdigest()
+        finally:
+            readonly.close()
+
+    before_bytes = hashlib.sha256(db_path.read_bytes()).hexdigest()
+    before_schema = schema_fingerprint()
+    output_dir = tmp_path / "prepared"
+
+    with pytest.raises(ValueError, match="missing migration.*008"):
+        if reader == "load_training_frame":
+            load_training_frame(db_path)
+        else:
+            from swmm_resilience.ml.bench.preprocess import prepare_dataset
+            import swmm_resilience.ml.bench.preprocess as preprocess
+
+            snapshot_dir = tmp_path / "snap"
+            snapshot_dir.mkdir()
+            monkeypatch.setattr(
+                preprocess,
+                "TemporaryDirectory",
+                lambda prefix: nullcontext(snapshot_dir),
+            )
+
+            prepare_dataset(
+                db_path,
+                flood_threshold_m3=1.0,
+                output_dir=output_dir,
+            )
+
+    assert hashlib.sha256(db_path.read_bytes()).hexdigest() == before_bytes
+    assert schema_fingerprint() == before_schema
+    assert not output_dir.exists()
 
 
 def test_repeated_calls_return_equal_frames(sql_training_db):

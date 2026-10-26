@@ -71,7 +71,7 @@
 - [x] Add contiguous migration 008 with insert/update/delete guards for the v4_21 feature rows and a guard for quality fields that identify a pinned run. Follow the exact `training_run_inputs` and `run_status` predicates from migration 005; do not edit an already applied migration file.
 - [x] Add a migration test that verifies checksum/catalog ordering and that migration 006 schema remains otherwise unchanged.
 - [x] Run `python -m pytest tests/database/test_migration_005_pinning.py tests/database/test_migration_006_tributary_contract.py tests/database/test_migration_007_tributary_training_view.py tests/database/test_migration_008_v4_21_provenance.py -q`.
-- [ ] Commit the migration and tests with `fix: guard pinned v4_21 training provenance`.
+- [x] Commit the migration and tests with `fix: guard pinned v4_21 training provenance`.
 
 ### Task 5: Make reads non-mutating and migration writes explicit
 
@@ -79,11 +79,11 @@
 
 **Interfaces:** A read/preparation command opens a read-only snapshot and verifies the applied migration catalog; an explicit migration command is the only path that calls `apply_migrations` on the source database.
 
-- [ ] Add a test that fingerprints schema and file bytes before/after `load_training_frame`/`prepare_dataset` on a database missing the latest migration; the functions must report the missing migration without changing the database.
-- [ ] Run `python -m pytest tests/database/test_load_training_frame.py tests/ml/bench/test_stage1_imports.py -q`; confirm the mutation test fails with current implicit migration behavior.
-- [ ] Separate schema validation from schema mutation. Apply migrations only in the explicit migration/backfill command; have read-only code check the supported schema version and open a SQLite backup with `mode=ro`.
-- [ ] Document the exact CLI order in `main.py --help` and README: initialize/migrate the experiment DB, import network/run data, then prepare the selected contract. Preserve legacy behavior for legacy entry points that are documented as mutating.
-- [ ] Run the focused tests and `tests/database/test_migrations_v17.py tests/database/test_migration_preflight_hooks.py -q`.
+- [x] Add a test that fingerprints schema and file bytes before/after `load_training_frame`/`prepare_dataset` on a database missing the latest migration; the functions must report the missing migration without changing the database.
+- [x] Run `python -m pytest tests/database/test_load_training_frame.py tests/ml/bench/test_stage1_imports.py -q`; confirm the mutation test fails with current implicit migration behavior.
+- [x] Separate schema validation from schema mutation. Apply migrations only in the explicit migration/backfill command; have read-only code check the supported schema version and open a SQLite backup with `mode=ro`.
+- [x] Document the exact CLI order in `main.py --help` and README: initialize/migrate the experiment DB, import network/run data, then prepare the selected contract. Preserve legacy behavior for legacy entry points that are documented as mutating.
+- [x] Run the focused tests and `tests/database/test_migrations_v17.py tests/database/test_migration_preflight_hooks.py -q`.
 - [ ] Commit the reader/CLI change and tests with `fix: keep training reads read only`.
 
 ### Task 6: Verify one documented v4_21 preparation path end to end

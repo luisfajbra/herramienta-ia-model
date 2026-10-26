@@ -184,7 +184,7 @@ def test_persist_sql_writes_to_config_dataset_db_path(monkeypatch):
     monkeypatch.setattr(
         connection_module, "connect_managed_database", fake_connect_managed_database
     )
-    monkeypatch.setattr(migrations_module, "apply_migrations", lambda conn: None)
+    monkeypatch.setattr(migrations_module, "validate_database_path", lambda path: None)
     monkeypatch.setattr(
         csv_backfill_module,
         "backfill_networks_and_runs",
@@ -205,6 +205,26 @@ def test_persist_sql_writes_to_config_dataset_db_path(monkeypatch):
     main.main()
 
     assert connect_calls == [config.dataset.db_path]
+
+
+def test_migrate_db_is_the_explicit_schema_write_command(tmp_path, monkeypatch):
+    import sqlite3
+    from types import SimpleNamespace
+
+    db_path = tmp_path / "experiment.sqlite3"
+    config = SimpleNamespace(dataset=SimpleNamespace(db_path=db_path))
+    monkeypatch.setattr(main, "load_config", lambda _path: config)
+    monkeypatch.setattr(sys, "argv", ["main.py", "--migrate-db"])
+
+    main.main()
+
+    conn = sqlite3.connect(db_path.as_uri() + "?mode=ro", uri=True)
+    try:
+        assert conn.execute(
+            "SELECT MAX(version) FROM schema_migrations"
+        ).fetchone()[0] == 8
+    finally:
+        conn.close()
 
 
 def _persist_sql_fakes(monkeypatch, csv_frame, captured):
@@ -233,7 +253,7 @@ def _persist_sql_fakes(monkeypatch, csv_frame, captured):
     monkeypatch.setattr(
         connection_module, "connect_managed_database", lambda db_path: FakeConn()
     )
-    monkeypatch.setattr(migrations_module, "apply_migrations", lambda conn: None)
+    monkeypatch.setattr(migrations_module, "validate_database_path", lambda path: None)
     monkeypatch.setattr(
         csv_backfill_module,
         "backfill_networks_and_runs",

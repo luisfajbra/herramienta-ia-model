@@ -107,6 +107,37 @@ def _validate_applied_history(applied, catalog) -> None:
             )
 
 
+def validate_migrations(conn: sqlite3.Connection) -> None:
+    """Verify that a read connection has the complete, current migration catalog."""
+    catalog = _migration_catalog(None)
+    applied = _applied_history(conn)
+    _validate_applied_history(applied, catalog)
+    if len(applied) < len(catalog):
+        missing = ", ".join(
+            f"{version:03d}_{name}.sql"
+            for version, name, _sql, _checksum in catalog[len(applied):]
+        )
+        raise MigrationOrderError(
+            f"Database schema is missing migration(s): {missing}; "
+            "run the explicit database migration command before reading"
+        )
+
+
+def validate_database_path(path: str | Path) -> None:
+    """Validate a database path without creating, migrating, or mutating it."""
+    db_path = Path(path).resolve()
+    if not db_path.is_file():
+        raise MigrationOrderError(
+            f"Database does not exist: {db_path}; "
+            "run `python main.py --migrate-db` before importing data"
+        )
+    conn = sqlite3.connect(f"{db_path.as_uri()}?mode=ro", uri=True)
+    try:
+        validate_migrations(conn)
+    finally:
+        conn.close()
+
+
 def _migration_statements(sql: str):
     buffer = []
     for character in sql:

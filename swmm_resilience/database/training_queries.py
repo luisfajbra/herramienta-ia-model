@@ -11,8 +11,7 @@ import numpy as np
 import pandas as pd
 
 from ..ml.contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
-from .connection import connect_managed_database
-from .migrations import apply_migrations
+from .migrations import validate_migrations
 
 
 IDENTITY_COLUMNS = (
@@ -426,8 +425,9 @@ def load_training_frame(
 ) -> pd.DataFrame:
     """Load every COMPLETE v17 training sample from the database at ``db_path``.
 
-    Convenience wrapper for CLI callers: opens a managed connection, applies
-    pending migrations, reads the canonical frame, and closes the connection.
+    Convenience wrapper for CLI callers: opens a read-only connection,
+    verifies that the database has the complete supported migration catalog,
+    reads the canonical frame, and closes the connection.
     Raises ``ValueError`` when the database holds no COMPLETE samples yet, or
     when it holds more than one snapshot (see ``_check_single_snapshot``).
 
@@ -446,9 +446,20 @@ def load_training_frame(
         raise ValueError("Pass either run_ids or network_ids, not both")
     selected_run_ids = run_ids
     explicit_selection = run_ids is not None or network_ids is not None
-    conn = connect_managed_database(db_path)
+    resolved_path = Path(db_path).resolve()
+    if not resolved_path.is_file():
+        raise ValueError(
+            f"Training database does not exist: {resolved_path}; "
+            "initialize it with the explicit database migration command"
+        )
+    uri = f"{resolved_path.as_uri()}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    conn.row_factory = sqlite3.Row
     try:
-        apply_migrations(conn)
+        try:
+            validate_migrations(conn)
+        except RuntimeError as exc:
+            raise ValueError(str(exc)) from exc
         if network_ids is not None:
             normalized_network_ids = _normalize_run_ids(network_ids)
             assert normalized_network_ids is not None

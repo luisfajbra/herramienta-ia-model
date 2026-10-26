@@ -67,8 +67,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--only-maps", action="store_true",
                         help="Only generate maps from the existing CSV")
     parser.add_argument("--persist-sql", action="store_true",
-                        help="Persist dataset_final.csv and a GroupKFold5 training run "
-                             "in outputs/training_v17.sqlite3 (SQLite schema v17)")
+                        help="Import dataset_final.csv into the already migrated SQLite database "
+                             "and persist a GroupKFold5 training run")
+    parser.add_argument(
+        "--migrate-db",
+        action="store_true",
+        help="Step 1: initialize or upgrade config.dataset.db_path before importing or preparing data",
+    )
     parser.add_argument(
         "--v4-21-dataset",
         metavar="PATH",
@@ -121,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--out-dir", metavar="PATH", default="./validation_output",
                         help="Output directory for batch validation (default: ./validation_output)")
     parser.add_argument("--bench-prepare", action="store_true",
-                        help="Bench stage 1: SQL -> outputs/bench/prepared/")
+                        help="Step 3: read the migrated SQL dataset and prepare outputs/bench/prepared/ (default contract: v17)")
     parser.add_argument("--bench-train", action="store_true",
                         help="Bench stage 2: train each enabled family")
     parser.add_argument("--bench-evaluate", action="store_true",
@@ -361,6 +366,29 @@ def main():
         parser.error("--v4-21-dataset requires --persist-sql")
 
     config = load_config("config.yaml")
+
+    if args.migrate_db:
+        other_actions = (
+            "skip_extraction", "skip_simulation", "only_ml", "only_maps",
+            "persist_sql", "predict", "simulate", "hydrograph", "network_map",
+            "resilience_curve", "flood_volume_curve", "factor_comparison",
+            "evaluate_hydrographs", "evaluate_shapes", "evaluate_generalization",
+            "evaluate_validation_shapes", "analyze_features", "bench_prepare",
+            "bench_train", "bench_evaluate", "bench_promote", "bench_tune", "bench",
+        )
+        if args.v4_21_dataset or any(getattr(args, name) for name in other_actions):
+            parser.error("--migrate-db must be run by itself")
+        from swmm_resilience.database.connection import connect_managed_database
+        from swmm_resilience.database.migrations import apply_migrations
+
+        config.dataset.db_path.parent.mkdir(parents=True, exist_ok=True)
+        conn = connect_managed_database(config.dataset.db_path)
+        try:
+            apply_migrations(conn)
+        finally:
+            conn.close()
+        print(f"Database schema is current: {config.dataset.db_path}")
+        return
 
     if (args.bench or args.bench_prepare or args.bench_train or args.bench_evaluate
             or args.bench_promote or args.bench_tune):
@@ -1006,7 +1034,7 @@ def main():
     # ── Modo: persistir en SQLite v17 ───────────────────────────────────────
     if args.persist_sql:
         from swmm_resilience.database.connection import connect_managed_database
-        from swmm_resilience.database.migrations import apply_migrations
+        from swmm_resilience.database.migrations import validate_database_path
         from swmm_resilience.database.csv_backfill import (
             backfill_networks_and_runs,
             persist_training_run,
@@ -1026,9 +1054,11 @@ def main():
             )
         print(f"  {df.shape[0]} rows x {df.shape[1]} cols")
 
-        config.dataset.db_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            validate_database_path(config.dataset.db_path)
+        except RuntimeError as exc:
+            parser.error(str(exc))
         conn = connect_managed_database(config.dataset.db_path)
-        apply_migrations(conn)
 
         print(
             "\nPersisting networks/nodes/scenarios/runs in "
