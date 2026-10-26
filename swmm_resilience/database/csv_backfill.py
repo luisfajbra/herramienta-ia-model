@@ -55,16 +55,57 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _validate_backfill_dataset(dataset: pd.DataFrame, network_id: int | str) -> None:
+    required = {
+        "node_id", "shape_id", "factor_mult", "duracion_horas", "tiempo_al_pico_h",
+        "coord_x", "coord_y", "elev_fondo", "prof_max", "base_inflow_lps",
+        "inunda", "vol_inundacion_m3",
+    }
+    missing = sorted(required - set(dataset.columns))
+    if missing:
+        raise ValueError(f"Backfill dataset is missing required columns: {missing}")
+    identity = ["shape_id", "factor_mult", "node_id"]
+    null_identity = dataset[identity].isna().any(axis=1)
+    if null_identity.any():
+        row = dataset.loc[null_identity].iloc[0]
+        raise ValueError(
+            "Backfill source identity contains nulls at "
+            f"(network_id={network_id}, shape_id={row['shape_id']!r}, "
+            f"factor_mult={row['factor_mult']!r}, node_id={row['node_id']!r})"
+        )
+    duplicates = dataset[dataset.duplicated(identity, keep=False)]
+    if not duplicates.empty:
+        row = duplicates.iloc[0]
+        raise ValueError(
+            "Duplicate backfill source row at "
+            f"(network_id={network_id}, shape_id={row['shape_id']!r}, "
+            f"factor_mult={row['factor_mult']!r}, node_id={row['node_id']!r})"
+        )
+    static_columns = ("coord_x", "coord_y", "elev_fondo", "prof_max", "base_inflow_lps")
+    inconsistent = []
+    for node_id, group in dataset.groupby("node_id", dropna=False):
+        if any(group[column].nunique(dropna=False) > 1 for column in static_columns):
+            inconsistent.append(node_id)
+    if inconsistent:
+        raise ValueError(
+            "Static node attributes vary within one network for "
+            f"(network_id={network_id}, node_id={inconsistent[0]!r})"
+        )
+
+
 def backfill_networks_and_runs(
     conn: sqlite3.Connection,
     dataset: pd.DataFrame,
     inp_path: Path,
     network_name: str,
+    *,
+    source_dataset_path: Path | None = None,
+    hydrograph_shapes_dir: Path | None = None,
 ) -> dict:
     """Insert networks/nodes/scenarios/runs/node_features/node_results.
 
     Returns {"network_id": int, "node_pk_by_id": {node_id: node_pk},
-    "run_id_by_key": {(shape_id, factor_mult): run_id}}.
+    "run_id_by_key": {(network_id, shape_id, factor_mult): run_id}}.
 
     Idempotent on network identity (re-running with the same .inp reuses
     the existing network row instead of failing), but NOT idempotent on
@@ -72,13 +113,55 @@ def backfill_networks_and_runs(
     """
     inp_bytes = Path(inp_path).read_bytes()
     network_sha256 = _sha256_bytes(inp_bytes)
+    source_dataset_manifest = None
+    if source_dataset_path is not None:
+        source_path = Path(source_dataset_path).expanduser().resolve()
+        if not source_path.is_file():
+            raise FileNotFoundError(f"Training dataset source does not exist: {source_path}")
+        source_dataset_manifest = {
+            "path": str(source_path),
+            "sha256": _sha256_bytes(source_path.read_bytes()),
+        }
+    shapes_dir = (
+        Path(hydrograph_shapes_dir).expanduser().resolve()
+        if hydrograph_shapes_dir is not None
+        else None
+    )
+    source_event_manifests = {}
+    if source_dataset_manifest is not None:
+        for shape_id in dataset["shape_id"].drop_duplicates():
+            event_manifest = {
+                "network_inp_sha256": network_sha256,
+                "shape_id": str(shape_id),
+            }
+            if shape_id != "base":
+                if shapes_dir is None:
+                    raise ValueError(
+                        "hydrograph_shapes_dir is required to hash non-base event "
+                        f"{shape_id!r}"
+                    )
+                shape_path = (shapes_dir / f"{shape_id}.csv").resolve()
+                if shape_path.parent != shapes_dir or not shape_path.is_file():
+                    raise FileNotFoundError(
+                        f"Hydrograph event source does not exist: {shape_path}"
+                    )
+                event_manifest["hydrograph_path"] = str(shape_path)
+                event_manifest["hydrograph_sha256"] = _sha256_bytes(shape_path.read_bytes())
+            else:
+                event_manifest["hydrograph_path"] = None
+                event_manifest["hydrograph_sha256"] = None
+            source_event_manifests[shape_id] = event_manifest
 
     existing = conn.execute(
         "SELECT network_id FROM networks WHERE network_sha256 = ?", (network_sha256,)
     ).fetchone()
     if existing:
         network_id = existing[0]
-    else:
+    _validate_backfill_dataset(
+        dataset,
+        network_id=network_id if existing else f"sha256:{network_sha256[:12]}",
+    )
+    if not existing:
         cur = conn.execute(
             """
             INSERT INTO networks (
@@ -125,6 +208,19 @@ def backfill_networks_and_runs(
             "duracion_horas": float(srow.duracion_horas),
             "tiempo_al_pico_h": float(srow.tiempo_al_pico_h),
         }
+        if source_dataset_manifest is not None:
+            event_manifest = {
+                **source_event_manifests[srow.shape_id],
+                "factor_mult": float(srow.factor_mult),
+            }
+            config_payload["source_manifest"] = {
+                "network_id": network_id,
+                "network_inp_path": str(Path(inp_path).expanduser().resolve()),
+                "network_inp_sha256": network_sha256,
+                "training_dataset": source_dataset_manifest,
+                "event_series_sha256": _sha256_json(event_manifest),
+                "event_series_components": event_manifest,
+            }
         config_sha256 = _sha256_json(config_payload)
 
         cur = conn.execute(
@@ -165,7 +261,7 @@ def backfill_networks_and_runs(
             ),
         )
         run_id = cur.lastrowid
-        run_id_by_key[(srow.shape_id, float(srow.factor_mult))] = run_id
+        run_id_by_key[(network_id, srow.shape_id, float(srow.factor_mult))] = run_id
 
         feature_rows = []
         result_rows = []
@@ -224,6 +320,9 @@ def backfill_tributary_features(
     run_id_by_key: dict,
     node_pk_by_id: dict,
     network_id: int,
+    *,
+    source_dataset_path: Path | None = None,
+    source_manifest_path: Path | None = None,
 ) -> int:
     """Inserta las 21 features del contrato tabular_v4_21 en
     node_features_v4_21, reusando los run_id/node_pk ya asignados por
@@ -234,15 +333,74 @@ def backfill_tributary_features(
     Devuelve la cantidad de filas insertadas.
     """
     inserted = 0
+    if dataset_v4_21.duplicated(["shape_id", "factor_mult", "node_id"]).any():
+        duplicate = dataset_v4_21.loc[
+            dataset_v4_21.duplicated(["shape_id", "factor_mult", "node_id"], keep=False)
+        ].iloc[0]
+        raise ValueError(
+            "Duplicate v4_21 feature row at "
+            f"(network_id={network_id}, shape_id={duplicate['shape_id']!r}, "
+            f"factor_mult={duplicate['factor_mult']!r}, node_id={duplicate['node_id']!r})"
+        )
+    v4_source_manifest = None
+    if source_dataset_path is not None:
+        source_path = Path(source_dataset_path).expanduser().resolve()
+        if not source_path.is_file():
+            raise FileNotFoundError(f"v4_21 dataset source does not exist: {source_path}")
+        v4_source_manifest = {
+            "path": str(source_path),
+            "sha256": _sha256_bytes(source_path.read_bytes()),
+        }
+        if source_manifest_path is not None:
+            manifest_path = Path(source_manifest_path).expanduser().resolve()
+            if not manifest_path.is_file():
+                raise FileNotFoundError(
+                    f"v4_21 source manifest does not exist: {manifest_path}"
+                )
+            v4_source_manifest["manifest"] = {
+                "path": str(manifest_path),
+                "sha256": _sha256_bytes(manifest_path.read_bytes()),
+            }
     scenario_cols = ["shape_id", "factor_mult"]
     scenarios = dataset_v4_21.drop_duplicates(subset=scenario_cols)[scenario_cols]
 
     rows = []
+    scenario_config_updates = []
     for srow in scenarios.itertuples(index=False):
-        key = (srow.shape_id, float(srow.factor_mult))
+        key = (network_id, srow.shape_id, float(srow.factor_mult))
         run_id = run_id_by_key.get(key)
         if run_id is None:
-            continue
+            raise ValueError(
+                "No run mapping for tributary features at "
+                f"(network_id={network_id}, shape_id={srow.shape_id!r}, "
+                f"factor_mult={float(srow.factor_mult)!r})"
+            )
+        if v4_source_manifest is not None:
+            run_row = conn.execute(
+                "SELECT scenario_id FROM runs WHERE run_id = ? AND network_id = ?",
+                (run_id, network_id),
+            ).fetchone()
+            if run_row is None:
+                raise ValueError(
+                    f"Run {run_id} is not registered under network_id={network_id}"
+                )
+            scenario_row = conn.execute(
+                "SELECT config_json FROM scenarios WHERE scenario_id = ? AND network_id = ?",
+                (run_row[0], network_id),
+            ).fetchone()
+            if scenario_row is None:
+                raise ValueError(
+                    f"Run {run_id} references no scenario for network_id={network_id}"
+                )
+            config_payload = json.loads(scenario_row[0])
+            source_manifest = config_payload.setdefault("source_manifest", {})
+            source_manifest["network_id"] = network_id
+            source_manifest["v4_21_training_dataset"] = v4_source_manifest
+            updated_config_json = json.dumps(config_payload, sort_keys=True)
+            updated_config_sha256 = _sha256_bytes(updated_config_json.encode("utf-8"))
+            scenario_config_updates.append(
+                (updated_config_json, updated_config_sha256, run_row[0], run_id)
+            )
         subset = dataset_v4_21[
             (dataset_v4_21["shape_id"] == srow.shape_id)
             & (abs(dataset_v4_21["factor_mult"] - srow.factor_mult) < 1e-9)
@@ -250,7 +408,11 @@ def backfill_tributary_features(
         for r in subset.itertuples(index=False):
             node_pk = node_pk_by_id.get(r.node_id)
             if node_pk is None:
-                continue
+                raise ValueError(
+                    "No node mapping for tributary features at "
+                    f"(network_id={network_id}, shape_id={srow.shape_id!r}, "
+                    f"factor_mult={float(srow.factor_mult)!r}, node_id={r.node_id!r})"
+                )
             rows.append((
                 run_id, network_id, node_pk,
                 r.elev_fondo, r.prof_max, int(r.n_tuberias_in), int(r.n_tuberias_out),
@@ -269,6 +431,17 @@ def backfill_tributary_features(
                 r.integral_exceso_capacidad_m3 if pd.notna(r.integral_exceso_capacidad_m3) else None,
                 "tabular_v4_21",
             ))
+
+    for config_json, config_sha256, scenario_id, run_id in scenario_config_updates:
+        conn.execute(
+            "UPDATE scenarios SET config_json = ?, config_sha256 = ? "
+            "WHERE scenario_id = ? AND network_id = ?",
+            (config_json, config_sha256, scenario_id, network_id),
+        )
+        conn.execute(
+            "UPDATE runs SET config_sha256 = ? WHERE run_id = ? AND network_id = ?",
+            (config_sha256, run_id, network_id),
+        )
 
     conn.executemany(
         """
@@ -308,9 +481,21 @@ def persist_training_run(
     clf_algorithm = config.ml.classifier.algorithm
     reg_algorithm = config.ml.regressor.algorithm
 
+    network_ids = {
+        key[0]
+        for key in run_id_by_key
+        if isinstance(key, tuple) and len(key) == 3
+    }
+    if len(network_ids) != 1:
+        raise ValueError(
+            "persist_training_run requires a single network-scoped run mapping; "
+            f"found network_ids={sorted(network_ids)}"
+        )
+    network_id = next(iter(network_ids))
+
     dataset = dataset.copy()
     dataset["run_id"] = [
-        run_id_by_key[(row.shape_id, float(row.factor_mult))]
+        run_id_by_key[(network_id, row.shape_id, float(row.factor_mult))]
         for row in dataset.itertuples(index=False)
     ]
     all_run_ids = sorted(int(v) for v in dataset["run_id"].unique())

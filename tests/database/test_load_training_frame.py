@@ -85,8 +85,49 @@ def test_raises_when_two_networks_yield_duplicate_snapshot_keys(
         load_training_frame(db_path)
 
     message = str(excinfo.value)
-    assert "more than one" in message or "multiple" in message
-    assert "single snapshot" in message
-    assert "base" in message
-    assert "1.0" in message or "1" in message
-    assert "N0" in message
+    assert "multiple networks" in message
+    assert "network_ids" in message
+
+
+def test_explicit_network_selection_keeps_same_named_snapshots_distinct(
+    tmp_path, csv_shaped_dataset
+):
+    from swmm_resilience.database.connection import connect_managed_database
+    from swmm_resilience.database.csv_backfill import backfill_networks_and_runs
+    from swmm_resilience.database.migrations import apply_migrations
+
+    db_path = tmp_path / "two_networks.sqlite3"
+    conn = connect_managed_database(db_path)
+    try:
+        apply_migrations(conn)
+        network_ids = []
+        for name in ("A", "B"):
+            inp_path = tmp_path / f"network_{name}.inp"
+            inp_path.write_text(f"[TITLE]\\nnetwork {name}\\n", encoding="utf-8")
+            info = backfill_networks_and_runs(conn, csv_shaped_dataset, inp_path, name)
+            network_ids.append(info["network_id"])
+    finally:
+        conn.close()
+
+    frame = load_training_frame(db_path, network_ids=network_ids)
+
+    assert len(frame) == 2 * len(csv_shaped_dataset)
+    assert set(frame["network_id"]) == set(network_ids)
+
+
+def test_duplicate_snapshot_diagnostic_includes_network_id():
+    from swmm_resilience.database.training_queries import _check_single_snapshot
+
+    frame = pd.DataFrame(
+        [
+            {"network_id": 3, "scenario_id": 11, "node_id": "N0"},
+            {"network_id": 3, "scenario_id": 11, "node_id": "N0"},
+            {"network_id": 8, "scenario_id": 29, "node_id": "N0"},
+        ]
+    )
+
+    with pytest.raises(ValueError) as excinfo:
+        _check_single_snapshot(frame, allow_multiple_networks=True)
+
+    assert "network_id=3" in str(excinfo.value)
+    assert "scenario_id=11" in str(excinfo.value)

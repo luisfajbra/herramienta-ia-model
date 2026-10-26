@@ -69,6 +69,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--persist-sql", action="store_true",
                         help="Persist dataset_final.csv and a GroupKFold5 training run "
                              "in outputs/training_v17.sqlite3 (SQLite schema v17)")
+    parser.add_argument(
+        "--v4-21-dataset",
+        metavar="PATH",
+        help="Explicit v4_21 CSV to backfill alongside --persist-sql; no implicit dataset path is used",
+    )
     parser.add_argument("--predict", action="store_true",
                         help="Inference without SWMM for the given factor")
     parser.add_argument("--simulate", action="store_true",
@@ -352,6 +357,8 @@ def main():
 
     if args.skip_simulation and not (args.skip_extraction or args.only_ml):
         parser.error("--skip-simulation requires --skip-extraction or --only-ml in this version; the pipeline does not yet index persistent .rpt files")
+    if args.v4_21_dataset and not args.persist_sql:
+        parser.error("--v4-21-dataset requires --persist-sql")
 
     config = load_config("config.yaml")
 
@@ -1027,22 +1034,49 @@ def main():
             "\nPersisting networks/nodes/scenarios/runs in "
             f"{config.dataset.db_path}..."
         )
-        info = backfill_networks_and_runs(conn, df, config.network.inp_path, config.network.name)
+        info = backfill_networks_and_runs(
+            conn,
+            df,
+            config.network.inp_path,
+            config.network.name,
+            source_dataset_path=config.dataset.output_path,
+            hydrograph_shapes_dir=config.simulation.hydrograph_shapes_dir,
+        )
         print(f"  network_id={info['network_id']}  nodes={len(info['node_pk_by_id'])}  "
               f"runs={len(info['run_id_by_key'])}")
 
-        v4_21_path = Path("data/training/dataset_final_v4_21.csv")
-        if v4_21_path.exists():
+        if args.v4_21_dataset:
             from swmm_resilience.database.csv_backfill import backfill_tributary_features
 
+            v4_21_path = Path(args.v4_21_dataset).expanduser().resolve()
+            if not v4_21_path.is_file():
+                parser.error(
+                    f"The explicit v4_21 dataset does not exist: {v4_21_path}"
+                )
+            from scripts.migrar_dataset_v4_21 import validate_dataset_manifest
+
+            manifest_path = v4_21_path.with_suffix(v4_21_path.suffix + ".manifest.json")
+            try:
+                v4_manifest = validate_dataset_manifest(
+                    manifest_path,
+                    v4_21_path,
+                    config.network.inp_path,
+                    config.dataset.output_path,
+                    config.simulation.hydrograph_shapes_dir,
+                )
+            except (TypeError, ValueError) as exc:
+                parser.error(str(exc))
             df_v4_21 = pd.read_csv(v4_21_path)
+            if len(df_v4_21) != v4_manifest["output_dataset"].get("rows"):
+                parser.error(
+                    f"v4_21 row count does not match its manifest: {v4_21_path}"
+                )
             n_v4_21 = backfill_tributary_features(
                 conn, df_v4_21, info["run_id_by_key"], info["node_pk_by_id"], info["network_id"],
+                source_dataset_path=v4_21_path,
+                source_manifest_path=manifest_path,
             )
             print(f"  tabular_v4_21: {n_v4_21} rows of tributary features persisted")
-        else:
-            print(f"  WARNING: {v4_21_path} does not exist -- run scripts/migrar_dataset_v4_21.py first "
-                  "if you want to train on tabular_v4_21")
 
         from swmm_resilience.database.training_queries import load_continuity_excluded
 

@@ -14,6 +14,8 @@ Uso:
 from __future__ import annotations
 
 import sys
+import hashlib
+import json
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -23,7 +25,7 @@ import pandas as pd
 from swmm_resilience.config import load_config
 from swmm_resilience.extraction.dynamic_features import compute_tributary_dynamic_features
 from swmm_resilience.extraction.topology import build_network_graph
-from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V21
+from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V21, TABULAR_V4_21
 from swmm_resilience.simulation.hydrograph_shapes import apply_shape, load_all_shapes
 from swmm_resilience.simulation.inflow_closure import apply_closure_policy
 from swmm_resilience.simulation.swmm_api_io import get_node_timeseries_map, load_inp
@@ -40,6 +42,111 @@ TRIBUTARY_COLUMNS = (
     "tiempo_sobre_capacidad_h",
     "integral_exceso_capacidad_m3",
 )
+
+
+def _sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def build_dataset_manifest(
+    *,
+    source_path: Path,
+    output_path: Path,
+    inp_path: Path,
+    hydrograph_shapes_dir: Path,
+    row_count: int,
+) -> dict:
+    """Describe the inputs that produced a v4_21 CSV and hash its contents."""
+    source_path = Path(source_path).expanduser().resolve()
+    output_path = Path(output_path).expanduser().resolve()
+    inp_path = Path(inp_path).expanduser().resolve()
+    shapes_dir = Path(hydrograph_shapes_dir).expanduser().resolve()
+    if not source_path.is_file() or not output_path.is_file() or not inp_path.is_file():
+        raise FileNotFoundError("Source CSV, output CSV and network INP must all exist")
+    if not shapes_dir.is_dir():
+        raise FileNotFoundError(f"Hydrograph shape directory does not exist: {shapes_dir}")
+    shape_sources = {}
+    for shape_path in sorted(shapes_dir.glob("*.csv")):
+        shape_sources[shape_path.stem] = {
+            "path": str(shape_path.resolve()),
+            "sha256": _sha256_file(shape_path),
+        }
+    return {
+        "format_version": 1,
+        "feature_contract_id": "tabular_v4_21",
+        "feature_contract_sha256": TABULAR_V4_21.descriptor_sha256,
+        "ordered_features": list(FEATURE_COLUMNS_V21),
+        "source_dataset": {"path": str(source_path), "sha256": _sha256_file(source_path)},
+        "network_inp": {"path": str(inp_path), "sha256": _sha256_file(inp_path)},
+        "hydrograph_shapes_dir": str(shapes_dir),
+        "hydrograph_shapes": shape_sources,
+        "output_dataset": {
+            "path": str(output_path),
+            "sha256": _sha256_file(output_path),
+            "rows": int(row_count),
+        },
+    }
+
+
+def validate_dataset_manifest(
+    manifest_path: Path,
+    dataset_path: Path,
+    inp_path: Path,
+    source_path: Path,
+    hydrograph_shapes_dir: Path,
+) -> dict:
+    """Reject a stale dataset or one produced from another source network."""
+    manifest_path = Path(manifest_path).expanduser().resolve()
+    dataset_path = Path(dataset_path).expanduser().resolve()
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Could not read v4_21 source manifest {manifest_path}: {exc}") from exc
+    if not isinstance(manifest, dict):
+        raise ValueError(f"v4_21 source manifest must be a JSON object: {manifest_path}")
+    if manifest.get("feature_contract_id") != "tabular_v4_21":
+        raise ValueError("v4_21 source manifest declares the wrong feature contract")
+    expected_contract_hash = TABULAR_V4_21.descriptor_sha256
+    if manifest.get("feature_contract_sha256") != expected_contract_hash:
+        raise ValueError("v4_21 source manifest has the wrong feature contract hash")
+    if manifest.get("ordered_features") != list(FEATURE_COLUMNS_V21):
+        raise ValueError("v4_21 source manifest has the wrong ordered feature columns")
+    for field, path in (
+        ("output_dataset", dataset_path),
+        ("network_inp", Path(inp_path).expanduser().resolve()),
+        ("source_dataset", Path(source_path).expanduser().resolve()),
+    ):
+        record = manifest.get(field)
+        if not isinstance(record, dict) or record.get("path") != str(path):
+            raise ValueError(f"v4_21 source manifest {field} path does not match {path}")
+        if not path.is_file() or record.get("sha256") != _sha256_file(path):
+            raise ValueError(f"v4_21 source manifest {field} SHA-256 does not match {path}")
+    shapes_dir = Path(hydrograph_shapes_dir).expanduser().resolve()
+    if not shapes_dir.is_dir():
+        raise ValueError(f"Hydrograph shape directory does not exist: {shapes_dir}")
+    if manifest.get("hydrograph_shapes_dir") != str(shapes_dir):
+        raise ValueError(
+            f"v4_21 source manifest hydrograph_shapes_dir does not match {shapes_dir}"
+        )
+    shape_records = manifest.get("hydrograph_shapes")
+    if not isinstance(shape_records, dict):
+        raise ValueError("v4_21 source manifest is missing hydrograph shape hashes")
+    current_shapes = {path.stem: path for path in shapes_dir.glob("*.csv")}
+    if set(shape_records) != set(current_shapes):
+        raise ValueError("Hydrograph shape set differs from the v4_21 source manifest")
+    for shape_id, path in current_shapes.items():
+        record = shape_records[shape_id]
+        if (
+            not isinstance(record, dict)
+            or record.get("path") != str(path.resolve())
+            or record.get("sha256") != _sha256_file(path)
+        ):
+            raise ValueError(f"Hydrograph shape SHA-256 does not match: {path}")
+    return manifest
 
 
 def base_node_series(inp, factor: float) -> dict[str, list[tuple[float, float]]]:
@@ -109,6 +216,18 @@ def main() -> None:
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     merged.to_csv(OUTPUT, index=False)
+    manifest = build_dataset_manifest(
+        source_path=SOURCE,
+        output_path=OUTPUT,
+        inp_path=config.network.inp_path,
+        hydrograph_shapes_dir=config.simulation.hydrograph_shapes_dir,
+        row_count=len(merged),
+    )
+    manifest_path = OUTPUT.with_suffix(OUTPUT.suffix + ".manifest.json")
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    print(f"Saved source manifest: {manifest_path}")
     print(f"Saved: {OUTPUT} ({merged.shape[0]} rows x {merged.shape[1]} cols)")
 
 

@@ -1,4 +1,6 @@
 from pathlib import Path
+import hashlib
+import json
 
 import pandas as pd
 import pytest
@@ -11,6 +13,10 @@ from swmm_resilience.database.csv_backfill import (
     persist_training_run,
 )
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
+
+
+def _sha256(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
 
 
 def _synthetic_dataset(n_nodes=8, factors=(0.5, 1.0, 1.5, 2.0, 2.5, 3.0), shapes=("base", "storm_a")):
@@ -87,6 +93,58 @@ def test_backfill_creates_expected_row_counts(migrated_managed_conn, fake_inp):
     assert [tuple(r) for r in migrated_managed_conn.execute(
         "SELECT DISTINCT status FROM runs"
     ).fetchall()] == [("COMPLETE",)]
+
+
+def test_backfill_rejects_duplicate_scenario_node_rows_before_writing(
+    migrated_managed_conn, fake_inp
+):
+    dataset = _synthetic_dataset(n_nodes=2, factors=(1.0,), shapes=("base",))
+    duplicated = pd.concat([dataset, dataset.iloc[[0]]], ignore_index=True)
+
+    with pytest.raises(ValueError, match=r"network_id=.*shape_id='base'.*node_id='N0'"):
+        backfill_networks_and_runs(
+            migrated_managed_conn, duplicated, fake_inp, "Test Network"
+        )
+
+    assert migrated_managed_conn.execute("SELECT COUNT(*) FROM networks").fetchone()[0] == 0
+
+
+def test_backfill_records_network_dataset_and_event_source_hashes(
+    migrated_managed_conn, fake_inp, tmp_path
+):
+    dataset = _synthetic_dataset(n_nodes=2, factors=(1.0,), shapes=("base", "storm_a"))
+    csv_path = tmp_path / "dataset.csv"
+    csv_path.write_text("source csv bytes", encoding="utf-8")
+    shape_dir = tmp_path / "shapes"
+    shape_dir.mkdir()
+    shape_path = shape_dir / "storm_a.csv"
+    shape_path.write_text("time,q\\n0,0\\n1,1\\n", encoding="utf-8")
+
+    info = backfill_networks_and_runs(
+        migrated_managed_conn,
+        dataset,
+        fake_inp,
+        "Test Network",
+        source_dataset_path=csv_path,
+        hydrograph_shapes_dir=shape_dir,
+    )
+    rows = migrated_managed_conn.execute(
+        "SELECT s.shape_id, s.config_json FROM scenarios AS s "
+        "WHERE s.network_id = ? ORDER BY s.shape_id",
+        (info["network_id"],),
+    ).fetchall()
+    by_shape = {shape: json.loads(config) for shape, config in rows}
+    network_id = info["network_id"]
+
+    for shape in ("base", "storm_a"):
+        manifest = by_shape[shape]["source_manifest"]
+        assert manifest["network_id"] == network_id
+        assert manifest["network_inp_sha256"] == _sha256(fake_inp.read_bytes())
+        assert manifest["training_dataset"]["sha256"] == _sha256(csv_path.read_bytes())
+        assert len(manifest["event_series_sha256"]) == 64
+    assert by_shape["storm_a"]["source_manifest"]["event_series_components"][
+        "hydrograph_sha256"
+    ] == _sha256(shape_path.read_bytes())
 
 
 def test_backfill_reuses_existing_network_on_rerun(migrated_managed_conn, fake_inp):
@@ -305,8 +363,14 @@ def test_backfill_tributary_features_persists_the_21_feature_contract(tmp_path):
     inp_path.write_bytes(b"fake inp bytes")
 
     info = backfill_networks_and_runs(conn, dataset_v17, inp_path, "test-network")
+    v4_source_path = tmp_path / "dataset_v4_21.csv"
+    v4_manifest_path = tmp_path / "dataset_v4_21.csv.manifest.json"
+    v4_source_path.write_text("source v4 data", encoding="utf-8")
+    v4_manifest_path.write_text("validated manifest bytes", encoding="utf-8")
     inserted = backfill_tributary_features(
         conn, dataset_v21, info["run_id_by_key"], info["node_pk_by_id"], info["network_id"],
+        source_dataset_path=v4_source_path,
+        source_manifest_path=v4_manifest_path,
     )
 
     assert inserted == len(dataset_v21)
@@ -315,3 +379,24 @@ def test_backfill_tributary_features_persists_the_21_feature_contract(tmp_path):
     ).fetchone()
     assert row is not None
     assert row[1] == "tabular_v4_21"
+    manifest = conn.execute(
+        "SELECT config_json FROM scenarios WHERE network_id = ? LIMIT 1",
+        (info["network_id"],),
+    ).fetchone()[0]
+    source = json.loads(manifest)["source_manifest"]["v4_21_training_dataset"]
+    assert source["path"] == str(v4_source_path.resolve())
+    assert source["sha256"] == _sha256(v4_source_path.read_bytes())
+    assert source["manifest"] == {
+        "path": str(v4_manifest_path.resolve()),
+        "sha256": _sha256(v4_manifest_path.read_bytes()),
+    }
+
+
+def test_backfill_tributary_features_rejects_missing_network_scoped_run_mapping():
+    from swmm_resilience.database.csv_backfill import backfill_tributary_features
+
+    dataset_v21 = _synthetic_dataset_v4_21()
+    with pytest.raises(ValueError, match=r"network_id=41.*shape_id='base'"):
+        backfill_tributary_features(
+            None, dataset_v21, {}, {}, 41
+        )

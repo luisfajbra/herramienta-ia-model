@@ -170,7 +170,7 @@ def test_persist_sql_writes_to_config_dataset_db_path(monkeypatch):
         connect_calls.append(Path(db_path))
         return FakeConn()
 
-    def fake_backfill_networks_and_runs(conn, df, inp_path, network_name):
+    def fake_backfill_networks_and_runs(conn, df, inp_path, network_name, **kwargs):
         return {
             "network_id": 1,
             "node_pk_by_id": {"N0": 1},
@@ -237,7 +237,7 @@ def _persist_sql_fakes(monkeypatch, csv_frame, captured):
     monkeypatch.setattr(
         csv_backfill_module,
         "backfill_networks_and_runs",
-        lambda conn, df, inp_path, network_name: {
+        lambda conn, df, inp_path, network_name, **kwargs: {
             "network_id": 1,
             "node_pk_by_id": {"N0": 1, "N1": 2, "N2": 3},
             "run_id_by_key": {("base", 1.0): 1},
@@ -284,6 +284,13 @@ def test_persist_sql_excludes_high_continuity_rows_from_legacy_training(monkeypa
     assert captured[0]["node_id"].tolist() == ["N0", "N2"], (
         "N1 (|-7.31| > 5.0) debe salir del entrenamiento legacy; N2 (NaN) se queda"
     )
+
+
+def test_v4_21_backfill_path_is_explicit():
+    args = main.build_parser().parse_args(
+        ["--persist-sql", "--v4-21-dataset", "data/other-network-v4_21.csv"]
+    )
+    assert args.v4_21_dataset == "data/other-network-v4_21.csv"
 
 
 def test_persist_sql_keeps_every_row_when_the_csv_has_no_continuity_column(monkeypatch):

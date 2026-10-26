@@ -372,7 +372,9 @@ def export_training_samples_csv(
     return output
 
 
-def _check_single_snapshot(frame: pd.DataFrame) -> None:
+def _check_single_snapshot(
+    frame: pd.DataFrame, *, allow_multiple_networks: bool = False
+) -> None:
     """Guard against a database holding more than one run per snapshot key.
 
     ``load_training_samples`` legitimately returns rows across several runs
@@ -383,26 +385,31 @@ def _check_single_snapshot(frame: pd.DataFrame) -> None:
     than one snapshot (e.g. two networks backfilled from different .inp
     files) and callers would silently double-count or train on stale rows.
     """
-    key_columns = ["shape_id", "factor_mult", "node_id"]
+    network_ids = frame["network_id"].dropna().unique()
+    if not allow_multiple_networks and len(network_ids) > 1:
+        raise ValueError(
+            "The training frame contains multiple networks; select the intended "
+            f"network_ids or run_ids explicitly. Found network_ids={sorted(network_ids)}"
+        )
+    include_network_id = allow_multiple_networks and len(network_ids) > 1
+    key_columns = ["scenario_id", "node_id"]
+    if include_network_id:
+        key_columns.insert(0, "network_id")
     counts = frame.groupby(key_columns, dropna=False).size()
     duplicated = counts[counts > 1]
     if duplicated.empty:
         return
     sample = duplicated.sort_values(ascending=False).head(3)
     offenders = ", ".join(
-        f"(shape_id={shape_id!r}, factor_mult={factor_mult!r}, "
-        f"node_id={node_id!r}) -> {count} rows"
-        for (shape_id, factor_mult, node_id), count in sample.items()
+        f"({', '.join(f'{column}={value!r}' for column, value in zip(key_columns, key if isinstance(key, tuple) else (key,)))}) -> {count} rows"
+        for key, count in sample.items()
     )
+    key_label = ", ".join(key_columns)
     raise ValueError(
-        "The database holds more than one snapshot: "
-        f"{len(duplicated)} (shape_id, factor_mult, node_id) key(s) have "
-        f"more than one row, e.g. {offenders}. This usually happens when "
-        "--persist-sql was run against more than one .inp file (each yields "
-        "a new network with its own scenarios/runs). These commands require "
-        "the database to hold a single snapshot; re-populate it fresh "
-        "(delete the database file and re-run --persist-sql once) rather "
-        "than training on multiple snapshots at once."
+        "The training frame contains duplicate scenario/node identities: "
+        f"{len(duplicated)} ({key_label}) key(s) have "
+        f"more than one row, e.g. {offenders}. Verify that each selected "
+        "scenario/node pair has exactly one COMPLETE source run."
     )
 
 
@@ -413,6 +420,9 @@ def load_training_frame(
     feature_columns: tuple[str, ...] = FEATURE_COLUMNS_V17,
     feature_contract=TABULAR_V3_17,
     node_features_table: str = "node_features",
+    *,
+    run_ids: list[int] | None = None,
+    network_ids: list[int] | None = None,
 ) -> pd.DataFrame:
     """Load every COMPLETE v17 training sample from the database at ``db_path``.
 
@@ -432,18 +442,47 @@ def load_training_frame(
     a savepoint); closing discards it, which is safe because nothing here
     writes.
     """
+    if run_ids is not None and network_ids is not None:
+        raise ValueError("Pass either run_ids or network_ids, not both")
+    selected_run_ids = run_ids
+    explicit_selection = run_ids is not None or network_ids is not None
     conn = connect_managed_database(db_path)
     try:
         apply_migrations(conn)
+        if network_ids is not None:
+            normalized_network_ids = _normalize_run_ids(network_ids)
+            assert normalized_network_ids is not None
+            placeholders = ",".join("?" for _ in normalized_network_ids)
+            existing = conn.execute(
+                f"SELECT network_id FROM networks WHERE network_id IN ({placeholders})",
+                normalized_network_ids,
+            ).fetchall()
+            found = {row[0] for row in existing}
+            missing = [value for value in normalized_network_ids if value not in found]
+            if missing:
+                raise ValueError(f"Requested network_ids do not exist: {missing}")
+            rows = conn.execute(
+                f"SELECT run_id FROM runs WHERE status = 'COMPLETE' AND network_id IN ({placeholders}) ORDER BY run_id",
+                normalized_network_ids,
+            ).fetchall()
+            selected_run_ids = [row[0] for row in rows]
+            if not selected_run_ids:
+                raise ValueError(
+                    f"No COMPLETE training runs found for network_ids {list(normalized_network_ids)}"
+                )
         frame = load_training_samples(
             conn,
+            run_ids=selected_run_ids,
             max_continuity_error_pct=max_continuity_error_pct,
             view_name=view_name,
             feature_columns=feature_columns,
             feature_contract=feature_contract,
             node_features_table=node_features_table,
         )
-        _check_single_snapshot(frame)
+        _check_single_snapshot(
+            frame,
+            allow_multiple_networks=explicit_selection,
+        )
         return frame
     finally:
         conn.close()
