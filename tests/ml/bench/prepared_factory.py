@@ -6,7 +6,7 @@ import pandas as pd
 
 from swmm_resilience.ml.bench.folds import build_all_folds
 from swmm_resilience.ml.bench.schemas import KEY_COLUMNS, PreparedDataset
-from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
+from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
 
 PREP_ID = "0123456789abcdef"
 
@@ -48,7 +48,13 @@ def make_prepared(rows: list[dict], protocols, *, threshold: float = 1.0) -> Pre
         y_clf=pd.Series((volume >= threshold).astype(int), name="inunda"),
         y_reg=pd.Series(volume, name="vol_inundacion_m3"),
         folds=folds,
-        manifest={"prep_id": PREP_ID, "protocols": list(protocols)},
+        manifest={
+            "prep_id": PREP_ID,
+            "protocols": list(protocols),
+            "contract_id": TABULAR_V3_17.contract_id,
+            "feature_contract_sha256": TABULAR_V3_17.descriptor_sha256,
+            "feature_columns": list(FEATURE_COLUMNS_V17),
+        },
         quality={},
     )
 

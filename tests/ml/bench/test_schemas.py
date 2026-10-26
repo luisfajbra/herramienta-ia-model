@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 
 import pandas as pd
 import pytest
@@ -14,7 +15,7 @@ from swmm_resilience.ml.bench.schemas import (
     compute_prep_id,
     group_column_for,
 )
-from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
+from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
 
 
 def _tiny_prepared() -> PreparedDataset:
@@ -56,7 +57,7 @@ def _tiny_prepared() -> PreparedDataset:
     )
     descriptor = {
         "contract_id": "tabular_v3_17",
-        "feature_contract_sha256": "b" * 64,
+        "feature_contract_sha256": TABULAR_V3_17.descriptor_sha256,
         "run_ids": [1, 2],
         "n_rows": n,
         "feature_columns": list(FEATURE_COLUMNS_V17),
@@ -261,6 +262,48 @@ def test_feature_columns_must_match_the_contract_order():
             manifest=prepared.manifest,
             quality=prepared.quality,
         )
+
+
+def _without_temporal_features(prepared):
+    X = prepared.X.drop(columns=["duracion_horas", "tiempo_al_pico_h"])
+    manifest = {
+        **prepared.manifest,
+        "feature_columns": list(X.columns),
+    }
+    descriptor = {field: manifest[field] for field in PREP_ID_DESCRIPTOR_FIELDS}
+    prep_id = compute_prep_id(descriptor)
+    manifest["prep_id"] = prep_id
+    return replace(prepared, prep_id=prep_id, X=X, manifest=manifest)
+
+
+def test_save_rejects_an_in_memory_feature_projection(tmp_path):
+    projected = _without_temporal_features(_tiny_prepared())
+    output_dir = tmp_path / "prepared"
+
+    with pytest.raises(ValueError, match="feature_columns.*contract order"):
+        projected.save(output_dir)
+
+    assert not output_dir.exists()
+
+
+def test_load_rejects_a_persisted_feature_projection(tmp_path):
+    prepared = _tiny_prepared()
+    directory = prepared.save(tmp_path / "prepared")
+    projected = prepared.X.drop(columns=["duracion_horas", "tiempo_al_pico_h"])
+    projected.to_parquet(directory / "features.parquet", index=False)
+
+    manifest = dict(prepared.manifest)
+    manifest["feature_columns"] = list(projected.columns)
+    descriptor = {
+        field: manifest[field] for field in PREP_ID_DESCRIPTOR_FIELDS
+    }
+    manifest["prep_id"] = compute_prep_id(descriptor)
+    (directory / "manifest.json").write_text(
+        json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="feature_columns.*contract order"):
+        PreparedDataset.load(directory)
 
 
 def test_keys_columns_must_match_the_contract():

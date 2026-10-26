@@ -15,7 +15,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from ..contracts import FEATURE_COLUMNS_V17, TARGET_DEFINITIONS_V17
+from ..contracts import (
+    FEATURE_COLUMNS_V17,
+    TARGET_DEFINITIONS_V17,
+    validate_feature_contract_manifest,
+)
 
 _TARGET_NAME_BY_TASK = {item.task: item.name for item in TARGET_DEFINITIONS_V17}
 _CLF_TARGET_NAME = _TARGET_NAME_BY_TASK["classification"]
@@ -404,9 +408,12 @@ class PreparedDataset:
     quality: dict
 
     def __post_init__(self) -> None:
-        expected_feature_columns = tuple(
-            self.manifest.get("feature_columns", FEATURE_COLUMNS_V17)
+        validate_feature_contract_manifest(
+            self.manifest,
+            tuple(self.X.columns),
+            allow_feature_subset=True,
         )
+        expected_feature_columns = tuple(self.manifest["feature_columns"])
         if tuple(self.X.columns) != expected_feature_columns:
             raise ValueError(
                 "The features are not in the contract order "
@@ -457,6 +464,10 @@ class PreparedDataset:
     def save(self, output_dir: Path | str) -> Path:
         """Escribe el dataset en ``output_dir/<prep_id>/`` y devuelve esa ruta."""
         _validate_manifest_protocol_definitions(self.manifest)
+        validate_feature_contract_manifest(
+            self.manifest,
+            tuple(self.X.columns),
+        )
         _validate_manifest_identity(self.manifest)
         if self.prep_id != self.manifest.get("prep_id"):
             raise ValueError(
@@ -494,10 +505,15 @@ class PreparedDataset:
         )
         _validate_manifest_protocol_definitions(manifest)
         _validate_manifest_identity(manifest)
+        features = pd.read_parquet(directory / _COMPONENT_FILES["features"])
+        validate_feature_contract_manifest(
+            manifest,
+            tuple(features.columns),
+        )
         return cls(
             prep_id=manifest["prep_id"],
             keys=pd.read_parquet(directory / _COMPONENT_FILES["keys"]),
-            X=pd.read_parquet(directory / _COMPONENT_FILES["features"]),
+            X=features,
             y_clf=targets[_CLF_TARGET_NAME],
             y_reg=targets[_REG_TARGET_NAME],
             folds=pd.read_parquet(directory / _COMPONENT_FILES["folds"]),

@@ -158,6 +158,78 @@ NULLABLE_FEATURE_COLUMNS_V4_21 = frozenset(
 
 TABULAR_V4_21 = FeatureContract("tabular_v4_21", FEATURE_DEFINITIONS_V21)
 
+FEATURE_CONTRACTS = {
+    TABULAR_V3_17.contract_id: TABULAR_V3_17,
+    TABULAR_V4_21.contract_id: TABULAR_V4_21,
+}
+
+
+def resolve_feature_contract(contract_id: str) -> FeatureContract:
+    """Return a registered feature contract or reject unknown identifiers."""
+    try:
+        return FEATURE_CONTRACTS[contract_id]
+    except KeyError as exc:
+        raise FeatureContractError(
+            f"Unknown feature contract: {contract_id!r}"
+        ) from exc
+
+
+def validate_feature_contract_manifest(
+    manifest: dict,
+    actual_columns: tuple[str, ...] | None = None,
+    *,
+    allow_feature_subset: bool = False,
+) -> FeatureContract:
+    """Validate a manifest's registered contract and ordered feature list.
+
+    ``allow_feature_subset`` is for in-memory baseline projections. Candidate
+    training always requires the complete registered feature order.
+    """
+    contract_id = manifest.get("contract_id")
+    contract_sha256 = manifest.get("feature_contract_sha256")
+    feature_columns = manifest.get("feature_columns")
+    if contract_id is None and contract_sha256 is None and feature_columns is None:
+        raise FeatureContractError(
+            "Prepared manifest is missing contract metadata: contract_id, "
+            "feature_contract_sha256, and feature_columns are required"
+        )
+    if not isinstance(contract_id, str) or not contract_id:
+        raise FeatureContractError("Prepared manifest is missing contract_id")
+    contract = resolve_feature_contract(contract_id)
+    if contract_sha256 != contract.descriptor_sha256:
+        raise FeatureContractError(
+            "feature_contract_sha256 does not match registered contract "
+            f"{contract.contract_id}"
+        )
+    if not isinstance(feature_columns, (list, tuple)):
+        raise FeatureContractError("Prepared manifest is missing feature_columns")
+    declared_columns = tuple(feature_columns)
+    if not all(isinstance(name, str) for name in declared_columns):
+        raise FeatureContractError("feature_columns must contain only strings")
+    if declared_columns != contract.feature_names:
+        positions_by_name = {
+            name: index for index, name in enumerate(contract.feature_names)
+        }
+        positions = [
+            positions_by_name[name]
+            for name in declared_columns
+            if name in positions_by_name
+        ]
+        is_ordered_subset = (
+            len(set(declared_columns)) == len(declared_columns)
+            and len(positions) == len(declared_columns)
+            and positions == sorted(positions)
+        )
+        if not allow_feature_subset or not is_ordered_subset:
+            raise FeatureContractError(
+                f"feature_columns do not match contract order for {contract.contract_id}"
+            )
+    if actual_columns is not None and actual_columns != declared_columns:
+        raise FeatureContractError(
+            f"X.columns do not match contract order declared for {contract.contract_id}"
+        )
+    return contract
+
 
 def validate_feature_frame(frame: pd.DataFrame) -> pd.DataFrame:
     return TABULAR_V3_17.validate_frame(frame)

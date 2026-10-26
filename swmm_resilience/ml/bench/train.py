@@ -19,7 +19,7 @@ import joblib
 import numpy as np
 
 from ...config import ML_RANDOM_STATE
-from ..contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
+from ..contracts import validate_feature_contract_manifest
 from .registry import get_family
 from .schemas import PreparedDataset
 
@@ -57,6 +57,10 @@ def train_candidate(
 ) -> CandidateArtifacts:
     """Ajusta la cascada sobre todo el dataset y persiste los artefactos."""
     family = get_family(family_name)
+    feature_contract = validate_feature_contract_manifest(
+        prepared.manifest,
+        tuple(prepared.X.columns),
+    )
     directory = Path(output_dir) / family_name
     directory.mkdir(parents=True, exist_ok=True)
 
@@ -98,9 +102,9 @@ def train_candidate(
             "classifier": family.preprocessing_descriptor(classifier_params),
             "regressor": family.preprocessing_descriptor(regressor_params),
         },
-        "ordered_features": list(FEATURE_COLUMNS_V17),
-        "feature_contract_id": TABULAR_V3_17.contract_id,
-        "feature_contract_sha256": TABULAR_V3_17.descriptor_sha256,
+        "ordered_features": list(feature_contract.feature_names),
+        "feature_contract_id": feature_contract.contract_id,
+        "feature_contract_sha256": feature_contract.descriptor_sha256,
         "target_transform": {"regressor": "log1p", "inverse": "expm1"},
         "scale_pos_weight": float(scale_pos_weight),
         "regressor_training_rows": n_positive,

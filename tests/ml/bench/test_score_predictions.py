@@ -9,8 +9,18 @@ from swmm_resilience.ml.bench.schemas import (
     OOF_COLUMNS,
     PreparedDataset,
 )
-from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
+from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
 from tests.ml.bench.prepared_factory import make_prepared, perfect_oof
+
+
+def _v17_manifest(prep_id, protocols):
+    return {
+        "prep_id": prep_id,
+        "protocols": list(protocols),
+        "contract_id": TABULAR_V3_17.contract_id,
+        "feature_contract_sha256": TABULAR_V3_17.descriptor_sha256,
+        "feature_columns": list(FEATURE_COLUMNS_V17),
+    }
 
 
 @pytest.fixture
@@ -65,7 +75,7 @@ def prepared() -> PreparedDataset:
         y_clf=pd.Series([0, 1, 1, 0, 1, 1], name="inunda"),
         y_reg=pd.Series([0.0, 10.0, 20.0, 0.0, 30.0, 40.0], name="vol_inundacion_m3"),
         folds=folds,
-        manifest={"prep_id": "0123456789abcdef", "protocols": ["LOSO"]},
+        manifest=_v17_manifest("0123456789abcdef", ["LOSO"]),
         quality={},
     )
 
@@ -233,7 +243,7 @@ def test_regressor_oracle_pools_across_folds_not_averaged():
         y_clf=pd.Series([1, 1, 1], name="inunda"),
         y_reg=pd.Series([10.0, 20.0, 1000.0], name="vol_inundacion_m3"),
         folds=folds,
-        manifest={"prep_id": "pool_vs_mean", "protocols": ["LOSO"]},
+        manifest=_v17_manifest("pool_vs_mean", ["LOSO"]),
         quality={},
     )
     oof = pd.DataFrame(
@@ -332,7 +342,7 @@ def test_by_factor_values_are_correct_not_just_the_key_set():
         y_clf=pd.Series([1, 0, 1, 0, 1, 1], name="inunda"),
         y_reg=pd.Series([10.0, 0.0, 20.0, 0.0, 30.0, 40.0], name="vol_inundacion_m3"),
         folds=folds,
-        manifest={"prep_id": "by_factor_values", "protocols": ["LOSO"]},
+        manifest=_v17_manifest("by_factor_values", ["LOSO"]),
         quality={},
     )
     oof = pd.DataFrame(
@@ -406,10 +416,7 @@ def test_each_protocol_is_scored_from_its_own_predictions_not_pooled():
         y_clf=pd.Series([1] * n, name="inunda"),
         y_reg=pd.Series([0.0, 10.0, 20.0, 0.0, 30.0], name="vol_inundacion_m3"),
         folds=folds,
-        manifest={
-            "prep_id": "two_protocols",
-            "protocols": ["LOSO", "GroupKFold5"],
-        },
+        manifest=_v17_manifest("two_protocols", ["LOSO", "GroupKFold5"]),
         quality={},
     )
     oof = pd.DataFrame(

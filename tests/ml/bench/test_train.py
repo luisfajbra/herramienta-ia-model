@@ -1,4 +1,8 @@
 import json
+from dataclasses import replace
+from pathlib import Path
+import shutil
+from uuid import uuid4
 
 import joblib
 import numpy as np
@@ -7,7 +11,12 @@ import pytest
 
 from swmm_resilience.ml.bench.preprocess import prepare_dataset
 from swmm_resilience.ml.bench.train import load_candidate, train_candidate
-from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
+from swmm_resilience.ml.contracts import (
+    FEATURE_COLUMNS_V17,
+    FEATURE_COLUMNS_V21,
+    TABULAR_V4_21,
+)
+from tests.ml.bench.prepared_factory import make_prepared
 
 TINY = {"n_estimators": 5, "max_depth": 2, "learning_rate": 0.3, "subsample": 1.0}
 
@@ -42,6 +51,134 @@ def test_metadata_records_the_prep_id_and_feature_order(prepared, tmp_path):
     assert "library_versions" in metadata
     assert metadata["preprocessing"]["classifier"]["imputer"] == "median"
     assert metadata["preprocessing"]["regressor"]["imputer"] == "median"
+
+
+@pytest.fixture
+def prepared_v21():
+    base = make_prepared(
+        [
+            {"shape_id": "shape_a", "node_id": 1, "factor_mult": 1.0,
+             "vol": 0.0, "duracion_horas": 1.0, "tiempo_al_pico_h": 0.5},
+            {"shape_id": "shape_b", "node_id": 1, "factor_mult": 2.0,
+             "vol": 2.0, "duracion_horas": 1.0, "tiempo_al_pico_h": 0.5},
+        ],
+        ("LOSO",),
+    )
+    X = pd.DataFrame(0.0, index=base.X.index, columns=FEATURE_COLUMNS_V21)
+    manifest = {
+        **base.manifest,
+        "contract_id": TABULAR_V4_21.contract_id,
+        "feature_contract_sha256": TABULAR_V4_21.descriptor_sha256,
+        "feature_columns": list(FEATURE_COLUMNS_V21),
+    }
+    return replace(base, X=X, manifest=manifest)
+
+
+def test_v4_21_candidate_records_its_actual_contract_and_feature_order(prepared_v21):
+    output_dir = Path("outputs") / f"contract-metadata-test-{uuid4().hex}"
+    try:
+        artifacts = train_candidate(
+            prepared_v21, "xgboost", TINY, TINY, output_dir
+        )
+        metadata = json.loads(artifacts.metadata_path.read_text(encoding="utf-8"))
+        classifier = joblib.load(artifacts.classifier_path)
+        regressor = joblib.load(artifacts.regressor_path)
+
+        assert classifier.n_features_in_ == 21
+        assert regressor.n_features_in_ == 21
+        assert metadata["feature_contract_id"] == TABULAR_V4_21.contract_id
+        assert metadata["feature_contract_sha256"] == TABULAR_V4_21.descriptor_sha256
+        assert metadata["ordered_features"] == list(FEATURE_COLUMNS_V21)
+    finally:
+        shutil.rmtree(output_dir, ignore_errors=True)
+
+
+def test_v17_candidate_keeps_its_complete_legacy_contract():
+    prepared_v17 = make_prepared(
+        [
+            {"shape_id": "shape_a", "node_id": 1, "factor_mult": 1.0,
+             "vol": 0.0, "duracion_horas": 1.0, "tiempo_al_pico_h": 0.5},
+            {"shape_id": "shape_b", "node_id": 1, "factor_mult": 2.0,
+             "vol": 2.0, "duracion_horas": 1.0, "tiempo_al_pico_h": 0.5},
+        ],
+        ("LOSO",),
+    )
+    output_dir = Path("outputs") / f"contract-metadata-v17-{uuid4().hex}"
+    try:
+        artifacts = train_candidate(
+            prepared_v17, "xgboost", TINY, TINY, output_dir
+        )
+        metadata = json.loads(artifacts.metadata_path.read_text(encoding="utf-8"))
+
+        assert metadata["feature_contract_id"] == "tabular_v3_17"
+        assert metadata["ordered_features"] == list(FEATURE_COLUMNS_V17)
+    finally:
+        shutil.rmtree(output_dir, ignore_errors=True)
+
+
+def test_prepared_dataset_rejects_v4_21_manifest_with_wrong_contract_hash(prepared_v21):
+    with pytest.raises(ValueError, match="feature_contract_sha256"):
+        replace(
+            prepared_v21,
+            manifest={**prepared_v21.manifest, "feature_contract_sha256": "0" * 64},
+        )
+
+
+def test_prepared_dataset_rejects_contractless_v17_manifest():
+    prepared_v17 = make_prepared(
+        [
+            {"shape_id": "shape_a", "node_id": 1, "factor_mult": 1.0,
+             "vol": 0.0, "duracion_horas": 1.0, "tiempo_al_pico_h": 0.5},
+            {"shape_id": "shape_b", "node_id": 1, "factor_mult": 2.0,
+             "vol": 2.0, "duracion_horas": 1.0, "tiempo_al_pico_h": 0.5},
+        ],
+        ("LOSO",),
+    )
+    manifest = {"prep_id": prepared_v17.prep_id, "protocols": ["LOSO"]}
+
+    with pytest.raises(ValueError, match="contract metadata"):
+        replace(prepared_v17, manifest=manifest)
+
+
+def test_prepared_dataset_rejects_v4_21_manifest_with_unknown_contract(prepared_v21):
+    with pytest.raises(ValueError, match="Unknown feature contract"):
+        replace(prepared_v21, manifest={**prepared_v21.manifest, "contract_id": "v99"})
+
+
+def test_prepared_dataset_does_not_infer_v17_for_v21_features(prepared_v21):
+    manifest = dict(prepared_v21.manifest)
+    manifest.pop("contract_id")
+
+    with pytest.raises(ValueError, match="contract_id"):
+        replace(prepared_v21, manifest=manifest)
+
+
+def test_prepared_dataset_rejects_feature_order_different_from_contract(prepared_v21):
+    manifest = {
+        **prepared_v21.manifest,
+        "feature_columns": list(reversed(FEATURE_COLUMNS_V21)),
+    }
+    with pytest.raises(ValueError, match="feature_columns.*contract order"):
+        replace(prepared_v21, manifest=manifest)
+
+
+def test_training_rejects_mutated_feature_order_before_fit(prepared_v21, monkeypatch):
+    prepared_v21.X.columns = list(reversed(FEATURE_COLUMNS_V21))
+
+    def unexpected_fit(*args, **kwargs):
+        pytest.fail("candidate fitting must not start with a mismatched feature order")
+
+    from swmm_resilience.ml.bench.models import xgboost_family
+
+    monkeypatch.setattr(xgboost_family.Pipeline, "fit", unexpected_fit)
+    with pytest.raises(ValueError, match="X.columns.*contract order"):
+        train_candidate(
+            prepared_v21,
+            "xgboost",
+            TINY,
+            TINY,
+            Path("outputs") / f"contract-order-test-{uuid4().hex}",
+        )
 
 
 def test_svm_metadata_records_each_tasks_kernel_mapping(prepared, tmp_path):
