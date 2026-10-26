@@ -415,33 +415,33 @@ def build_follow_up_plan() -> dict[str, Any]:
     return {
         "completed_steps": [
             {
-                "step": "Clasificar columnas del dataset por rol analitico.",
+                "step": "Classify the dataset columns by analytical role.",
                 "status": "completed",
             },
             {
-                "step": "Generar un chequeo base de calidad del dataset.",
+                "step": "Generate a baseline quality check of the dataset.",
                 "status": "completed",
             },
             {
-                "step": "Calcular correlacion entre features candidatas y targets.",
+                "step": "Compute the correlation between candidate features and targets.",
                 "status": "completed",
             },
             {
-                "step": "Agregar PCA diagnostico para interpretar redundancia y estructura del dataset.",
+                "step": "Add diagnostic PCA to interpret redundancy and structure of the dataset.",
                 "status": "completed",
             },
             {
-                "step": "Preparar la generacion de ydata-profiling como auditoria visual complementaria.",
+                "step": "Prepare the ydata-profiling generation as a complementary visual audit.",
                 "status": "completed",
             },
         ],
         "pending_steps": [
             {
-                "step": "Revisar leakage de forma explicita y ajustar ML_DROP_COLUMNS si hace falta.",
+                "step": "Explicitly review leakage and adjust ML_DROP_COLUMNS if needed.",
                 "status": "pending",
             },
             {
-                "step": "Traducir hallazgos a una recomendacion formal de keep/drop para el pipeline de entrenamiento.",
+                "step": "Translate the findings into a formal keep/drop recommendation for the training pipeline.",
                 "status": "pending",
             },
         ],
@@ -545,16 +545,16 @@ def build_pca_interpretation(summary: dict[str, Any], top_loadings_df: pd.DataFr
     """Generate a compact text interpretation for the PCA artifacts."""
     lines = [
         "PCA diagnostic summary",
-        f"- Features analizadas: {summary['feature_count']}",
-        f"- Muestras: {summary['sample_count']}",
-        f"- Varianza explicada por PC1: {summary['pc1_variance_ratio']:.4f}",
-        f"- Varianza acumulada PC1-PC2: {summary['pc2_cumulative_variance_ratio']:.4f}",
-        f"- Varianza acumulada PC1-PC3: {summary['pc3_cumulative_variance_ratio']:.4f}",
-        f"- Componentes para 80%: {summary['components_for_80pct_variance']}",
-        f"- Componentes para 90%: {summary['components_for_90pct_variance']}",
-        f"- Componentes para 95%: {summary['components_for_95pct_variance']}",
+        f"- Features analyzed: {summary['feature_count']}",
+        f"- Samples: {summary['sample_count']}",
+        f"- Variance explained by PC1: {summary['pc1_variance_ratio']:.4f}",
+        f"- Cumulative variance PC1-PC2: {summary['pc2_cumulative_variance_ratio']:.4f}",
+        f"- Cumulative variance PC1-PC3: {summary['pc3_cumulative_variance_ratio']:.4f}",
+        f"- Components for 80%: {summary['components_for_80pct_variance']}",
+        f"- Components for 90%: {summary['components_for_90pct_variance']}",
+        f"- Components for 95%: {summary['components_for_95pct_variance']}",
         "",
-        "Top loadings por componente guardado:",
+        "Top loadings per saved component:",
     ]
 
     for component in sorted(top_loadings_df["component"].unique()):
@@ -579,7 +579,7 @@ def generate_ydata_profile(
     except ImportError:
         return {
             "status": "skipped_missing_dependency",
-            "message": "No se pudo generar ydata-profiling porque la dependencia no esta instalada.",
+            "message": "Could not generate ydata-profiling because the dependency is not installed.",
             "expected_output": str(output_path),
         }
 
@@ -606,13 +606,13 @@ def generate_ydata_profile(
         profile.to_file(output_path)
         return {
             "status": "generated",
-            "message": "Reporte ydata-profiling generado correctamente.",
+            "message": "ydata-profiling report generated successfully.",
             "output_file": str(output_path),
         }
     except Exception as exc:
         return {
             "status": "failed",
-            "message": f"Fallo la generacion del reporte ydata-profiling: {exc}",
+            "message": f"Failed to generate the ydata-profiling report: {exc}",
             "expected_output": str(output_path),
         }
 
@@ -624,7 +624,7 @@ def build_model_input_profile_frame(
     """Return the exact feature frame that would be used as model input."""
     feature_columns = get_feature_columns(df, target=target)
     if not feature_columns:
-        raise ValueError("No se encontraron columnas de entrada para el profiling del modelo.")
+        raise ValueError("No input columns were found for the model profiling.")
     return df[feature_columns].copy(), feature_columns
 
 
@@ -639,7 +639,7 @@ def run_dataset_review(
     """Run the dataset review and write reproducible artifacts to disk."""
     csv_path = Path(csv_path)
     if not csv_path.exists():
-        raise FileNotFoundError(f"No se encontro el dataset: {csv_path}")
+        raise FileNotFoundError(f"Dataset not found: {csv_path}")
 
     review_dir = Path(output_dir) if output_dir is not None else DEFAULT_DATASET_REVIEW_DIR
     review_dir.mkdir(parents=True, exist_ok=True)
@@ -716,13 +716,13 @@ def run_dataset_review(
         except ImportError:
             pca_status = {
                 "status": "skipped_missing_dependency",
-                "message": "No se pudo ejecutar PCA porque scikit-learn no esta disponible en este interprete.",
+                "message": "Could not run PCA because scikit-learn is not available in this interpreter.",
                 "expected_output_dir": str(pca_dir),
             }
         except Exception as exc:
             pca_status = {
                 "status": "failed",
-                "message": f"Fallo la generacion del PCA diagnostico: {exc}",
+                "message": f"Failed to generate the diagnostic PCA: {exc}",
                 "expected_output_dir": str(pca_dir),
             }
 
@@ -765,7 +765,7 @@ def run_dataset_review(
         except Exception as exc:
             model_input_profile_status = {
                 "status": "failed",
-                "message": f"Fallo la generacion del reporte ydata-profiling para inputs del modelo: {exc}",
+                "message": f"Failed to generate the ydata-profiling report for the model inputs: {exc}",
                 "expected_output": str(profile_dir / "dataset_profile_model_inputs.html"),
                 "profile_scope": "model_inputs_after_drop_columns",
             }
@@ -812,14 +812,14 @@ def run_dataset_review(
     _write_json(plan, review_dir / "analysis_plan.json")
     workbook_artifact = _write_workbook(workbook_sheets, workbook_target_path)
 
-    print(f"\nDataset review generado en: {review_dir}")
-    print(f"  - Resumen base         : {review_dir / 'dataset_summary.json'}")
-    print(f"  - Grupos de columnas   : {review_dir / 'column_groups.json'}")
-    print(f"  - Tablas consolidadas  : {workbook_artifact['path']} ({workbook_artifact['format']})")
-    print(f"  - PCA diagnostico      : {pca_dir}")
+    print(f"\nDataset review generated in: {review_dir}")
+    print(f"  - Base summary         : {review_dir / 'dataset_summary.json'}")
+    print(f"  - Column groups        : {review_dir / 'column_groups.json'}")
+    print(f"  - Consolidated tables  : {workbook_artifact['path']} ({workbook_artifact['format']})")
+    print(f"  - Diagnostic PCA       : {pca_dir}")
     print(f"  - ydata-profiling full : {profile_status['full_dataset'].get('status')}")
     print(f"  - ydata-profiling X    : {profile_status['model_inputs'].get('status')}")
-    print(f"  - Plan de seguimiento  : {review_dir / 'analysis_plan.json'}")
+    print(f"  - Follow-up plan       : {review_dir / 'analysis_plan.json'}")
 
     return {
         "review_dir": review_dir,

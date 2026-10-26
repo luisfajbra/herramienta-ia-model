@@ -62,3 +62,27 @@ def compute_scenario_dynamic_features(
             }
         )
     return pd.DataFrame(rows)
+
+
+def compute_tributary_dynamic_features(
+    node_ids: list[str],
+    node_series: dict[str, list[tuple[float, float]]],
+    graph: "nx.DiGraph",
+    capacity_by_node: dict[str, float | None],
+) -> pd.DataFrame:
+    """Calcula las seis features tributarias (contrato tabular_v4_21) por nodo.
+
+    Usada por igual en el bulk de entrenamiento (con la serie efectiva
+    reconstruida via apply_shape + apply_closure_policy de fase B1) y en
+    ScenarioPredictor de inferencia (con scenario.node_series directo) --
+    es la MISMA función en ambos casos, tal como exige la spec §6.
+    """
+    from ..extraction.tributary_features import compute_node_tributary_features
+
+    rows = []
+    for node_id in node_ids:
+        features = compute_node_tributary_features(
+            node_id, node_series, graph, capacity_by_node.get(node_id)
+        )
+        rows.append({"node_id": node_id, **features})
+    return pd.DataFrame(rows)

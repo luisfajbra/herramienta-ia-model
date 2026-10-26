@@ -42,7 +42,7 @@ def _selected_model(models: dict, selected_name: str | None, preferred_name: str
     model_name = selected_name or preferred_name
     if model_name not in models:
         available = ", ".join(models.keys())
-        raise ValueError(f"El modelo '{model_name}' no esta disponible. Opciones: {available}")
+        raise ValueError(f"The model '{model_name}' is not available. Options: {available}")
     return model_name, models[model_name]
 
 
@@ -51,7 +51,7 @@ def _scenario_input_column(df: pd.DataFrame) -> str:
         return "inflow_multiplier"
     if "delta_inflow_lps" in df.columns:
         return "delta_inflow_lps"
-    raise ValueError("El dataset no tiene columna inflow_multiplier ni delta_inflow_lps.")
+    raise ValueError("The dataset has neither an inflow_multiplier nor a delta_inflow_lps column.")
 
 
 def _resolve_prediction_network(
@@ -84,20 +84,20 @@ def _resolve_prediction_network(
         if matches.empty:
             available = ", ".join(network_rows["network_file"].astype(str).tolist())
             raise ValueError(
-                f"La red '{network_selector}' no existe en el CSV. Redes disponibles: {available}"
+                f"The network '{network_selector}' does not exist in the CSV. Available networks: {available}"
             )
         if len(matches) > 1:
             raise ValueError(
-                "El selector de red coincide con varias redes del CSV. "
-                "Usa el nombre completo del .inp o un network_hash mas largo."
+                "The network selector matches several networks in the CSV. "
+                "Use the full .inp name or a longer network_hash."
             )
         selected_row = matches.iloc[0]
     else:
         if len(network_rows) > 1:
             available = ", ".join(network_rows["network_file"].astype(str).tolist())
             raise ValueError(
-                "El CSV contiene multiples redes y la prediccion desde CSV ya no mezcla redes "
-                f"silenciosamente. Indica una red concreta. Disponibles: {available}"
+                "The CSV contains multiple networks and prediction from CSV no longer mixes networks "
+                f"silently. Specify a particular network. Available: {available}"
             )
         selected_row = network_rows.iloc[0]
 
@@ -116,7 +116,7 @@ def _build_prediction_rows(
     target_nodes: list[str] | None,
 ) -> pd.DataFrame:
     if "node_id" not in df.columns:
-        raise ValueError("El dataset no tiene columna node_id.")
+        raise ValueError("The dataset has no node_id column.")
     scenario_column = _scenario_input_column(df)
 
     base_df = df.copy()
@@ -125,7 +125,7 @@ def _build_prediction_rows(
         base_df = base_df[base_df["node_id"].astype(str).isin(target_set)]
         missing = sorted(target_set - set(base_df["node_id"].astype(str)))
         if missing:
-            raise ValueError(f"Estos nodos no existen en el dataset: {', '.join(missing)}")
+            raise ValueError(f"These nodes do not exist in the dataset: {', '.join(missing)}")
 
     # One representative row per node keeps static topology fields. Dynamic
     # result columns are excluded later by ML_DROP_COLUMNS.
@@ -175,7 +175,7 @@ def predict_steady_flows(
     inflow_multipliers = normalize_inflow_multipliers(
         inflow_multipliers,
         minimum=1.0,
-        label="Los factores de prediccion",
+        label="The prediction factors",
     )
     df = train.load_dataset(dataset_csv)
     df, selected_network = _resolve_prediction_network(df, network_selector)

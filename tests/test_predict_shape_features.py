@@ -9,23 +9,54 @@ total flooded volume by up to 94%.
 
 from pathlib import Path
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 import pytest
 
 from swmm_resilience.extraction import dynamic_features as dyn_mod
 from swmm_resilience.ml import predict as predict_mod
+from swmm_resilience.ml.contracts import FeatureContract, FeatureDefinition
+
+# predict_network() validates its feature frame against the real
+# TABULAR_V4_21 contract (F3, final-review fix wave) regardless of whatever
+# FEATURE_COLS this fixture stubs in below -- swap in a matching 2-column
+# stub contract so this test's deliberately-reduced FEATURE_COLS still
+# passes real FeatureContract.validate_frame() logic, rather than bypassing
+# it.
+_STUB_CONTRACT = FeatureContract(
+    "stub_duracion_tiempo_al_pico",
+    (
+        FeatureDefinition("duracion_horas", "h", "stub for this test"),
+        FeatureDefinition("tiempo_al_pico_h", "h", "stub for this test"),
+    ),
+)
 
 
 class _StubModel:
     """Records the feature frame it is asked to predict on."""
 
-    def __init__(self):
+    def __init__(self, n_features_in_=2):
         self.seen = []
+        self.n_features_in_ = n_features_in_
 
     def predict(self, X):
         self.seen.append(X.copy())
         return np.zeros(len(X), dtype=int)
+
+
+def _write_promotion_record(models_dir):
+    """promotion.json coherente con los joblib del fixture (los crea si faltan)."""
+    import hashlib
+    import json
+
+    record = {}
+    for name, field in (("classifier", "classifier_sha256"), ("regressor", "regressor_sha256")):
+        path = models_dir / f"{name}.joblib"
+        if not path.exists():
+            path.write_bytes(f"stub-{name}".encode())
+        record[field] = hashlib.sha256(path.read_bytes()).hexdigest()
+    (models_dir / "promotion.json").write_text(json.dumps(record), encoding="utf-8")
 
 
 @pytest.fixture
@@ -36,6 +67,7 @@ def captured_features(monkeypatch, tmp_path):
             "node_id": ["N0", "N1"],
             "base_inflow_lps": [10.0, 5.0],
             "q_pico_acum_base": [10.0, 15.0],
+            "upstream_capacity_lps": [100.0, 100.0],
             "coord_x": [0.0, 1.0],
             "coord_y": [0.0, 1.0],
         }
@@ -52,10 +84,18 @@ def captured_features(monkeypatch, tmp_path):
     monkeypatch.setattr(predict_mod, "extract_static_features", lambda p: static)
     monkeypatch.setattr(predict_mod, "compute_topology_features", lambda df, p: df)
     monkeypatch.setattr(predict_mod, "base_shape_stats", lambda p: (4.25, 1.5))
+    # predict_network also reconstructs each node's own series (tabular_v4_21
+    # tributary features) from the .inp's own hydrograph via load_inp +
+    # build_network_graph; neither is exercised by this test (it targets the
+    # legacy duracion_horas/tiempo_al_pico_h path), so give both safe stubs.
+    monkeypatch.setattr(predict_mod, "load_inp", lambda p: {})
+    monkeypatch.setattr(predict_mod, "build_network_graph", lambda inp: (nx.DiGraph(), set()))
     monkeypatch.setattr(predict_mod, "FEATURE_COLS", ["duracion_horas", "tiempo_al_pico_h"])
+    monkeypatch.setattr(predict_mod, "TABULAR_V4_21", _STUB_CONTRACT)
 
     models_dir = tmp_path / "models"
     models_dir.mkdir()
+    _write_promotion_record(models_dir)
     (models_dir / "training_inp_hash.txt").write_text("hash", newline="\n")
 
     config = type(
@@ -111,3 +151,35 @@ def test_base_shape_stats_reads_the_inp_timeseries(monkeypatch):
     monkeypatch.setattr(predict_mod, "load_inp", lambda p: {"TIMESERIES": {"t": _TS()}})
 
     assert predict_mod.base_shape_stats(Path("x.inp")) == (3.0, 1.5)
+
+
+def test_base_shape_series_and_normalized_base_shape_pin_tributary_reconstruction(monkeypatch):
+    """Pin _base_shape_series (raw pass-through) and _normalized_base_shape
+    (peak-normalized to 1.0) against a fake .inp with a real, non-empty
+    TIMESERIES -- the 6 tabular_v4_21 tributary columns depend on both, and
+    every other test in this file stubs load_inp to {}, which hides them
+    entirely (_normalized_base_shape always short-circuits to [])."""
+
+    class _TS:
+        data = [(0.0, 2.0), (1.0, 10.0), (2.0, 4.0)]
+
+    monkeypatch.setattr(predict_mod, "load_inp", lambda p: {"TIMESERIES": {"t": _TS()}})
+
+    raw = predict_mod._base_shape_series(Path("x.inp"))
+    assert raw == [(0.0, 2.0), (1.0, 10.0), (2.0, 4.0)]
+
+    normalized = predict_mod._normalized_base_shape(Path("x.inp"))
+    peak = max(v for _, v in raw)
+    assert normalized == [(t, v / peak) for t, v in raw]
+    # The peak point itself must land exactly at 1.0.
+    peak_t, peak_norm = next((t, v) for t, v in normalized if t == 1.0)
+    assert peak_norm == 1.0
+
+
+def test_normalized_base_shape_zero_peak_returns_empty(monkeypatch):
+    class _TS:
+        data = [(0.0, 0.0)]
+
+    monkeypatch.setattr(predict_mod, "load_inp", lambda p: {"TIMESERIES": {"t": _TS()}})
+
+    assert predict_mod._normalized_base_shape(Path("x.inp")) == []

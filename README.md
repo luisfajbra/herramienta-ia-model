@@ -16,6 +16,13 @@ python main.py --only-maps
 python main.py --predict --factor 3.5
 ```
 
+> **Nota:** `python main.py` y `python main.py --only-ml` entrenan siempre
+> sobre el contrato legado de 17 features (`tabular_v3_17`) y escriben en
+> `outputs/models/`. Si el modelo activo ahí fue promovido desde el banco
+> con otro contrato (p. ej. `tabular_v4_21`, 21 features), ambos comandos
+> se niegan a sobreescribirlo y fallan con un mensaje explicando cómo
+> proceder -- revisa ese mensaje antes de borrar nada.
+
 Salidas principales:
 
 - `data/training/dataset_final.csv`

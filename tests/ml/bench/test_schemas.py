@@ -147,7 +147,7 @@ def test_protocols_select_their_required_group_column():
 
 
 def test_group_column_for_rejects_an_unknown_protocol():
-    with pytest.raises(ValueError, match="Protocolo desconocido"):
+    with pytest.raises(ValueError, match="Unknown protocol"):
         group_column_for("unknown")
 
 
@@ -250,7 +250,7 @@ def test_feature_columns_must_match_the_contract_order():
     prepared = _tiny_prepared()
     shuffled = prepared.X.loc[:, list(reversed(FEATURE_COLUMNS_V17))]
 
-    with pytest.raises(ValueError, match="orden del contrato"):
+    with pytest.raises(ValueError, match="contract order"):
         PreparedDataset(
             prep_id=prepared.prep_id,
             keys=prepared.keys,
@@ -267,7 +267,7 @@ def test_keys_columns_must_match_the_contract():
     prepared = _tiny_prepared()
     shuffled_keys = prepared.keys.loc[:, list(reversed(KEY_COLUMNS))]
 
-    with pytest.raises(ValueError, match="keys debe tener"):
+    with pytest.raises(ValueError, match="keys must have"):
         PreparedDataset(
             prep_id=prepared.prep_id,
             keys=shuffled_keys,
@@ -284,7 +284,7 @@ def test_folds_columns_must_match_the_contract():
     prepared = _tiny_prepared()
     shuffled_folds = prepared.folds.loc[:, list(reversed(FOLD_COLUMNS))]
 
-    with pytest.raises(ValueError, match="folds debe tener"):
+    with pytest.raises(ValueError, match="folds must have"):
         PreparedDataset(
             prep_id=prepared.prep_id,
             keys=prepared.keys,
@@ -303,7 +303,7 @@ def test_fold_provenance_must_not_be_null(column):
     invalid_folds = prepared.folds.copy()
     invalid_folds.loc[0, column] = None
 
-    with pytest.raises(ValueError, match="procedencia"):
+    with pytest.raises(ValueError, match="provenance"):
         PreparedDataset(
             prep_id=prepared.prep_id,
             keys=prepared.keys,
@@ -334,7 +334,7 @@ def test_fold_protocols_must_equal_manifest_protocols(manifest_protocols):
     prepared = _tiny_prepared()
     manifest = dict(prepared.manifest, protocols=manifest_protocols)
 
-    with pytest.raises(ValueError, match="protocolos.*folds.*--bench-prepare"):
+    with pytest.raises(ValueError, match="fold protocols.*--bench-prepare"):
         _rebuild_prepared(prepared, manifest=manifest)
 
 
@@ -346,7 +346,7 @@ def test_fold_provenance_rejects_invalid_sample_indices(sample_idx):
 
     with pytest.raises(
         ValueError,
-        match=r"(?:procedencia de folds|folds\.sample_idx).*--bench-prepare",
+        match=r"(?:fold provenance|folds\.sample_idx).*--bench-prepare",
     ):
         _rebuild_prepared(prepared, folds=invalid_folds)
 
@@ -366,7 +366,7 @@ def test_each_fold_must_partition_every_sample_exactly_once(mutation):
             first_two[1], "sample_idx"
         ]
 
-    with pytest.raises(ValueError, match="partición.*--bench-prepare"):
+    with pytest.raises(ValueError, match="partition.*--bench-prepare"):
         _rebuild_prepared(prepared, folds=invalid_folds)
 
 
@@ -380,7 +380,7 @@ def test_a_held_out_group_must_not_leak_into_train():
 
     with pytest.raises(
         ValueError,
-        match=r"(?:grupos|held_out_groups|procedencia).*--bench-prepare",
+        match=r"(?:groups|held_out_groups|provenance).*--bench-prepare",
     ):
         _rebuild_prepared(prepared, folds=invalid_folds)
 
@@ -391,7 +391,7 @@ def test_loso_rejects_more_than_one_held_out_group_per_fold():
     invalid_folds["split"] = "test"
     invalid_folds["held_out_groups"] = '["1.0", "2.0"]'
 
-    with pytest.raises(ValueError, match="LOSO.*grupo.*--bench-prepare"):
+    with pytest.raises(ValueError, match="LOSO.*group.*--bench-prepare"):
         _rebuild_prepared(prepared, folds=invalid_folds)
 
 
@@ -482,3 +482,12 @@ def test_non_contiguous_index_is_rejected():
             manifest=prepared.manifest,
             quality=prepared.quality,
         )
+
+
+def test_groupkfold5_interpretation_describes_interleaved_factor_groups():
+    from swmm_resilience.ml.bench.schemas import PROTOCOL_INTERPRETATION
+
+    text = PROTOCOL_INTERPRETATION["GroupKFold5"]
+    assert "interleaved" in text
+    assert "no fold holds out two contiguous factors" in text
+    assert "blocks" not in text

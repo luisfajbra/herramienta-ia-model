@@ -72,8 +72,8 @@ def train_candidate(
         # fast avoids burning a full classifier fit before aborting; both
         # paths raise ValueError, so no caller can tell the difference.
         raise ValueError(
-            "El dataset no tiene ninguna fila inundada (inunda == 1); "
-            "el regresor no se puede entrenar."
+            "The dataset has no flooded row (inunda == 1); "
+            "the regressor cannot be trained."
         )
     scale_pos_weight = n_negative / n_positive
 
@@ -94,7 +94,10 @@ def train_candidate(
         "prep_id": prepared.prep_id,
         "classifier_params": classifier_params,
         "regressor_params": regressor_params,
-        "preprocessing": family.preprocessing_descriptor(classifier_params),
+        "preprocessing": {
+            "classifier": family.preprocessing_descriptor(classifier_params),
+            "regressor": family.preprocessing_descriptor(regressor_params),
+        },
         "ordered_features": list(FEATURE_COLUMNS_V17),
         "feature_contract_id": TABULAR_V3_17.contract_id,
         "feature_contract_sha256": TABULAR_V3_17.descriptor_sha256,
@@ -127,7 +130,7 @@ def load_candidate(directory: Path | str) -> CandidateArtifacts:
     directory = Path(directory)
     metadata_path = directory / "metadata.json"
     if not metadata_path.exists():
-        raise FileNotFoundError(f"No hay metadata.json en {directory}")
+        raise FileNotFoundError(f"There is no metadata.json in {directory}")
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     return CandidateArtifacts(
         family=metadata["family"],

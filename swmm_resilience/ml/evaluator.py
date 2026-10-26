@@ -9,7 +9,8 @@ from sklearn.metrics import (
 )
 
 from ..config import Config
-from .trainer import FEATURE_COLS, make_classifier, make_regressor
+from .contracts import FEATURE_COLUMNS_V17
+from .trainer import make_classifier, make_regressor
 
 
 def _nse(y_true, y_pred) -> float:
@@ -52,7 +53,13 @@ def _pooled_regressor_oracle_metrics(y_true_parts: list, y_pred_parts: list) -> 
 
 
 def _run_cv(df: pd.DataFrame, config: Config, cv) -> dict:
-    X = df[FEATURE_COLS].values
+    # This module is "Stack B" (desechable en el Plan 3, ver
+    # test_parity_with_legacy_evaluator.py): sigue leyendo exclusivamente del
+    # view SQL training_samples_v17 (via load_training_frame), asi que se fija
+    # explicitamente al contrato v17 en lugar de seguir trainer.FEATURE_COLS,
+    # que desde la migracion v4_21 identifica a las 21 features nuevas usadas
+    # por ScenarioPredictor/predict_network, no por este stack.
+    X = df[list(FEATURE_COLUMNS_V17)].values
     y_clf = df["inunda"].values
     y_reg = df["vol_inundacion_m3"].values
     groups = df["factor_mult"].values
@@ -143,7 +150,7 @@ def evaluate_models(df: pd.DataFrame, config: Config, output_dir: Path) -> dict:
     all_results = {}
 
     for method in config.evaluation.methods:
-        print(f"  Evaluando {method}...")
+        print(f"  Evaluating {method}...")
         cv = LeaveOneGroupOut() if method == "LOSO" else GroupKFold(n_splits=5)
         all_results[method] = _run_cv(df, config, cv)
 

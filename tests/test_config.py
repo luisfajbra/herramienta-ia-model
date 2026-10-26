@@ -63,14 +63,14 @@ def test_load_config_rejects_missing_inp(tmp_path):
     cfg_path = write_config(tmp_path, inp_name="missing.inp")
     (tmp_path / "missing.inp").unlink()
 
-    with pytest.raises(FileNotFoundError, match="archivo .inp no existe"):
+    with pytest.raises(FileNotFoundError, match=".inp file does not exist"):
         load_config(cfg_path)
 
 
 def test_load_config_rejects_non_positive_step(tmp_path):
     cfg_path = write_config(tmp_path, factor_step=0)
 
-    with pytest.raises(ValueError, match="factor_step debe ser mayor que 0"):
+    with pytest.raises(ValueError, match="factor_step must be greater than 0"):
         load_config(cfg_path)
 
 
@@ -79,7 +79,7 @@ def test_load_config_rejects_unknown_algorithm(tmp_path):
     text = cfg_path.read_text(encoding="utf-8")
     cfg_path.write_text(text.replace('algorithm: "xgboost"', 'algorithm: "svm"', 1), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="Algoritmo de clasificador no soportado"):
+    with pytest.raises(ValueError, match="Unsupported classifier algorithm"):
         load_config(cfg_path)
 
 
@@ -104,3 +104,98 @@ def test_load_config_defaults_db_path_when_absent(tmp_path):
     cfg = load_config(write_config(tmp_path))
 
     assert cfg.dataset.db_path == tmp_path / "outputs" / "training_v17.sqlite3"
+
+
+def test_validation_inflow_closure_defaults(tmp_path):
+    """write_config() no incluye bloque validation: -- deben aplicar los defaults."""
+    config = load_config(write_config(tmp_path))
+    assert config.validation.inflow_closure_tolerance_lps == 0.01
+    assert config.validation.csv_inflow_closure_mode == "strict"
+
+
+def _write_config_with_validation_block(tmp_path: Path, validation_yaml: str) -> Path:
+    """Como write_config(), pero añade un bloque validation: al final del YAML."""
+    cfg = write_config(tmp_path)
+    text = cfg.read_text(encoding="utf-8")
+    cfg.write_text(text + f"\nvalidation:\n{validation_yaml}\n", encoding="utf-8")
+    return cfg
+
+
+def test_validation_inflow_closure_is_parsed_when_present(tmp_path):
+    cfg = _write_config_with_validation_block(
+        tmp_path,
+        '  drain_down_hours: 6.0\n  inflow_closure_tolerance_lps: 0.05\n'
+        '  csv_inflow_closure_mode: "close"',
+    )
+    config = load_config(cfg)
+    assert config.validation.inflow_closure_tolerance_lps == 0.05
+    assert config.validation.csv_inflow_closure_mode == "close"
+
+
+def test_validation_rejects_an_unknown_csv_inflow_closure_mode(tmp_path):
+    cfg = _write_config_with_validation_block(
+        tmp_path, '  csv_inflow_closure_mode: "auto"',
+    )
+    with pytest.raises(ValueError, match="strict.*close|close.*strict"):
+        load_config(cfg)
+
+
+def test_validation_drainage_state_defaults(tmp_path):
+    config = load_config(write_config(tmp_path))
+    assert config.validation.drainage_inflow_tolerance_lps == 0.01
+    assert config.validation.drainage_flooding_tolerance_lps == 0.01
+    assert config.validation.drainage_storage_change_tolerance_m3 == 0.01
+    assert config.validation.drainage_tail_window_hours == 1.0
+
+
+def test_validation_drainage_state_is_parsed_when_present(tmp_path):
+    cfg = _write_config_with_validation_block(
+        tmp_path,
+        '  drainage_inflow_tolerance_lps: 0.05\n'
+        '  drainage_flooding_tolerance_lps: 0.05\n'
+        '  drainage_storage_change_tolerance_m3: 0.1\n'
+        '  drainage_tail_window_hours: 2.0',
+    )
+    config = load_config(cfg)
+    assert config.validation.drainage_inflow_tolerance_lps == 0.05
+    assert config.validation.drainage_flooding_tolerance_lps == 0.05
+    assert config.validation.drainage_storage_change_tolerance_m3 == 0.1
+    assert config.validation.drainage_tail_window_hours == 2.0
+
+
+def test_validation_max_continuity_error_pct_default(tmp_path):
+    config = load_config(write_config(tmp_path))
+    assert config.validation.max_continuity_error_pct == 5.0
+
+
+def test_validation_max_continuity_error_pct_is_parsed_when_present(tmp_path):
+    cfg = _write_config_with_validation_block(
+        tmp_path, '  max_continuity_error_pct: 3.0',
+    )
+    config = load_config(cfg)
+    assert config.validation.max_continuity_error_pct == 3.0
+
+
+def test_validation_drainage_extension_defaults(tmp_path):
+    config = load_config(write_config(tmp_path))
+    assert config.validation.drainage_extension_increment_hours == 2.0
+    assert config.validation.drainage_extension_max_retries == 2
+
+
+def test_validation_drainage_extension_is_parsed_when_present(tmp_path):
+    cfg = _write_config_with_validation_block(
+        tmp_path,
+        '  drainage_extension_increment_hours: 1.0\n'
+        '  drainage_extension_max_retries: 5',
+    )
+    config = load_config(cfg)
+    assert config.validation.drainage_extension_increment_hours == 1.0
+    assert config.validation.drainage_extension_max_retries == 5
+
+
+def test_validation_drainage_extension_max_retries_rejects_negative(tmp_path):
+    cfg = _write_config_with_validation_block(
+        tmp_path, '  drainage_extension_max_retries: -1',
+    )
+    with pytest.raises(ValueError, match="drainage_extension_max_retries"):
+        load_config(cfg)

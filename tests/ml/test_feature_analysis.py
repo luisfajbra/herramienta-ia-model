@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from swmm_resilience.ml.trainer import FEATURE_COLS
+from swmm_resilience.ml.feature_analysis import FEATURE_COLS
 
 
 @pytest.fixture
@@ -101,8 +101,7 @@ def test_plot_shap_creates_summary_files(analysis_df, tmp_path):
     from sklearn.impute import SimpleImputer
     from sklearn.pipeline import Pipeline
     from xgboost import XGBClassifier, XGBRegressor
-    from swmm_resilience.ml.feature_analysis import plot_shap
-    from swmm_resilience.ml.trainer import FEATURE_COLS
+    from swmm_resilience.ml.feature_analysis import plot_shap, FEATURE_COLS
 
     X = analysis_df[FEATURE_COLS].values
     y_clf = analysis_df["inunda"].values

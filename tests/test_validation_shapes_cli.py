@@ -202,7 +202,7 @@ def test_rejects_a_missing_directory(tmp_path, captured_runs, monkeypatch, capsy
         main.main()
 
     assert exit_info.value.code == 2
-    assert "no existe el directorio" in capsys.readouterr().err
+    assert "does not exist" in capsys.readouterr().err
 
 
 def test_rejects_a_directory_with_no_shape_csvs(
@@ -218,4 +218,4 @@ def test_rejects_a_directory_with_no_shape_csvs(
         main.main()
 
     assert exit_info.value.code == 2
-    assert "no hay CSVs de forma" in capsys.readouterr().err
+    assert "no shape CSVs" in capsys.readouterr().err

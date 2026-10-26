@@ -70,7 +70,7 @@ def test_accepts_irregular_shared_grid(tmp_path):
 
 def test_rejects_missing_column(tmp_path):
     rows = [{"node_id": "1C", "time": "0:00"}, {"node_id": "2C", "time": "0:00"}]
-    with pytest.raises(ValueError, match="Columnas"):
+    with pytest.raises(ValueError, match="Invalid columns"):
         load_scenario(_write_csv(tmp_path, rows), NODES)
 
 
@@ -81,7 +81,7 @@ def test_rejects_extra_column(tmp_path):
         {"node_id": "2C", "time": "0:00", "value_lps": 0.0, "extra": 1},
         {"node_id": "2C", "time": "0:03", "value_lps": 0.5, "extra": 1},
     ]
-    with pytest.raises(ValueError, match="Columnas"):
+    with pytest.raises(ValueError, match="Invalid columns"):
         load_scenario(_write_csv(tmp_path, rows), NODES)
 
 
@@ -90,7 +90,7 @@ def test_rejects_missing_node(tmp_path):
         {"node_id": "1C", "time": "0:00", "value_lps": 0.0},
         {"node_id": "1C", "time": "0:03", "value_lps": 1.0},
     ]
-    with pytest.raises(ValueError, match="Nodos incorrectos"):
+    with pytest.raises(ValueError, match="Incorrect nodes"):
         load_scenario(_write_csv(tmp_path, rows), NODES)
 
 
@@ -99,27 +99,27 @@ def test_rejects_extra_node(tmp_path):
         {"node_id": "3C", "time": "0:00", "value_lps": 0.0},
         {"node_id": "3C", "time": "0:03", "value_lps": 0.5},
     ]
-    with pytest.raises(ValueError, match="Nodos incorrectos"):
+    with pytest.raises(ValueError, match="Incorrect nodes"):
         load_scenario(_write_csv(tmp_path, rows), NODES)
 
 
 def test_rejects_invalid_time_format(tmp_path):
     rows = _valid_rows()
     rows[0]["time"] = "abc"
-    with pytest.raises(ValueError, match="formato inválido"):
+    with pytest.raises(ValueError, match="invalid format"):
         load_scenario(_write_csv(tmp_path, rows), NODES)
 
 
 def test_rejects_invalid_minutes(tmp_path):
     rows = _valid_rows()
     rows[0]["time"] = "0:60"
-    with pytest.raises(ValueError, match="formato inválido"):
+    with pytest.raises(ValueError, match="invalid format"):
         load_scenario(_write_csv(tmp_path, rows), NODES)
 
 
 def test_rejects_duplicate_node_time_key(tmp_path):
     rows = _valid_rows() + [{"node_id": "1C", "time": "0:00", "value_lps": 9.9}]
-    with pytest.raises(ValueError, match="duplicadas"):
+    with pytest.raises(ValueError, match="Duplicate"):
         load_scenario(_write_csv(tmp_path, rows), NODES)
 
 
@@ -151,7 +151,7 @@ def test_rejects_fewer_than_two_time_steps(tmp_path):
         {"node_id": "1C", "time": "0:00", "value_lps": 0.0},
         {"node_id": "2C", "time": "0:00", "value_lps": 0.0},
     ]
-    with pytest.raises(ValueError, match="menos de 2 tiempos"):
+    with pytest.raises(ValueError, match="fewer than 2 times"):
         load_scenario(_write_csv(tmp_path, rows), NODES)
 
 
@@ -162,28 +162,28 @@ def test_rejects_mismatched_time_grids(tmp_path):
         {"node_id": "2C", "time": "0:00", "value_lps": 0.0},
         {"node_id": "2C", "time": "0:10", "value_lps": 1.0},
     ]
-    with pytest.raises(ValueError, match="malla temporal diferente"):
+    with pytest.raises(ValueError, match="different time grid"):
         load_scenario(_write_csv(tmp_path, rows), NODES)
 
 
 def test_rejects_negative_value(tmp_path):
     rows = _valid_rows()
     rows[0]["value_lps"] = -0.1
-    with pytest.raises(ValueError, match="negativos"):
+    with pytest.raises(ValueError, match="negative values"):
         load_scenario(_write_csv(tmp_path, rows), NODES)
 
 
 def test_rejects_nan_value(tmp_path):
     rows = _valid_rows()
     rows[0]["value_lps"] = float("nan")
-    with pytest.raises(ValueError, match="no numéricos"):
+    with pytest.raises(ValueError, match="non-numeric"):
         load_scenario(_write_csv(tmp_path, rows), NODES)
 
 
 def test_rejects_non_numeric_string_value(tmp_path):
     rows = _valid_rows()
     rows[0]["value_lps"] = "abc"
-    with pytest.raises(ValueError, match="no numéricos"):
+    with pytest.raises(ValueError, match="non-numeric"):
         load_scenario(_write_csv(tmp_path, rows), NODES)
 
 

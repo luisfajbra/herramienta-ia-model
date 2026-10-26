@@ -15,6 +15,15 @@ dataset:
 
 validation:
   drain_down_hours: 6.0
+  inflow_closure_tolerance_lps: 0.01
+  csv_inflow_closure_mode: "strict"
+  drainage_inflow_tolerance_lps: 0.01
+  drainage_flooding_tolerance_lps: 0.01
+  drainage_storage_change_tolerance_m3: 0.01
+  drainage_tail_window_hours: 1.0
+  max_continuity_error_pct: 5.0
+  drainage_extension_increment_hours: 2.0
+  drainage_extension_max_retries: 2
 
 ml:
   classifier:
@@ -53,6 +62,9 @@ bench:
       - {metric: "classifier.f1", direction: "maximize"}
       - {metric: "regressor_oracle.nse", direction: "maximize"}
   promote: "none"
+  tuning:
+    n_trials: 50
+    n_splits: 5
   families:
     xgboost:
       enabled: true
@@ -76,11 +88,14 @@ bench:
       regressor: {alpha: 1.0}
     svm:
       enabled: true
-      # Justificacion: C=10 y kernel RBF son los valores que usaba el stack
-      # legacy (ML_MODEL_CONFIGS.svr_rbf), conservados para que los numeros
-      # sean comparables con lo ya reportado.
-      classifier: {C: 10.0, kernel: "rbf", gamma: "scale"}
-      regressor: {C: 10.0, kernel: "rbf", epsilon: 0.1}
+      # SVM aproximado: Nystroem (mapeo RBF) + SVM lineal de margen (hinge,
+      # SGD) con calibracion de Platt para predict_proba; el regresor es un
+      # SVR lineal (epsilon-insensible) sobre el mismo mapeo. SVC/SVR exactos
+      # son O(n^2)-O(n^3) e inviables con ~154 000 filas; el nombre interno
+      # "svm" se conserva por compatibilidad con el registro.
+      # gamma~=1/17 reproduce "scale" tras estandarizar las 17 features del banco.
+      classifier: {gamma: 0.05, n_components: 200, alpha: 0.0001, max_iter: 2000, tol: 0.001}
+      regressor: {gamma: 0.05, n_components: 200, alpha: 0.0001, epsilon: 0.1, max_iter: 2000, tol: 0.001}
     mlp:
       enabled: true
       # Justificacion: dos capas ocultas (64, 32) sobre 17 features es una

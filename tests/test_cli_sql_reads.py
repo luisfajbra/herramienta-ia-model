@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import main
 from swmm_resilience.database.training_queries import load_training_frame
@@ -23,7 +24,8 @@ def base_shape_frame() -> pd.DataFrame:
     )
 
 
-def test_resilience_curve_reads_the_frame_from_sql(monkeypatch):
+def test_resilience_curve_reads_the_frame_from_sql(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "METRICS_DIR", tmp_path / "metrics")
     load_calls = []
     curve_calls = []
 
@@ -53,7 +55,7 @@ def test_resilience_curve_reads_the_frame_from_sql(monkeypatch):
     assert curve_calls[0][1] == [1.0, 2.0]
 
 
-def test_only_ml_reads_the_frame_from_sql(monkeypatch):
+def test_only_ml_reads_the_frame_from_sql(monkeypatch, tmp_path):
     load_calls = []
     train_calls = []
     frame = base_shape_frame()
@@ -72,6 +74,12 @@ def test_only_ml_reads_the_frame_from_sql(monkeypatch):
     monkeypatch.setattr(
         main, "generate_feature_importance_plots", lambda clf, reg, out: None
     )
+    # F2's pre-flight contract check reads MODELS_DIR before anything else
+    # in this branch; point it at an empty tmp dir so it doesn't trip on
+    # whatever is in the real outputs/models/ (a 21-feature promoted model
+    # in this repo, which --only-ml must legitimately refuse -- that's
+    # covered separately, not what this test is about).
+    monkeypatch.setattr(main, "MODELS_DIR", tmp_path / "models")
     monkeypatch.setattr(sys, "argv", ["main.py", "--only-ml"])
 
     main.main()
@@ -136,6 +144,7 @@ def test_persist_sql_writes_to_config_dataset_db_path(monkeypatch):
     import swmm_resilience.database.connection as connection_module
     import swmm_resilience.database.migrations as migrations_module
     import swmm_resilience.database.csv_backfill as csv_backfill_module
+    import swmm_resilience.database.training_queries as training_queries_module
 
     connect_calls = []
     csv_frame = pd.DataFrame(
@@ -184,12 +193,139 @@ def test_persist_sql_writes_to_config_dataset_db_path(monkeypatch):
     monkeypatch.setattr(
         csv_backfill_module, "persist_training_run", fake_persist_training_run
     )
+    monkeypatch.setattr(
+        csv_backfill_module, "backfill_tributary_features", lambda *args, **kwargs: 0,
+    )
+    monkeypatch.setattr(
+        training_queries_module, "load_continuity_excluded", lambda conn, pct: pd.DataFrame()
+    )
     monkeypatch.setattr(sys, "argv", ["main.py", "--persist-sql"])
 
     config = main.load_config("config.yaml")
     main.main()
 
     assert connect_calls == [config.dataset.db_path]
+
+
+def _persist_sql_fakes(monkeypatch, csv_frame, captured):
+    """Fakes compartidos del camino --persist-sql (sin SQL ni entrenamiento real)."""
+    import swmm_resilience.database.connection as connection_module
+    import swmm_resilience.database.migrations as migrations_module
+    import swmm_resilience.database.csv_backfill as csv_backfill_module
+    import swmm_resilience.database.training_queries as training_queries_module
+
+    class FakeCursor:
+        def fetchall(self):
+            return []
+
+    class FakeConn:
+        def execute(self, sql):
+            return FakeCursor()
+
+        def close(self):
+            pass
+
+    def fake_persist_training_run(conn, df, run_id_by_key, node_pk_by_id, config):
+        captured.append(df.copy())
+        return 1
+
+    monkeypatch.setattr(pd, "read_csv", lambda path: csv_frame)
+    monkeypatch.setattr(
+        connection_module, "connect_managed_database", lambda db_path: FakeConn()
+    )
+    monkeypatch.setattr(migrations_module, "apply_migrations", lambda conn: None)
+    monkeypatch.setattr(
+        csv_backfill_module,
+        "backfill_networks_and_runs",
+        lambda conn, df, inp_path, network_name: {
+            "network_id": 1,
+            "node_pk_by_id": {"N0": 1, "N1": 2, "N2": 3},
+            "run_id_by_key": {("base", 1.0): 1},
+        },
+    )
+    monkeypatch.setattr(
+        csv_backfill_module, "persist_training_run", fake_persist_training_run
+    )
+    monkeypatch.setattr(
+        csv_backfill_module, "backfill_tributary_features", lambda *args, **kwargs: 0,
+    )
+    monkeypatch.setattr(
+        training_queries_module,
+        "load_continuity_excluded",
+        lambda conn, pct: pd.DataFrame(),
+    )
+    monkeypatch.setattr(sys, "argv", ["main.py", "--persist-sql"])
+
+
+def test_persist_sql_excludes_high_continuity_rows_from_legacy_training(monkeypatch):
+    """Fase C2 / revision final (C1): el XGBoost legacy entrena sobre el CSV
+    crudo, nunca sobre SQL, asi que el filtro por continuidad debe aplicarse
+    sobre `df` antes de persist_training_run. NaN no excluye (Ruling
+    "NULL = no excluido")."""
+    csv_frame = pd.DataFrame(
+        {
+            "shape_id": ["base", "base", "base"],
+            "inunda": [1, 1, 1],
+            "node_id": ["N0", "N1", "N2"],
+            "continuity_error_pct": [1.0, -7.31, float("nan")],
+        }
+    )
+    captured = []
+    _persist_sql_fakes(monkeypatch, csv_frame, captured)
+
+    config = main.load_config("config.yaml")
+    assert config.validation.max_continuity_error_pct == 5.0, (
+        "premisa: el umbral de config.yaml deja 1.0 dentro y 7.31 fuera"
+    )
+
+    main.main()
+
+    assert len(captured) == 1
+    assert captured[0]["node_id"].tolist() == ["N0", "N2"], (
+        "N1 (|-7.31| > 5.0) debe salir del entrenamiento legacy; N2 (NaN) se queda"
+    )
+
+
+def test_persist_sql_keeps_every_row_when_the_csv_has_no_continuity_column(monkeypatch):
+    """Dataset viejo sin la columna: no se filtra nada (compatibilidad)."""
+    csv_frame = pd.DataFrame(
+        {
+            "shape_id": ["base", "base"],
+            "inunda": [1, 1],
+            "node_id": ["N0", "N1"],
+        }
+    )
+    captured = []
+    _persist_sql_fakes(monkeypatch, csv_frame, captured)
+
+    main.main()
+
+    assert len(captured) == 1
+    assert captured[0]["node_id"].tolist() == ["N0", "N1"]
+
+
+def test_persist_sql_errors_when_the_filter_removes_every_flooded_row(
+    monkeypatch, capsys
+):
+    """Si el filtro deja el entrenamiento sin filas inundadas, el CLI falla con
+    un mensaje explicito en vez de un error opaco del regresor."""
+    csv_frame = pd.DataFrame(
+        {
+            "shape_id": ["base", "base"],
+            "inunda": [1, 0],
+            "node_id": ["N0", "N1"],
+            "continuity_error_pct": [-9.0, 0.1],
+        }
+    )
+    captured = []
+    _persist_sql_fakes(monkeypatch, csv_frame, captured)
+
+    with pytest.raises(SystemExit) as exit_info:
+        main.main()
+
+    assert exit_info.value.code == 2
+    assert captured == [], "no debe entrenarse nada"
+    assert "continuity" in capsys.readouterr().err
 
 
 def test_resilience_curve_errors_when_sql_has_no_samples(monkeypatch, capsys):
@@ -260,11 +396,15 @@ def test_only_maps_errors_when_sql_has_no_samples(monkeypatch, capsys):
     assert "training_v17.sqlite3" in capsys.readouterr().err
 
 
-def test_only_ml_errors_when_sql_has_no_samples(monkeypatch, capsys):
+def test_only_ml_errors_when_sql_has_no_samples(monkeypatch, capsys, tmp_path):
     def fake_load(db_path):
         raise ValueError("No COMPLETE v17 training samples found")
 
     monkeypatch.setattr(main, "load_training_frame", fake_load)
+    # Same reasoning as test_only_ml_reads_the_frame_from_sql above: isolate
+    # this test from F2's pre-flight contract check against the real
+    # outputs/models/.
+    monkeypatch.setattr(main, "MODELS_DIR", tmp_path / "models")
     monkeypatch.setattr(sys, "argv", ["main.py", "--only-ml"])
 
     try:
@@ -301,7 +441,8 @@ def test_only_maps_reads_the_frame_from_sql(monkeypatch, tmp_path):
     assert load_calls == [config.dataset.db_path]
 
 
-def test_flood_volume_curve_reads_the_frame_from_sql(monkeypatch):
+def test_flood_volume_curve_reads_the_frame_from_sql(monkeypatch, tmp_path):
+    monkeypatch.setattr(main, "METRICS_DIR", tmp_path / "metrics")
     load_calls = []
     curve_calls = []
 
@@ -443,3 +584,76 @@ def test_unsorted_shuffle_changes_metrics_without_the_canonical_sort(
         pd.testing.assert_frame_equal(
             sorted_original.reset_index(drop=True), sorted_shuffled.reset_index(drop=True)
         )
+
+
+def _stub_curve_frame(factors):
+    return pd.DataFrame(
+        {
+            "factor": list(factors),
+            "resilience_swmm": [1.0] * len(factors),
+            "resilience_ml": [1.0] * len(factors),
+        }
+    )
+
+
+def _promoted_models(tmp_path):
+    import json
+
+    models = tmp_path / "models"
+    models.mkdir()
+    (models / "promotion.json").write_text(
+        json.dumps({"family": "xgboost", "classifier_sha256": "aa", "regressor_sha256": "bb",
+                    "feature_contract_id": "tabular_v4_21", "prep_id": "p"}),
+        encoding="utf-8",
+    )
+    return models
+
+
+@pytest.mark.parametrize(
+    "flag, curve_fn, plot_fns, subdir",
+    [
+        ("--resilience-curve", "compute_resilience_curve", ["plot_resilience_curve"], ""),
+        (
+            "--flood-volume-curve",
+            "compute_flood_volume_curve",
+            ["plot_flood_volume_curve", "plot_flood_volume_combined"],
+            "",
+        ),
+    ],
+)
+def test_curve_figures_are_stamped_with_the_models_provenance(
+    monkeypatch, tmp_path, flag, curve_fn, plot_fns, subdir
+):
+    import json
+
+    metrics = tmp_path / "metrics"
+    monkeypatch.setattr(main, "MODELS_DIR", _promoted_models(tmp_path))
+    monkeypatch.setattr(main, "METRICS_DIR", metrics)
+    monkeypatch.setattr(main, "load_training_frame", lambda db: base_shape_frame())
+    monkeypatch.setattr(main, curve_fn, lambda df, factors, config, models_dir: _stub_curve_frame(factors))
+    for name in plot_fns:
+        monkeypatch.setattr(main, name, lambda result, out: None)
+    monkeypatch.setattr(sys, "argv", ["main.py", flag])
+
+    main.main()
+
+    record = json.loads((metrics / subdir / "provenance.json").read_text(encoding="utf-8"))
+    assert record["classifier_sha256"] == "aa"
+
+
+def test_factor_comparison_figures_are_stamped_with_the_models_provenance(monkeypatch, tmp_path):
+    import json
+
+    metrics = tmp_path / "metrics"
+    monkeypatch.setattr(main, "MODELS_DIR", _promoted_models(tmp_path))
+    monkeypatch.setattr(main, "METRICS_DIR", metrics)
+    monkeypatch.setattr(main, "load_training_frame", lambda db: base_shape_frame())
+    monkeypatch.setattr(main, "generate_factor_comparisons", lambda **kwargs: [])
+    monkeypatch.setattr(sys, "argv", ["main.py", "--factor-comparison"])
+
+    main.main()
+
+    record = json.loads(
+        (metrics / "factor_comparison" / "provenance.json").read_text(encoding="utf-8")
+    )
+    assert record["family"] == "xgboost"

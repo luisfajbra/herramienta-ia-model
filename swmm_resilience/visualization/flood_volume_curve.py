@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .labels import add_in_sample_note
+
 
 def _plot_dual(fig, ax_lin, ax_log, x, y, color, marker):
     for ax, scale in ((ax_lin, "linear"), (ax_log, "log")):
@@ -37,6 +39,7 @@ def plot_flood_volume_curve(df: pd.DataFrame, output_dir: Path) -> tuple[Path, P
     _plot_dual(fig, ax_lin, ax_log, df["factor"], df["vol_total_ml"], "#e07b39", "s")
     fig.suptitle("Total Flood Volume - ML Prediction", fontsize=13)
     fig.tight_layout()
+    add_in_sample_note(fig)
     fig.savefig(path_ml, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"ML flood volume curve saved: {path_ml}")
@@ -70,6 +73,7 @@ def plot_flood_volume_combined(df: pd.DataFrame, output_dir: Path) -> Path:
 
     fig.suptitle("Total Flood Volume - SWMM vs ML", fontsize=13)
     fig.tight_layout()
+    add_in_sample_note(fig)
     fig.savefig(output_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Combined flood volume curve saved: {output_path}")

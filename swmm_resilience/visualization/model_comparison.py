@@ -10,7 +10,7 @@ import pandas as pd
 
 from ..analysis.model_comparison import compute_volume_metrics
 from .flood_map import plot_flood_map
-from .labels import format_node_label
+from .labels import add_in_sample_note, format_node_label
 from .runtime_caption import format_runtime_text
 
 _SYMLOG_THRESH = 1.0  # m³
@@ -33,7 +33,7 @@ def _metrics_text(vol_swmm, vol_pred) -> str:
     )
 
 
-def _draw_parity(ax, x, y, title: str):
+def _draw_parity(ax, x, y, title: str, model_label: str = "XGBoost"):
     x_arr = list(x)
     y_arr = list(y)
     ax.scatter(x_arr, y_arr, alpha=0.6, s=20, color="steelblue")
@@ -43,7 +43,7 @@ def _draw_parity(ax, x, y, title: str):
     ax.set_ylim(0, lim)
     ax.set_aspect("equal")
     ax.set_xlabel("SWMM (m³)")
-    ax.set_ylabel("XGBoost (m³)")
+    ax.set_ylabel(f"{model_label} (m³)")
     ax.set_title(title)
     ax.grid(True, alpha=0.3)
     ax.legend(fontsize=7)
@@ -53,7 +53,7 @@ def _draw_parity(ax, x, y, title: str):
     )
 
 
-def _draw_parity_symlog(ax, x, y, title: str):
+def _draw_parity_symlog(ax, x, y, title: str, model_label: str = "XGBoost"):
     x_arr = list(x)
     y_arr = list(y)
     ax.scatter(x_arr, y_arr, alpha=0.6, s=20, color="steelblue")
@@ -63,7 +63,7 @@ def _draw_parity_symlog(ax, x, y, title: str):
     ax.set_xscale("symlog", linthresh=_SYMLOG_THRESH)
     ax.set_yscale("symlog", linthresh=_SYMLOG_THRESH)
     ax.set_xlabel("SWMM (m³)")
-    ax.set_ylabel("XGBoost (m³)")
+    ax.set_ylabel(f"{model_label} (m³)")
     ax.set_title(title)
     ax.grid(True, alpha=0.3)
     ax.legend(fontsize=7)
@@ -73,7 +73,9 @@ def _draw_parity_symlog(ax, x, y, title: str):
     )
 
 
-def plot_parity_nodes(df: pd.DataFrame, out_dir: Path, scenario_id: str) -> list[Path]:
+def plot_parity_nodes(
+    df: pd.DataFrame, out_dir: Path, scenario_id: str, model_label: str = "XGBoost",
+) -> list[Path]:
     """Parity plots (linear + symlog) of vol_swmm_m3 vs vol_pred_m3 per node."""
     out_dir.mkdir(parents=True, exist_ok=True)
     x = df["vol_swmm_m3"].tolist()
@@ -82,14 +84,14 @@ def plot_parity_nodes(df: pd.DataFrame, out_dir: Path, scenario_id: str) -> list
     paths = []
 
     fig, ax = plt.subplots(figsize=(6, 6))
-    _draw_parity(ax, x, y, title)
+    _draw_parity(ax, x, y, title, model_label)
     p = out_dir / f"parity_nodes_linear_{scenario_id}.png"
     fig.savefig(p, dpi=120, bbox_inches="tight")
     plt.close(fig)
     paths.append(p)
 
     fig, ax = plt.subplots(figsize=(6, 6))
-    _draw_parity_symlog(ax, x, y, title)
+    _draw_parity_symlog(ax, x, y, title, model_label)
     p = out_dir / f"parity_nodes_symlog_{scenario_id}.png"
     fig.savefig(p, dpi=120, bbox_inches="tight")
     plt.close(fig)
@@ -98,7 +100,9 @@ def plot_parity_nodes(df: pd.DataFrame, out_dir: Path, scenario_id: str) -> list
     return paths
 
 
-def plot_parity_aggregated(df: pd.DataFrame, out_dir: Path, scenario_id: str) -> list[Path]:
+def plot_parity_aggregated(
+    df: pd.DataFrame, out_dir: Path, scenario_id: str, model_label: str = "XGBoost",
+) -> list[Path]:
     """Parity plots of total vol_swmm_m3 vs total vol_pred_m3 (one point)."""
     out_dir.mkdir(parents=True, exist_ok=True)
     x = [df["vol_swmm_m3"].sum()]
@@ -107,14 +111,14 @@ def plot_parity_aggregated(df: pd.DataFrame, out_dir: Path, scenario_id: str) ->
     paths = []
 
     fig, ax = plt.subplots(figsize=(5, 5))
-    _draw_parity(ax, x, y, title)
+    _draw_parity(ax, x, y, title, model_label)
     p = out_dir / f"parity_agg_linear_{scenario_id}.png"
     fig.savefig(p, dpi=120, bbox_inches="tight")
     plt.close(fig)
     paths.append(p)
 
     fig, ax = plt.subplots(figsize=(5, 5))
-    _draw_parity_symlog(ax, x, y, title)
+    _draw_parity_symlog(ax, x, y, title, model_label)
     p = out_dir / f"parity_agg_symlog_{scenario_id}.png"
     fig.savefig(p, dpi=120, bbox_inches="tight")
     plt.close(fig)
@@ -123,7 +127,9 @@ def plot_parity_aggregated(df: pd.DataFrame, out_dir: Path, scenario_id: str) ->
     return paths
 
 
-def plot_node_profiles(df: pd.DataFrame, out_dir: Path, scenario_id: str) -> list[Path]:
+def plot_node_profiles(
+    df: pd.DataFrame, out_dir: Path, scenario_id: str, model_label: str = "XGBoost",
+) -> list[Path]:
     """Bar/line profiles of vol_swmm_m3 and vol_pred_m3 per node.
 
     Only nodes where at least one of the two volumes > 0 are included.
@@ -157,7 +163,7 @@ def plot_node_profiles(df: pd.DataFrame, out_dir: Path, scenario_id: str) -> lis
             visible["vol_pred_m3"].tolist(),
             width=bar_w,
             color="#f28e2b",
-            label="XGBoost",
+            label=model_label,
         )
         if scale == "symlog":
             ax.set_yscale("symlog", linthresh=_SYMLOG_THRESH)
@@ -272,6 +278,7 @@ def plot_factor_comparison(
     ax.legend()
     fig.tight_layout()
     profile_path = output_dir / f"volume_by_node_factor_{factor:.2f}.png"
+    add_in_sample_note(fig)
     fig.savefig(profile_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 
@@ -290,6 +297,7 @@ def plot_factor_comparison(
     ax.grid(True, alpha=0.3)
     ax.legend()
     parity_path = output_dir / f"parity_factor_{factor:.2f}.png"
+    add_in_sample_note(fig)
     fig.savefig(parity_path, dpi=150, bbox_inches="tight")
     plt.close(fig)
 

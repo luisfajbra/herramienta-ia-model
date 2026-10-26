@@ -25,14 +25,14 @@ def build_comparison_df(
     pred_nodes = set(pred_df["node_id"].astype(str))
     if swmm_nodes != pred_nodes:
         raise ValueError(
-            f"Conjuntos de nodos distintos entre SWMM y predicción. "
-            f"Solo en SWMM: {swmm_nodes - pred_nodes}. "
-            f"Solo en pred: {pred_nodes - swmm_nodes}"
+            f"Different node sets between SWMM and prediction. "
+            f"Only in SWMM: {swmm_nodes - pred_nodes}. "
+            f"Only in pred: {pred_nodes - swmm_nodes}"
         )
     if swmm_df["node_id"].duplicated().any():
-        raise ValueError("node_ids duplicados en swmm_df")
+        raise ValueError("Duplicate node_ids in swmm_df")
     if pred_df["node_id"].duplicated().any():
-        raise ValueError("node_ids duplicados en pred_df")
+        raise ValueError("Duplicate node_ids in pred_df")
 
     merged = swmm_df.merge(pred_df, on="node_id", how="inner")
     merged["scenario_id"] = scenario_id

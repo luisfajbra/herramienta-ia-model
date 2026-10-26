@@ -165,7 +165,7 @@ def _validate_algorithm(value: str, label: str) -> str:
     normalized = str(value).strip().lower()
     if normalized not in SUPPORTED_MODEL_ALGORITHMS:
         allowed = ", ".join(sorted(SUPPORTED_MODEL_ALGORITHMS))
-        raise ValueError(f"Algoritmo de {label} no soportado: {value}. Opciones: {allowed}")
+        raise ValueError(f"Unsupported {label} algorithm: {value}. Options: {allowed}")
     return normalized
 
 
@@ -174,8 +174,29 @@ def _validate_methods(methods: list) -> list[str]:
     invalid = [method for method in normalized if method not in SUPPORTED_EVALUATION_METHODS]
     if invalid:
         allowed = ", ".join(sorted(SUPPORTED_EVALUATION_METHODS))
-        raise ValueError(f"Metodo de evaluacion no soportado: {', '.join(invalid)}. Opciones: {allowed}")
+        raise ValueError(f"Unsupported evaluation method: {', '.join(invalid)}. Options: {allowed}")
     return normalized
+
+
+def _validate_csv_inflow_closure_mode(value: str) -> str:
+    """Validate that csv_inflow_closure_mode is either 'strict' or 'close'."""
+    normalized = str(value).strip().lower()
+    valid_modes = {"strict", "close"}
+    if normalized not in valid_modes:
+        raise ValueError(
+            f"Unknown mode in validation.csv_inflow_closure_mode: {value}. "
+            f"Valid options: {', '.join(sorted(valid_modes))}"
+        )
+    return normalized
+
+
+def _validate_drainage_extension_max_retries(value: int) -> int:
+    """Validate that drainage_extension_max_retries is a non-negative integer."""
+    if value < 0:
+        raise ValueError(
+            f"validation.drainage_extension_max_retries must be >= 0: {value}"
+        )
+    return value
 
 
 @dataclass
@@ -242,6 +263,15 @@ class VisualizationConfig:
 @dataclass
 class ValidationConfig:
     drain_down_hours: float = 6.0
+    inflow_closure_tolerance_lps: float = 0.01
+    csv_inflow_closure_mode: str = "strict"  # "strict" | "close"
+    drainage_inflow_tolerance_lps: float = 0.01
+    drainage_flooding_tolerance_lps: float = 0.01
+    drainage_storage_change_tolerance_m3: float = 0.01
+    drainage_tail_window_hours: float = 1.0
+    max_continuity_error_pct: float = 5.0
+    drainage_extension_increment_hours: float = 2.0
+    drainage_extension_max_retries: int = 2
 
 
 BENCH_PROTOCOLS = ("LeaveOneShapeOut", "LOSO", "GroupKFold5")
@@ -271,11 +301,18 @@ class BenchRankingConfig:
 
 
 @dataclass
+class BenchTuningConfig:
+    n_trials: int
+    n_splits: int
+
+
+@dataclass
 class BenchConfig:
     protocols: list
     ranking: BenchRankingConfig
     promote: str
     families: dict
+    tuning: BenchTuningConfig
 
     def enabled_families(self) -> list:
         return [name for name, family in self.families.items() if family.enabled]
@@ -311,8 +348,8 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
     invalid = [item for item in protocols if item not in BENCH_PROTOCOLS]
     if invalid:
         raise ValueError(
-            f"Protocolo desconocido: {', '.join(invalid)}. "
-            f"Opciones: {', '.join(BENCH_PROTOCOLS)}"
+            f"Unknown protocol: {', '.join(invalid)}. "
+            f"Options: {', '.join(BENCH_PROTOCOLS)}"
         )
 
     known = set(BENCH_FAMILIES)
@@ -320,8 +357,8 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
     for name, spec in (raw_bench.get("families") or {}).items():
         if name not in known:
             raise ValueError(
-                f"Familia desconocida en config.yaml: {name!r}. "
-                f"Disponibles: {', '.join(sorted(known))}"
+                f"Unknown family in config.yaml: {name!r}. "
+                f"Available: {', '.join(sorted(known))}"
             )
         families[name] = BenchFamilyConfig(
             enabled=bool(spec.get("enabled", True)),
@@ -330,6 +367,13 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
         )
 
     ranking_raw = raw_bench["ranking"]
+    tuning_raw = raw_bench.get("tuning") or {}
+    n_trials = int(tuning_raw.get("n_trials", 50))
+    n_splits = int(tuning_raw.get("n_splits", 5))
+    if n_trials <= 0:
+        raise ValueError(f"bench.tuning.n_trials must be positive; received {n_trials}")
+    if n_splits <= 0:
+        raise ValueError(f"bench.tuning.n_splits must be positive; received {n_splits}")
     return BenchConfig(
         protocols=protocols,
         ranking=BenchRankingConfig(
@@ -342,6 +386,7 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
         ),
         promote=str(raw_bench.get("promote", "none")),
         families=families,
+        tuning=BenchTuningConfig(n_trials=n_trials, n_splits=n_splits),
     )
 
 
@@ -361,11 +406,21 @@ def load_config(config_path: str = "config.yaml") -> Config:
 
     inp_path = base_dir / net["inp_path"]
     if not inp_path.exists():
-        raise FileNotFoundError(f"El archivo .inp no existe: {inp_path}")
+        raise FileNotFoundError(f"The .inp file does not exist: {inp_path}")
     if float(sim["factor_min"]) >= float(sim["factor_max"]):
-        raise ValueError("factor_min debe ser menor que factor_max")
+        raise ValueError("factor_min must be less than factor_max")
     if float(sim["factor_step"]) <= 0:
-        raise ValueError("factor_step debe ser mayor que 0")
+        raise ValueError("factor_step must be greater than 0")
+
+    # Validation config
+    csv_inflow_closure_mode = str(
+        (raw.get("validation") or {}).get("csv_inflow_closure_mode", "strict")
+    )
+    csv_inflow_closure_mode = _validate_csv_inflow_closure_mode(csv_inflow_closure_mode)
+
+    drainage_extension_max_retries = _validate_drainage_extension_max_retries(
+        int((raw.get("validation") or {}).get("drainage_extension_max_retries", 2))
+    )
 
     clf = ml["classifier"]
     reg = ml["regressor"]
@@ -388,7 +443,7 @@ def load_config(config_path: str = "config.yaml") -> Config:
         ),
         ml=MLConfig(
             classifier=ClassifierConfig(
-                algorithm=_validate_algorithm(clf["algorithm"], "clasificador"),
+                algorithm=_validate_algorithm(clf["algorithm"], "classifier"),
                 n_estimators=int(clf["n_estimators"]),
                 max_depth=int(clf["max_depth"]),
                 learning_rate=float(clf["learning_rate"]),
@@ -396,7 +451,7 @@ def load_config(config_path: str = "config.yaml") -> Config:
                 scale_pos_weight=clf["scale_pos_weight"],
             ),
             regressor=RegressorConfig(
-                algorithm=_validate_algorithm(reg["algorithm"], "regresor"),
+                algorithm=_validate_algorithm(reg["algorithm"], "regressor"),
                 n_estimators=int(reg["n_estimators"]),
                 max_depth=int(reg["max_depth"]),
                 learning_rate=float(reg["learning_rate"]),
@@ -418,6 +473,29 @@ def load_config(config_path: str = "config.yaml") -> Config:
             drain_down_hours=float(
                 (raw.get("validation") or {}).get("drain_down_hours", 6.0)
             ),
+            inflow_closure_tolerance_lps=float(
+                (raw.get("validation") or {}).get("inflow_closure_tolerance_lps", 0.01)
+            ),
+            csv_inflow_closure_mode=csv_inflow_closure_mode,
+            drainage_inflow_tolerance_lps=float(
+                (raw.get("validation") or {}).get("drainage_inflow_tolerance_lps", 0.01)
+            ),
+            drainage_flooding_tolerance_lps=float(
+                (raw.get("validation") or {}).get("drainage_flooding_tolerance_lps", 0.01)
+            ),
+            drainage_storage_change_tolerance_m3=float(
+                (raw.get("validation") or {}).get("drainage_storage_change_tolerance_m3", 0.01)
+            ),
+            drainage_tail_window_hours=float(
+                (raw.get("validation") or {}).get("drainage_tail_window_hours", 1.0)
+            ),
+            max_continuity_error_pct=float(
+                (raw.get("validation") or {}).get("max_continuity_error_pct", 5.0)
+            ),
+            drainage_extension_increment_hours=float(
+                (raw.get("validation") or {}).get("drainage_extension_increment_hours", 2.0)
+            ),
+            drainage_extension_max_retries=drainage_extension_max_retries,
         ),
         bench=_parse_bench(raw.get("bench")),
     )

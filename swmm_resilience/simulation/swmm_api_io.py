@@ -15,6 +15,7 @@ link/conduit statistics while equivalence with .rpt/swmm_api is being validated.
 from __future__ import annotations
 
 import copy
+import re
 import warnings
 from pathlib import Path
 from typing import Optional
@@ -170,7 +171,7 @@ def _scale_target_timeseries(inp, selected_inflows: list[tuple[str, object]], mu
     """Scale timeseries values used by selected nodes without mutating shared users."""
     if "TIMESERIES" not in inp:
         raise ValueError(
-            "El escenario 'timeseries' requiere una seccion [TIMESERIES] en el archivo .inp."
+            "The 'timeseries' scenario requires a [TIMESERIES] section in the .inp file."
         )
 
     changed_values = 0
@@ -203,13 +204,13 @@ def _scale_target_timeseries(inp, selected_inflows: list[tuple[str, object]], mu
     if missing_series:
         missing = ", ".join(sorted(set(missing_series)))
         raise ValueError(
-            "El escenario 'timeseries' referencia series que no existen en [TIMESERIES]: "
+            "The 'timeseries' scenario references series that do not exist in [TIMESERIES]: "
             f"{missing}"
         )
     if changed_values == 0:
         raise ValueError(
-            "El escenario 'timeseries' no encontro valores de serie temporal para escalar. "
-            "Usa el modo 'steady' si el caudal esta en Baseline dentro de [INFLOWS]."
+            "The 'timeseries' scenario found no time series values to scale. "
+            "Use 'steady' mode if the flow is in Baseline within [INFLOWS]."
         )
     return changed_values
 
@@ -242,7 +243,7 @@ def write_scaled_inp(
     if target_nodes is not None and not selected_inflows:
         selected = ", ".join(sorted(target_nodes))
         raise ValueError(
-            f"No se encontraron inflows FLOW para los nodos seleccionados: {selected}"
+            f"No FLOW inflows found for the selected nodes: {selected}"
         )
 
     if multiplier != 1.0:
@@ -251,12 +252,12 @@ def write_scaled_inp(
         elif scenario_mode == SCENARIO_MODE_STEADY:
             changed_values = _scale_target_baselines(selected_inflows, multiplier)
         else:
-            raise ValueError(f"Modo de escenario no soportado: {scenario_mode}")
+            raise ValueError(f"Unsupported scenario mode: {scenario_mode}")
 
         if changed_values == 0:
             raise ValueError(
-                "El multiplicador no modifico ningun inflow del .inp. "
-                "Revisa si elegiste el modo correcto entre 'timeseries' y 'steady'."
+                "The multiplier did not modify any inflow in the .inp. "
+                "Check whether you chose the right mode between 'timeseries' and 'steady'."
             )
 
     inp.write_file(str(output_path))
@@ -318,7 +319,7 @@ def read_node_flooding_summary(rpt_file: Path | str) -> Optional["pd.DataFrame"]
 
     except Exception as exc:
         warnings.warn(
-            f"No se pudo leer el resumen de inundacion del .rpt '{rpt_file}': {exc}",
+            f"Could not read the flooding summary from the .rpt '{rpt_file}': {exc}",
             stacklevel=2,
         )
         return None
@@ -345,7 +346,7 @@ def get_node_series(out, node_id: str) -> "pd.DataFrame":
     try:
         df = out.get_part("node", node_id)
     except Exception as exc:
-        raise KeyError(f"Nodo '{node_id}' no encontrado en el .out: {exc}") from exc
+        raise KeyError(f"Node '{node_id}' not found in the .out: {exc}") from exc
 
     df = df.reset_index()
     df = df.rename(columns=str.lower)
@@ -377,7 +378,7 @@ def get_link_series(out, link_id: str) -> "pd.DataFrame":
     try:
         df = out.get_part("link", link_id)
     except Exception as exc:
-        raise KeyError(f"Link '{link_id}' no encontrado en el .out: {exc}") from exc
+        raise KeyError(f"Link '{link_id}' not found in the .out: {exc}") from exc
 
     df = df.reset_index()
     df = df.rename(columns=str.lower)
@@ -398,3 +399,28 @@ def get_link_series(out, link_id: str) -> "pd.DataFrame":
     }
     df = df.rename(columns={k: v for k, v in column_aliases.items() if k in df.columns})
     return df
+
+
+# ---------------------------------------------------------------------------
+# Continuity error reading
+# ---------------------------------------------------------------------------
+
+_CONTINUITY_RE = re.compile(
+    r"Continuity Error \(%\)\s*\.*\s*(-?\d+(?:\.\d+)?)"
+)
+
+
+def read_continuity_error(rpt_path: Path) -> float | None:
+    """Worst (max |value|) continuity error (%) reported in the .rpt.
+
+    A routing continuity error above the configured threshold means SWMM
+    itself does not trust its mass balance for that scenario (spec Sec.7).
+    """
+    try:
+        text = Path(rpt_path).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    values = [float(v) for v in _CONTINUITY_RE.findall(text)]
+    if not values:
+        return None
+    return max(values, key=abs)

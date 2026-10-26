@@ -14,9 +14,9 @@ def load_shape(csv_path: Path) -> list[tuple[float, float]]:
         for row in reader:
             rows.append((float(row["time_h"]), float(row["q_norm"])))
     if not rows:
-        raise ValueError(f"Shape CSV vacío: {csv_path}")
+        raise ValueError(f"Shape CSV is empty: {csv_path}")
     if rows[0][0] != 0.0:
-        raise ValueError(f"Shape CSV debe empezar en t=0: {csv_path}")
+        raise ValueError(f"Shape CSV must start at t=0: {csv_path}")
     return rows
 
 
@@ -69,7 +69,7 @@ def normalize_from_csv(
 
     df = pd.read_csv(csv_path)
     if "time_h" not in df.columns:
-        raise ValueError(f"CSV debe tener columna 'time_h': {csv_path}")
+        raise ValueError(f"CSV must have column 'time_h': {csv_path}")
 
     time_vals = df["time_h"].values.tolist()
 
@@ -78,12 +78,12 @@ def normalize_from_csv(
     else:
         node_cols = [c for c in df.columns if c != "time_h"]
         if not node_cols:
-            raise ValueError(f"No hay columnas de nodos en {csv_path}")
+            raise ValueError(f"No node columns in {csv_path}")
         values = df[node_cols].max(axis=1).values.astype(float)
 
     peak = float(values.max())
     if peak == 0.0:
-        raise ValueError(f"Pico es 0 en {csv_path} — no se puede normalizar")
+        raise ValueError(f"Peak is 0 in {csv_path} — cannot normalize")
 
     q_norm = (values / peak).tolist()
     return list(zip(time_vals, q_norm))

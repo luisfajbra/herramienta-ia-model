@@ -85,7 +85,7 @@ def save_node_timeseries_parquet(records: list[dict], output_path: str | Path) -
     ]
     if missing_columns:
         raise ValueError(
-            "Faltan columnas obligatorias en node_timeseries: "
+            "Required columns are missing from node_timeseries: "
             + ", ".join(missing_columns)
         )
 
@@ -93,8 +93,8 @@ def save_node_timeseries_parquet(records: list[dict], output_path: str | Path) -
         dataframe.to_parquet(output_path, index=False)
     except ImportError as exc:
         raise ImportError(
-            "No se pudo guardar node_timeseries en Parquet. Instala 'pyarrow' "
-            "o 'fastparquet' para habilitar este formato."
+            "Could not save node_timeseries as Parquet. Install 'pyarrow' "
+            "or 'fastparquet' to enable this format."
         ) from exc
 
     return output_path
@@ -521,27 +521,27 @@ def build_unified_dataset(
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Diagnosticar dataset temporal de ventanas.")
+    parser = argparse.ArgumentParser(description="Diagnose the windowed temporal dataset.")
     parser.add_argument("--db", type=Path, default=DEFAULT_DB_FILE)
-    parser.add_argument("--summary", action="store_true", help="Mostrar resumen del dataset.")
+    parser.add_argument("--summary", action="store_true", help="Show the dataset summary.")
     args = parser.parse_args()
 
     if args.summary:
         _conn = sqlite3.connect(args.db)
         n_parquets = _conn.execute("SELECT COUNT(*) FROM temporal_artifacts").fetchone()[0]
         _conn.close()
-        print(f"Parquets registrados: {n_parquets}")
+        print(f"Registered Parquets: {n_parquets}")
 
-        print("Construyendo ventanas...")
+        print("Building windows...")
         _ds = build_temporal_windows(db_path=args.db)
         _n = _ds.X_seq.shape[0]
-        print(f"Total de muestras: {_n}")
+        print(f"Total samples: {_n}")
         if _n > 0:
             _pos = int(_ds.y_class.sum())
             _neg = _n - _pos
             print(f"  failure_within_horizon=1: {_pos} ({100 * _pos / _n:.1f}%)")
             print(f"  failure_within_horizon=0: {_neg} ({100 * _neg / _n:.1f}%)")
         else:
-            print("No se generaron muestras.")
+            print("No samples were generated.")
     else:
         parser.print_help()

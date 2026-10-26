@@ -42,5 +42,5 @@ def get_family(name: str) -> ModuleType:
         return _FAMILIES[name]
     except KeyError:
         raise ValueError(
-            f"Familia desconocida: {name!r}. Disponibles: {', '.join(available_families())}"
+            f"Unknown family: {name!r}. Available: {', '.join(available_families())}"
         ) from None

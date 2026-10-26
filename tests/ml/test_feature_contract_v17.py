@@ -122,6 +122,20 @@ def test_rejects_complex_dtype_even_with_zero_imaginary_component():
         TABULAR_V3_17.validate_frame(frame)
 
 
+def test_validate_frame_derives_the_same_nullable_set_as_the_legacy_constant():
+    """Regresion del hallazgo 1 (contracts.py): validate_frame() ahora deriva
+    la nulabilidad de self.definitions en vez de leer directamente
+    NULLABLE_FEATURE_COLUMNS_V17. Para tabular_v3_17 (definitions ==
+    FEATURE_DEFINITIONS_V17) ambos conjuntos deben coincidir exactamente, asi
+    que este cambio no debe alterar el comportamiento de validate_frame()
+    para el contrato legado."""
+    from swmm_resilience.ml.contracts import NULLABLE_FEATURE_COLUMNS_V17
+    derived = frozenset(
+        item.name for item in TABULAR_V3_17.definitions if item.nullable
+    )
+    assert derived == NULLABLE_FEATURE_COLUMNS_V17
+
+
 def test_rejects_complex_dtype_with_nonzero_imaginary_component():
     frame = _valid_frame()
     frame["elev_fondo"] = pd.array([1 + 1j, 2 + 0j], dtype=complex)

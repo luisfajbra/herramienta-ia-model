@@ -59,6 +59,21 @@ PROTOCOL_GROUP_COLUMNS = {
     "LeaveOneShapeOut": "shape_id",
 }
 
+PROTOCOL_INTERPRETATION = {
+    "LOSO": (
+        "Interpolation between factors: one full intensity factor is held out; "
+        "all hydrograph shapes remain in training."
+    ),
+    "GroupKFold5": (
+        "Interpolation between factors in 5 interleaved factor groups; no "
+        "fold holds out two contiguous factors; all hydrograph shapes remain "
+        "in training."
+    ),
+    "LeaveOneShapeOut": (
+        "Generalization to unseen hydrograph shapes: one full shape is held out."
+    ),
+}
+
 PREP_ID_DESCRIPTOR_FIELDS = (
     "contract_id",
     "feature_contract_sha256",
@@ -76,7 +91,7 @@ PREP_ID_DESCRIPTOR_FIELDS = (
 
 _SHA256_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
 _REGENERATE_MESSAGE = (
-    "Corre `python main.py --bench-prepare` para regenerarlo."
+    "Run `python main.py --bench-prepare` to regenerate it."
 )
 
 
@@ -95,24 +110,24 @@ def _prep_descriptor_from_manifest(manifest: dict) -> dict:
     missing = [field for field in PREP_ID_DESCRIPTOR_FIELDS if field not in manifest]
     if missing:
         raise ValueError(
-            "El descriptor del PreparedDataset está incompleto; faltan "
+            "The PreparedDataset descriptor is incomplete; missing "
             f"{', '.join(missing)}. {_REGENERATE_MESSAGE}"
         )
     source_capture_method = manifest["source_capture_method"]
     if source_capture_method != "sqlite_backup_readonly_v1":
         raise ValueError(
-            "source_capture_method no es compatible con el protocolo actual. "
+            "source_capture_method is not compatible with the current protocol. "
             f"{_REGENERATE_MESSAGE}"
         )
     source_hash = manifest["training_frame_sha256"]
     if not isinstance(source_hash, str) or _SHA256_PATTERN.fullmatch(source_hash) is None:
         raise ValueError(
-            "training_frame_sha256 debe ser un SHA-256 hexadecimal de 64 caracteres. "
+            "training_frame_sha256 must be a 64-character hexadecimal SHA-256. "
             f"{_REGENERATE_MESSAGE}"
         )
     if manifest["training_frame_fingerprint_version"] != TRAINING_FRAME_FINGERPRINT_VERSION:
         raise ValueError(
-            "training_frame_fingerprint_version no es compatible con el protocolo actual. "
+            "training_frame_fingerprint_version is not compatible with the current protocol. "
             f"{_REGENERATE_MESSAGE}"
         )
     return {field: manifest[field] for field in PREP_ID_DESCRIPTOR_FIELDS}
@@ -122,15 +137,15 @@ def _validate_manifest_identity(manifest: dict) -> None:
     snapshot_hash = manifest.get("source_snapshot_sha256")
     if not isinstance(snapshot_hash, str) or _SHA256_PATTERN.fullmatch(snapshot_hash) is None:
         raise ValueError(
-            "source_snapshot_sha256 debe ser un SHA-256 hexadecimal de 64 caracteres. "
+            "source_snapshot_sha256 must be a 64-character hexadecimal SHA-256. "
             f"{_REGENERATE_MESSAGE}"
         )
     descriptor = _prep_descriptor_from_manifest(manifest)
     expected_prep_id = compute_prep_id(descriptor)
     if manifest.get("prep_id") != expected_prep_id:
         raise ValueError(
-            "El prep_id persistido no coincide con el descriptor del "
-            f"PreparedDataset. {_REGENERATE_MESSAGE}"
+            "The persisted prep_id does not match the PreparedDataset "
+            f"descriptor. {_REGENERATE_MESSAGE}"
         )
 
 
@@ -139,7 +154,7 @@ def group_column_for(protocol: str) -> str:
         return PROTOCOL_GROUP_COLUMNS[protocol]
     except KeyError as exc:
         raise ValueError(
-            f"Protocolo desconocido: {protocol!r}. Opciones: {PROTOCOLS}"
+            f"Unknown protocol: {protocol!r}. Options: {PROTOCOLS}"
         ) from exc
 
 
@@ -157,13 +172,13 @@ def _validate_manifest_protocol_definitions(manifest: dict) -> None:
         }
     except ValueError as exc:
         raise ValueError(
-            "La semántica de protocolos del descriptor del PreparedDataset es "
-            f"inválida. {_REGENERATE_MESSAGE}"
+            "The protocol semantics of the PreparedDataset descriptor are "
+            f"invalid. {_REGENERATE_MESSAGE}"
         ) from exc
     if definitions != expected:
         raise ValueError(
-            "La semántica de protocolos del descriptor del PreparedDataset falta "
-            f"o no coincide con el catálogo actual. {_REGENERATE_MESSAGE}"
+            "The protocol semantics of the PreparedDataset descriptor are missing "
+            f"or do not match the current catalog. {_REGENERATE_MESSAGE}"
         )
 
 
@@ -177,7 +192,7 @@ def _validate_fold_provenance(
         or len(manifest_protocols) != len(set(manifest_protocols))
     ):
         raise ValueError(
-            "Los protocolos del manifiesto son inválidos. "
+            "The manifest protocols are invalid. "
             f"{_REGENERATE_MESSAGE}"
         )
 
@@ -191,33 +206,33 @@ def _validate_fold_provenance(
     )
     if folds.loc[:, list(required_values)].isna().any().any():
         raise ValueError(
-            "La procedencia de folds contiene valores nulos. "
+            "The fold provenance contains null values. "
             f"{_REGENERATE_MESSAGE}"
         )
 
     fold_protocols = set(folds["protocol"])
     if fold_protocols != set(manifest_protocols):
         raise ValueError(
-            "Los protocolos de los folds no coinciden con los protocolos del "
-            f"manifiesto. {_REGENERATE_MESSAGE}"
+            "The fold protocols do not match the manifest "
+            f"protocols. {_REGENERATE_MESSAGE}"
         )
 
     invalid_splits = set(folds["split"]) - {"train", "test"}
     if invalid_splits:
         raise ValueError(
-            f"La procedencia de folds contiene split inválido. {_REGENERATE_MESSAGE}"
+            f"The fold provenance contains an invalid split. {_REGENERATE_MESSAGE}"
         )
 
     fold_ids: list[int] = []
     for fold_id in folds["fold_id"]:
         if isinstance(fold_id, bool) or not isinstance(fold_id, Integral):
             raise ValueError(
-                f"folds.fold_id contiene valores inválidos. {_REGENERATE_MESSAGE}"
+                f"folds.fold_id contains invalid values. {_REGENERATE_MESSAGE}"
             )
         normalized_fold_id = int(fold_id)
         if normalized_fold_id < 0:
             raise ValueError(
-                f"folds.fold_id no puede ser negativo. {_REGENERATE_MESSAGE}"
+                f"folds.fold_id cannot be negative. {_REGENERATE_MESSAGE}"
             )
         fold_ids.append(normalized_fold_id)
 
@@ -225,12 +240,12 @@ def _validate_fold_provenance(
     for sample_idx in folds["sample_idx"]:
         if isinstance(sample_idx, bool) or not isinstance(sample_idx, Integral):
             raise ValueError(
-                f"folds.sample_idx contiene valores inválidos. {_REGENERATE_MESSAGE}"
+                f"folds.sample_idx contains invalid values. {_REGENERATE_MESSAGE}"
             )
         positional_idx = int(sample_idx)
         if positional_idx < 0 or positional_idx >= len(keys):
             raise ValueError(
-                f"folds.sample_idx está fuera de rango. {_REGENERATE_MESSAGE}"
+                f"folds.sample_idx is out of range. {_REGENERATE_MESSAGE}"
             )
         sample_indices.append(positional_idx)
 
@@ -254,11 +269,11 @@ def _validate_fold_provenance(
             expected_group_column = group_column_for(protocol)
         except ValueError as exc:
             raise ValueError(
-                f"Los folds contienen un protocolo inválido. {_REGENERATE_MESSAGE}"
+                f"The folds contain an invalid protocol. {_REGENERATE_MESSAGE}"
             ) from exc
         if not fold_rows["group_column"].eq(expected_group_column).all():
             raise ValueError(
-                f"La procedencia de folds para {protocol!r} debe declarar "
+                f"The fold provenance for {protocol!r} must declare "
                 f"group_column={expected_group_column!r}. {_REGENERATE_MESSAGE}"
             )
         fold_positions = fold_rows["_sample_position"].tolist()
@@ -268,28 +283,28 @@ def _validate_fold_provenance(
             or set(fold_positions) != all_positions
         ):
             raise ValueError(
-                "Cada fold debe ser una partición completa y sin duplicados de "
-                f"todas las muestras. {_REGENERATE_MESSAGE}"
+                "Each fold must be a complete partition, without duplicates, of "
+                f"all the samples. {_REGENERATE_MESSAGE}"
             )
         test_positions = fold_rows.loc[
             fold_rows["split"] == "test", "_sample_position"
         ].tolist()
         if not test_positions:
             raise ValueError(
-                "Cada fold debe contener al menos una fila test. "
+                "Each fold must contain at least one test row. "
                 f"{_REGENERATE_MESSAGE}"
             )
         all_group_values = keys[expected_group_column]
         if all_group_values.isna().any():
             raise ValueError(
-                "Los grupos usados por la procedencia contienen nulos. "
+                "The groups used by the provenance contain nulls. "
                 f"{_REGENERATE_MESSAGE}"
             )
         test_group_values = keys.iloc[test_positions][expected_group_column]
         expected_groups = sorted({str(value) for value in test_group_values})
         if not expected_groups:
             raise ValueError(
-                "held_out_groups no puede representar una lista vacía. "
+                "held_out_groups cannot represent an empty list. "
                 f"{_REGENERATE_MESSAGE}"
             )
         expected_encoded_groups = json.dumps(
@@ -297,8 +312,8 @@ def _validate_fold_provenance(
         )
         if not fold_rows["held_out_groups"].eq(expected_encoded_groups).all():
             raise ValueError(
-                "held_out_groups no coincide con los grupos reconstruidos desde "
-                f"las filas test. {_REGENERATE_MESSAGE}"
+                "held_out_groups does not match the groups reconstructed from "
+                f"the test rows. {_REGENERATE_MESSAGE}"
             )
         train_positions = fold_rows.loc[
             fold_rows["split"] == "train", "_sample_position"
@@ -309,7 +324,7 @@ def _validate_fold_provenance(
         }
         if train_groups.intersection(expected_groups):
             raise ValueError(
-                "Los grupos de test no pueden aparecer en train dentro del mismo "
+                "Test groups cannot appear in train within the same "
                 f"fold. {_REGENERATE_MESSAGE}"
             )
         expected_test_positions = {
@@ -319,7 +334,7 @@ def _validate_fold_provenance(
         }
         if set(test_positions) != expected_test_positions:
             raise ValueError(
-                "Todas las filas de cada grupo retenido deben pertenecer a test. "
+                "All rows of each held-out group must belong to test. "
                 f"{_REGENERATE_MESSAGE}"
             )
         test_positions_by_protocol[protocol].extend(test_positions)
@@ -334,8 +349,8 @@ def _validate_fold_provenance(
             or set(tested_positions) != all_positions
         ):
             raise ValueError(
-                "Cada muestra debe aparecer en test exactamente una vez por "
-                f"protocolo. {_REGENERATE_MESSAGE}"
+                "Each sample must appear in test exactly once per "
+                f"protocol. {_REGENERATE_MESSAGE}"
             )
         group_column = group_column_for(protocol)
         distinct_groups = int(keys[group_column].nunique())
@@ -345,19 +360,19 @@ def _validate_fold_provenance(
                 for group_count in held_group_counts_by_protocol[protocol]
             ):
                 raise ValueError(
-                    f"{protocol} debe retener exactamente un grupo por fold. "
+                    f"{protocol} must hold out exactly one group per fold. "
                     f"{_REGENERATE_MESSAGE}"
                 )
             if len(fold_ids_by_protocol[protocol]) != distinct_groups:
                 raise ValueError(
-                    f"{protocol} debe tener un fold por cada grupo distinto. "
+                    f"{protocol} must have one fold per distinct group. "
                     f"{_REGENERATE_MESSAGE}"
                 )
         elif protocol == "GroupKFold5" and fold_ids_by_protocol[protocol] != set(
             range(5)
         ):
             raise ValueError(
-                "GroupKFold5 debe tener exactamente los fold_id 0..4. "
+                "GroupKFold5 must have exactly the fold_ids 0..4. "
                 f"{_REGENERATE_MESSAGE}"
             )
 
@@ -389,30 +404,33 @@ class PreparedDataset:
     quality: dict
 
     def __post_init__(self) -> None:
-        if tuple(self.X.columns) != FEATURE_COLUMNS_V17:
+        expected_feature_columns = tuple(
+            self.manifest.get("feature_columns", FEATURE_COLUMNS_V17)
+        )
+        if tuple(self.X.columns) != expected_feature_columns:
             raise ValueError(
-                "Las features no están en el orden del contrato "
-                f"{FEATURE_COLUMNS_V17}; recibido {tuple(self.X.columns)}"
+                "The features are not in the contract order "
+                f"{expected_feature_columns}; received {tuple(self.X.columns)}"
             )
         if tuple(self.keys.columns) != KEY_COLUMNS:
             raise ValueError(
-                f"keys debe tener las columnas {KEY_COLUMNS}; "
-                f"recibido {tuple(self.keys.columns)}"
+                f"keys must have the columns {KEY_COLUMNS}; "
+                f"received {tuple(self.keys.columns)}"
             )
         if tuple(self.folds.columns) != FOLD_COLUMNS:
             raise ValueError(
-                f"folds debe tener las columnas {FOLD_COLUMNS}; "
-                f"recibido {tuple(self.folds.columns)}"
+                f"folds must have the columns {FOLD_COLUMNS}; "
+                f"received {tuple(self.folds.columns)}"
             )
         if self.y_clf.name != _CLF_TARGET_NAME:
             raise ValueError(
-                f"y_clf debe llamarse {_CLF_TARGET_NAME!r}; "
-                f"recibido {self.y_clf.name!r}"
+                f"y_clf must be named {_CLF_TARGET_NAME!r}; "
+                f"received {self.y_clf.name!r}"
             )
         if self.y_reg.name != _REG_TARGET_NAME:
             raise ValueError(
-                f"y_reg debe llamarse {_REG_TARGET_NAME!r}; "
-                f"recibido {self.y_reg.name!r}"
+                f"y_reg must be named {_REG_TARGET_NAME!r}; "
+                f"received {self.y_reg.name!r}"
             )
         n = len(self.keys)
         for label, component in (
@@ -429,10 +447,10 @@ class PreparedDataset:
                 and len(index) == n
             ):
                 raise ValueError(
-                    f"{label} debe tener un RangeIndex por defecto (0..{n - 1}, "
-                    "compartido entre keys/X/y_clf/y_reg) para que "
-                    "folds.sample_idx siga siendo posicionalmente válido; "
-                    f"recibido index={index!r}"
+                    f"{label} must have a default RangeIndex (0..{n - 1}, "
+                    "shared across keys/X/y_clf/y_reg) so that "
+                    "folds.sample_idx remains positionally valid; "
+                    f"received index={index!r}"
                 )
         _validate_fold_provenance(self.keys, self.folds, self.manifest)
 
@@ -442,8 +460,8 @@ class PreparedDataset:
         _validate_manifest_identity(self.manifest)
         if self.prep_id != self.manifest.get("prep_id"):
             raise ValueError(
-                "El prep_id del PreparedDataset no coincide con el prep_id del "
-                f"manifiesto. {_REGENERATE_MESSAGE}"
+                "The PreparedDataset prep_id does not match the manifest "
+                f"prep_id. {_REGENERATE_MESSAGE}"
             )
         directory = Path(output_dir) / self.prep_id
         directory.mkdir(parents=True, exist_ok=True)
@@ -468,7 +486,7 @@ class PreparedDataset:
         for filename in _COMPONENT_FILES.values():
             if not (directory / filename).exists():
                 raise FileNotFoundError(
-                    f"Falta {filename} en {directory}; el PreparedDataset está incompleto"
+                    f"Missing {filename} in {directory}; the PreparedDataset is incomplete"
                 )
         targets = pd.read_parquet(directory / _COMPONENT_FILES["targets"])
         manifest = json.loads(

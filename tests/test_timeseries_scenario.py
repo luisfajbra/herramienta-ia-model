@@ -95,7 +95,7 @@ def test_warns_when_hydrograph_does_not_end_near_zero(monkeypatch, tmp_path):
     monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
 
     # _make_scenario ends at values 2.0 / 1.5 (well above 1% of the peaks)
-    with pytest.warns(UserWarning, match="no termina cerca de cero"):
+    with pytest.warns(UserWarning, match="does not end near zero"):
         ts_mod.write_scenario_inp(
             tmp_path / "base.inp", _make_scenario(), tmp_path / "out"
         )
@@ -194,7 +194,7 @@ def test_rejects_shared_series(monkeypatch, tmp_path):
     fake_inp = _FakeInp(shared_series=True)
     monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
 
-    with pytest.raises(ValueError, match="compartida"):
+    with pytest.raises(ValueError, match="is shared"):
         ts_mod.write_scenario_inp(tmp_path / "base.inp", _make_scenario(), tmp_path / "out")
 
 
@@ -209,3 +209,35 @@ def test_writes_file_to_output_dir(monkeypatch, tmp_path):
     assert fake_inp.written_to is not None
     assert str(tmp_path / "out") in fake_inp.written_to
     assert result == Path(fake_inp.written_to)
+
+
+def test_a_closed_scenario_produces_a_flat_zero_drain_tail(monkeypatch, tmp_path):
+    """apply_closure_policy + write_scenario_inp: el cierre queda en un solo
+    paso de malla, y el colchon de drenaje se mantiene plano en cero despues
+    -- nunca una rampa larga desde un valor positivo."""
+    from swmm_resilience.simulation.inflow_closure import apply_closure_policy
+
+    unclosed = HydrographScenario(
+        scenario_id="storm_x_f1.000",
+        node_series={"1C": [(0.0, 0.6), (0.05, 0.973)]},  # no termina en cero
+        time_grid_hours=[0.0, 0.05],
+        last_time_hours=0.05,
+    )
+    closed, manifest = apply_closure_policy(unclosed, tolerance_lps=0.01)
+    assert manifest["changed_nodes"] == ["1C"]
+
+    fake_inp = _FakeInp()
+    monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
+
+    ts_mod.write_scenario_inp(
+        Path("fake.inp"), closed, tmp_path, drain_down_hours=6.0,
+    )
+
+    data = fake_inp["TIMESERIES"]["1C"].data
+    # El cierre inserta (0.1, 0.0) -- paso 0.05 tras el ultimo punto real.
+    assert data[2] == (0.1, 0.0)
+    # El drenaje añade un punto plano en cero al final del colchon.
+    assert data[-1] == (0.1 + 6.0, 0.0)
+    # Ningun punto entre el cierre y el final del drenaje queda por encima
+    # de la tolerancia: el tramo es plano, no una rampa.
+    assert all(v == 0.0 for _, v in data[2:])

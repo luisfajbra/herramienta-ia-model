@@ -142,7 +142,7 @@ def load_dataset(csv_path: Path | str = DEFAULT_OUTPUT_CSV) -> pd.DataFrame:
     """Load the exported dataset."""
     csv_path = Path(csv_path)
     if not csv_path.exists():
-        raise FileNotFoundError(f"No se encontro el dataset: {csv_path}")
+        raise FileNotFoundError(f"Dataset not found: {csv_path}")
     return pd.read_csv(csv_path)
 
 
@@ -183,7 +183,7 @@ def _selected_model_name(models: dict[str, Pipeline], selected_name: str | None,
     model_name = selected_name or default_name
     if model_name not in models:
         available = ", ".join(models.keys())
-        raise ValueError(f"El modelo '{model_name}' no esta disponible. Opciones: {available}")
+        raise ValueError(f"The model '{model_name}' is not available. Options: {available}")
     return model_name
 
 
@@ -227,13 +227,13 @@ def get_training_groups(df: pd.DataFrame, group_column: str = ML_GROUP_COLUMN) -
     """Return the grouping series used to keep full runs together during validation."""
     if group_column not in df.columns:
         raise ValueError(
-            f"No se encontro la columna de agrupacion '{group_column}' en el dataset."
+            f"Grouping column '{group_column}' not found in the dataset."
         )
 
     groups = df[group_column].astype(str)
     if groups.nunique() < 2:
         raise ValueError(
-            f"La columna de agrupacion '{group_column}' necesita al menos 2 valores distintos."
+            f"The grouping column '{group_column}' needs at least 2 distinct values."
         )
     return groups
 
@@ -251,10 +251,10 @@ def resolve_pca_components(feature_count: int | None = None) -> int | float | No
 
     if isinstance(n_components, float):
         if not 0.0 < n_components <= 1.0:
-            raise ValueError("ML_PCA_COMPONENTS como float debe estar entre 0 y 1.")
+            raise ValueError("ML_PCA_COMPONENTS as a float must be between 0 and 1.")
         return n_components
 
-    raise ValueError("ML_PCA_COMPONENTS debe ser int o float.")
+    raise ValueError("ML_PCA_COMPONENTS must be int or float.")
 
 
 def describe_feature_space(feature_count: int | None = None) -> tuple[str, str]:
@@ -314,7 +314,7 @@ def resolve_group_cv_folds(groups: pd.Series, requested_folds: int) -> int:
     """Cap CV folds to the number of available groups."""
     unique_groups = int(groups.nunique())
     if unique_groups < 2:
-        raise ValueError("Se necesitan al menos 2 grupos para validacion cruzada agrupada.")
+        raise ValueError("At least 2 groups are needed for grouped cross-validation.")
     return max(2, min(requested_folds, unique_groups))
 
 
@@ -429,7 +429,7 @@ def fit_and_save_inference_models(
     X_cls, y_cls = select_features(df, ML_TARGET_CLASSIFICATION)
     y_cls = y_cls.fillna(0).astype(int)
     if y_cls.nunique() < 2:
-        raise ValueError("El target flooded tiene una sola clase; no se puede entrenar clasificador.")
+        raise ValueError("The flooded target has a single class; the classifier cannot be trained.")
 
     regression_models = build_models(feature_count=X_reg.shape[1])
     classification_models = build_classification_models(feature_count=X_cls.shape[1])
@@ -504,20 +504,20 @@ def load_saved_model_artifact(
 ) -> LoadedModelArtifact:
     """Load one persisted inference artifact from disk."""
     if task not in {"regression", "classification"}:
-        raise ValueError("task debe ser 'regression' o 'classification'.")
+        raise ValueError("task must be 'regression' or 'classification'.")
 
     artifacts_dir = Path(artifacts_dir)
     manifest = _load_manifest(artifacts_dir)
     selected_name = model_name or manifest.get("latest", {}).get(task)
     if not selected_name:
         raise FileNotFoundError(
-            f"No hay artefacto guardado para '{task}' en {artifacts_dir}. "
-            "Entrena y guarda modelos primero."
+            f"There is no saved artifact for '{task}' in {artifacts_dir}. "
+            "Train and save models first."
         )
 
     artifact_path = _artifact_model_path(artifacts_dir, task, selected_name)
     if not artifact_path.exists():
-        raise FileNotFoundError(f"No existe el artefacto esperado: {artifact_path}")
+        raise FileNotFoundError(f"The expected artifact does not exist: {artifact_path}")
 
     payload = joblib.load(artifact_path)
     return LoadedModelArtifact(
@@ -905,7 +905,7 @@ def save_results(
     else:
         xlsx_file = None
 
-    print("\nArchivos generados:")
+    print("\nGenerated files:")
     print(f"  CSV : {csv_file}")
     if xlsx_file is not None:
         print(f"  XLSX: {xlsx_file}")
@@ -943,7 +943,7 @@ def print_results_table(results_df: pd.DataFrame):
 
     separator = "=" * 110
     print(f"\n{separator}")
-    print("COMPARACION DE MODELOS")
+    print("MODEL COMPARISON")
     print(separator)
     print(printable.to_string(index=False))
     print(separator)
@@ -974,7 +974,7 @@ def print_regression_scenario_breakdown(results_df: pd.DataFrame):
 
     separator = "=" * 140
     print(f"\n{separator}")
-    print("DESEMPENO POR TIPO DE ESCENARIO")
+    print("PERFORMANCE BY SCENARIO TYPE")
     print(separator)
     print(printable.to_string(index=False))
     print(separator)
@@ -1016,7 +1016,7 @@ def print_classification_results_table(results_df: pd.DataFrame):
 
     separator = "=" * 130
     print(f"\n{separator}")
-    print("COMPARACION DE MODELOS DE CLASIFICACION")
+    print("CLASSIFICATION MODEL COMPARISON")
     print(separator)
     print(printable.to_string(index=False))
     print(separator)
@@ -1053,7 +1053,7 @@ def print_classification_scenario_breakdown(results_df: pd.DataFrame):
 
     separator = "=" * 160
     print(f"\n{separator}")
-    print("CLASIFICACION POR TIPO DE ESCENARIO")
+    print("CLASSIFICATION BY SCENARIO TYPE")
     print(separator)
     print(printable.to_string(index=False))
     print(separator)
@@ -1066,21 +1066,21 @@ def main():
     preferred_classifier = default_classification_model_name()
     artifacts_dir = default_artifact_dir(DEFAULT_OUTPUT_CSV)
     feature_space, pca_components = describe_feature_space()
-    print(f"Comparando modelos para target de regresion: {regression_target}")
-    print(f"Comparando modelos para target de clasificacion: {classification_target}")
+    print(f"Comparing models for regression target: {regression_target}")
+    print(f"Comparing models for classification target: {classification_target}")
     print(f"Dataset: {DEFAULT_OUTPUT_CSV}")
-    print(f"Directorio artefactos: {artifacts_dir}")
+    print(f"Artifacts directory: {artifacts_dir}")
     print(f"Test size: {ML_TEST_SIZE}")
     print(f"Random state: {ML_RANDOM_STATE}")
     print(f"CV folds: {ML_CV_FOLDS}")
     print(f"Split strategy: {ML_SPLIT_STRATEGY}")
     print(f"Group column: {ML_GROUP_COLUMN}")
-    print(f"Espacio de features: {feature_space}")
-    print(f"Componentes PCA: {pca_components}")
-    print(f"Modelos de regresion: {', '.join(build_models().keys())}")
-    print(f"Modelos de clasificacion: {', '.join(build_classification_models().keys())}")
-    print(f"Regresor para persistencia: {preferred_regressor}")
-    print(f"Clasificador para persistencia: {preferred_classifier}")
+    print(f"Feature space: {feature_space}")
+    print(f"PCA components: {pca_components}")
+    print(f"Regression models: {', '.join(build_models().keys())}")
+    print(f"Classification models: {', '.join(build_classification_models().keys())}")
+    print(f"Regressor to persist: {preferred_regressor}")
+    print(f"Classifier to persist: {preferred_classifier}")
 
     regression_df = evaluate_models(
         target=regression_target,
@@ -1107,9 +1107,9 @@ def main():
         classifier_name=preferred_classifier,
         output_dir=artifacts_dir,
     )
-    print("\nArtefactos de inferencia actualizados:")
-    print(f"  Regresion    : {artifacts['regression'].artifact_path}")
-    print(f"  Clasificacion: {artifacts['classification'].artifact_path}")
+    print("\nInference artifacts updated:")
+    print(f"  Regression    : {artifacts['regression'].artifact_path}")
+    print(f"  Classification: {artifacts['classification'].artifact_path}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,5 @@
+# Bytes estables en cualquier sistema: los SHA-256 de tables_provenance.json
+# se calculan sobre archivos con fin de linea LF.
+*.csv text eol=lf
+*.json text eol=lf
+*.md text eol=lf

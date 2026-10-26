@@ -12,7 +12,7 @@ def test_xgboost_family_is_registered():
 
 
 def test_unknown_family_lists_the_available_ones():
-    with pytest.raises(ValueError, match="Familia desconocida"):
+    with pytest.raises(ValueError, match="Unknown family"):
         get_family("perceptron_de_1958")
 
 

@@ -1,0 +1,27 @@
+{
+  "prep_id": "ca706e27654e0cf5",
+  "feature_contract_id": "tabular_v4_21",
+  "n_rows": 154080,
+  "n_runs": 963,
+  "n_runs_full_grid": 1000,
+  "n_missing_cells": 37,
+  "flood_threshold_m3": 1.0,
+  "max_continuity_error_pct": 5.0,
+  "command": "python scripts/informe_evaluacion.py --prep-id ca706e27654e0cf5 --prepared-dir outputs/bench/prepared_v4_21 --oof-root outputs/bench/oof --out docs/auditoria/correcciones/datos --flood-threshold 1.0",
+  "git_commit": "e26fc5aaf127261f2b63c32410affd6288b6ae6a",
+  "git_dirty": false,
+  "git_dirty_definition": "git status --porcelain --untracked-files=no no vacío al empezar",
+  "oof_root": "outputs/bench/oof",
+  "inputs_sha256": {
+    "ca706e27654e0cf5/baseline_forma_mas_cercana.parquet": "106c791ca5513de2a5c136208c1d3f0a9879893489ad98d7fa9edef273abe72a",
+    "ca706e27654e0cf5/baseline_interpolacion_factor.parquet": "def27eaa88e1c9ab6c04b5f826014ff33c7d7a65b996a8cac77149be1329f48a",
+    "ca706e27654e0cf5/xgboost.parquet": "a2abe0f0ea45de2637c42eb180a4c00223c37f945a4b91e83ea4e97af030d14a"
+  },
+  "outputs_sha256": {
+    "banda_limitrofe.csv": "070571884fcdde9164ee8705b8fb499cc37fb6e60b07a5034917dcf3935d8302",
+    "comparacion_protocolos.csv": "26d130061b779ee10b05f09ddb218c5788c4ab0640aaba8f62a2b0e938e3023b",
+    "matriz_confusion.csv": "7fea981fabb6536577b1e81a0e6816b30cfbf1f3db301b6a4681cd2ecb24b7a6",
+    "por_forma.csv": "0b7951fb78e546490b8d5e1169d5e0a817cde7b01ac743694a4f6309103b75e5"
+  },
+  "generated_at_utc": "2026-10-11T21:12:45.990252+00:00"
+}

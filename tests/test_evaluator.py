@@ -11,7 +11,13 @@ from swmm_resilience.ml.evaluator import (
     _regressor_oracle_metrics,
     evaluate_models,
 )
-from swmm_resilience.ml.trainer import FEATURE_COLS
+from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
+
+# evaluate_models (ml/evaluator.py) is "Stack B": pinned to tabular_v3_17
+# (it reads from training_samples_v17), not to trainer.FEATURE_COLS, which
+# now points at the 21-feature tabular_v4_21 used by ScenarioPredictor /
+# predict_network. This fixture must build v17-shaped rows accordingly.
+FEATURE_COLS = list(FEATURE_COLUMNS_V17)
 
 
 def evaluation_df():

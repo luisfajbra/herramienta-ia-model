@@ -16,9 +16,13 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from ..extraction.dynamic_features import compute_scenario_dynamic_features
+from ..extraction.dynamic_features import (
+    compute_scenario_dynamic_features,
+    compute_tributary_dynamic_features,
+)
 from ..extraction.static_features import extract_static_features
 from ..extraction.topology import build_network_graph, compute_topology_features
+from ..ml.contracts import TABULAR_V4_21
 from ..ml.trainer import FEATURE_COLS
 from ..simulation.swmm_api_io import load_inp
 from ..validation.hydrograph_csv import HydrographScenario
@@ -59,6 +63,14 @@ class ScenarioPredictor:
         self.clf = joblib.load(clf_path)
         self.reg = joblib.load(reg_path)
         self.model_load_s = time.perf_counter() - t0
+
+        if self.clf.n_features_in_ != len(FEATURE_COLS) or self.reg.n_features_in_ != len(FEATURE_COLS):
+            raise RuntimeError(
+                f"The model in '{clf_path.parent}' expects {self.clf.n_features_in_}/{self.reg.n_features_in_} "
+                f"features (clf/reg) but FEATURE_COLS has {len(FEATURE_COLS)}. "
+                "The active model does not match the current feature contract -- "
+                "promote it again (--bench-promote or the corresponding migration script)."
+            )
 
         t0 = time.perf_counter()
         static_df = extract_static_features(inp_path)
@@ -122,6 +134,14 @@ class ScenarioPredictor:
             duracion_horas=duracion_horas,
             tiempo_al_pico_h=tiempo_al_pico_h,
         )
+        capacity_by_node = dict(
+            zip(self.full_df["node_id"].astype(str), self.full_df["upstream_capacity_lps"])
+        )
+        tributary_df = compute_tributary_dynamic_features(
+            list(self.full_df["node_id"].astype(str)),
+            scenario.node_series, self.graph, capacity_by_node,
+        )
+        dynamic_df = dynamic_df.merge(tributary_df, on="node_id", how="left")
         static_base = self.full_df.drop(
             columns=[
                 c
@@ -133,7 +153,7 @@ class ScenarioPredictor:
             ]
         )
         merged = static_base.merge(dynamic_df, on="node_id", how="left")
-        X = merged[FEATURE_COLS]
+        X = TABULAR_V4_21.validate_frame(merged[FEATURE_COLS])
         t_features = time.perf_counter() - t0
 
         t0 = time.perf_counter()

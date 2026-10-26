@@ -117,7 +117,7 @@ def test_duplicate_run_node_pairs_are_a_hard_error():
     keys = keys.copy()
     keys.loc[1, "node_id"] = "N0"    # duplica (run_id=1, node_id=N0)
 
-    with pytest.raises(DatasetQualityError, match="duplicad"):
+    with pytest.raises(DatasetQualityError, match="duplicated"):
         build_quality_report(keys, X, y_clf, y_reg, flood_threshold_m3=1.0)
 
 
@@ -125,7 +125,7 @@ def test_zero_flooded_rows_is_a_hard_error():
     keys, X, y_clf, y_reg = _frames()
     y_clf = pd.Series([0] * len(y_clf), name="inunda")
 
-    with pytest.raises(DatasetQualityError, match="ninguna fila inundada"):
+    with pytest.raises(DatasetQualityError, match="no flooded row"):
         build_quality_report(keys, X, y_clf, y_reg, flood_threshold_m3=1.0)
 
 

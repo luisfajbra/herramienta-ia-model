@@ -1,0 +1,7 @@
+modelo,protocolo,fn_total,fn_en_banda_1_2m3,fn_fuera_de_banda,fn_con_vol_ge_100m3
+baseline_forma_mas_cercana,LeaveOneShapeOut,889,611,278,0
+baseline_interpolacion_factor,GroupKFold5,416,393,23,0
+baseline_interpolacion_factor,LOSO,416,393,23,0
+xgboost,GroupKFold5,844,435,409,5
+xgboost,LOSO,879,443,436,4
+xgboost,LeaveOneShapeOut,380,333,47,0

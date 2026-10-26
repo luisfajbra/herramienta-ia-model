@@ -7,8 +7,9 @@ import main
 
 
 def test_factor_comparison_cli_generates_plots_in_metrics_directory(
-    monkeypatch, capsys
+    monkeypatch, capsys, tmp_path
 ):
+    monkeypatch.setattr(main, "METRICS_DIR", tmp_path / "metrics")
     calls = []
     load_calls = []
     expected_paths = [

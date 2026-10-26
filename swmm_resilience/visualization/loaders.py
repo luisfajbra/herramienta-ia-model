@@ -76,7 +76,7 @@ def load_from_swmm(run_id: str, db_path: Path | str = DEFAULT_DB_FILE) -> pd.Dat
         conn.close()
 
     if df.empty:
-        raise ValueError(f"No se encontraron resultados en la DB para run_id='{run_id}'")
+        raise ValueError(f"No results were found in the DB for run_id='{run_id}'")
 
     inflow_multiplier = float(df["inflow_multiplier"].iloc[0])
     return _standardize(df.drop(columns=["inflow_multiplier"]).assign(inflow_multiplier=inflow_multiplier),

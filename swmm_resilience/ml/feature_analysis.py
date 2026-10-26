@@ -9,8 +9,11 @@ import pandas as pd
 from sklearn.metrics import f1_score, roc_auc_score, r2_score
 from sklearn.model_selection import LeaveOneGroupOut
 
-from .trainer import FEATURE_COLS, make_classifier, make_regressor
+from .contracts import FEATURE_COLUMNS_V17
+from .trainer import make_classifier, make_regressor
 from ..visualization.labels import feature_display_name
+
+FEATURE_COLS = list(FEATURE_COLUMNS_V17)
 
 REPORT_EXCLUDED_FEATURES = {"n_tuberias_in", "n_tuberias_out"}
 REPORT_FEATURE_COLS = [
@@ -244,6 +247,10 @@ def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> No
     plt.savefig(out_dir / "shap_classifier_summary.png", dpi=150, bbox_inches="tight")
     plt.close()
 
+    # This module (Stack B, like ml/evaluator.py) always operates on the
+    # legacy tabular_v3_17 contract (FEATURE_COLS above is pinned to
+    # FEATURE_COLUMNS_V17) -- duracion_horas/tiempo_al_pico_h are the two
+    # most important temporal descriptors under that contract.
     for feat in ("duracion_horas", "tiempo_al_pico_h"):
         feat_idx = REPORT_FEATURE_COLS.index(feat)
         shap.dependence_plot(
@@ -287,6 +294,8 @@ def plot_shap(clf_pipeline, reg_pipeline, df: pd.DataFrame, out_dir: Path) -> No
     plt.savefig(out_dir / "shap_regressor_summary.png", dpi=150, bbox_inches="tight")
     plt.close()
 
+    # Same reasoning as the classifier block above: this module is pinned to
+    # tabular_v3_17, so duracion_horas/tiempo_al_pico_h are the relevant pair.
     for feat in ("duracion_horas", "tiempo_al_pico_h"):
         feat_idx = REPORT_FEATURE_COLS.index(feat)
         shap.dependence_plot(

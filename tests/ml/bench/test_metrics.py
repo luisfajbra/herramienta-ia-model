@@ -3,11 +3,17 @@ import pytest
 
 from swmm_resilience.ml.bench.metrics import (
     classifier_metrics,
+    confusion_counts,
     end_to_end_metrics,
+    end_to_end_pooled_metrics,
+    fold_classifier_metrics,
     mean_metrics,
     nse,
+    pooled_classifier_metrics,
     pooled_regressor_metrics,
     regressor_oracle_metrics,
+    shape_breakdown_entry,
+    summarize_fold_metrics,
 )
 
 
@@ -120,3 +126,151 @@ def test_pooled_regressor_metrics_concatenate_before_computing():
 
 def test_pooled_regressor_metrics_of_empty_parts_is_empty():
     assert pooled_regressor_metrics([], []) == {}
+
+
+def test_confusion_counts_on_a_known_case():
+    counts = confusion_counts([1, 1, 0, 0], [1, 0, 0, 1])
+    assert counts == {"tn": 1, "fp": 1, "fn": 1, "tp": 1}
+
+
+def test_pooled_classifier_metrics_is_perfect_even_when_a_part_has_no_positives():
+    """El caso de M-03: un fold sin inundaciones no debe contar como F1 = 0."""
+    true_parts = [np.array([0, 0]), np.array([1, 0])]
+    pred_parts = [np.array([0, 0]), np.array([1, 0])]
+    prob_parts = [np.array([0.1, 0.1]), np.array([0.9, 0.1])]
+
+    result = pooled_classifier_metrics(true_parts, pred_parts, prob_parts)
+
+    assert result["f1"] == pytest.approx(1.0)
+    assert result["precision"] == pytest.approx(1.0)
+    assert result["recall"] == pytest.approx(1.0)
+    assert result["specificity"] == pytest.approx(1.0)
+    assert result["auc_roc"] == pytest.approx(1.0)
+
+
+def test_pooled_classifier_metrics_of_no_parts_is_empty():
+    assert pooled_classifier_metrics([], [], []) == {}
+
+
+def test_pooled_specificity_is_nan_without_negatives():
+    result = pooled_classifier_metrics(
+        [np.array([1, 1])], [np.array([1, 0])], [np.array([0.9, 0.4])]
+    )
+    assert np.isnan(result["specificity"])
+
+
+def test_fold_metrics_are_nan_when_the_fold_has_no_real_positives():
+    result = fold_classifier_metrics(np.array([0, 0]), np.array([0, 0]))
+    assert np.isnan(result["precision"])
+    assert np.isnan(result["recall"])
+    assert np.isnan(result["f1"])
+
+
+def test_fold_precision_is_zero_but_recall_nan_with_only_false_positives():
+    result = fold_classifier_metrics(np.array([0, 0]), np.array([1, 0]))
+    assert result["precision"] == pytest.approx(0.0)
+    assert np.isnan(result["recall"])
+    assert np.isnan(result["f1"])
+
+
+def test_fold_metrics_match_the_textbook_values():
+    result = fold_classifier_metrics(np.array([1, 1, 0, 0]), np.array([1, 0, 0, 0]))
+    assert result["precision"] == pytest.approx(1.0)
+    assert result["recall"] == pytest.approx(0.5)
+    assert result["f1"] == pytest.approx(2 / 3)
+
+
+def test_summarize_fold_metrics_ignores_undefined_folds_and_counts_them():
+    folds = [
+        {"precision": float("nan"), "recall": float("nan"), "f1": float("nan")},
+        {"precision": 1.0, "recall": 0.5, "f1": 2 / 3},
+        {"precision": 1.0, "recall": 1.0, "f1": 1.0},
+    ]
+    summary = summarize_fold_metrics(folds)
+
+    assert summary["f1"]["n_undefined"] == 1
+    assert summary["f1"]["mean"] == pytest.approx((2 / 3 + 1.0) / 2)
+    assert summary["f1"]["min"] == pytest.approx(2 / 3)
+    assert summary["f1"]["max"] == pytest.approx(1.0)
+    assert summary["f1"]["median"] == pytest.approx((2 / 3 + 1.0) / 2)
+
+
+def test_summarize_fold_metrics_of_all_undefined_folds_is_nan():
+    folds = [{"precision": float("nan"), "recall": float("nan"), "f1": float("nan")}]
+    summary = summarize_fold_metrics(folds)
+    assert np.isnan(summary["f1"]["mean"])
+    assert summary["f1"]["n_undefined"] == 1
+
+
+def test_end_to_end_pooled_metrics_known_values():
+    true_parts = [np.array([0.0, 10.0]), np.array([40.0, 50.0])]
+    routed_parts = [np.array([0.0, 10.0]), np.array([80.0, 100.0])]
+
+    result = end_to_end_pooled_metrics(true_parts, routed_parts)
+
+    assert result["vol_total_real_m3"] == pytest.approx(100.0)
+    assert result["vol_total_pred_m3"] == pytest.approx(190.0)
+    assert result["vol_total_error_pct"] == pytest.approx(90.0)
+    assert result["rmse_vol_todos_nodos"] == pytest.approx(np.sqrt((40**2 + 50**2) / 4))
+    assert result["mae_vol_todos_nodos"] == pytest.approx((40 + 50) / 4)
+
+
+def test_end_to_end_pooled_error_pct_is_nan_without_real_volume():
+    result = end_to_end_pooled_metrics([np.array([0.0])], [np.array([5.0])])
+    assert np.isnan(result["vol_total_error_pct"])
+
+
+def test_shape_breakdown_entry_known_values():
+    entry = shape_breakdown_entry(
+        yc_true=np.array([0, 0, 1, 1]),
+        yc_pred=np.array([0, 0, 1, 1]),
+        vol_true=np.array([0.0, 0.0, 40.0, 50.0]),
+        vol_routed=np.array([0.0, 0.0, 80.0, 100.0]),
+    )
+    assert entry["n_rows"] == 4
+    assert entry["n_positives"] == 2
+    assert entry["f1"] == pytest.approx(1.0)
+    assert entry["vol_real_m3"] == pytest.approx(90.0)
+    assert entry["vol_pred_m3"] == pytest.approx(180.0)
+    assert entry["error_vol_pct"] == pytest.approx(100.0)
+    assert entry["rmse_vol"] == pytest.approx(np.sqrt((40**2 + 50**2) / 4))
+
+
+def test_shape_breakdown_entry_f1_and_error_are_nan_without_positives():
+    entry = shape_breakdown_entry(
+        yc_true=np.array([0, 0]),
+        yc_pred=np.array([0, 0]),
+        vol_true=np.array([0.0, 0.0]),
+        vol_routed=np.array([0.0, 0.0]),
+    )
+    assert np.isnan(entry["f1"])
+    assert np.isnan(entry["error_vol_pct"])
+
+
+def test_pooled_metrics_are_nan_when_the_pool_has_no_positives_at_all():
+    result = pooled_classifier_metrics(
+        [np.array([0, 0])], [np.array([0, 0])], [np.array([0.1, 0.1])]
+    )
+    assert np.isnan(result["precision"])
+    assert np.isnan(result["recall"])
+    assert np.isnan(result["f1"])
+    assert result["specificity"] == pytest.approx(1.0)
+    assert np.isnan(result["auc_roc"])
+
+
+def test_pooled_precision_is_nan_but_recall_and_f1_are_zero_without_predicted_positives():
+    result = pooled_classifier_metrics(
+        [np.array([1, 0])], [np.array([0, 0])], [np.array([0.2, 0.1])]
+    )
+    assert np.isnan(result["precision"])
+    assert result["recall"] == pytest.approx(0.0)
+    assert result["f1"] == pytest.approx(0.0)
+
+
+def test_pooled_precision_recall_f1_are_zero_with_only_a_false_positive():
+    result = pooled_classifier_metrics(
+        [np.array([1, 0])], [np.array([0, 1])], [np.array([0.2, 0.9])]
+    )
+    assert result["precision"] == pytest.approx(0.0)
+    assert result["recall"] == pytest.approx(0.0)
+    assert result["f1"] == pytest.approx(0.0)

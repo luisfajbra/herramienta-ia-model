@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 
 from swmm_resilience.ml import feature_importance
-from swmm_resilience.ml.trainer import FEATURE_COLS
+from swmm_resilience.ml.feature_importance import FEATURE_COLS
 
 
 def test_plot_importance_uses_descriptive_english_labels(monkeypatch, tmp_path):

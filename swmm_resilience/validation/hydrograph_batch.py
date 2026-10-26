@@ -32,7 +32,13 @@ from ..analysis.model_comparison import (
 )
 from ..extraction.labels import extract_labels
 from ..ml.scenario_predict import ScenarioPredictor
-from ..simulation.swmm_api_io import get_node_timeseries_map, load_inp
+from ..simulation.inflow_closure import (
+    INFLOW_CLOSURE_POLICY_VERSION,
+    apply_closure_policy, enforce_strict_zero_endpoint, save_closure_manifest,
+)
+from ..simulation.swmm_api_io import (
+    get_node_timeseries_map, load_inp, read_continuity_error as _read_continuity_error,
+)
 from ..simulation.timeseries_scenario import write_scenario_inp
 from ..validation.hydrograph_csv import HydrographScenario, load_scenario
 from ..visualization.hydrograph import plot_scenario_hydrograph
@@ -102,24 +108,24 @@ def _validate_base_inp(
     flow_units = _get_option(inp, "FLOW_UNITS")
     if flow_units is not None and flow_units.upper() != "LPS":
         raise ValueError(
-            f"FLOW_UNITS='{flow_units}' en el .inp base; el flujo de validación "
-            "requiere LPS (contrato value_lps y conversión 10^6 L → m³)."
+            f"FLOW_UNITS='{flow_units}' in the base .inp; the validation flow "
+            "requires LPS (value_lps contract and 10^6 L → m³ conversion)."
         )
 
     ponding = _get_option(inp, "ALLOW_PONDING")
     if ponding is not None and ponding.upper() in ("YES", "TRUE", "1"):
         warnings.warn(
-            "ALLOW_PONDING está activado en el .inp base: el 'Node Flooding "
-            "Summary' agrega la columna de volumen estancado y cambia la "
-            "contabilidad de volúmenes. Interpretar resultados con cautela.",
+            "ALLOW_PONDING is enabled in the base .inp: the 'Node Flooding "
+            "Summary' adds the ponded-volume column and changes the "
+            "volume accounting. Interpret the results with caution.",
             stacklevel=2,
         )
 
     hash_file = Path(clf_path).parent / "training_inp_hash.txt"
     if not hash_file.exists():
         warnings.warn(
-            f"No se encontró {hash_file}; no se puede verificar que el .inp "
-            "base coincida con la red de entrenamiento.",
+            f"{hash_file} not found; it cannot be verified that the base .inp "
+            "matches the training network.",
             stacklevel=2,
         )
         return
@@ -127,14 +133,14 @@ def _validate_base_inp(
     current = _md5(Path(base_inp_path))
     if stored and current != stored:
         msg = (
-            "El .inp base no coincide con la red usada para entrenar los "
-            f"modelos (hash {current} != {stored}). La validación mediría una "
-            "red distinta a la del modelo."
+            "The base .inp does not match the network used to train the "
+            f"models (hash {current} != {stored}). The validation would measure a "
+            "different network than the model's."
         )
         if allow_inp_mismatch:
-            warnings.warn(msg + " Continuando por --allow-inp-mismatch.", stacklevel=2)
+            warnings.warn(msg + " Continuing because of --allow-inp-mismatch.", stacklevel=2)
         else:
-            raise ValueError(msg + " Usa --allow-inp-mismatch para forzar.")
+            raise ValueError(msg + " Use --allow-inp-mismatch to force.")
 
 
 def _make_predictor(
@@ -172,27 +178,6 @@ def _run_swmm(scenario_inp_path: Path) -> Path:
     return rpt_path
 
 
-_CONTINUITY_RE = re.compile(
-    r"Continuity Error \(%\)\s*\.*\s*(-?\d+(?:\.\d+)?)"
-)
-
-
-def _read_continuity_error(rpt_path: Path) -> float | None:
-    """Worst (max |value|) continuity error (%) reported in the .rpt.
-
-    A routing continuity error above ~5 % means SWMM itself does not trust
-    its mass balance, so the 'truth' side of the comparison is unreliable.
-    """
-    try:
-        text = Path(rpt_path).read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return None
-    values = [float(v) for v in _CONTINUITY_RE.findall(text)]
-    if not values:
-        return None
-    return max(values, key=abs)
-
-
 def _build_swmm_df(
     all_node_ids: list[str],
     rpt_path: Path,
@@ -224,6 +209,9 @@ def run_batch_validation(
     drain_down_hours: float = 6.0,
     allow_inp_mismatch: bool = False,
     factor_range: tuple[float, float] | None = None,
+    csv_inflow_closure_mode: str = "strict",
+    inflow_closure_tolerance_lps: float = 0.01,
+    max_continuity_error_pct: float = CONTINUITY_ERROR_WARN_PCT,
 ) -> dict:
     """Run batch validation of ML predictions against SWMM simulations.
 
@@ -253,6 +241,19 @@ def run_batch_validation(
     factor_range:
         (factor_min, factor_max) of the training sweep; used to flag
         per-node extrapolation. None disables flagging.
+    csv_inflow_closure_mode:
+        ``"strict"`` (default) rejects a CSV scenario whose inflow does not
+        end at (near) zero. ``"close"`` applies the same linear closure
+        policy used for generated shapes instead of rejecting it.
+    inflow_closure_tolerance_lps:
+        Tolerance (L/s) below which a node's final inflow value is treated
+        as already zero, for both the strict check and the close policy.
+    max_continuity_error_pct:
+        Routing continuity error (%) above which the SWMM reference for a
+        scenario is flagged as unreliable (warn-only here; the training
+        read path excludes such runs). Callers pass
+        ``config.validation.max_continuity_error_pct`` so this check and the
+        training-side exclusion share a single configured threshold.
 
     Returns
     -------
@@ -294,6 +295,32 @@ def run_batch_validation(
         # Step a: load scenario
         scenario = load_scenario(csv_path, expected_nodes)
 
+        # Step a.5: enforce/apply the inflow closure policy
+        if csv_inflow_closure_mode == "close":
+            scenario, closure_manifest = apply_closure_policy(
+                scenario, inflow_closure_tolerance_lps
+            )
+            closure_manifest["mode"] = "close"
+            if closure_manifest["changed_nodes"]:
+                warnings.warn(
+                    f"[{scenario.scenario_id}] Inflow closed to zero at nodes: "
+                    f"{closure_manifest['changed_nodes']}.",
+                    stacklevel=2,
+                )
+            save_closure_manifest(closure_manifest, inp_dir, scenario.scenario_id)
+        else:
+            enforce_strict_zero_endpoint(scenario, inflow_closure_tolerance_lps)
+            strict_manifest = {
+                "policy_version": INFLOW_CLOSURE_POLICY_VERSION,
+                "mode": "strict",
+                "tolerance_lps": inflow_closure_tolerance_lps,
+                "source_scenario_id": scenario.scenario_id,
+                "changed_nodes": [],
+                "original_last_time_hours": scenario.last_time_hours,
+                "effective_last_time_hours": scenario.last_time_hours,
+            }
+            save_closure_manifest(strict_manifest, inp_dir, scenario.scenario_id)
+
         # Step b: write scenario-specific .inp (with drain-down buffer)
         t0 = time.perf_counter()
         scenario_inp_path = write_scenario_inp(
@@ -312,11 +339,11 @@ def run_batch_validation(
         t_parse_rpt = time.perf_counter() - t0
 
         continuity_pct = _read_continuity_error(rpt_path)
-        if continuity_pct is not None and abs(continuity_pct) > CONTINUITY_ERROR_WARN_PCT:
+        if continuity_pct is not None and abs(continuity_pct) > max_continuity_error_pct:
             warnings.warn(
-                f"[{scenario.scenario_id}] Error de continuidad SWMM "
-                f"{continuity_pct:.2f}% (> {CONTINUITY_ERROR_WARN_PCT}%): la "
-                "referencia de validación es poco confiable para este escenario.",
+                f"[{scenario.scenario_id}] SWMM continuity error "
+                f"{continuity_pct:.2f}% (> {max_continuity_error_pct}%): the "
+                "validation reference is unreliable for this scenario.",
                 stacklevel=2,
             )
 

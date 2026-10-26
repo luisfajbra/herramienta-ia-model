@@ -1,0 +1,7 @@
+modelo,protocolo,tn,fp,fn,tp
+baseline_forma_mas_cercana,LeaveOneShapeOut,106556,1299,889,45336
+baseline_interpolacion_factor,GroupKFold5,105617,2238,416,45809
+baseline_interpolacion_factor,LOSO,105617,2238,416,45809
+xgboost,GroupKFold5,105711,2144,844,45381
+xgboost,LOSO,105610,2245,879,45346
+xgboost,LeaveOneShapeOut,106526,1329,380,45845

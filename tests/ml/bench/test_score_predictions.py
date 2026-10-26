@@ -10,6 +10,7 @@ from swmm_resilience.ml.bench.schemas import (
     PreparedDataset,
 )
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
+from tests.ml.bench.prepared_factory import make_prepared, perfect_oof
 
 
 @pytest.fixture
@@ -98,8 +99,10 @@ def test_result_has_the_three_levels_and_the_factor_breakdown(prepared):
     result = score_predictions(
         prepared, _perfect_oof(prepared), {"prep_id": prepared.prep_id}
     )
-    assert set(result["LOSO"]) == {
-        "classifier", "regressor_oracle", "end_to_end", "by_factor"
+    assert set(result["LOSO"]) >= {
+        "classifier", "regressor_oracle", "end_to_end", "by_factor",
+        "confusion_matrix", "classifier_per_fold",
+        "classifier_legacy_mean_zero_fill", "end_to_end_pooled", "by_shape",
     }
     assert set(result["LOSO"]["by_factor"]) == {"1.00", "2.00"}
 
@@ -119,14 +122,14 @@ def test_missing_prep_id_in_provenance_is_rejected(prepared):
 
 def test_incomplete_fold_coverage_is_rejected(prepared):
     oof = _perfect_oof(prepared).iloc[:-1]
-    with pytest.raises(ValueError, match="cobertura"):
+    with pytest.raises(ValueError, match="coverage"):
         score_predictions(prepared, oof, {"prep_id": prepared.prep_id})
 
 
 def test_duplicate_predictions_for_a_sample_are_rejected(prepared):
     oof = _perfect_oof(prepared)
     oof = pd.concat([oof, oof.iloc[[0]]], ignore_index=True)
-    with pytest.raises(ValueError, match="duplicad"):
+    with pytest.raises(ValueError, match="duplicated"):
         score_predictions(prepared, oof, {"prep_id": prepared.prep_id})
 
 
@@ -428,3 +431,136 @@ def test_each_protocol_is_scored_from_its_own_predictions_not_pooled():
     assert set(result) == {"LOSO", "GroupKFold5"}
     assert result["LOSO"]["classifier"]["f1"] == pytest.approx(1.0)
     assert result["GroupKFold5"]["classifier"]["f1"] == pytest.approx(0.0)
+
+
+def _loso_with_an_empty_fold():
+    """3 factores en LOSO; el factor 1.0 no tiene ninguna fila inundada."""
+    rows = []
+    volumes = {
+        1.0: [0.0, 0.0, 0.0],
+        2.0: [0.0, 10.0, 20.0],
+        3.0: [30.0, 40.0, 50.0],
+    }
+    for factor, vols in volumes.items():
+        for node, vol in zip(["N0", "N1", "N2"], vols):
+            rows.append(
+                dict(shape_id="base", node_id=node, factor_mult=factor, vol=vol,
+                     duracion_horas=3.0, tiempo_al_pico_h=0.7)
+            )
+    return make_prepared(rows, ["LOSO"])
+
+
+def test_perfect_predictions_score_f1_one_even_with_a_fold_without_flooding():
+    """M-03: el valor agregado no se rebaja por un fold sin positivos."""
+    prepared = _loso_with_an_empty_fold()
+    result = score_predictions(
+        prepared, perfect_oof(prepared), {"prep_id": prepared.prep_id}
+    )["LOSO"]
+
+    assert result["classifier"]["f1"] == pytest.approx(1.0)
+    assert result["classifier"]["specificity"] == pytest.approx(1.0)
+
+
+def test_the_legacy_zero_fill_mean_is_kept_under_an_explicit_name():
+    prepared = _loso_with_an_empty_fold()
+    result = score_predictions(
+        prepared, perfect_oof(prepared), {"prep_id": prepared.prep_id}
+    )["LOSO"]
+
+    # folds: factor 1.0 (sin positivos) -> 0 ; factores 2.0 y 3.0 -> 1.0
+    assert result["classifier_legacy_mean_zero_fill"]["f1"] == pytest.approx(2 / 3)
+    assert set(result["classifier_legacy_mean_zero_fill"]) == {
+        "precision", "recall", "f1", "auc_roc"
+    }
+
+
+def test_per_fold_dispersion_reports_the_undefined_fold():
+    prepared = _loso_with_an_empty_fold()
+    result = score_predictions(
+        prepared, perfect_oof(prepared), {"prep_id": prepared.prep_id}
+    )["LOSO"]
+
+    assert result["classifier_per_fold"]["f1"]["n_undefined"] == 1
+    assert result["classifier_per_fold"]["f1"]["min"] == pytest.approx(1.0)
+
+
+def test_confusion_matrix_counts_every_test_row():
+    prepared = _loso_with_an_empty_fold()
+    result = score_predictions(
+        prepared, perfect_oof(prepared), {"prep_id": prepared.prep_id}
+    )["LOSO"]
+
+    assert result["confusion_matrix"] == {"tn": 4, "fp": 0, "fn": 0, "tp": 5}
+
+
+def test_a_false_negative_and_a_false_positive_show_up_in_the_confusion_matrix():
+    prepared = _loso_with_an_empty_fold()
+    oof = perfect_oof(prepared)
+    oof.loc[oof["sample_idx"] == 4, "y_pred_clf"] = 0   # falso negativo (N1, factor 2.0)
+    oof.loc[oof["sample_idx"] == 0, "y_pred_clf"] = 1   # falso positivo (N0, factor 1.0)
+
+    result = score_predictions(prepared, oof, {"prep_id": prepared.prep_id})["LOSO"]
+
+    assert result["confusion_matrix"] == {"tn": 3, "fp": 1, "fn": 1, "tp": 4}
+    assert result["classifier"]["recall"] == pytest.approx(4 / 5)
+    assert result["classifier"]["precision"] == pytest.approx(4 / 5)
+
+
+def test_protocols_restricts_the_coverage_required_from_the_oof_frame():
+    """Dataset con dos protocolos y un OOF que cubre solo LOSO.
+
+    Sin ``protocols`` faltan los folds de LeaveOneShapeOut y se rechaza; con
+    ``protocols=("LOSO",)`` solo se exige y se puntua LOSO.
+    """
+    rows = []
+    for shape in ("A", "B"):
+        for factor in (1.0, 2.0):
+            for node, vol in zip(["N0", "N1"], [0.0, 10.0 * factor]):
+                rows.append(
+                    dict(shape_id=shape, node_id=node, factor_mult=factor, vol=vol,
+                         duracion_horas=3.0, tiempo_al_pico_h=0.7)
+                )
+    prepared = make_prepared(rows, ["LOSO", "LeaveOneShapeOut"])
+    oof = perfect_oof(prepared)
+    oof = oof[oof["protocol"] == "LOSO"].reset_index(drop=True)
+    assert set(oof["protocol"]) == {"LOSO"}
+    assert set(prepared.folds["protocol"]) == {"LOSO", "LeaveOneShapeOut"}
+
+    with pytest.raises(ValueError, match="missing"):
+        score_predictions(prepared, oof, {"prep_id": prepared.prep_id})
+
+    restricted = score_predictions(
+        prepared, oof, {"prep_id": prepared.prep_id}, protocols=("LOSO",)
+    )
+    assert set(restricted) == {"LOSO"}
+    assert "classifier" in restricted["LOSO"]
+
+
+def test_by_shape_and_pooled_end_to_end_use_the_routed_volume():
+    rows = []
+    spec = {
+        "A": {("N0", 1.0): 0.0, ("N1", 1.0): 10.0, ("N0", 2.0): 0.0, ("N1", 2.0): 20.0},
+        "B": {("N0", 1.0): 0.0, ("N1", 1.0): 0.0, ("N0", 2.0): 40.0, ("N1", 2.0): 50.0},
+    }
+    for shape, cells in spec.items():
+        for (node, factor), vol in cells.items():
+            rows.append(
+                dict(shape_id=shape, node_id=node, factor_mult=factor, vol=vol,
+                     duracion_horas=3.0, tiempo_al_pico_h=0.7)
+            )
+    prepared = make_prepared(rows, ["LeaveOneShapeOut"])
+    oof = perfect_oof(prepared)
+    shape_b = prepared.keys.loc[oof["sample_idx"], "shape_id"].to_numpy() == "B"
+    oof.loc[shape_b, "y_pred_reg"] = oof.loc[shape_b, "y_pred_reg"] * 2.0  # B se sobreestima 2x
+
+    result = score_predictions(prepared, oof, {"prep_id": prepared.prep_id})["LeaveOneShapeOut"]
+
+    assert result["by_shape"]["A"]["error_vol_pct"] == pytest.approx(0.0)
+    assert result["by_shape"]["B"]["error_vol_pct"] == pytest.approx(100.0)
+    assert result["by_shape"]["B"]["rmse_vol"] == pytest.approx(np.sqrt((40**2 + 50**2) / 4))
+    assert result["end_to_end_pooled"]["vol_total_real_m3"] == pytest.approx(120.0)
+    assert result["end_to_end_pooled"]["vol_total_pred_m3"] == pytest.approx(210.0)
+    assert result["end_to_end_pooled"]["vol_total_error_pct"] == pytest.approx(75.0)
+    assert result["end_to_end_pooled"]["rmse_vol_todos_nodos"] == pytest.approx(
+        np.sqrt((40**2 + 50**2) / 8)
+    )

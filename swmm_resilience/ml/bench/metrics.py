@@ -1,11 +1,13 @@
 """Las tres capas de métricas del banco.
 
-Replican literalmente las de ml/evaluator.py, incluida su asimetría de
-agregación: las métricas del clasificador y las de end-to-end se PROMEDIAN
-entre folds, mientras que las del regresor-oracle se calculan sobre el POOL
-concatenado de todos los folds. Esa diferencia cambia los números y hoy es
-invisible en el código original; aquí queda documentada y es lo que el test
-de paridad comprueba.
+Parten de las de ml/evaluator.py, pero el clasificador ya no se promedia por
+fold. La cifra principal (``classifier``) se calcula sobre el POOL
+concatenado de todos los folds, igual que el regresor-oracle y end-to-end;
+la dispersión por fold (``classifier_per_fold``) deja NaN donde precisión,
+recall o F1 no están definidos, y la media por fold con ``zero_division=0``
+del código original se conserva aparte (``classifier_legacy_mean_zero_fill``)
+solo para la paridad con ``ml/evaluator.py`` (hallazgo M-03 de la auditoría:
+esa media cuenta como 0 los folds sin inundaciones reales y rebaja el F1).
 """
 
 from __future__ import annotations
@@ -91,3 +93,109 @@ def pooled_regressor_metrics(true_parts: list, pred_parts: list) -> dict:
     return regressor_oracle_metrics(
         np.concatenate(true_parts), np.concatenate(pred_parts)
     )
+
+
+def confusion_counts(y_true, y_pred) -> dict:
+    """Conteos de la matriz de confusión; la clase positiva es ``inunda`` = 1."""
+    y_true = np.asarray(y_true).astype(int)
+    y_pred = np.asarray(y_pred).astype(int)
+    return {
+        "tn": int(((y_true == 0) & (y_pred == 0)).sum()),
+        "fp": int(((y_true == 0) & (y_pred == 1)).sum()),
+        "fn": int(((y_true == 1) & (y_pred == 0)).sum()),
+        "tp": int(((y_true == 1) & (y_pred == 1)).sum()),
+    }
+
+
+def pooled_classifier_metrics(true_parts: list, pred_parts: list, prob_parts: list) -> dict:
+    """Nivel 1 agregado: concatena todas las filas de test del protocolo.
+
+    Es la cifra principal del clasificador. Promediar por fold cuenta como 0
+    los folds sin inundaciones reales (``zero_division=0``), lo que rebaja el
+    F1 incluso de un predictor perfecto (hallazgo M-03 de la auditoría).
+    """
+    if not true_parts:
+        return {}
+    y_true = np.concatenate([np.asarray(part) for part in true_parts])
+    y_pred = np.concatenate([np.asarray(part) for part in pred_parts])
+    y_prob = np.concatenate([np.asarray(part) for part in prob_parts])
+    # precision/recall/F1 con NaN donde no están definidos (como por fold);
+    # ``classifier_metrics`` rellena con 0 y solo aporta el AUC.
+    result = fold_classifier_metrics(y_true, y_pred)
+    result["auc_roc"] = classifier_metrics(y_true, y_pred, y_prob)["auc_roc"]
+    counts = confusion_counts(y_true, y_pred)
+    negatives = counts["tn"] + counts["fp"]
+    result["specificity"] = counts["tn"] / negatives if negatives else float("nan")
+    return result
+
+
+def fold_classifier_metrics(y_true, y_pred) -> dict:
+    """Precisión, recall y F1 de un fold; NaN (no 0) donde no están definidos.
+
+    Recall y F1 no existen sin positivos reales; la precisión no existe sin
+    positivos predichos.
+    """
+    counts = confusion_counts(y_true, y_pred)
+    tp, fp, fn = counts["tp"], counts["fp"], counts["fn"]
+    positives = tp + fn
+    predicted = tp + fp
+    nan = float("nan")
+    return {
+        "precision": tp / predicted if predicted else nan,
+        "recall": tp / positives if positives else nan,
+        "f1": 2 * tp / (2 * tp + fp + fn) if positives else nan,
+    }
+
+
+def summarize_fold_metrics(folds: list) -> dict:
+    """Dispersión entre folds de precisión, recall y F1, ignorando los NaN."""
+    summary = {}
+    nan = float("nan")
+    for key in ("precision", "recall", "f1"):
+        values = np.array([fold[key] for fold in folds], dtype=float)
+        valid = values[~np.isnan(values)]
+        summary[key] = {
+            "mean": float(valid.mean()) if valid.size else nan,
+            "min": float(valid.min()) if valid.size else nan,
+            "median": float(np.median(valid)) if valid.size else nan,
+            "max": float(valid.max()) if valid.size else nan,
+            "n_undefined": int(np.isnan(values).sum()),
+        }
+    return summary
+
+
+def _relative_error_pct(real: float, predicted: float) -> float:
+    return 100.0 * (predicted - real) / real if real > 0 else float("nan")
+
+
+def end_to_end_pooled_metrics(vol_true_parts: list, vol_routed_parts: list) -> dict:
+    """Nivel 3 sobre el pool de todos los folds, con el error relativo del volumen total."""
+    if not vol_true_parts:
+        return {}
+    true = np.concatenate([np.asarray(part, dtype=float) for part in vol_true_parts])
+    routed = np.concatenate([np.asarray(part, dtype=float) for part in vol_routed_parts])
+    real, predicted = float(true.sum()), float(routed.sum())
+    return {
+        "rmse_vol_todos_nodos": float(np.sqrt(mean_squared_error(true, routed))),
+        "mae_vol_todos_nodos": float(mean_absolute_error(true, routed)),
+        "vol_total_real_m3": real,
+        "vol_total_pred_m3": predicted,
+        "vol_total_error_pct": _relative_error_pct(real, predicted),
+    }
+
+
+def shape_breakdown_entry(yc_true, yc_pred, vol_true, vol_routed) -> dict:
+    """Métricas de una forma de hidrograma (sus filas de test concatenadas)."""
+    yc_true = np.asarray(yc_true).astype(int)
+    vol_true = np.asarray(vol_true, dtype=float)
+    vol_routed = np.asarray(vol_routed, dtype=float)
+    real, predicted = float(vol_true.sum()), float(vol_routed.sum())
+    return {
+        "n_rows": int(len(yc_true)),
+        "n_positives": int(yc_true.sum()),
+        "f1": fold_classifier_metrics(yc_true, yc_pred)["f1"],
+        "rmse_vol": float(np.sqrt(np.mean((vol_true - vol_routed) ** 2))),
+        "vol_real_m3": real,
+        "vol_pred_m3": predicted,
+        "error_vol_pct": _relative_error_pct(real, predicted),
+    }

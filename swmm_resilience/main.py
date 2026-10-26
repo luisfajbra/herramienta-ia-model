@@ -100,7 +100,7 @@ def _normalize_inflow_multipliers(inflow_multipliers):
     return normalize_inflow_multipliers(
         inflow_multipliers,
         minimum=1.0,
-        label="Los factores multiplicadores de caudal",
+        label="The flow multiplier factors",
     )
 
 
@@ -127,7 +127,7 @@ def normalize_scenario_mode(scenario_mode, inp_path: Path) -> str:
     if resolved not in SUPPORTED_SCENARIO_MODES:
         supported = ", ".join(SUPPORTED_SCENARIO_MODES)
         raise ValueError(
-            f"Modo de escenario invalido: '{scenario_mode}'. Usa uno de: {supported}."
+            f"Invalid scenario mode: '{scenario_mode}'. Use one of: {supported}."
         )
     return resolved
 
@@ -154,9 +154,9 @@ def run_experiment(
     """Run the full simulation-to-database-to-dataset pipeline."""
     if delta_inflows_lps is not None:
         raise ValueError(
-            "delta_inflows_lps esta deshabilitado temporalmente porque antes se "
-            "interpretaba como multiplicadores de caudal. Usa inflow_multipliers=[...] "
-            "para escenarios Qx."
+            "delta_inflows_lps is temporarily disabled because it used to be "
+            "interpreted as flow multipliers. Use inflow_multipliers=[...] "
+            "for Qx scenarios."
         )
 
     inp_path = resolve_inp_file(inp_file)
@@ -175,7 +175,7 @@ def run_experiment(
     run_plan = multipliers
 
     if not inp_path.exists():
-        raise FileNotFoundError(f"No se encontro el archivo .inp: {inp_path}")
+        raise FileNotFoundError(f"The .inp file was not found: {inp_path}")
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
@@ -185,36 +185,36 @@ def run_experiment(
             os.remove(db_path)
         except PermissionError as exc:
             raise PermissionError(
-                "No se pudo reiniciar la base de datos porque esta abierta en otra ventana "
-                f"o proceso: {db_path}. Cierra el visor SQLite/DB Browser u otra app que la "
-                "este usando, o desmarca 'Reiniciar base de datos antes de correr'."
+                "The database could not be reset because it is open in another window "
+                f"or process: {db_path}. Close the SQLite/DB Browser viewer or any other app "
+                "that is using it, or uncheck 'Reset database before running'."
             ) from exc
-        print(f"  [info] BD anterior eliminada: {db_path}")
+        print(f"  [info] Previous DB deleted: {db_path}")
 
     conn = connect_db(str(db_path))
     network_hash = file_hash(str(inp_path))
 
     print(f"\n{'=' * 70}")
-    print("  SWMM Resilience ML - Generador de Base de Datos")
-    print(f"  Red        : {network_display_name(inp_path)}")
+    print("  SWMM Resilience ML - Database Generator")
+    print(f"  Network    : {network_display_name(inp_path)}")
     print(f"  Hash       : {network_hash[:12]}...")
-    print(f"  Escenario  : {scenario_mode} ({scenario_type})")
-    print(f"  Modo BD    : {'reiniciar y reemplazar' if reset_db else 'agregar a existente (append)'}")
-    print(f"  Corridas   : {len(run_plan)}")
-    print(f"  Factores   : {', '.join(f'{multiplier:g}' for multiplier in run_plan)}")
-    print(f"  Nodos      : {'todos' if target_nodes is None else ', '.join(target_nodes)}")
-    print(f"  DB Salida  : {db_path}")
+    print(f"  Scenario   : {scenario_mode} ({scenario_type})")
+    print(f"  DB mode    : {'reset and replace' if reset_db else 'add to existing (append)'}")
+    print(f"  Runs       : {len(run_plan)}")
+    print(f"  Factors    : {', '.join(f'{multiplier:g}' for multiplier in run_plan)}")
+    print(f"  Nodes      : {'all' if target_nodes is None else ', '.join(target_nodes)}")
+    print(f"  DB Output  : {db_path}")
     print(f"{'=' * 70}\n")
 
     Nodes, Links, Simulation = _load_pyswmm()
 
-    print("  [1/2] Extrayendo topologia estatica...")
+    print("  [1/2] Extracting static topology...")
     topology = extract_static_topology(str(inp_path), network_hash, Nodes, Links, Simulation)
     save_static_topology(conn, topology)
     link_static = topology["link_static"]
     node_inflow_profiles = topology.get("node_inflow_profiles", {})
 
-    print(f"\n  [2/2] Corriendo {len(run_plan)} simulaciones...\n")
+    print(f"\n  [2/2] Running {len(run_plan)} simulations...\n")
     for index, scenario_multiplier in enumerate(run_plan, start=1):
         run_id = new_id()
         inflow_multiplier = scenario_multiplier
@@ -285,15 +285,15 @@ def run_experiment(
 
             summary = results["summary"]
             print(
-                f"    ok Fallaron  : {summary['failed_nodes_count']}/{summary['total_nodes']} "
+                f"    ok Failed    : {summary['failed_nodes_count']}/{summary['total_nodes']} "
                 f"({summary['pct_flooded_nodes']:.1f}%)"
             )
-            print(f"    ok Pico flood: {summary['total_peak_flooding_lps']:.2f} lps (suma nodos)")
-            print(f"    ok Vol flood : {summary['total_flood_volume_m3']:.3f} m3 (suma nodos)")
-            print(f"    ok Resiliencia: {summary['resilience_index']:.3f}")
+            print(f"    ok Peak flood: {summary['total_peak_flooding_lps']:.2f} lps (sum of nodes)")
+            print(f"    ok Vol flood : {summary['total_flood_volume_m3']:.3f} m3 (sum of nodes)")
+            print(f"    ok Resilience: {summary['resilience_index']:.3f}")
             print(f"    ok Temporal  : {node_timeseries_path}")
             if summary["time_to_first_flood_min"]:
-                print(f"    ok 1er flood : {summary['time_to_first_flood_min']:.1f} min")
+                print(f"    ok 1st flood : {summary['time_to_first_flood_min']:.1f} min")
             print()
         except Exception:
             update_run_status(conn, run_id, "failed")
@@ -301,15 +301,15 @@ def run_experiment(
 
     conn.close()
     print(f"{'=' * 70}")
-    print(f"  Listo. Base de datos generada: {db_path}")
+    print(f"  Done. Database generated: {db_path}")
     print(f"{'=' * 70}\n")
 
     export_run_summary(str(db_path))
     export_ml_dataset(str(db_path), str(csv_path))
     run_dataset_review(str(csv_path), output_dir=DEFAULT_DATASET_REVIEW_DIR)
     print(
-        "  [info] Entrenamiento ML: si elegiste append, se entrenara con todas las corridas "
-        "acumuladas en esta base. Si elegiste reiniciar, se entrenara solo con las corridas nuevas."
+        "  [info] ML training: if you chose append, it will train with all the runs "
+        "accumulated in this database. If you chose reset, it will train only with the new runs."
     )
 
     return {"db_file": db_path, "csv_file": csv_path}

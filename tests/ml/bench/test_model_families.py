@@ -3,7 +3,10 @@ import json
 import numpy as np
 import pandas as pd
 import pytest
+from sklearn.calibration import CalibratedClassifierCV
 from sklearn.impute import SimpleImputer
+from sklearn.kernel_approximation import Nystroem
+from sklearn.linear_model import SGDClassifier, SGDRegressor
 from sklearn.preprocessing import StandardScaler
 
 from swmm_resilience.ml.bench.registry import available_families, get_family
@@ -17,7 +20,13 @@ TINY_PARAMS = {
     "xgboost": {"n_estimators": 5, "max_depth": 2},
     "random_forest": {"n_estimators": 5, "max_depth": 2},
     "linear": {"alpha": 1.0},
-    "svm": {"C": 1.0},
+    "svm": {
+        "gamma": 0.05,
+        "n_components": 8,
+        "alpha": 1e-4,
+        "max_iter": 200,
+        "tol": 1e-3,
+    },
     "mlp": {"hidden_sizes": (4,), "epochs": 3, "batch_size": 16},
 }
 
@@ -107,7 +116,10 @@ def test_regressor_fits_and_predicts_floats(name, toy_data):
 def test_preprocessing_descriptor_is_json_serialisable(name):
     descriptor = get_family(name).preprocessing_descriptor(TINY_PARAMS[name])
     assert json.dumps(descriptor)
-    assert set(descriptor) == {"imputer", "scaler", "pca"}
+    expected_keys = {"imputer", "scaler", "pca"}
+    if name == "svm":
+        expected_keys |= {"kernel_approx", "model_type", "loss", "probability_calibration"}
+    assert set(descriptor) == expected_keys
 
 
 @pytest.mark.parametrize("name", ALL_FAMILIES)
@@ -133,10 +145,35 @@ def test_families_handle_missing_values_via_the_imputer(name, toy_data):
     assert np.isfinite(probabilities).all()
 
 
-def test_svm_classifier_supports_probability_output():
-    """SVC necesita probability=True o predict_proba revienta en el evaluador."""
-    pipeline = get_family("svm").build_classifier({"C": 1.0}, scale_pos_weight=1.0)
-    assert pipeline.named_steps["model"].probability is True
+def test_svm_uses_an_approximate_rbf_mapping_with_linear_time_solvers():
+    """Evita que la familia vuelva accidentalmente a SVC/SVR cuadraticos."""
+    params = TINY_PARAMS["svm"]
+    classifier = get_family("svm").build_classifier(params, scale_pos_weight=1.0)
+    regressor = get_family("svm").build_regressor({**params, "epsilon": 0.1})
+
+    for pipeline in (classifier, regressor):
+        kernel = pipeline.named_steps["kernel_approx"]
+        assert isinstance(kernel, Nystroem)
+        assert kernel.kernel == "rbf"
+        assert kernel.gamma == pytest.approx(0.05)
+        assert kernel.n_components == 8
+
+    calibrated = classifier.named_steps["model"]
+    assert isinstance(calibrated, CalibratedClassifierCV)
+    assert isinstance(calibrated.estimator, SGDClassifier)
+    assert calibrated.estimator.loss == "hinge"
+    assert isinstance(regressor.named_steps["model"], SGDRegressor)
+    assert regressor.named_steps["model"].loss == "epsilon_insensitive"
+
+
+def test_svm_descriptor_records_that_the_rbf_kernel_is_approximated():
+    descriptor = get_family("svm").preprocessing_descriptor(TINY_PARAMS["svm"])
+    assert descriptor["kernel_approx"] == {
+        "method": "Nystroem",
+        "kernel": "rbf",
+        "gamma": 0.05,
+        "n_components": 8,
+    }
 
 
 def test_class_weight_is_used_where_scale_pos_weight_does_not_exist():
@@ -149,7 +186,10 @@ def test_class_weight_is_used_where_scale_pos_weight_does_not_exist():
     class_weight_families = ("linear", "svm")
     for name in class_weight_families:
         pipeline = get_family(name).build_classifier(TINY_PARAMS[name], scale_pos_weight=4.0)
-        weights = pipeline.named_steps["model"].class_weight
+        model = pipeline.named_steps["model"]
+        if name == "svm":  # el SGD hinge va envuelto por la calibracion de Platt
+            model = model.estimator
+        weights = model.class_weight
         assert weights == {0: 1.0, 1: pytest.approx(4.0)}
 
 

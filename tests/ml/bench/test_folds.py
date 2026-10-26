@@ -118,18 +118,18 @@ def test_build_all_folds_concatenates_both_protocols(groups_25x7):
 
 def test_groupkfold5_rejects_fewer_than_five_groups():
     groups = pd.Series([1.0, 1.0, 2.0, 2.0, 3.0, 3.0], name="factor_mult")
-    with pytest.raises(ValueError, match="GroupKFold5 necesita al menos 5 grupos"):
+    with pytest.raises(ValueError, match="GroupKFold5 needs at least 5 groups"):
         build_folds(groups, "GroupKFold5")
 
 
 def test_n_folds_for_rejects_groupkfold5_with_fewer_than_five_groups():
     groups = pd.Series([1.0, 1.0, 2.0, 2.0, 3.0, 3.0], name="factor_mult")
-    with pytest.raises(ValueError, match="GroupKFold5 necesita al menos 5 grupos"):
+    with pytest.raises(ValueError, match="GroupKFold5 needs at least 5 groups"):
         n_folds_for(groups, "GroupKFold5")
 
 
 def test_unknown_protocol_is_rejected(groups_25x7):
-    with pytest.raises(ValueError, match="Protocolo desconocido"):
+    with pytest.raises(ValueError, match="Unknown protocol"):
         build_folds(groups_25x7, "unknown")
 
 

@@ -46,6 +46,7 @@ EXPECTED_TABLES = {
     "model_promotion_rankings",
     "model_promotion_finalizations",
     "model_promotion_invalidations",
+    "node_features_v4_21",
 }
 
 EXPECTED_INDEXES = {
@@ -137,7 +138,7 @@ def test_initial_migration_creates_expected_schema(tmp_path):
         assert indexes == EXPECTED_INDEXES
         assert conn.execute(
             "SELECT COUNT(*) FROM schema_migrations"
-        ).fetchone()[0] == 5
+        ).fetchone()[0] == 7
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
     finally:
         conn.close()
@@ -313,7 +314,7 @@ def test_migrations_are_idempotent(tmp_path):
         apply_migrations(conn)
         assert conn.execute(
             "SELECT COUNT(*) FROM schema_migrations"
-        ).fetchone()[0] == 5
+        ).fetchone()[0] == 7
     finally:
         conn.close()
 

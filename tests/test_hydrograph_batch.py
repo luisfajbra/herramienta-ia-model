@@ -1,6 +1,8 @@
 """Tests for swmm_resilience.validation.hydrograph_batch.run_batch_validation."""
 from __future__ import annotations
 
+import json
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -19,6 +21,18 @@ from swmm_resilience.visualization import model_comparison
 _NODES = ["J1", "J2"]
 
 _FAKE_SCENARIO = HydrographScenario(
+    scenario_id="sc001",
+    node_series={
+        "J1": [(0.0, 0.0), (1.0, 0.0)],
+        "J2": [(0.0, 0.0), (1.0, 0.0)],
+    },
+    time_grid_hours=[0.0, 1.0],
+    last_time_hours=1.0,
+)
+
+# Ends at non-zero values on purpose: used only by the two inflow-closure
+# tests below, which need a scenario the strict/close policy actually acts on.
+_FAKE_SCENARIO_UNCLOSED = HydrographScenario(
     scenario_id="sc001",
     node_series={
         "J1": [(0.0, 0.0), (1.0, 50.0)],
@@ -246,6 +260,143 @@ def test_run_batch_validation_derives_expected_nodes_from_base_inp(
     assert captured["expected_nodes"] == {"J1", "J2"}
 
 
+def test_strict_mode_rejects_a_csv_that_does_not_end_at_zero(monkeypatch, tmp_path):
+    """csv_inflow_closure_mode='strict' (default) aborta con un mensaje claro
+    y nunca llega a escribir un .inp."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch,
+        "load_scenario",
+        lambda csv_path, expected_nodes: _FAKE_SCENARIO_UNCLOSED,
+    )
+
+    with pytest.raises(ValueError, match="J1|J2"):
+        _run(tmp_path, csv_dir, csv_inflow_closure_mode="strict")
+
+
+def test_strict_mode_writes_a_manifest_when_the_scenario_already_passes(
+    monkeypatch, tmp_path
+):
+    """Finding 3: a scenario that PASSES strict validation must still leave a
+    durable manifest recording the tolerance it was checked against (spec §6:
+    tolerance must appear in every run's manifest, not only closed ones)."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    # _FAKE_SCENARIO already ends at zero, so enforce_strict_zero_endpoint
+    # passes without raising.
+    monkeypatch.setattr(
+        hydrograph_batch,
+        "load_scenario",
+        lambda csv_path, expected_nodes: _FAKE_SCENARIO,
+    )
+
+    _run(tmp_path, csv_dir, csv_inflow_closure_mode="strict")
+
+    manifest_path = tmp_path / "out" / "inp" / "sc001.closure_manifest.json"
+    assert manifest_path.exists()
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["changed_nodes"] == []
+    assert payload["mode"] == "strict"
+    assert payload["tolerance_lps"] == pytest.approx(0.01)
+    assert payload["source_scenario_id"] == "sc001"
+    assert payload["original_last_time_hours"] == _FAKE_SCENARIO.last_time_hours
+    assert payload["effective_last_time_hours"] == _FAKE_SCENARIO.last_time_hours
+
+
+def test_close_mode_manifest_has_mode_close(monkeypatch, tmp_path):
+    """Finding 3 (related, cheap addition): the close branch's manifest is
+    also self-describing via a 'mode' field."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch,
+        "load_scenario",
+        lambda csv_path, expected_nodes: _FAKE_SCENARIO_UNCLOSED,
+    )
+
+    _run(tmp_path, csv_dir, csv_inflow_closure_mode="close")
+
+    manifest_path = tmp_path / "out" / "inp" / "sc001.closure_manifest.json"
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["mode"] == "close"
+
+
+def test_close_mode_warns_when_closure_changes_the_scenario(monkeypatch, tmp_path):
+    """Finding 2: spec §6 requires a warning of the change when closure
+    actually modifies a scenario's series."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch,
+        "load_scenario",
+        lambda csv_path, expected_nodes: _FAKE_SCENARIO_UNCLOSED,
+    )
+
+    with pytest.warns(UserWarning, match="sc001"):
+        _run(tmp_path, csv_dir, csv_inflow_closure_mode="close")
+
+
+def test_close_mode_does_not_warn_when_nothing_needed_closing(monkeypatch, tmp_path):
+    """No spurious warning when the scenario was already closed."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch,
+        "load_scenario",
+        lambda csv_path, expected_nodes: _FAKE_SCENARIO,
+    )
+
+    import warnings as warnings_mod
+
+    with warnings_mod.catch_warnings():
+        warnings_mod.simplefilter("error")
+        _run(tmp_path, csv_dir, csv_inflow_closure_mode="close")
+
+
+def test_close_mode_closes_the_scenario_before_writing_the_inp(monkeypatch, tmp_path):
+    """csv_inflow_closure_mode='close' cierra el escenario y deja un manifiesto
+    junto al .inp, en vez de rechazarlo."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    fake_inp, _ = _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch,
+        "load_scenario",
+        lambda csv_path, expected_nodes: _FAKE_SCENARIO_UNCLOSED,
+    )
+
+    received: dict = {}
+
+    def _capture_write_scenario_inp(base_inp_path, scenario, out_dir, drain_down_hours=6.0):
+        received["scenario"] = scenario
+        return fake_inp
+
+    monkeypatch.setattr(hydrograph_batch, "write_scenario_inp", _capture_write_scenario_inp)
+
+    _run(tmp_path, csv_dir, csv_inflow_closure_mode="close")
+
+    closed = received["scenario"]
+    assert closed.node_series["J1"][-1] == (2.0, 0.0)  # paso de malla 1.0-0.0=1.0
+    assert closed.node_series["J2"][-1] == (2.0, 0.0)
+
+    manifest_path = tmp_path / "out" / "inp" / "sc001.closure_manifest.json"
+    assert manifest_path.exists()
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert sorted(payload["changed_nodes"]) == ["J1", "J2"]
+
+
 # ---------------------------------------------------------------------------
 # Tests: new outputs (totals, timings, per-scenario metrics)
 # ---------------------------------------------------------------------------
@@ -356,11 +507,11 @@ def test_validate_base_inp_hash_mismatch(monkeypatch, tmp_path):
     base.write_text("network-v2")
     (tmp_path / "training_inp_hash.txt").write_text("0" * 32)
 
-    with pytest.raises(ValueError, match="no coincide"):
+    with pytest.raises(ValueError, match="does not match"):
         hydrograph_batch._validate_base_inp(base, tmp_path / "clf.joblib", False)
 
     # allow_inp_mismatch downgrades to a warning
-    with pytest.warns(UserWarning, match="no coincide"):
+    with pytest.warns(UserWarning, match="does not match"):
         hydrograph_batch._validate_base_inp(base, tmp_path / "clf.joblib", True)
 
 
@@ -373,6 +524,44 @@ def test_validate_base_inp_warns_on_ponding(monkeypatch, tmp_path):
         hydrograph_batch._validate_base_inp(
             tmp_path / "base.inp", tmp_path / "clf.joblib", False
         )
+
+
+def test_continuity_warning_uses_the_threshold_parameter(monkeypatch, tmp_path):
+    """Fase C2 / revision final (I4): el chequeo warn-only debe obedecer al
+    umbral recibido (config.validation.max_continuity_error_pct), no a la
+    constante de modulo CONTINUITY_ERROR_WARN_PCT = 5.0 -- si no, hay dos
+    numeros para la misma regla del spec y pueden divergir."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch, "_read_continuity_error", lambda rpt_path: 6.0
+    )
+
+    # 6.0 > 5.0 (la constante) pero <= 8.0 (el umbral configurado): sin warning.
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", UserWarning)
+        _run(tmp_path, csv_dir, max_continuity_error_pct=8.0)
+
+    # 6.0 > 3.0 (umbral configurado mas estricto que la constante): avisa.
+    with pytest.warns(UserWarning, match=r"SWMM continuity error 6\.00% \(> 3"):
+        _run(tmp_path, csv_dir, max_continuity_error_pct=3.0)
+
+
+def test_continuity_warning_default_matches_the_module_constant(monkeypatch, tmp_path):
+    """Sin umbral explicito se mantiene el comportamiento historico (5.0)."""
+    csv_dir = tmp_path / "csvs"
+    csv_dir.mkdir()
+    _make_csv(csv_dir)
+    _patch_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        hydrograph_batch, "_read_continuity_error", lambda rpt_path: 6.0
+    )
+
+    assert hydrograph_batch.CONTINUITY_ERROR_WARN_PCT == 5.0
+    with pytest.warns(UserWarning, match="SWMM continuity error"):
+        _run(tmp_path, csv_dir)
 
 
 def test_read_continuity_error_parses_worst_value(tmp_path):

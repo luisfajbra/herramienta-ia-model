@@ -43,48 +43,55 @@ def build_quality_report(
     y_clf: pd.Series,
     y_reg: pd.Series,
     flood_threshold_m3: float,
+    feature_columns: tuple = FEATURE_COLUMNS_V17,
+    nullable_columns: frozenset = NULLABLE_FEATURE_COLUMNS_V17,
 ) -> dict:
-    """Resume la calidad del dataset y aborta ante los dos defectos fatales."""
+    """Resume la calidad del dataset y aborta ante los dos defectos fatales.
+
+    ``feature_columns``/``nullable_columns`` default al contrato v17 (legado);
+    ``prepare_dataset`` los pasa explícitamente para que el informe refleje el
+    contrato (v17 o v4_21) con el que se preparó ``X``.
+    """
     duplicated = keys.duplicated(subset=["run_id", "node_id"]).sum()
     if duplicated:
         raise DatasetQualityError(
-            f"El dataset tiene {duplicated} fila(s) duplicadas por (run_id, node_id). "
-            "Suele indicar que la base guarda más de un snapshot; repuebla la base "
-            "desde cero antes de entrenar."
+            f"The dataset has {duplicated} duplicated row(s) per (run_id, node_id). "
+            "This usually means the database holds more than one snapshot; repopulate "
+            "the database from scratch before training."
         )
 
     n_flooded = int((y_clf == 1).sum())
     if n_flooded == 0:
         raise DatasetQualityError(
-            "El dataset no tiene ninguna fila inundada (inunda == 1); el regresor "
-            "no se puede entrenar. Revisa el umbral de inundación o el rango de factores."
+            "The dataset has no flooded row (inunda == 1); the regressor "
+            "cannot be trained. Check the flood threshold or the factor range."
         )
 
-    nulls = {column: int(X[column].isna().sum()) for column in FEATURE_COLUMNS_V17}
+    nulls = {column: int(X[column].isna().sum()) for column in feature_columns}
 
     all_null_features = [
         column
-        for column in FEATURE_COLUMNS_V17
-        if column in NULLABLE_FEATURE_COLUMNS_V17 and nulls[column] == len(X)
+        for column in feature_columns
+        if column in nullable_columns and nulls[column] == len(X)
     ]
     if all_null_features:
         raise DatasetQualityError(
-            f"La(s) columna(s) {all_null_features} son enteramente nulas. El "
-            "contrato las permite nullable, pero SimpleImputer(strategy='median') "
-            "con keep_empty_features=False por defecto las elimina en silencio, y "
-            "el modelo entrenaría con menos features de las que su metadata "
-            "(ordered_features) declara. Esta no es una decisión que el banco deba "
-            "tomar por su cuenta: corrige la extracción de datos, o si el vacío es "
-            "legítimo, retira la feature del contrato deliberadamente."
+            f"The column(s) {all_null_features} are entirely null. The "
+            "contract allows them to be nullable, but SimpleImputer(strategy='median') "
+            "with keep_empty_features=False by default silently drops them, and "
+            "the model would train with fewer features than its metadata "
+            "(ordered_features) declares. This is not a decision the bench should "
+            "make on its own: fix the data extraction, or if the emptiness is "
+            "legitimate, deliberately remove the feature from the contract."
         )
 
     unexpected = [
         column
         for column, count in nulls.items()
-        if count and column not in NULLABLE_FEATURE_COLUMNS_V17
+        if count and column not in nullable_columns
     ]
     constant = [
-        column for column in FEATURE_COLUMNS_V17 if X[column].dropna().nunique() <= 1
+        column for column in feature_columns if X[column].dropna().nunique() <= 1
     ]
 
     factor_labels = keys["factor_mult"].astype(str)
@@ -108,10 +115,10 @@ def build_quality_report(
         "rows_by_shape": keys["shape_id"].value_counts().sort_index().to_dict(),
         "flooded_by_factor": {str(k): int(v) for k, v in sorted(flooded_by_factor.items())},
         "nulls_by_column": nulls,
-        "nullable_columns": sorted(NULLABLE_FEATURE_COLUMNS_V17),
+        "nullable_columns": sorted(nullable_columns),
         "unexpected_null_columns": sorted(unexpected),
         "constant_columns": constant,
-        "feature_stats": {column: _stats(X[column]) for column in FEATURE_COLUMNS_V17},
+        "feature_stats": {column: _stats(X[column]) for column in feature_columns},
         "threshold_disagreements": disagreements,
         "flood_threshold_m3": float(flood_threshold_m3),
     }

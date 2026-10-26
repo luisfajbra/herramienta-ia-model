@@ -14,81 +14,81 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 
 MODULES: dict[str, dict] = {
     "Simulation": {
-        "description": "Ejecuta simulaciones SWMM vía PySWMM y extrae resultados de nodos",
+        "description": "Runs SWMM simulations through PySWMM and extracts node results",
         "path": "swmm_resilience/simulation/",
         "files": {
-            "runner.py": "Orquesta simulaciones y extrae topología estática y series temporales",
-            "swmm_api_io.py": "Adaptador de IO para la API nativa de SWMM",
+            "runner.py": "Orchestrates simulations and extracts static topology and time series",
+            "swmm_api_io.py": "IO adapter for the native SWMM API",
         },
         "receives": ["Config", "INP File"],
         "produces": ["SQLite DB", "Parquets Timeseries"],
         "depends_on": ["Config"],
     },
     "ML Tabular": {
-        "description": "Pipeline XGBoost/SVC para predicción tabular de inundación sin SWMM",
+        "description": "XGBoost/SVC pipeline for tabular flood prediction without SWMM",
         "path": "swmm_resilience/ml/",
         "files": {
-            "train.py": "Entrena y guarda modelos tabulares (clasificación y regresión)",
-            "predict_tabular.py": "Predicción desde CSV con modelos tabulares guardados",
-            "predict_from_inp.py": "Predicción desde .inp sin simulación previa",
-            "preprocessing.py": "Selección de features, limpieza y normalización",
+            "train.py": "Trains and saves tabular models (classification and regression)",
+            "predict_tabular.py": "Prediction from CSV with saved tabular models",
+            "predict_from_inp.py": "Prediction from .inp without a prior simulation",
+            "preprocessing.py": "Feature selection, cleaning and normalization",
         },
         "receives": ["Dataset ML CSV", "Config"],
         "produces": ["Tabular Model Artifacts"],
         "depends_on": ["Config"],
     },
     "ML Temporal": {
-        "description": "Surrogate CNN/LSTM para predicción temporal de inundación por multiplicador",
+        "description": "CNN/LSTM surrogate for temporal flood prediction per multiplier",
         "path": "swmm_resilience/ml/temporal/",
         "files": {
-            "dataset.py": "Construye ventanas temporales y dataset surrogate desde parquets",
-            "train_surrogate.py": "Entrena CNN/LSTM surrogate con GroupKFold y guarda artefactos",
-            "predict.py": "Inferencia surrogate por multiplicador de caudal",
-            "compare_surrogate.py": "Compara XGBoost vs CNN vs LSTM en splits idénticos",
-            "surrogate_cnn.py": "Arquitectura CNN dual-branch para predicción de inundación",
-            "surrogate_lstm.py": "Arquitectura LSTM dual-branch para predicción de inundación",
+            "dataset.py": "Builds temporal windows and the surrogate dataset from parquets",
+            "train_surrogate.py": "Trains the CNN/LSTM surrogate with GroupKFold and saves artifacts",
+            "predict.py": "Surrogate inference per flow multiplier",
+            "compare_surrogate.py": "Compares XGBoost vs CNN vs LSTM on identical splits",
+            "surrogate_cnn.py": "Dual-branch CNN architecture for flood prediction",
+            "surrogate_lstm.py": "Dual-branch LSTM architecture for flood prediction",
         },
         "receives": ["Parquets Timeseries", "SQLite DB", "Config"],
         "produces": ["Surrogate Weights", "Surrogate Maps"],
         "depends_on": ["Database", "Config"],
     },
     "Database": {
-        "description": "Esquema SQLite, consultas y repositorio para artefactos de simulación",
+        "description": "SQLite schema, queries and repository for simulation artifacts",
         "path": "swmm_resilience/database/",
         "files": {
-            "schema.py": "Define y migra el esquema SQLite (runs, network_nodes, temporal_artifacts)",
-            "queries.py": "Consultas SQL parametrizadas para lectura de datos",
-            "repository.py": "Capa de repositorio que abstrae acceso a la DB",
+            "schema.py": "Defines and migrates the SQLite schema (runs, network_nodes, temporal_artifacts)",
+            "queries.py": "Parameterized SQL queries for reading data",
+            "repository.py": "Repository layer that abstracts DB access",
         },
         "receives": ["Config"],
         "produces": ["SQLite DB"],
         "depends_on": ["Config"],
     },
     "Visualization": {
-        "description": "Mapas de inundación, red hidráulica y parser de archivos .inp",
+        "description": "Flood maps, hydraulic network and .inp file parser",
         "path": "swmm_resilience/visualization/",
         "files": {
-            "flood_map.py": "Genera mapa de inundación coloreado por volumen o probabilidad",
-            "network_map.py": "Visualiza la red hidráulica con nodos y conductos",
-            "_inp_parser.py": "Parsea coordenadas y conductos de archivos .inp de SWMM",
-            "runner.py": "Orquesta generación de mapas ML y SWMM",
+            "flood_map.py": "Generates a flood map colored by volume or probability",
+            "network_map.py": "Visualizes the hydraulic network with nodes and conduits",
+            "_inp_parser.py": "Parses coordinates and conduits from SWMM .inp files",
+            "runner.py": "Orchestrates the generation of ML and SWMM maps",
         },
         "receives": ["Surrogate Weights", "Tabular Model Artifacts", "SQLite DB", "INP File"],
         "produces": ["Surrogate Maps"],
         "depends_on": ["Config", "ML Temporal", "ML Tabular"],
     },
     "Desktop": {
-        "description": "Aplicación Tkinter local para correr simulaciones y workflows ML",
+        "description": "Local Tkinter application to run simulations and ML workflows",
         "path": "swmm_resilience/desktop/",
         "files": {
-            "app.py": "UI principal: tabs de simulación, ML, resultados y visualización",
+            "app.py": "Main UI: simulation, ML, results and visualization tabs",
         },
         "receives": ["Dataset ML CSV", "SQLite DB", "INP File"],
         "produces": ["Surrogate Maps"],
         "depends_on": ["Simulation", "ML Tabular", "ML Temporal", "Visualization", "Config"],
     },
     "Config": {
-        "description": "Configuración central: rutas de datos, parámetros ML, modos de escenario",
+        "description": "Central configuration: data paths, ML parameters, scenario modes",
         "path": "swmm_resilience/config.py",
         "files": {},
         "receives": [],
@@ -139,7 +139,7 @@ def _link(name: str) -> str:
 
 def _links(names: list[str]) -> str:
     if not names:
-        return "_ninguno_"
+        return "_none_"
     return " · ".join(_link(n) for n in names)
 
 
@@ -151,22 +151,22 @@ def generate_module_note(name: str, data: dict) -> str:
         "",
         f"> {data['description']}",
         "",
-        f"**Ruta:** `{data['path']}`",
+        f"**Path:** `{data['path']}`",
         "",
     ]
     if data["files"]:
-        lines += ["## Archivos clave", ""]
+        lines += ["## Key files", ""]
         for fname, desc in data["files"].items():
             lines.append(f"- {_link(fname)} — {desc}")
         lines.append("")
     lines += [
-        "## Recibe datos de",
+        "## Receives data from",
         _links(data["receives"]),
         "",
         "## Produce",
         _links(data["produces"]),
         "",
-        "## Depende de",
+        "## Depends on",
         _links(data["depends_on"]),
         "",
     ]
@@ -185,9 +185,9 @@ def generate_file_note(
         "",
         f"> {description}",
         "",
-        f"**Módulo:** {_link(parent_module)}",
+        f"**Module:** {_link(parent_module)}",
         "",
-        "## Recibe",
+        "## Receives",
         _links(receives),
         "",
         "## Produce",
@@ -206,20 +206,20 @@ def generate_artifact_note(
     lines = [
         f"# {name}",
         "",
-        "> Artefacto de datos detectado automáticamente.",
+        "> Data artifact detected automatically.",
         "",
-        f"**Archivos encontrados:** {len(paths)}",
+        f"**Files found:** {len(paths)}",
     ]
     if paths:
-        lines += ["", "**Rutas:**", ""]
+        lines += ["", "**Paths:**", ""]
         for p in sorted(paths):
             lines.append(f"- `{p}`")
     lines += [
         "",
-        "## Producido por",
+        "## Produced by",
         _links(producers),
         "",
-        "## Consumido por",
+        "## Consumed by",
         _links(consumers),
         "",
     ]
@@ -228,17 +228,17 @@ def generate_artifact_note(
 
 def generate_index_note(modules: list[str], artifacts: list[str]) -> str:
     lines = [
-        "# resiliencIA — Índice del grafo",
+        "# resiliencIA — Graph index",
         "",
-        "> Mapa de contenido generado automáticamente.",
-        "> Re-ejecuta `python generate_obsidian_graph.py` para actualizar.",
+        "> Content map generated automatically.",
+        "> Re-run `python generate_obsidian_graph.py` to update.",
         "",
-        "## Módulos",
+        "## Modules",
         "",
     ]
     for m in sorted(modules):
         lines.append(f"- {_link(m)}")
-    lines += ["", "## Artefactos de datos", ""]
+    lines += ["", "## Data artifacts", ""]
     for a in sorted(artifacts):
         lines.append(f"- {_link(a)}")
     lines.append("")
@@ -306,11 +306,11 @@ def build_notes(project_root: Path) -> dict[str, str]:
 
 def main() -> None:
     output_dir = PROJECT_ROOT / "obsidian"
-    print("Generando grafo Obsidian...")
+    print("Generating Obsidian graph...")
     notes = build_notes(PROJECT_ROOT)
     write_obsidian(output_dir, notes)
     total = len(notes)
-    print(f"✓ {total} notas escritas en {output_dir}/")
+    print(f"✓ {total} notes written to {output_dir}/")
     for name in sorted(notes):
         print(f"  {_safe_filename(name)}.md")
 

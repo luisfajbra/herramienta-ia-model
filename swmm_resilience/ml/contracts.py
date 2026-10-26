@@ -93,6 +93,7 @@ class FeatureContract:
         return hashlib.sha256(payload).hexdigest()
 
     def validate_frame(self, frame: pd.DataFrame) -> pd.DataFrame:
+        nullable = frozenset(item.name for item in self.definitions if item.nullable)
         actual = tuple(frame.columns)
         if actual != self.feature_names:
             raise FeatureContractError(
@@ -111,7 +112,7 @@ class FeatureContract:
         for name in self.feature_names:
             series = frame[name]
             all_null_nullable = (
-                name in NULLABLE_FEATURE_COLUMNS_V17 and series.isna().all()
+                name in nullable and series.isna().all()
             )
             if not all_null_nullable and (
                 not is_numeric_dtype(series) or is_bool_dtype(series)
@@ -120,7 +121,7 @@ class FeatureContract:
         if bad_types:
             raise FeatureContractError(f"Non-numeric feature columns: {bad_types}")
         numeric = frame.astype(float)
-        required = [name for name in self.feature_names if name not in NULLABLE_FEATURE_COLUMNS_V17]
+        required = [name for name in self.feature_names if name not in nullable]
         missing_required = [name for name in required if numeric[name].isna().any()]
         if missing_required:
             raise FeatureContractError(f"Null required feature values: {missing_required}")
@@ -131,6 +132,31 @@ class FeatureContract:
 
 
 TABULAR_V3_17 = FeatureContract("tabular_v3_17", FEATURE_DEFINITIONS_V17)
+
+FEATURE_DEFINITIONS_V21 = tuple(
+    item for item in FEATURE_DEFINITIONS_V17
+    if item.name not in {"duracion_horas", "tiempo_al_pico_h"}
+) + (
+    FeatureDefinition("volumen_local_integrado_m3", "m3", "Node's own integrated inflow volume"),
+    FeatureDefinition("volumen_tributario_integrado_m3", "m3", "Integrated Q_tributario volume"),
+    FeatureDefinition("duracion_efectiva_tributario_h", "h", "Time Q_tributario stays above 1% of its own peak"),
+    FeatureDefinition("tiempo_primer_pico_tributario_h", "h", "Time to the first Q_tributario maximum"),
+    FeatureDefinition(
+        "tiempo_sobre_capacidad_h", "h",
+        "Time Q_tributario exceeds upstream_capacity_lps", nullable=True,
+    ),
+    FeatureDefinition(
+        "integral_exceso_capacidad_m3", "m3",
+        "Integral of max(Q_tributario - upstream_capacity_lps, 0)", nullable=True,
+    ),
+)
+
+FEATURE_COLUMNS_V21 = tuple(item.name for item in FEATURE_DEFINITIONS_V21)
+NULLABLE_FEATURE_COLUMNS_V4_21 = frozenset(
+    item.name for item in FEATURE_DEFINITIONS_V21 if item.nullable
+)
+
+TABULAR_V4_21 = FeatureContract("tabular_v4_21", FEATURE_DEFINITIONS_V21)
 
 
 def validate_feature_frame(frame: pd.DataFrame) -> pd.DataFrame:

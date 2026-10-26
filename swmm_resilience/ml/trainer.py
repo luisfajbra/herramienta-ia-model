@@ -1,7 +1,9 @@
 import hashlib
+import json
 import joblib
 import numpy as np
 import pandas as pd
+from datetime import datetime, timezone
 from pathlib import Path
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
@@ -9,9 +11,9 @@ from xgboost import XGBClassifier, XGBRegressor
 from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 
 from ..config import Config, ML_RANDOM_STATE
-from .contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
+from .contracts import FEATURE_COLUMNS_V17, FEATURE_COLUMNS_V21, TABULAR_V3_17
 
-FEATURE_COLS = list(FEATURE_COLUMNS_V17)  # removed in Plan D after consumers migrate
+FEATURE_COLS = list(FEATURE_COLUMNS_V21)
 
 
 def make_classifier(config: Config, scale_pos_weight: float) -> Pipeline:
@@ -53,6 +55,14 @@ def _md5(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _sha256_of(path: Path) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
     """Train classifier and regressor on the full dataset. Returns (clf_pipeline, reg_pipeline).
 
@@ -60,6 +70,37 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
     Regressor is trained only on rows where inunda=1 (oracle training set).
     """
     output_dir.mkdir(parents=True, exist_ok=True)
+
+    classifier_path = output_dir / "classifier.joblib"
+    regressor_path = output_dir / "regressor.joblib"
+    if classifier_path.exists() or regressor_path.exists():
+        try:
+            existing_clf = joblib.load(classifier_path) if classifier_path.exists() else None
+            existing_reg = joblib.load(regressor_path) if regressor_path.exists() else None
+        except Exception as load_error:
+            raise RuntimeError(
+                f"The existing model in {output_dir} could not be read to verify "
+                f"its feature contract ({load_error}). Manually check the "
+                f"contents of {output_dir} before continuing -- train_models() does not "
+                "blindly overwrite a directory it cannot inspect."
+            ) from load_error
+        n_expected = len(FEATURE_COLUMNS_V17)
+        mismatched = (
+            (existing_clf is not None and existing_clf.n_features_in_ != n_expected)
+            or (existing_reg is not None and existing_reg.n_features_in_ != n_expected)
+        )
+        if mismatched:
+            raise RuntimeError(
+                f"The active model in {output_dir} has "
+                f"{getattr(existing_clf, 'n_features_in_', 'n/a')}/"
+                f"{getattr(existing_reg, 'n_features_in_', 'n/a')} features (clf/reg), "
+                f"not {n_expected} (tabular_v3_17 contract). train_models() (legacy "
+                "pipeline / --only-ml) cannot silently overwrite it. If you "
+                "really want to replace the active model with the legacy 17-feature "
+                "one, move or delete classifier.joblib and regressor.joblib in "
+                f"{output_dir} manually first (you can recover them with "
+                "`git checkout -- outputs/models/` if you make a mistake)."
+            )
 
     X = TABULAR_V3_17.validate_frame(df.loc[:, FEATURE_COLUMNS_V17])
     y_clf = df["inunda"]
@@ -71,7 +112,7 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
 
     df_flooded = df[df["inunda"] == 1]
     if df_flooded.empty:
-        raise ValueError("No hay filas inundadas para entrenar el regresor.")
+        raise ValueError("There are no flooded rows to train the regressor.")
     reg = make_regressor(config)
     reg.fit(X.loc[df_flooded.index], np.log1p(df_flooded["vol_inundacion_m3"]))
 
@@ -79,5 +120,23 @@ def train_models(df: pd.DataFrame, config: Config, output_dir: Path) -> tuple:
     joblib.dump(reg, output_dir / "regressor.joblib")
     (output_dir / "training_inp_hash.txt").write_text(_md5(config.network.inp_path))
 
-    print(f"Modelos guardados en {output_dir}  (spw={spw:.2f}, flooded_train={n_pos})")
+    promotion_path = output_dir / "promotion.json"
+    promotion_path.write_text(
+        json.dumps(
+            {
+                "family": "xgboost_legacy" if config.ml.classifier.algorithm == "xgboost" else "random_forest_legacy",
+                "feature_contract_id": TABULAR_V3_17.contract_id,
+                "ordered_features": list(FEATURE_COLUMNS_V17),
+                "classifier_sha256": _sha256_of(output_dir / "classifier.joblib"),
+                "regressor_sha256": _sha256_of(output_dir / "regressor.joblib"),
+                "source": "train_models (legacy, --only-ml / default pipeline)",
+                "promoted_at_utc": datetime.now(timezone.utc).isoformat(),
+            },
+            indent=2,
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    print(f"Models saved to {output_dir}  (spw={spw:.2f}, flooded_train={n_pos})")
     return clf, reg
