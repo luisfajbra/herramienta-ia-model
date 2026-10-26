@@ -10,9 +10,10 @@ inference, so per-scenario timing reflects true surrogate cost.
 from __future__ import annotations
 
 import time
+import hashlib
 from pathlib import Path
 
-import joblib
+import joblib  # kept as the patch point used by downstream integrations/tests
 import numpy as np
 import pandas as pd
 
@@ -23,6 +24,7 @@ from ..extraction.dynamic_features import (
 from ..extraction.static_features import extract_static_features
 from ..extraction.topology import build_network_graph, compute_topology_features
 from ..ml.contracts import TABULAR_V4_21
+from ..ml.model_provenance import load_verified_model_pair
 from ..ml.trainer import FEATURE_COLS
 from ..simulation.swmm_api_io import load_inp
 from ..validation.hydrograph_csv import HydrographScenario
@@ -58,10 +60,12 @@ class ScenarioPredictor:
         reg_path: Path,
         inp_path: Path,
         factor_range: tuple[float, float] | None = None,
+        allow_network_mismatch: bool = False,
     ) -> None:
         t0 = time.perf_counter()
-        self.clf = joblib.load(clf_path)
-        self.reg = joblib.load(reg_path)
+        self.clf, self.reg, self.model_provenance = load_verified_model_pair(
+            clf_path, reg_path
+        )
         self.model_load_s = time.perf_counter() - t0
 
         if self.clf.n_features_in_ != len(FEATURE_COLS) or self.reg.n_features_in_ != len(FEATURE_COLS):
@@ -73,12 +77,23 @@ class ScenarioPredictor:
             )
 
         t0 = time.perf_counter()
+        self.inp_path = Path(inp_path)
+        training_hash_path = Path(clf_path).parent / "training_inp_hash.txt"
+        if training_hash_path.is_file():
+            expected_inp_hash = training_hash_path.read_text(encoding="utf-8").strip()
+            digest = hashlib.md5(self.inp_path.read_bytes()).hexdigest()
+            if digest != expected_inp_hash and not allow_network_mismatch:
+                raise ValueError(
+                    f"The .inp at '{self.inp_path}' differs from the network recorded "
+                    "for these models. Pass allow_network_mismatch=True only for an "
+                    "intentional experimental transfer evaluation. Artifact integrity "
+                    "checks remain enforced."
+                )
         static_df = extract_static_features(inp_path)
         self.full_df = compute_topology_features(static_df, inp_path)
         self.graph, _ = build_network_graph(load_inp(inp_path))
         self.static_features_s = time.perf_counter() - t0
 
-        self.inp_path = Path(inp_path)
         self.factor_range = factor_range
         self.node_ids: list[str] = self.full_df["node_id"].astype(str).tolist()
 
@@ -190,6 +205,7 @@ def predict_scenario(
     flood_threshold_m3: float,
     inp_path: Path,
     factor_range: tuple[float, float] | None = None,
+    allow_network_mismatch: bool = False,
 ) -> pd.DataFrame:
     """One-shot convenience wrapper around ScenarioPredictor.
 
@@ -202,5 +218,6 @@ def predict_scenario(
         reg_path=reg_path,
         inp_path=inp_path,
         factor_range=factor_range,
+        allow_network_mismatch=allow_network_mismatch,
     )
     return predictor.predict(scenario)

@@ -20,6 +20,11 @@ import numpy as np
 
 from ...config import ML_RANDOM_STATE
 from ..contracts import validate_feature_contract_manifest
+from ..model_provenance import (
+    ModelProvenanceError,
+    validate_estimators,
+    validate_pair_files,
+)
 from .registry import get_family
 from .schemas import PreparedDataset
 
@@ -130,16 +135,34 @@ def train_candidate(
 
 
 def load_candidate(directory: Path | str) -> CandidateArtifacts:
-    """Lee los artefactos de un candidato ya entrenado."""
+    """Load a candidate only after verifying its paired artifact provenance."""
     directory = Path(directory)
     metadata_path = directory / "metadata.json"
     if not metadata_path.exists():
         raise FileNotFoundError(f"There is no metadata.json in {directory}")
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ModelProvenanceError(f"Could not read candidate metadata in {directory}: {exc}") from exc
+    classifier_path = directory / "classifier.joblib"
+    regressor_path = directory / "regressor.joblib"
+    validate_pair_files(metadata, classifier_path, regressor_path)
+    try:
+        get_family(metadata["family"])
+    except (KeyError, ValueError) as exc:
+        raise ModelProvenanceError(
+            f"Candidate metadata declares an unknown family: {metadata.get('family')!r}"
+        ) from exc
+    try:
+        classifier = joblib.load(classifier_path)
+        regressor = joblib.load(regressor_path)
+    except Exception as exc:
+        raise ModelProvenanceError(f"Could not load candidate model pair in {directory}: {exc}") from exc
+    validate_estimators(metadata, classifier, regressor)
     return CandidateArtifacts(
         family=metadata["family"],
-        classifier_path=directory / "classifier.joblib",
-        regressor_path=directory / "regressor.joblib",
+        classifier_path=classifier_path,
+        regressor_path=regressor_path,
         metadata_path=metadata_path,
         metadata=metadata,
     )

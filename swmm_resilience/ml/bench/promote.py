@@ -18,6 +18,11 @@ from pathlib import Path
 
 import joblib
 
+from ..model_provenance import (
+    ModelProvenanceError,
+    load_verified_model_pair,
+    validate_model_metadata,
+)
 from .train import _sha256, load_candidate
 
 
@@ -27,10 +32,6 @@ def _md5(path: Path) -> str:
         for chunk in iter(lambda: handle.read(8192), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-class ModelProvenanceError(RuntimeError):
-    """Los modelos de ``models_dir`` no coinciden con lo declarado en promotion.json."""
 
 
 _PROMOTION_ARTIFACTS = (
@@ -49,7 +50,12 @@ def verify_promotion(models_dir: Path | str) -> dict:
     record_path = target / "promotion.json"
     if not record_path.exists():
         return {"status": "no_record", "ok": None, "discrepancies": []}
-    record = json.loads(record_path.read_text(encoding="utf-8"))
+    try:
+        record = json.loads(record_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ModelProvenanceError(f"Could not read promotion.json in {target}: {exc}") from exc
+    if not isinstance(record, dict):
+        raise ModelProvenanceError(f"promotion.json in {target} must contain a JSON object")
     discrepancies = []
     for artifact, field in _PROMOTION_ARTIFACTS:
         path = target / artifact
@@ -57,6 +63,40 @@ def verify_promotion(models_dir: Path | str) -> dict:
         expected = record.get(field)
         if actual != expected:
             discrepancies.append({"artifact": artifact, "expected": expected, "actual": actual})
+    requires_network_hash = not (
+        record.get("feature_contract_id") == "tabular_v3_17"
+        and str(record.get("source", "")).startswith("train_models (legacy")
+    )
+    training_inp_md5 = record.get("training_inp_md5")
+    if requires_network_hash and (
+        not isinstance(training_inp_md5, str) or not training_inp_md5
+    ):
+        discrepancies.append({
+            "artifact": "model metadata",
+            "expected": "non-empty training_inp_md5 for the promoted network",
+            "actual": training_inp_md5,
+        })
+    elif training_inp_md5 is not None:
+        network_hash_path = target / "training_inp_hash.txt"
+        actual_network_hash = (
+            network_hash_path.read_text(encoding="utf-8").strip()
+            if network_hash_path.is_file()
+            else None
+        )
+        if actual_network_hash != training_inp_md5:
+            discrepancies.append({
+                "artifact": "training_inp_hash.txt",
+                "expected": training_inp_md5,
+                "actual": actual_network_hash,
+            })
+    try:
+        validate_model_metadata(
+            record,
+            require_prep_id=record.get("feature_contract_id") != "tabular_v3_17"
+            or not str(record.get("source", "")).startswith("train_models (legacy"),
+        )
+    except ModelProvenanceError as exc:
+        discrepancies.append({"artifact": "model metadata", "expected": "valid pair identity", "actual": str(exc)})
     status = "mismatch" if discrepancies else "verified"
     return {"status": status, "ok": not discrepancies, "discrepancies": discrepancies}
 
@@ -79,6 +119,12 @@ def assert_promotion_consistent(models_dir: Path | str) -> dict:
             f"There is no promotion.json in {models_dir}: the model provenance cannot be verified.",
             UserWarning,
             stacklevel=2,
+        )
+    else:
+        target = Path(models_dir)
+        load_verified_model_pair(
+            target / "classifier.joblib",
+            target / "regressor.joblib",
         )
     return result
 
@@ -142,7 +188,12 @@ def promote_candidate(
 
     existing_clf_path = target / "classifier.joblib"
     existing_reg_path = target / "regressor.joblib"
-    if existing_clf_path.exists() and existing_reg_path.exists():
+    if existing_clf_path.exists() or existing_reg_path.exists():
+        if not existing_clf_path.is_file() or not existing_reg_path.is_file():
+            raise ModelProvenanceError(
+                f"The active model pair in {target} is incomplete; inspect or move it "
+                "before promotion."
+            )
         try:
             existing_clf = joblib.load(existing_clf_path)
             existing_reg = joblib.load(existing_reg_path)
@@ -169,6 +220,37 @@ def promote_candidate(
                 f"{target} manually first (you can recover them with "
                 "`git checkout -- outputs/models/` if you make a mistake)."
             )
+        active_record_path = target / "promotion.json"
+        if not active_record_path.is_file():
+            raise ModelProvenanceError(
+                f"The active model pair in {target} has no promotion.json, so its "
+                "feature contract cannot be verified before replacement. Move the "
+                "pair aside after preserving a backup, then promote the candidate."
+            )
+        active_check = verify_promotion(target)
+        if active_check["status"] != "verified":
+            raise ModelProvenanceError(
+                f"The active model pair in {target} does not pass provenance checks; "
+                "preserve or repair it before promotion."
+            )
+        active_record = json.loads(active_record_path.read_text(encoding="utf-8"))
+        active_identity = validate_model_metadata(
+            active_record,
+            require_prep_id=active_record.get("feature_contract_id") != "tabular_v3_17"
+            or not str(active_record.get("source", "")).startswith("train_models (legacy"),
+        )
+        candidate_identity = validate_model_metadata(
+            candidate.metadata,
+            require_prep_id=True,
+        )
+        if (active_identity[0], active_identity[2]) != (
+            candidate_identity[0], candidate_identity[2]
+        ):
+            raise ModelProvenanceError(
+                f"The active model contract in {target} differs from candidate "
+                f"{candidate_dir}; promotion will not overwrite an active model "
+                "with a different ordered feature contract."
+            )
 
     shutil.copy2(candidate.classifier_path, target / "classifier.joblib")
     shutil.copy2(candidate.regressor_path, target / "regressor.joblib")
@@ -178,9 +260,11 @@ def promote_candidate(
         "family": candidate.family,
         "prep_id": candidate.metadata["prep_id"],
         "feature_contract_id": candidate.metadata.get("feature_contract_id", "tabular_v3_17"),
+        "feature_contract_sha256": candidate.metadata["feature_contract_sha256"],
         "ordered_features": candidate.metadata.get("ordered_features"),
         "classifier_sha256": candidate.metadata["classifier_sha256"],
         "regressor_sha256": candidate.metadata["regressor_sha256"],
+        "training_inp_md5": _md5(Path(inp_path)),
         "source_dir": str(Path(candidate_dir).resolve()),
         "promoted_at_utc": datetime.now(timezone.utc).isoformat(),
     }

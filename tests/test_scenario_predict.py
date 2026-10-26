@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import hashlib
+import json
 
 import networkx as nx
 import numpy as np
@@ -12,6 +14,7 @@ from swmm_resilience.extraction.dynamic_features import (
     compute_scenario_dynamic_features,
 )
 from swmm_resilience.ml import scenario_predict
+from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V21, TABULAR_V4_21
 from swmm_resilience.validation.hydrograph_csv import HydrographScenario
 
 
@@ -128,6 +131,7 @@ def _make_predictor(monkeypatch, tmp_path, clf=None, reg=None, factor_range=None
     reg_path = tmp_path / "reg.joblib"
     clf_path.touch()
     reg_path.touch()
+    _write_pair_metadata(tmp_path, clf_path, reg_path)
     _patch_pipeline(
         monkeypatch, clf or _FakeClassifier(), reg or _FakeRegressor(), load_counter
     )
@@ -137,6 +141,19 @@ def _make_predictor(monkeypatch, tmp_path, clf=None, reg=None, factor_range=None
         inp_path=tmp_path / "network.inp",
         factor_range=factor_range,
     )
+
+
+def _write_pair_metadata(directory, clf_path, reg_path):
+    metadata = {
+        "family": "xgboost",
+        "prep_id": "test-prep",
+        "feature_contract_id": TABULAR_V4_21.contract_id,
+        "feature_contract_sha256": TABULAR_V4_21.descriptor_sha256,
+        "ordered_features": list(FEATURE_COLUMNS_V21),
+        "classifier_sha256": hashlib.sha256(clf_path.read_bytes()).hexdigest(),
+        "regressor_sha256": hashlib.sha256(reg_path.read_bytes()).hexdigest(),
+    }
+    (directory / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -182,10 +199,97 @@ def test_init_rejects_a_model_with_the_wrong_feature_count(monkeypatch, tmp_path
         def predict(self, X):
             raise AssertionError("predict() should never be reached")
 
-    with pytest.raises(RuntimeError, match="features"):
+    from swmm_resilience.ml.model_provenance import ModelProvenanceError
+
+    with pytest.raises(ModelProvenanceError, match="features"):
         _make_predictor(
             monkeypatch, tmp_path, clf=_WrongCountClassifier(), reg=_WrongCountRegressor()
         )
+
+
+def test_init_rejects_classifier_and_regressor_from_different_preparations(monkeypatch, tmp_path):
+    from swmm_resilience.ml.bench.promote import ModelProvenanceError
+    from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V21, TABULAR_V4_21
+
+    clf_dir, reg_dir = tmp_path / "candidate_a", tmp_path / "candidate_b"
+    clf_dir.mkdir()
+    reg_dir.mkdir()
+    clf_path, reg_path = clf_dir / "classifier.joblib", reg_dir / "regressor.joblib"
+    clf_path.touch()
+    reg_path.touch()
+    metadata = {
+        "family": "xgboost",
+        "prep_id": "prep-a",
+        "feature_contract_id": TABULAR_V4_21.contract_id,
+        "feature_contract_sha256": TABULAR_V4_21.descriptor_sha256,
+        "ordered_features": list(FEATURE_COLUMNS_V21),
+        "classifier_sha256": hashlib.sha256(clf_path.read_bytes()).hexdigest(),
+        "regressor_sha256": hashlib.sha256(reg_path.read_bytes()).hexdigest(),
+    }
+    (clf_dir / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    metadata["prep_id"] = "prep-b"
+    (reg_dir / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    _patch_pipeline(monkeypatch, _FakeClassifier(), _FakeRegressor())
+
+    with pytest.raises(ModelProvenanceError, match="prep_id"):
+        scenario_predict.ScenarioPredictor(
+            clf_path=clf_path,
+            reg_path=reg_path,
+            inp_path=tmp_path / "network.inp",
+        )
+
+
+def test_init_rejects_artifacts_mixed_from_different_candidate_pairs(monkeypatch, tmp_path):
+    from swmm_resilience.ml.bench.promote import ModelProvenanceError
+    from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V21, TABULAR_V4_21
+
+    clf_dir, reg_dir = tmp_path / "candidate_a", tmp_path / "candidate_b"
+    clf_dir.mkdir()
+    reg_dir.mkdir()
+    clf_path, reg_path = clf_dir / "classifier.joblib", reg_dir / "regressor.joblib"
+    clf_path.write_bytes(b"classifier-a")
+    reg_path.write_bytes(b"regressor-b")
+    sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+    metadata = {
+        "family": "xgboost",
+        "prep_id": "same-prep",
+        "feature_contract_id": TABULAR_V4_21.contract_id,
+        "feature_contract_sha256": TABULAR_V4_21.descriptor_sha256,
+        "ordered_features": list(FEATURE_COLUMNS_V21),
+        "classifier_sha256": sha(clf_path),
+        "regressor_sha256": sha(reg_path),
+    }
+    (clf_dir / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    metadata["classifier_sha256"] = hashlib.sha256(b"classifier-b").hexdigest()
+    (reg_dir / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    _patch_pipeline(monkeypatch, _FakeClassifier(), _FakeRegressor())
+
+    with pytest.raises(ModelProvenanceError, match="same artifact pair"):
+        scenario_predict.ScenarioPredictor(
+            clf_path=clf_path,
+            reg_path=reg_path,
+            inp_path=tmp_path / "network.inp",
+        )
+
+
+def test_network_transfer_requires_an_explicit_override(monkeypatch, tmp_path):
+    clf_path = tmp_path / "classifier.joblib"
+    reg_path = tmp_path / "regressor.joblib"
+    inp_path = tmp_path / "other_network.inp"
+    clf_path.touch()
+    reg_path.touch()
+    inp_path.write_text("different network", encoding="utf-8")
+    (tmp_path / "training_inp_hash.txt").write_text("source-network-hash", encoding="utf-8")
+    _write_pair_metadata(tmp_path, clf_path, reg_path)
+    _patch_pipeline(monkeypatch, _FakeClassifier(), _FakeRegressor())
+
+    with pytest.raises(ValueError, match="allow_network_mismatch=True"):
+        scenario_predict.ScenarioPredictor(clf_path, reg_path, inp_path)
+
+    predictor = scenario_predict.ScenarioPredictor(
+        clf_path, reg_path, inp_path, allow_network_mismatch=True
+    )
+    assert predictor.inp_path == inp_path
 
 
 def test_predict_covers_all_network_junctions(monkeypatch, two_node_scenario, tmp_path):
@@ -249,6 +353,7 @@ def test_predict_scenario_wrapper_compatible(monkeypatch, two_node_scenario, tmp
     reg_path = tmp_path / "reg.joblib"
     clf_path.touch()
     reg_path.touch()
+    _write_pair_metadata(tmp_path, clf_path, reg_path)
     _patch_pipeline(monkeypatch, _FakeClassifier(), _FakeRegressor())
 
     result = scenario_predict.predict_scenario(

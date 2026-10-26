@@ -1,5 +1,4 @@
 import hashlib
-import joblib
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -69,18 +68,24 @@ def _md5(path: Path) -> str:
     return digest.hexdigest()
 
 
-def predict_network(factor: float, config: Config, models_dir: Path) -> pd.DataFrame:
+def predict_network(
+    factor: float,
+    config: Config,
+    models_dir: Path,
+    *,
+    allow_network_mismatch: bool = False,
+) -> pd.DataFrame:
     """Predict flooding for all junction nodes at a given factor without running SWMM.
 
     Validates that the current .inp matches the one used at training time (MD5 hash).
     Returns DataFrame: node_id, inunda_pred, vol_pred_m3, coord_x, coord_y
     """
-    # Import perezoso: promote arrastra bench.train -> registry -> torch.
-    from .bench.promote import assert_promotion_consistent
+    # Import perezoso: provenance helpers avoid loading the benchmark registry.
+    from .model_provenance import load_verified_model_pair
 
-    assert_promotion_consistent(models_dir)
-    clf = joblib.load(models_dir / "classifier.joblib")
-    reg = joblib.load(models_dir / "regressor.joblib")
+    clf, reg, _ = load_verified_model_pair(
+        models_dir / "classifier.joblib", models_dir / "regressor.joblib"
+    )
 
     if clf.n_features_in_ != len(FEATURE_COLS) or reg.n_features_in_ != len(FEATURE_COLS):
         raise RuntimeError(
@@ -91,10 +96,12 @@ def predict_network(factor: float, config: Config, models_dir: Path) -> pd.DataF
         )
 
     stored_hash = (models_dir / "training_inp_hash.txt").read_text().strip()
-    if _md5(config.network.inp_path) != stored_hash:
+    if _md5(config.network.inp_path) != stored_hash and not allow_network_mismatch:
         raise ValueError(
             f"The .inp at '{config.network.inp_path}' has changed since training. "
-            "Re-train the model or use the original .inp."
+            "Re-train the model or use the original .inp. For an intentional "
+            "transfer experiment, pass allow_network_mismatch=True; model artifact "
+            "integrity checks remain enforced."
         )
 
     if not (config.simulation.factor_min <= factor <= config.simulation.factor_max):

@@ -14,6 +14,7 @@ from swmm_resilience.ml.bench.train import load_candidate, train_candidate
 from swmm_resilience.ml.contracts import (
     FEATURE_COLUMNS_V17,
     FEATURE_COLUMNS_V21,
+    TABULAR_V3_17,
     TABULAR_V4_21,
 )
 from tests.ml.bench.prepared_factory import make_prepared
@@ -261,6 +262,85 @@ def test_load_candidate_roundtrips(prepared, tmp_path):
 
     assert loaded.family == "xgboost"
     assert loaded.metadata["prep_id"] == prepared.prep_id
+
+
+def test_load_candidate_rejects_metadata_with_swapped_feature_order(tmp_path):
+    import hashlib
+    from sklearn.dummy import DummyClassifier, DummyRegressor
+    from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V21, TABULAR_V4_21
+
+    directory = tmp_path / "candidate"
+    directory.mkdir()
+    columns = list(FEATURE_COLUMNS_V21)
+    X = pd.DataFrame(np.zeros((4, len(columns))), columns=columns)
+    y = np.array([0, 1, 0, 1])
+    classifier = DummyClassifier(strategy="most_frequent").fit(X, y)
+    regressor = DummyRegressor().fit(X, np.ones(len(X)))
+    classifier_path = directory / "classifier.joblib"
+    regressor_path = directory / "regressor.joblib"
+    joblib.dump(classifier, classifier_path)
+    joblib.dump(regressor, regressor_path)
+    sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+    metadata = {
+        "family": "xgboost",
+        "prep_id": "prep-test",
+        "feature_contract_id": TABULAR_V4_21.contract_id,
+        "feature_contract_sha256": TABULAR_V4_21.descriptor_sha256,
+        "ordered_features": list(reversed(columns)),
+        "classifier_sha256": sha(classifier_path),
+        "regressor_sha256": sha(regressor_path),
+    }
+    (directory / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    from swmm_resilience.ml.bench.promote import ModelProvenanceError
+
+    with pytest.raises(ModelProvenanceError, match="contract order"):
+        load_candidate(directory)
+
+
+def test_load_candidate_accepts_a_complete_v21_pair_without_training_fixture(tmp_path):
+    import hashlib
+    from sklearn.dummy import DummyClassifier, DummyRegressor
+    from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V21, TABULAR_V4_21
+
+    directory = tmp_path / "candidate"
+    directory.mkdir()
+    columns = list(FEATURE_COLUMNS_V21)
+    X = pd.DataFrame(np.zeros((4, len(columns))), columns=columns)
+    classifier = DummyClassifier(strategy="most_frequent").fit(X, [0, 1, 0, 1])
+    regressor = DummyRegressor().fit(X, [1.0, 2.0, 3.0, 4.0])
+    classifier_path = directory / "classifier.joblib"
+    regressor_path = directory / "regressor.joblib"
+    joblib.dump(classifier, classifier_path)
+    joblib.dump(regressor, regressor_path)
+    sha = lambda path: hashlib.sha256(path.read_bytes()).hexdigest()
+    metadata = {
+        "family": "xgboost",
+        "prep_id": "prep-test",
+        "feature_contract_id": TABULAR_V4_21.contract_id,
+        "feature_contract_sha256": TABULAR_V4_21.descriptor_sha256,
+        "ordered_features": columns,
+        "classifier_sha256": sha(classifier_path),
+        "regressor_sha256": sha(regressor_path),
+    }
+    (directory / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
+    loaded = load_candidate(directory)
+
+    assert loaded.family == "xgboost"
+    assert loaded.metadata["feature_contract_id"] == "tabular_v4_21"
+
+    metadata["feature_contract_id"] = "tabular_v3_17"
+    metadata["feature_contract_sha256"] = TABULAR_V3_17.descriptor_sha256
+    metadata["ordered_features"] = list(FEATURE_COLUMNS_V17)
+    (directory / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    from swmm_resilience.ml.bench.promote import ModelProvenanceError
+
+    with pytest.raises(ModelProvenanceError, match="has 21 features"):
+        load_candidate(directory)
+
+    classifier_path.write_bytes(classifier_path.read_bytes() + b"tamper")
+    with pytest.raises(ModelProvenanceError, match="SHA-256"):
+        load_candidate(directory)
 
 
 def test_classifier_and_regressor_fit_calls_see_the_right_rows(prepared, tmp_path, monkeypatch):
