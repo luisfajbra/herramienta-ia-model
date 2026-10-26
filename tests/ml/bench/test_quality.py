@@ -103,6 +103,15 @@ def test_report_counts_threshold_disagreements_without_raising():
     assert report["threshold_disagreements"] == 1
 
 
+def test_report_does_not_flag_volume_equal_to_positive_threshold():
+    keys, X, _, _ = _frames()
+    y_reg = pd.Series([1.0] + [0.0] * (len(keys) - 1), name="vol_inundacion_m3")
+    y_clf = pd.Series([1] + [0] * (len(keys) - 1), name="inunda")
+    report = build_quality_report(keys, X, y_clf, y_reg, flood_threshold_m3=1.0)
+
+    assert report["threshold_disagreements"] == 0
+
+
 def test_duplicate_run_node_pairs_are_a_hard_error():
     keys, X, y_clf, y_reg = _frames()
     keys = keys.copy()

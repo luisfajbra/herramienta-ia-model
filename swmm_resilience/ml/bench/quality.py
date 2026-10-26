@@ -15,6 +15,7 @@ import numpy as np
 import pandas as pd
 
 from ..contracts import FEATURE_COLUMNS_V17, NULLABLE_FEATURE_COLUMNS_V17
+from ...extraction.labels import flood_label
 
 
 class DatasetQualityError(ValueError):
@@ -91,9 +92,8 @@ def build_quality_report(
         y_clf.groupby(factor_labels.values).sum().astype(int).to_dict()
     )
 
-    disagreements = int(
-        (((y_reg > flood_threshold_m3).astype(int)) != y_clf.astype(int)).sum()
-    )
+    expected_labels = flood_label(y_reg, flood_threshold_m3)
+    disagreements = int((expected_labels != y_clf.astype(int)).sum())
 
     return {
         "n_rows": int(len(keys)),

@@ -45,14 +45,14 @@ visualization:
   show_labels_top_n: 5
 
 bench:
-  protocols: ["LOSO", "GroupKFold5"]
+  protocols: ["LeaveOneShapeOut", "LOSO", "GroupKFold5"]
   ranking:
     primary_metric: "end_to_end.rmse_vol_todos_nodos"
     primary_direction: "minimize"
     tie_breakers:
       - {metric: "classifier.f1", direction: "maximize"}
       - {metric: "regressor_oracle.nse", direction: "maximize"}
-  promote: "auto"
+  promote: "none"
   families:
     xgboost:
       enabled: true

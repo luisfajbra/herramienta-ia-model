@@ -1,5 +1,6 @@
 import json
 import shutil
+import sqlite3
 
 import pandas as pd
 import pytest
@@ -114,10 +115,168 @@ def test_manifest_records_full_provenance(prepared):
     assert manifest["contract_id"] == "tabular_v3_17"
     assert len(manifest["feature_contract_sha256"]) == 64
     assert manifest["protocols"] == ["LOSO"]
+    assert manifest["protocol_definitions"] == {
+        "LOSO": {"group_column": "factor_mult"}
+    }
+    assert manifest["source_capture_method"] == "sqlite_backup_readonly_v1"
+    assert len(manifest["source_snapshot_sha256"]) == 64
+    assert manifest["training_frame_fingerprint_version"] == "training_frame_canonical_v1"
+    assert len(manifest["training_frame_sha256"]) == 64
     assert manifest["feature_columns"] == list(FEATURE_COLUMNS_V17)
     assert "python_version" in manifest
     assert "library_versions" in manifest
     assert "created_at_utc" in manifest
+
+
+def test_each_protocol_uses_its_declared_group_column(sql_training_db, tmp_path):
+    prepared = prepare_dataset(
+        sql_training_db,
+        protocols=("LOSO", "LeaveOneShapeOut"),
+        flood_threshold_m3=1.0,
+        output_dir=tmp_path / "prepared",
+    )
+
+    assert prepared.manifest["protocol_definitions"] == {
+        "LOSO": {"group_column": "factor_mult"},
+        "LeaveOneShapeOut": {"group_column": "shape_id"},
+    }
+    shape_folds = prepared.folds[
+        prepared.folds["protocol"] == "LeaveOneShapeOut"
+    ]
+    assert shape_folds["group_column"].unique().tolist() == ["shape_id"]
+    assert "shape_id" not in prepared.X.columns
+
+
+def test_resolve_prepared_rejects_manifest_without_protocol_semantics(prepared, tmp_path):
+    manifest_path = tmp_path / "prepared" / prepared.prep_id / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest.pop("protocol_definitions", None)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"semántica.*protocol"):
+        resolve_prepared(tmp_path / "prepared", prepared.prep_id)
+
+
+def test_resolve_prepared_rejects_incorrect_protocol_semantics(prepared, tmp_path):
+    manifest_path = tmp_path / "prepared" / prepared.prep_id / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["protocol_definitions"]["LOSO"]["group_column"] = "shape_id"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=r"semántica.*protocol"):
+        resolve_prepared(tmp_path / "prepared", prepared.prep_id)
+
+
+def test_metadata_only_source_change_changes_snapshot_but_not_frame_identity(
+    sql_training_db, tmp_path
+):
+    modified_db = tmp_path / "same_rows_different_bytes.sqlite3"
+    shutil.copy2(sql_training_db, modified_db)
+    connection = sqlite3.connect(modified_db)
+    try:
+        current_user_version = connection.execute(
+            "PRAGMA user_version"
+        ).fetchone()[0]
+        new_user_version = 0 if current_user_version != 0 else 1
+        connection.execute(f"PRAGMA user_version = {new_user_version}")
+        connection.commit()
+        busy, _, _ = connection.execute(
+            "PRAGMA wal_checkpoint(TRUNCATE)"
+        ).fetchone()
+        assert busy == 0
+    finally:
+        connection.close()
+
+    assert preprocess_module._sha256_file(sql_training_db) != preprocess_module._sha256_file(
+        modified_db
+    ), "la mutación de la fixture debe cambiar los bytes antes de preparar el dataset"
+
+    original = prepare_dataset(
+        sql_training_db,
+        protocols=("LOSO",),
+        flood_threshold_m3=1.0,
+        output_dir=tmp_path / "original",
+    )
+    modified = prepare_dataset(
+        modified_db,
+        protocols=("LOSO",),
+        flood_threshold_m3=1.0,
+        output_dir=tmp_path / "modified",
+    )
+
+    assert len(original.manifest["source_snapshot_sha256"]) == 64
+    assert len(modified.manifest["source_snapshot_sha256"]) == 64
+    int(original.manifest["source_snapshot_sha256"], 16)
+    int(modified.manifest["source_snapshot_sha256"], 16)
+    assert original.manifest["run_ids"] == modified.manifest["run_ids"]
+    assert original.manifest["n_rows"] == modified.manifest["n_rows"]
+    assert original.manifest["protocol_definitions"] == modified.manifest[
+        "protocol_definitions"
+    ]
+    assert original.manifest["source_snapshot_sha256"] != modified.manifest[
+        "source_snapshot_sha256"
+    ]
+    assert original.manifest["training_frame_sha256"] == modified.manifest[
+        "training_frame_sha256"
+    ]
+    assert original.prep_id == modified.prep_id
+
+
+def test_prepare_captures_readonly_snapshot_and_never_loads_source(
+    sql_training_db, tmp_path, monkeypatch
+):
+    source_before = preprocess_module._sha256_file(sql_training_db)
+    seen_paths = []
+    real_loader = preprocess_module.load_training_frame
+
+    def capture_loader(path):
+        seen_paths.append(path)
+        assert str(path) != str(sql_training_db)
+        assert preprocess_module.Path(path).exists()
+        return real_loader(path)
+
+    monkeypatch.setattr(preprocess_module, "load_training_frame", capture_loader)
+    prepared = prepare_dataset(
+        sql_training_db,
+        protocols=("LOSO",),
+        flood_threshold_m3=1.0,
+        output_dir=tmp_path / "prepared",
+    )
+
+    assert len(seen_paths) == 1
+    assert preprocess_module._sha256_file(sql_training_db) == source_before
+    assert prepared.manifest["source_capture_method"] == "sqlite_backup_readonly_v1"
+
+
+def test_relevant_training_value_change_changes_logical_identity(
+    sql_training_db, tmp_path, monkeypatch
+):
+    real_loader = preprocess_module.load_training_frame
+    baseline = prepare_dataset(
+        sql_training_db,
+        protocols=("LOSO",),
+        flood_threshold_m3=1.0,
+        output_dir=tmp_path / "baseline",
+    )
+    changed = real_loader(sql_training_db).copy()
+    changed.loc[0, FEATURE_COLUMNS_V17[0]] = (
+        float(changed.loc[0, FEATURE_COLUMNS_V17[0]]) + 1.0
+    )
+    monkeypatch.setattr(preprocess_module, "load_training_frame", lambda _path: changed)
+    modified = prepare_dataset(
+        sql_training_db,
+        protocols=("LOSO",),
+        flood_threshold_m3=1.0,
+        output_dir=tmp_path / "modified",
+    )
+
+    assert baseline.manifest["source_snapshot_sha256"] == modified.manifest[
+        "source_snapshot_sha256"
+    ]
+    assert baseline.manifest["training_frame_sha256"] != modified.manifest[
+        "training_frame_sha256"
+    ]
+    assert baseline.prep_id != modified.prep_id
 
 
 def test_a_version_lookup_failure_does_not_abort_prepare_dataset(

@@ -231,18 +231,18 @@ def test_a_disabled_family_named_in_models_is_not_rejected_by_the_new_check(
     assert (tmp_path / "outputs" / "bench" / "prepared").exists()
 
 
-def test_bench_promote_auto_without_a_ranking_gives_the_documented_systemexit(
+def test_bench_promote_none_requires_an_explicit_family(
     sql_training_db, tmp_path
 ):
     import main
 
     config = _make_config(
         inp_path=tmp_path / "network.inp", db_path=sql_training_db,
-        families=["xgboost"], promote="auto",
+        families=["xgboost"], promote="none",
     )
     args = _make_args(bench_promote=True)
 
-    with pytest.raises(SystemExit, match="--bench-evaluate"):
+    with pytest.raises(SystemExit, match="familia expl"):
         main._run_bench(args, config)
 
 
@@ -318,6 +318,41 @@ def test_bench_evaluate_fails_clearly_when_the_prepared_dataset_lacks_the_config
     assert "--bench-prepare" in message
 
 
+def test_bench_train_rejects_a_prepared_dataset_with_stale_protocol_semantics(
+    sql_training_db, tmp_path, monkeypatch
+):
+    import main
+
+    monkeypatch.chdir(tmp_path)
+    prepared = prepare_dataset(
+        sql_training_db,
+        protocols=("LOSO",),
+        flood_threshold_m3=1.0,
+        output_dir=Path("outputs/bench/prepared"),
+    )
+    manifest_path = (
+        Path("outputs/bench/prepared") / prepared.prep_id / "manifest.json"
+    )
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["protocol_definitions"]["LOSO"]["group_column"] = "shape_id"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    config = _make_config(
+        inp_path=tmp_path / "network.inp",
+        db_path=sql_training_db,
+        families=["xgboost"],
+        protocols=("LOSO",),
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        main._run_bench(_make_args(bench_train=True), config)
+
+    message = str(excinfo.value)
+    assert "semántica" in message
+    assert "protocol" in message
+    assert "--bench-prepare" in message
+
+
 def test_bench_train_succeeds_when_the_prepared_dataset_covers_the_configured_protocols(
     sql_training_db_six_factors, tmp_path, monkeypatch
 ):
@@ -340,7 +375,7 @@ def test_bench_train_succeeds_when_the_prepared_dataset_covers_the_configured_pr
     main._run_bench(args, config)  # must not raise
 
 
-def test_full_bench_run_produces_ranking_csv_with_one_row_per_family(
+def test_full_bench_run_writes_ranking_without_promoting(
     sql_training_db, tmp_path, monkeypatch
 ):
     import main
@@ -351,7 +386,7 @@ def test_full_bench_run_produces_ranking_csv_with_one_row_per_family(
 
     config = _make_config(
         inp_path=inp_path, db_path=sql_training_db,
-        families=["xgboost"], promote="auto",
+        families=["xgboost"], promote="none",
     )
     args = _make_args(bench=True, models="xgboost")
 
@@ -365,6 +400,4 @@ def test_full_bench_run_produces_ranking_csv_with_one_row_per_family(
     for column in ("rank", "family", "primary_value", "valid", "invalid_reason"):
         assert column in ranking.columns
 
-    models_dir = tmp_path / "outputs" / "models"
-    assert (models_dir / "classifier.joblib").exists()
-    assert (models_dir / "regressor.joblib").exists()
+    assert not (tmp_path / "outputs" / "models").exists()
