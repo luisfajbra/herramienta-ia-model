@@ -127,6 +127,17 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Output directory for batch validation (default: ./validation_output)")
     parser.add_argument("--bench-prepare", action="store_true",
                         help="Step 3: read the migrated SQL dataset and prepare outputs/bench/prepared/ (default contract: v17)")
+    parser.add_argument("--bench-db", metavar="PATH", default=None,
+                        help="SQLite experiment database for bench preparation (default: config.dataset.db_path)")
+    parser.add_argument("--bench-contract", choices=("tabular_v3_17", "tabular_v4_21"),
+                        default="tabular_v3_17",
+                        help="Feature contract for --bench-prepare (default: tabular_v3_17)")
+    parser.add_argument("--network-ids", metavar="LIST", default=None,
+                        help="Comma-separated network IDs to prepare; required to combine multiple networks")
+    parser.add_argument("--run-ids", metavar="LIST", default=None,
+                        help="Comma-separated COMPLETE run IDs to prepare")
+    parser.add_argument("--bench-output", metavar="DIR", default=None,
+                        help="PreparedDataset output directory (default: outputs/bench/prepared)")
     parser.add_argument("--bench-train", action="store_true",
                         help="Bench stage 2: train each enabled family")
     parser.add_argument("--bench-evaluate", action="store_true",
@@ -167,7 +178,8 @@ def _run_bench(args, config) -> None:
             "config.yaml has no `bench:` block. Add it before using the --bench-* commands."
         )
 
-    prepared_dir = BENCH_ROOT / "prepared"
+    bench_output = getattr(args, "bench_output", None)
+    prepared_dir = Path(bench_output) if bench_output else BENCH_ROOT / "prepared"
     candidates_dir = BENCH_ROOT / "candidates"
     reports_dir = BENCH_ROOT / "reports"
     oof_dir = BENCH_ROOT / "oof"
@@ -194,12 +206,60 @@ def _run_bench(args, config) -> None:
         )
 
     if run_all or args.bench_prepare:
+        network_ids_text = getattr(args, "network_ids", None)
+        run_ids_text = getattr(args, "run_ids", None)
+        if network_ids_text and run_ids_text:
+            raise SystemExit("Pass either --network-ids or --run-ids, not both")
+
+        def parse_ids(value: str | None, flag: str) -> list[int] | None:
+            if value is None:
+                return None
+            try:
+                parsed = [int(part.strip()) for part in value.split(",")]
+            except ValueError as exc:
+                raise SystemExit(f"{flag} must be a comma-separated list of positive integers") from exc
+            if not parsed or any(item <= 0 for item in parsed):
+                raise SystemExit(f"{flag} must contain positive integer IDs")
+            if len(set(parsed)) != len(parsed):
+                raise SystemExit(f"{flag} must not contain duplicate IDs")
+            return parsed
+
+        network_ids = parse_ids(network_ids_text, "--network-ids")
+        run_ids = parse_ids(run_ids_text, "--run-ids")
+        bench_db = getattr(args, "bench_db", None)
+        db_path = Path(bench_db) if bench_db else config.dataset.db_path
+        bench_contract = getattr(args, "bench_contract", "tabular_v3_17")
+        from swmm_resilience.ml.contracts import (
+            FEATURE_COLUMNS_V17,
+            FEATURE_COLUMNS_V21,
+            TABULAR_V3_17,
+            TABULAR_V4_21,
+        )
+
+        contract_options = (
+            {
+                "feature_columns": FEATURE_COLUMNS_V17,
+                "feature_contract": TABULAR_V3_17,
+                "view_name": "training_samples_v17",
+                "node_features_table": "node_features",
+            }
+            if bench_contract == "tabular_v3_17"
+            else {
+                "feature_columns": FEATURE_COLUMNS_V21,
+                "feature_contract": TABULAR_V4_21,
+                "view_name": "training_samples_v4_21",
+                "node_features_table": "node_features_v4_21",
+            }
+        )
         prepared = prepare_dataset(
-            config.dataset.db_path,
+            db_path,
             protocols=tuple(config.bench.protocols),
             flood_threshold_m3=config.dataset.flood_threshold_m3,
             output_dir=prepared_dir,
             max_continuity_error_pct=config.validation.max_continuity_error_pct,
+            network_ids=network_ids,
+            run_ids=run_ids,
+            **contract_options,
         )
         print(f"PreparedDataset {prepared.prep_id}: {prepared.quality['n_rows']} rows, "
               f"{prepared.quality['class_balance']['n_flooded']} flooded")
@@ -364,6 +424,15 @@ def main():
         parser.error("--skip-simulation requires --skip-extraction or --only-ml in this version; the pipeline does not yet index persistent .rpt files")
     if args.v4_21_dataset and not args.persist_sql:
         parser.error("--v4-21-dataset requires --persist-sql")
+    if (
+        (args.bench_db or args.network_ids or args.run_ids
+         or args.bench_contract != "tabular_v3_17")
+        and not (args.bench_prepare or args.bench)
+    ):
+        parser.error(
+            "--bench-db, --bench-contract, --network-ids, and --run-ids "
+            "require --bench-prepare or --bench"
+        )
 
     config = load_config("config.yaml")
 

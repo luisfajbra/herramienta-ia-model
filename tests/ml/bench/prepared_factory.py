@@ -54,6 +54,11 @@ def make_prepared(rows: list[dict], protocols, *, threshold: float = 1.0) -> Pre
             "contract_id": TABULAR_V3_17.contract_id,
             "feature_contract_sha256": TABULAR_V3_17.descriptor_sha256,
             "feature_columns": list(FEATURE_COLUMNS_V17),
+            "source_network_ids": [1],
+            "source_networks": [],
+            "excluded_run_ids": [],
+            "excluded_runs": [],
+            "source_snapshot_sha256": "0" * 64,
         },
         quality={},
     )

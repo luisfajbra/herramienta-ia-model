@@ -166,6 +166,199 @@ def protocol_definitions(protocols: Sequence[str]) -> dict[str, dict[str, str]]:
     }
 
 
+def _canonical_json_sha256(value: object) -> str:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdefABCDEF" for character in value)
+    )
+
+
+def _source_provenance(
+    db_path: Path | str,
+    *,
+    included_run_ids: Sequence[int],
+    run_ids: Sequence[int] | None,
+    network_ids: Sequence[int] | None,
+    max_continuity_error_pct: float | None,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Collect source hashes and excluded runs from the same read-only snapshot."""
+    uri = f"{Path(db_path).resolve().as_uri()}?mode=ro"
+    conn = sqlite3.connect(uri, uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        clauses = ["run.status='COMPLETE'"]
+        params: list[int] = []
+        if run_ids is not None:
+            if not run_ids:
+                raise ValueError("run_ids cannot be empty")
+            clauses.append(f"run.run_id IN ({','.join('?' for _ in run_ids)})")
+            params.extend(run_ids)
+        elif network_ids is not None:
+            if not network_ids:
+                raise ValueError("network_ids cannot be empty")
+            clauses.append(f"run.network_id IN ({','.join('?' for _ in network_ids)})")
+            params.extend(network_ids)
+        rows = conn.execute(
+            """SELECT run.run_id, run.network_id, run.continuity_error_pct,
+                      run.config_sha256 AS run_config_sha256,
+                      scenario.scenario_id, scenario.shape_id, scenario.factor_mult,
+                      scenario.config_json, scenario.config_sha256 AS scenario_config_sha256,
+                      network.name, network.network_sha256
+               FROM runs AS run
+               JOIN scenarios AS scenario
+                 ON scenario.scenario_id=run.scenario_id
+                AND scenario.network_id=run.network_id
+               JOIN networks AS network ON network.network_id=run.network_id
+               WHERE """ + " AND ".join(clauses) + " ORDER BY run.network_id, run.run_id",
+            params,
+        ).fetchall()
+    finally:
+        conn.close()
+
+    included = set(int(value) for value in included_run_ids)
+    excluded = []
+    networks: dict[int, dict[str, object]] = {}
+    require_complete_provenance = (
+        (network_ids is not None and len(network_ids) > 1)
+        or len({int(row["network_id"]) for row in rows}) > 1
+    )
+    for row in rows:
+        config = json.loads(row["config_json"])
+        valid_config_hashes = {
+            hashlib.sha256(row["config_json"].encode("utf-8")).hexdigest(),
+            _canonical_json_sha256(config),
+        }
+        if row["scenario_config_sha256"] not in valid_config_hashes:
+            raise ValueError(
+                f"Scenario source manifest hash is invalid for scenario_id={row['scenario_id']}"
+            )
+        if row["run_config_sha256"] != row["scenario_config_sha256"]:
+            raise ValueError(
+                f"Run/scenario configuration hash mismatch for run_id={row['run_id']}"
+            )
+        source = config.get("source_manifest", {})
+        if require_complete_provenance:
+            if not isinstance(source, dict) or not source:
+                raise ValueError(
+                    f"Source manifest is missing for multi-network run_id={row['run_id']}"
+                )
+            training_dataset = source.get("training_dataset")
+            v4_dataset = source.get("v4_21_training_dataset")
+            event_components = source.get("event_series_components")
+            event_sha = source.get("event_series_sha256")
+            if not source.get("network_inp_path") or not _is_sha256(
+                source.get("network_inp_sha256")
+            ):
+                raise ValueError(
+                    f"Network INP provenance is incomplete for run_id={row['run_id']}"
+                )
+            if not isinstance(training_dataset, dict) or not _is_sha256(
+                training_dataset.get("sha256")
+            ):
+                raise ValueError(
+                    f"Training dataset provenance is incomplete for run_id={row['run_id']}"
+                )
+            if not isinstance(event_components, dict) or not event_sha:
+                raise ValueError(
+                    f"Event-series provenance is incomplete for run_id={row['run_id']}"
+                )
+            if (
+                event_components.get("network_inp_sha256") != row["network_sha256"]
+                or event_components.get("shape_id") != row["shape_id"]
+            ):
+                raise ValueError(
+                    f"Event-series identity does not match network/scenario for run_id={row['run_id']}"
+                )
+            try:
+                event_factor = float(event_components["factor_mult"])
+                scenario_factor = float(row["factor_mult"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"Event-series factor is missing or invalid for run_id={row['run_id']}"
+                ) from exc
+            if event_factor != scenario_factor:
+                raise ValueError(
+                    f"Event-series factor does not match run_id={row['run_id']}"
+                )
+            if row["shape_id"] != "base" and not _is_sha256(
+                event_components.get("hydrograph_sha256")
+            ):
+                raise ValueError(
+                    f"Hydrograph source hash is missing for run_id={row['run_id']}"
+                )
+            if (
+                not isinstance(v4_dataset, dict)
+                or not _is_sha256(v4_dataset.get("sha256"))
+                or not isinstance(v4_dataset.get("manifest"), dict)
+                or not _is_sha256(v4_dataset["manifest"].get("sha256"))
+            ):
+                raise ValueError(
+                    f"v4_21 dataset provenance is incomplete for run_id={row['run_id']}"
+                )
+        if source.get("network_id") not in (None, row["network_id"]):
+            raise ValueError(
+                f"Network source manifest identity mismatch for run_id={row['run_id']}"
+            )
+        inp_sha = source.get("network_inp_sha256")
+        if inp_sha is not None and inp_sha != row["network_sha256"]:
+            raise ValueError(
+                f"Network source manifest hash does not match network_id={row['network_id']}"
+            )
+        event_components = source.get("event_series_components")
+        event_sha = source.get("event_series_sha256")
+        if event_components is not None and event_sha != _canonical_json_sha256(event_components):
+            raise ValueError(
+                f"Event source manifest hash is invalid for run_id={row['run_id']}"
+            )
+        network_id = int(row["network_id"])
+        network = networks.setdefault(
+            network_id,
+            {
+                "network_id": network_id,
+                "name": row["name"],
+                "network_sha256": row["network_sha256"],
+                "inp_path": source.get("network_inp_path"),
+                "runs": [],
+            },
+        )
+        network["runs"].append(
+            {
+                "run_id": int(row["run_id"]),
+                "scenario_id": int(row["scenario_id"]),
+                "shape_id": row["shape_id"],
+                "factor_mult": row["factor_mult"],
+                "event_series_sha256": source.get("event_series_sha256"),
+                "event_series_components": event_components,
+                "v17_dataset": source.get("training_dataset"),
+                "v4_21_dataset": source.get("v4_21_training_dataset"),
+            }
+        )
+        if int(row["run_id"]) not in included:
+            continuity = row["continuity_error_pct"]
+            reason = (
+                "continuity_error_exceeds_threshold"
+                if max_continuity_error_pct is not None
+                and continuity is not None
+                and abs(float(continuity)) > max_continuity_error_pct
+                else "not_in_training_frame"
+            )
+            excluded.append(
+                {
+                    "run_id": int(row["run_id"]),
+                    "network_id": network_id,
+                    "continuity_error_pct": continuity,
+                    "reason": reason,
+                }
+            )
+    return list(networks.values()), excluded
+
+
 def prepare_dataset(
     db_path: Path | str,
     *,
@@ -177,6 +370,8 @@ def prepare_dataset(
     feature_contract=TABULAR_V3_17,
     view_name: str = "training_samples_v17",
     node_features_table: str = "node_features",
+    run_ids: Sequence[int] | None = None,
+    network_ids: Sequence[int] | None = None,
 ) -> PreparedDataset:
     """Lee el frame de SQL y materializa un PreparedDataset en ``output_dir``.
 
@@ -200,6 +395,15 @@ def prepare_dataset(
             feature_columns=feature_columns,
             feature_contract=feature_contract,
             node_features_table=node_features_table,
+            run_ids=list(run_ids) if run_ids is not None else None,
+            network_ids=list(network_ids) if network_ids is not None else None,
+        )
+        source_networks, excluded_runs = _source_provenance(
+            snapshot_path,
+            included_run_ids=frame["run_id"].unique(),
+            run_ids=run_ids,
+            network_ids=network_ids,
+            max_continuity_error_pct=max_continuity_error_pct,
         )
     frame = frame.sort_values(list(SORT_KEY)).reset_index(drop=True)
     training_frame_sha256 = _training_frame_sha256(frame)
@@ -228,6 +432,9 @@ def prepare_dataset(
         "contract_id": feature_contract.contract_id,
         "feature_contract_sha256": feature_contract.descriptor_sha256,
         "run_ids": sorted(int(value) for value in keys["run_id"].unique()),
+        "source_network_ids": sorted(int(value) for value in keys["network_id"].unique()),
+        "source_networks": source_networks,
+        "excluded_runs": excluded_runs,
         "n_rows": int(len(frame)),
         "feature_columns": list(feature_columns),
         "flood_threshold_m3": float(flood_threshold_m3),
@@ -248,6 +455,7 @@ def prepare_dataset(
         # procedencia de que umbral se aplico.
         max_continuity_error_pct=max_continuity_error_pct,
         source_snapshot_sha256=source_snapshot_sha256,
+        excluded_run_ids=sorted(item["run_id"] for item in excluded_runs),
         prep_id=prep_id,
         db_path=str(db_path),
         python_version=platform.python_version(),

@@ -60,9 +60,32 @@ python main.py --bench-prepare
 importa el dataset y las corridas en esa base ya migrada. `--bench-prepare`
 lee una instantánea de solo lectura y genera el conjunto preparado; si detecta
 migraciones pendientes, informa cuáles faltan y no cambia el archivo SQLite.
-En esta etapa `--bench-prepare` conserva su contrato predeterminado
-`tabular_v3_17`; la selección explícita de `tabular_v4_21` se incorporará en
-el siguiente paso del plan multired.
+`--bench-prepare` conserva `tabular_v3_17` como valor predeterminado. Para
+usar las features tributarias, selecciona explícitamente `tabular_v4_21` como
+se muestra a continuación.
+
+Para preparar el contrato tributario en una o varias redes importadas, indica
+la base, el contrato, los IDs de red y el directorio de salida. La preparación
+guarda los hashes del INP y de las series de evento, las corridas excluidas y
+la identidad exacta del contrato en el manifiesto:
+
+```powershell
+python main.py --bench-prepare `
+  --bench-db outputs/training_v17.sqlite3 `
+  --bench-contract tabular_v4_21 `
+  --network-ids 1,2 `
+  --bench-output outputs/bench/prepared-v4_21
+```
+
+Usa `--run-ids 101,102` en lugar de `--network-ids` para fijar una selección
+exacta de corridas. No combines ambas opciones; sin selección explícita, la
+lectura conserva la restricción de una sola red.
+
+Esta preparación conserva la identidad y procedencia de las fuentes, pero los
+protocolos OOF actuales agrupan por factor o forma y pueden mezclar redes entre
+train y test. Sus métricas no miden transferencia a una red no vista. La
+evaluación A→B con modelos congelados y la evaluación espacial externa son
+etapas posteriores del plan; este comando no las ejecuta.
 
 ## Arquitectura Actual
 

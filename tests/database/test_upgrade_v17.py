@@ -38,14 +38,14 @@ def test_upgrade_backs_up_before_applying_005(tmp_path):
     applied = [row[0] for row in verify.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()]
-    assert applied == [1, 2, 3, 4, 5, 6, 7]
+    assert applied == list(range(1, 9))
     verify.close()
 
 
 def test_upgrade_is_a_noop_when_already_current(tmp_path):
     db_path = tmp_path / "db.sqlite3"
     conn = connect_database(db_path)
-    apply_migrations(conn)  # already at 005
+    apply_migrations(conn)  # already at the current schema
     conn.close()
 
     receipt = upgrade_database_with_backup(db_path, tmp_path / "backups")
@@ -61,7 +61,7 @@ def test_upgrade_applies_all_migrations_from_a_fresh_database(tmp_path):
     applied = [row[0] for row in verify.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()]
-    assert applied == [1, 2, 3, 4, 5, 6, 7]
+    assert applied == list(range(1, 9))
     verify.close()
 
 

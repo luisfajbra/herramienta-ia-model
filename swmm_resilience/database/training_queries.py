@@ -456,6 +456,7 @@ def load_training_frame(
     conn = sqlite3.connect(uri, uri=True)
     conn.row_factory = sqlite3.Row
     try:
+        normalized_network_ids = None
         try:
             validate_migrations(conn)
         except RuntimeError as exc:
@@ -494,6 +495,20 @@ def load_training_frame(
             frame,
             allow_multiple_networks=explicit_selection,
         )
+        if normalized_network_ids is not None:
+            contributing_network_ids = set(
+                int(value) for value in frame["network_id"].dropna().unique()
+            )
+            missing_contributors = [
+                value for value in normalized_network_ids
+                if value not in contributing_network_ids
+            ]
+            if missing_contributors:
+                raise ValueError(
+                    "Requested network_ids have no included training rows after "
+                    "continuity and data-quality filters: "
+                    f"{missing_contributors}"
+                )
         return frame
     finally:
         conn.close()

@@ -137,7 +137,7 @@ def _insert_promotion(
     )
 
 
-def test_fresh_database_applies_four_migrations_idempotently(tmp_path):
+def test_fresh_database_applies_all_migrations_idempotently(tmp_path):
     conn = connect_database(tmp_path / "fresh.sqlite3")
     try:
         apply_migrations(conn)
@@ -153,6 +153,7 @@ def test_fresh_database_applies_four_migrations_idempotently(tmp_path):
             (5, "provenance_integrity"),
             (6, "tributary_contract"),
             (7, "tributary_training_view"),
+            (8, "v4_21_provenance_guards"),
         ]
         checksums = conn.execute(
             "SELECT checksum_sha256 FROM schema_migrations ORDER BY version"

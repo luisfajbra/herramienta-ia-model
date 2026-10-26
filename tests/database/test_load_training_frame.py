@@ -180,6 +180,39 @@ def test_explicit_network_selection_keeps_same_named_snapshots_distinct(
     assert set(frame["network_id"]) == set(network_ids)
 
 
+def test_explicit_network_selection_rejects_network_without_included_rows(
+    tmp_path, csv_shaped_dataset
+):
+    from swmm_resilience.database.connection import connect_managed_database
+    from swmm_resilience.database.csv_backfill import backfill_networks_and_runs
+    from swmm_resilience.database.migrations import apply_migrations
+
+    db_path = tmp_path / "two_networks_filtered.sqlite3"
+    conn = connect_managed_database(db_path)
+    try:
+        apply_migrations(conn)
+        network_ids = []
+        for name in ("A", "B"):
+            inp_path = tmp_path / f"filtered_network_{name}.inp"
+            inp_path.write_text(f"[TITLE]\nnetwork {name}\n", encoding="utf-8")
+            info = backfill_networks_and_runs(conn, csv_shaped_dataset, inp_path, name)
+            network_ids.append(info["network_id"])
+        conn.execute(
+            "UPDATE runs SET continuity_error_pct=10.0 WHERE network_id=?",
+            (network_ids[1],),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    with pytest.raises(ValueError, match=r"no included training rows.*\[" + str(network_ids[1])):
+        load_training_frame(
+            db_path,
+            network_ids=network_ids,
+            max_continuity_error_pct=5.0,
+        )
+
+
 def test_duplicate_snapshot_diagnostic_includes_network_id():
     from swmm_resilience.database.training_queries import _check_single_snapshot
 
