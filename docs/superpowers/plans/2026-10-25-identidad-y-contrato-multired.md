@@ -66,11 +66,11 @@
 
 **Interfaces:** Migration 008 follows 007 and adds guards to `node_features_v4_21` using the same pin semantics as `node_features` in migration 005.
 
-- [ ] Read migrations 005–007 and `tests/database/test_migration_005_pinning.py`. Create tests that apply all migrations, pin a run via `training_run_inputs`, then attempt insert/update/delete of the referenced `node_features_v4_21` row and update the pinned run's continuity. Each mutation must be rejected; the same mutations on an unpinned fixture remain permitted by these guards.
-- [ ] Run `python -m pytest tests/database/test_migration_008_v4_21_provenance.py -q`; confirm failures on the current catalog because migration 008 and triggers do not exist.
-- [ ] Add contiguous migration 008 with insert/update/delete guards for the v4_21 feature rows and a guard for quality fields that identify a pinned run. Follow the exact `training_run_inputs` and `run_status` predicates from migration 005; do not edit an already applied migration file.
-- [ ] Add a migration test that verifies checksum/catalog ordering and that migration 006 schema remains otherwise unchanged.
-- [ ] Run `python -m pytest tests/database/test_migration_005_pinning.py tests/database/test_migration_006_tributary_contract.py tests/database/test_migration_007_tributary_training_view.py tests/database/test_migration_008_v4_21_provenance.py -q`.
+- [x] Read migrations 005–007 and `tests/database/test_migration_005_pinning.py`. Create tests that apply all migrations, pin a run via `training_run_inputs`, then attempt insert/update/delete of the referenced `node_features_v4_21` row and update the pinned run's continuity. Each mutation must be rejected; the same mutations on an unpinned fixture remain permitted by these guards.
+- [x] Run `python -m pytest tests/database/test_migration_008_v4_21_provenance.py -q`; confirm failures on the current catalog because migration 008 and triggers do not exist.
+- [x] Add contiguous migration 008 with insert/update/delete guards for the v4_21 feature rows and a guard for quality fields that identify a pinned run. Follow the exact `training_run_inputs` and `run_status` predicates from migration 005; do not edit an already applied migration file.
+- [x] Add a migration test that verifies checksum/catalog ordering and that migration 006 schema remains otherwise unchanged.
+- [x] Run `python -m pytest tests/database/test_migration_005_pinning.py tests/database/test_migration_006_tributary_contract.py tests/database/test_migration_007_tributary_training_view.py tests/database/test_migration_008_v4_21_provenance.py -q`.
 - [ ] Commit the migration and tests with `fix: guard pinned v4_21 training provenance`.
 
 ### Task 5: Make reads non-mutating and migration writes explicit
