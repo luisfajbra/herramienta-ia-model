@@ -1,5 +1,6 @@
 import hashlib
 from contextlib import nullcontext
+import json
 from pathlib import Path
 import shutil
 import sqlite3
@@ -15,6 +16,50 @@ from swmm_resilience.database.training_queries import (
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
 
 
+def _qualify_runs(conn, run_ids):
+    for run_id in run_ids:
+        continuity = conn.execute(
+            "SELECT continuity_error_pct FROM runs WHERE run_id=?", (run_id,)
+        ).fetchone()[0]
+        if continuity is None:
+            continuity = 0.0
+            conn.execute(
+                "UPDATE runs SET continuity_error_pct=? WHERE run_id=?",
+                (continuity, run_id),
+            )
+        conn.execute(
+            """INSERT INTO run_hydraulic_quality (
+                run_id, policy_version, policy_json, policy_sha256,
+                continuity_error_pct, finite_coverage_ok, drainage_state,
+                initial_condition_json, eligible, reason_codes_json,
+                manifest_json, created_at_utc
+            ) VALUES (?, 'test-quality-v1', ?, ?,
+                      ?, 1, 'drained', ?, 1, '[]',
+                      ?, '2026-10-26T00:00:00Z')""",
+            (
+                run_id,
+                json.dumps({
+                    "max_continuity_error_pct": 20,
+                    "continuity_limit_rationale": "synthetic fixture",
+                }),
+                "f" * 64,
+                continuity,
+                json.dumps({"policy_id": "synthetic", "state_sha256": "a" * 64}),
+                json.dumps({
+                    "eligible": True,
+                    "reason_codes": [],
+                    "continuity_error_pct": continuity,
+                    "finite_coverage_ok": True,
+                    "drainage_state": "drained",
+                    "flooding_report": {
+                        "parser": "fixture", "parser_version": "1",
+                        "report_sha256": "b" * 64,
+                    },
+                }),
+            ),
+        )
+
+
 def test_returns_canonical_27_column_frame(sql_training_db, csv_shaped_dataset):
     frame = load_training_frame(sql_training_db)
 
@@ -25,6 +70,55 @@ def test_returns_canonical_27_column_frame(sql_training_db, csv_shaped_dataset):
     assert len(frame) == len(csv_shaped_dataset)
     assert "coord_x" not in frame.columns
     assert "coord_y" not in frame.columns
+
+
+def test_training_loader_excludes_unknown_quality_and_includes_eligible_run(
+    tmp_path, csv_shaped_dataset,
+):
+    from swmm_resilience.database.connection import connect_managed_database
+    from swmm_resilience.database.csv_backfill import backfill_networks_and_runs
+    from swmm_resilience.database.migrations import apply_migrations
+
+    inp_path = tmp_path / "quality_test.inp"
+    inp_path.write_text("[TITLE]\nquality test\n", encoding="utf-8")
+    db_path = tmp_path / "quality_test.sqlite3"
+    conn = connect_managed_database(db_path)
+    try:
+        apply_migrations(conn)
+        backfill_networks_and_runs(conn, csv_shaped_dataset, inp_path, "Quality Test")
+        conn.commit()
+        with pytest.raises(ValueError, match="No COMPLETE training_samples_v17"):
+            from swmm_resilience.database.training_queries import load_training_samples
+
+            load_training_samples(conn)
+
+        conn.execute(
+            "UPDATE runs SET continuity_error_pct=1.0 WHERE run_id=1"
+        )
+        conn.execute(
+            """INSERT INTO run_hydraulic_quality (
+                run_id, policy_version, policy_json, policy_sha256,
+                continuity_error_pct, finite_coverage_ok, drainage_state,
+                initial_condition_json, eligible, reason_codes_json,
+                manifest_json, created_at_utc
+            ) VALUES (1, 'quality-v1', ?, ?, 1.0, 1, 'drained', ?, 1,
+                      '[]', ?, '2026-10-26T00:00:00Z')""",
+            (
+                '{"max_continuity_error_pct":5.0,"continuity_limit_rationale":"synthetic fixture"}',
+                "a" * 64,
+                '{"policy_id":"synthetic","state_sha256":"' + "b" * 64 + '"}',
+                '{"eligible":true,"reason_codes":[],"continuity_error_pct":1.0,"finite_coverage_ok":true,"drainage_state":"drained","flooding_report":{"parser":"fixture","parser_version":"1","report_sha256":"' + "c" * 64 + '"}}',
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    frame = load_training_frame(db_path, run_ids=[1])
+    assert frame["run_id"].unique().tolist() == [1]
+
+    with pytest.raises(ValueError, match="No COMPLETE training_samples_v17"):
+        load_training_frame(db_path, run_ids=[2])
 
 
 def test_shared_columns_match_the_csv_shaped_source(
@@ -143,6 +237,11 @@ def test_raises_when_two_networks_yield_duplicate_snapshot_keys(
         inp_b = tmp_path / "network_b.inp"
         inp_b.write_text("[TITLE]\nnetwork b (different bytes)\n", encoding="utf-8")
         backfill_networks_and_runs(conn, csv_shaped_dataset, inp_b, "Network B")
+        _qualify_runs(
+            conn,
+            [row[0] for row in conn.execute("SELECT run_id FROM runs")],
+        )
+        conn.commit()
     finally:
         conn.close()
 
@@ -171,6 +270,15 @@ def test_explicit_network_selection_keeps_same_named_snapshots_distinct(
             inp_path.write_text(f"[TITLE]\\nnetwork {name}\\n", encoding="utf-8")
             info = backfill_networks_and_runs(conn, csv_shaped_dataset, inp_path, name)
             network_ids.append(info["network_id"])
+            run_ids = [
+                row[0]
+                for row in conn.execute(
+                    "SELECT run_id FROM runs WHERE network_id=?",
+                    (info["network_id"],),
+                )
+            ]
+            _qualify_runs(conn, run_ids)
+        conn.commit()
     finally:
         conn.close()
 
@@ -197,15 +305,26 @@ def test_explicit_network_selection_rejects_network_without_included_rows(
             inp_path.write_text(f"[TITLE]\nnetwork {name}\n", encoding="utf-8")
             info = backfill_networks_and_runs(conn, csv_shaped_dataset, inp_path, name)
             network_ids.append(info["network_id"])
-        conn.execute(
-            "UPDATE runs SET continuity_error_pct=10.0 WHERE network_id=?",
-            (network_ids[1],),
-        )
+            if name == "B":
+                conn.execute(
+                    "UPDATE runs SET continuity_error_pct=10.0 WHERE network_id=?",
+                    (info["network_id"],),
+                )
+            _qualify_runs(
+                conn,
+                [
+                    row[0]
+                    for row in conn.execute(
+                        "SELECT run_id FROM runs WHERE network_id=?",
+                        (info["network_id"],),
+                    )
+                ],
+            )
         conn.commit()
     finally:
         conn.close()
 
-    with pytest.raises(ValueError, match=r"no included training rows.*\[" + str(network_ids[1])):
+    with pytest.raises(ValueError, match="no included training rows"):
         load_training_frame(
             db_path,
             network_ids=network_ids,

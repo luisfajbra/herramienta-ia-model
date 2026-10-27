@@ -8,6 +8,14 @@ El flujo principal se configura desde `config.yaml`.
 
 ## Pipeline Spec V4
 
+Inventario y verificación estructural de una red SWMM (solo lectura; no ejecuta
+hidráulica). La política debe declararse expresamente; sin ella la admisión se
+rechaza y el reporte enumera las decisiones que faltan:
+
+```bash
+python scripts/audit_network_inp.py path/to/network.inp --policy path/to/network-policy.json --output outputs/network_admission/report.json
+```
+
 ```bash
 python main.py
 python main.py --skip-extraction

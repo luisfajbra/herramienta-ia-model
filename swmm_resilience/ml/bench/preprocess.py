@@ -346,6 +346,8 @@ def _source_provenance(
                 if max_continuity_error_pct is not None
                 and continuity is not None
                 and abs(float(continuity)) > max_continuity_error_pct
+                else "continuity_error_unverified"
+                if max_continuity_error_pct is not None and continuity is None
                 else "not_in_training_frame"
             )
             excluded.append(
@@ -377,8 +379,9 @@ def prepare_dataset(
 
     ``max_continuity_error_pct`` (normalmente
     ``config.validation.max_continuity_error_pct``) excluye del banco los runs
-    cuyo |continuity_error_pct| supera el umbral; ``None`` no excluye nada.
-    Un ``continuity_error_pct`` NULL nunca excluye (misma regla que SQL).
+    cuyo |continuity_error_pct| supera el umbral; con umbral configurado,
+    también excluye valores NULL porque no se puede verificar su continuidad.
+    ``None`` no aplica un filtro de continuidad.
 
     ``feature_columns``/``feature_contract``/``view_name``/``node_features_table``
     seleccionan el contrato de entrenamiento (default: tabular_v3_17, el

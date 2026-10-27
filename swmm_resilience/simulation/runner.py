@@ -15,6 +15,7 @@ from ..config import (
     INPUT_VALIDATION_MIN_JUNCTIONS,
     STRICT_INPUT_VALIDATION,
     USE_SWMM_API_RPT_RESULTS,
+    SCENARIO_MODE_STEADY,
 )
 from ..utils import (
     circular_full_flow_lps,
@@ -22,6 +23,7 @@ from ..utils import (
     node_type_str,
     safe_round,
 )
+from ..extraction.labels import read_flooding_volumes
 from .swmm_api_io import (
     get_base_node_inflows_lps,
     get_node_inflow_profiles,
@@ -31,9 +33,21 @@ from .swmm_api_io import (
 )
 
 
+def _read_validated_rpt_flooding_metrics(rpt_path: Path):
+    """Validate flooding truth and retain the text-fallback result if needed."""
+    validated = read_flooding_volumes(rpt_path)
+    api_metrics = read_node_flooding_summary(rpt_path)
+    if api_metrics is not None and not api_metrics.empty:
+        return api_metrics
+    return validated
+
+
 def _profile_value_lps(profile, elapsed_min: float) -> float:
     if not profile:
         return 0.0
+    effective = profile.get("effective_inflow")
+    if effective is not None:
+        return effective.at(elapsed_min / 60.0)
     points = profile.get("points", [])
     baseline = profile.get("baseline", 0.0) or 0.0
     mfactor = profile.get("mfactor", 1.0) or 1.0
@@ -435,12 +449,25 @@ def run_simulation(
                     node_inflow_profiles.get(node_id),
                     elapsed_min,
                 )
-                applied_lps = (
-                    embedded_lateral_lps * (inflow_multiplier - 1.0)
-                    if applies_to_node
-                    else 0.0
-                )
-                scaled_lateral_lps = embedded_lateral_lps + applied_lps
+                profile = node_inflow_profiles.get(node_id)
+                effective = profile.get("effective_inflow") if profile else None
+                if applies_to_node and effective is not None:
+                    if scenario_mode == SCENARIO_MODE_STEADY:
+                        scaled_lateral_lps = effective.at_scaled_baseline(
+                            elapsed_min / 60.0, inflow_multiplier
+                        )
+                    else:
+                        scaled_lateral_lps = effective.at_scaled_component(
+                            elapsed_min / 60.0, inflow_multiplier
+                        )
+                    applied_lps = scaled_lateral_lps - embedded_lateral_lps
+                else:
+                    applied_lps = (
+                        embedded_lateral_lps * (inflow_multiplier - 1.0)
+                        if applies_to_node
+                        else 0.0
+                    )
+                    scaled_lateral_lps = embedded_lateral_lps + applied_lps
 
                 input_metrics = input_tracker[node_id]
                 if abs(embedded_lateral_lps) > abs(input_metrics["peak_embedded_lateral_lps"]):
@@ -603,7 +630,11 @@ def run_simulation(
             })
     if USE_SWMM_API_RPT_RESULTS:
         _rpt_path = Path(simulation_inp).with_suffix(".rpt")
-        _merge_rpt_flooding_metrics(node_records, read_node_flooding_summary(_rpt_path))
+        # Validate the section before accepting API metrics; otherwise a missing
+        # or malformed report could silently leave the derived flood labels at 0.
+        _merge_rpt_flooding_metrics(
+            node_records, _read_validated_rpt_flooding_metrics(_rpt_path)
+        )
         total_flooded = sum(r["flooded"] for r in node_records)
 
     if scaled_inp_path is not None:
@@ -649,8 +680,13 @@ def run_simulation_simple(inp_path: Path, factor: float, run_dir: Path) -> Path:
     Used by batch.py (origin/main interface). The original .inp is never modified.
     """
     from pyswmm import Simulation as _Simulation
+    from .initial_conditions import save_initial_condition_manifest
 
     run_dir.mkdir(parents=True, exist_ok=True)
+    save_initial_condition_manifest(
+        inp_path,
+        run_dir / f"factor_{factor:.4f}.initial_condition.json",
+    )
     tmp_inp = run_dir / f"factor_{factor:.4f}.inp"
     write_scaled_inp(str(inp_path), factor, None, str(tmp_inp), scenario_mode="timeseries")
 

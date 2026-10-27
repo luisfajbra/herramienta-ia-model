@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import math
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,6 +19,9 @@ class _FakeTs:
 class _FakeInflow:
     def __init__(self, ts_name):
         self.time_series = ts_name
+        self.scale_factor = 2.0
+        self.base_value = 5.0
+        self.pattern = "DAILY"
 
 
 class _FakeInp:
@@ -74,6 +78,30 @@ def test_replaces_all_expected_series(monkeypatch, tmp_path):
 
     assert fake_inp["TIMESERIES"]["1C"].data == scenario.node_series["1C"]
     assert fake_inp["TIMESERIES"]["2C"].data == scenario.node_series["2C"]
+    for inflow in fake_inp["INFLOWS"].values():
+        assert inflow.scale_factor == 1.0
+        assert inflow.base_value == 0.0
+        assert math.isnan(inflow.pattern)
+
+
+def test_serialized_scenario_omits_absent_pattern_instead_of_writing_none(tmp_path):
+    base_inp = (
+        Path(__file__).resolve().parents[1]
+        / "data/networks/chico_hydro-qx1/SWMM - Chico (PVC) Prueba 1 - Qx1.00.inp"
+    )
+    scenario = HydrographScenario(
+        scenario_id="pattern-field",
+        node_series={"1C": [(0.0, 1.0), (0.05, 0.0)]},
+        time_grid_hours=[0.0, 0.05],
+        last_time_hours=0.05,
+    )
+
+    output = ts_mod.write_scenario_inp(base_inp, scenario, tmp_path, drain_down_hours=0)
+
+    text = output.read_text(encoding="utf-8", errors="replace")
+    inflow_section = text.split("[INFLOWS]", 1)[1].split("[", 1)[0]
+    assert " NONE" not in inflow_section
+    assert "1C FLOW 1C FLOW 1 1 0" in inflow_section
 
 
 def test_drain_down_appends_zero_point_and_extends_end_time(monkeypatch, tmp_path):

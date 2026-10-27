@@ -10,6 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 from swmm_resilience.simulation import batch as batch_mod
+from swmm_resilience.simulation import initial_conditions as initial_conditions_mod
 from swmm_resilience.simulation import timeseries_scenario as ts_mod
 
 
@@ -56,8 +57,26 @@ def _make_config(tmp_path):
     )
 
 
+@pytest.fixture(autouse=True)
+def _stub_initial_condition_manifest(monkeypatch):
+    calls = []
+
+    def _save(inp_path, output_path):
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"source": Path(inp_path).name, "policy_id": "fixture-policy"}
+        output_path.write_text(json.dumps(payload), encoding="utf-8")
+        calls.append((Path(inp_path), output_path))
+        return payload
+
+    monkeypatch.setattr(
+        initial_conditions_mod, "save_initial_condition_manifest", _save
+    )
+    return calls
+
+
 def test_prepare_closed_scenario_inp_closes_a_shape_that_does_not_end_at_zero(
-    monkeypatch, tmp_path,
+    monkeypatch, tmp_path, _stub_initial_condition_manifest,
 ):
     fake_inp = _FakeInp()
     monkeypatch.setattr(ts_mod, "load_inp", lambda _: fake_inp)
@@ -81,6 +100,12 @@ def test_prepare_closed_scenario_inp_closes_a_shape_that_does_not_end_at_zero(
     assert manifest_path.exists()
     payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert payload["changed_nodes"] == ["1C"]
+    initial_path = tmp_path / "run" / "storm_x" / "storm_x_f1.000.initial_condition.json"
+    assert json.loads(initial_path.read_text(encoding="utf-8")) == {
+        "source": "base.inp",
+        "policy_id": "fixture-policy",
+    }
+    assert _stub_initial_condition_manifest == [(config.network.inp_path, initial_path)]
 
 
 def test_prepare_closed_scenario_inp_warns_when_closure_changes_a_node(

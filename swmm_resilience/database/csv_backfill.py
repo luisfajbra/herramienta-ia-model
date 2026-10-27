@@ -101,6 +101,7 @@ def backfill_networks_and_runs(
     *,
     source_dataset_path: Path | None = None,
     hydrograph_shapes_dir: Path | None = None,
+    hydraulic_quality_decisions: dict[tuple[str, float], dict] | None = None,
 ) -> dict:
     """Insert networks/nodes/scenarios/runs/node_features/node_results.
 
@@ -161,6 +162,16 @@ def backfill_networks_and_runs(
         dataset,
         network_id=network_id if existing else f"sha256:{network_sha256[:12]}",
     )
+    if hydraulic_quality_decisions is not None:
+        scenario_keys = dataset[["shape_id", "factor_mult"]].drop_duplicates()
+        for scenario in scenario_keys.itertuples(index=False):
+            key = (str(scenario.shape_id), round(float(scenario.factor_mult), 6))
+            decision = hydraulic_quality_decisions.get(key)
+            if not isinstance(decision, dict) or decision.get("eligible") is not True:
+                raise ValueError(
+                    "CSV backfill requires an eligible hydraulic-quality decision for "
+                    f"shape_id={key[0]!r}, factor_mult={key[1]}"
+                )
     if not existing:
         cur = conn.execute(
             """
@@ -262,6 +273,25 @@ def backfill_networks_and_runs(
         )
         run_id = cur.lastrowid
         run_id_by_key[(network_id, srow.shape_id, float(srow.factor_mult))] = run_id
+
+        if hydraulic_quality_decisions is not None:
+            from .hydraulic_quality import record_run_hydraulic_quality
+
+            quality = hydraulic_quality_decisions[
+                (str(srow.shape_id), round(float(srow.factor_mult), 6))
+            ]
+            policy = quality["policy"]
+            record_run_hydraulic_quality(
+                conn,
+                run_id=run_id,
+                continuity_error_pct=quality.get("continuity_error_pct"),
+                max_continuity_error_pct=policy["max_continuity_error_pct"],
+                continuity_limit_rationale=policy["continuity_limit_rationale"],
+                finite_coverage_ok=quality["finite_coverage_ok"],
+                drainage_state=quality["drainage_state"],
+                initial_condition=quality["initial_condition"],
+                flooding_report_manifest=quality["flooding_report"],
+            )
 
         feature_rows = []
         result_rows = []

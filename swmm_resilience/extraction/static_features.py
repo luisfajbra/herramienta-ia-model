@@ -1,29 +1,18 @@
 import pandas as pd
 from pathlib import Path
 
-from ..simulation.swmm_api_io import load_inp
+from ..simulation.swmm_api_io import get_node_inflow_profiles, load_inp
 
 
 def _get_peak_inflows(inp) -> dict:
-    """Return {node_id: peak_flow_lps} — max value from the node's timeseries (factor=1)."""
-    if "INFLOWS" not in inp:
-        return {}
-    ts_map = dict(inp["TIMESERIES"]) if "TIMESERIES" in inp else {}
-    result = {}
-    for (node, constituent), inflow in inp["INFLOWS"].items():
-        if str(constituent).upper() != "FLOW":
-            continue
-        node = str(node)
-        ts_name = inflow.time_series
-        ts_name_str = str(ts_name).strip() if ts_name is not None else ""
-        if ts_name_str and ts_name_str not in ('""', "''") and ts_name in ts_map:
-            values = [v for _, v in ts_map[ts_name].data]
-            result[node] = max(values) if values else 0.0
-        elif inflow.base_value:
-            result[node] = float(inflow.base_value)
-        else:
-            result[node] = 0.0
-    return result
+    """Return each node's peak effective FLOW in L/s using the shared SWMM rule."""
+    return {
+        node_id: max(
+            [profile["effective_inflow"].baseline_lps]
+            + [value for _, value in profile["effective_inflow"].points]
+        )
+        for node_id, profile in get_node_inflow_profiles(inp).items()
+    }
 
 
 def extract_static_features(inp_path: Path) -> pd.DataFrame:

@@ -1,9 +1,11 @@
 import pandas as pd
 
 from swmm_resilience.simulation.runner import (
+    _read_validated_rpt_flooding_metrics,
     _flood_volume_from_timeseries_m3,
     _merge_rpt_flooding_metrics,
 )
+from swmm_resilience.simulation import runner
 
 
 def test_flood_volume_from_timeseries_integrates_lps_to_m3():
@@ -19,6 +21,18 @@ def test_flood_volume_from_timeseries_integrates_lps_to_m3():
 
     assert volumes["J1"] == 1.8
     assert volumes["J2"] == 0.3
+
+
+def test_runner_uses_validated_text_fallback_when_api_returns_none(monkeypatch, tmp_path):
+    expected = pd.DataFrame(
+        [{"node_id": "J1", "flooding_volume_m3": 1.25}]
+    )
+    monkeypatch.setattr(runner, "read_flooding_volumes", lambda _path: expected)
+    monkeypatch.setattr(runner, "read_node_flooding_summary", lambda _path: None)
+
+    result = _read_validated_rpt_flooding_metrics(tmp_path / "valid.rpt")
+
+    pd.testing.assert_frame_equal(result, expected)
 
 
 def test_merge_rpt_flooding_metrics_prefers_rpt_volume_and_duration():

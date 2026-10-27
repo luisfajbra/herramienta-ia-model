@@ -38,7 +38,7 @@ def test_upgrade_backs_up_before_applying_005(tmp_path):
     applied = [row[0] for row in verify.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()]
-    assert applied == list(range(1, 9))
+    assert applied == list(range(1, 10))
     verify.close()
 
 
@@ -61,7 +61,7 @@ def test_upgrade_applies_all_migrations_from_a_fresh_database(tmp_path):
     applied = [row[0] for row in verify.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()]
-    assert applied == list(range(1, 9))
+    assert applied == list(range(1, 10))
     verify.close()
 
 

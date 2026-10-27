@@ -591,7 +591,12 @@ def test_build_swmm_df_covers_all_requested_nodes(monkeypatch, tmp_path):
             {"node_id": ["J2"], "flooding_volume_m3": [4.0]}
         ),
     )
-    df = hydrograph_batch._build_swmm_df(["J1", "J2", "J3"], tmp_path / "x.rpt", 1.0)
+    rpt = tmp_path / "x.rpt"
+    rpt.write_text(
+        "Node Flooding Summary\n*********************\nJ2 0.0 0.0 0 00:00 0.004 0.0\nOutfall Loading Summary\n",
+        encoding="utf-8",
+    )
+    df = hydrograph_batch._build_swmm_df(["J1", "J2", "J3"], rpt, 1.0)
     assert df["node_id"].tolist() == ["J1", "J2", "J3"]
     assert df["vol_swmm_m3"].tolist() == [0.0, 4.0, 0.0]
     assert df["inunda_swmm"].tolist() == [0, 1, 0]

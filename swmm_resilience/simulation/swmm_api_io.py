@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..config import SCENARIO_MODE_STEADY, SCENARIO_MODE_TIMESERIES
+from .effective_inflow import build_effective_inflow
 
 try:
     import pandas as pd
@@ -92,13 +93,9 @@ def get_node_timeseries_map(inp) -> dict[str, str]:
 def get_node_inflow_profiles(inp) -> dict[str, dict]:
     """Return node inflow profiles compatible with runner.py's format.
 
-    Each profile is:
-        {
-            "timeseries": str,
-            "points": [(time_min, flow_lps), ...],
-            "mfactor": float,
-            "baseline": float,
-        }
+    Values are interpreted with SWMM's FLOW rule: Base + Sfactor * series.
+    Profiles hold the shared evaluator so all callers use identical interpolation
+    and zero-outside-series behavior.
 
     swmm_api stores timeseries times in hours; this function converts to minutes.
     """
@@ -109,6 +106,9 @@ def get_node_inflow_profiles(inp) -> dict[str, dict]:
     if "TIMESERIES" in inp:
         ts_map = dict(inp["TIMESERIES"])
 
+    flow_units = None
+    if "OPTIONS" in inp:
+        flow_units = inp["OPTIONS"].get("FLOW_UNITS")
     profiles: dict[str, dict] = {}
     for node, inflow in _iter_flow_inflows(inp):
         ts_name = _normalize_timeseries_name(inflow.time_series)
@@ -118,13 +118,22 @@ def get_node_inflow_profiles(inp) -> dict[str, dict]:
             points = sorted(
                 (t * 60.0, v) for t, v in ts_obj.data
             )
-        mfactor = inflow.scale_factor if inflow.scale_factor is not None else 1.0
-        baseline = inflow.base_value if inflow.base_value is not None else 0.0
+        effective = build_effective_inflow(
+            [(time_min / 60.0, value) for time_min, value in points],
+            flow_units=flow_units,
+            constituent="FLOW",
+            scale_factor=getattr(inflow, "scale_factor", None),
+            baseline=getattr(inflow, "base_value", None),
+            pattern=getattr(inflow, "pattern", None),
+            mass_unit_factor=getattr(inflow, "mass_unit_factor", None),
+            timeseries_name=ts_name,
+        )
         profiles[node] = {
             "timeseries": ts_name,
-            "points": points,
-            "mfactor": float(mfactor),
-            "baseline": float(baseline),
+            "points": [(time_h * 60.0, value) for time_h, value in effective.points],
+            "mfactor": 1.0,
+            "baseline": effective.baseline_lps,
+            "effective_inflow": effective,
         }
     return profiles
 
@@ -291,21 +300,44 @@ def read_node_flooding_summary(rpt_file: Path | str) -> Optional["pd.DataFrame"]
         col_lower = {c.lower(): c for c in df.columns}
         node_col = col_lower.get("node") or col_lower.get("name") or df.columns[0]
 
+        volume_columns = [
+            col
+            for col in df.columns
+            if "volume" in col.lower()
+            and ("flood" in col.lower() or "pond" in col.lower())
+        ]
+        total_volume_columns = [col for col in volume_columns if "total" in col.lower()]
+        if len(total_volume_columns) == 1:
+            volume_col = total_volume_columns[0]
+        elif len(volume_columns) == 1 and "pond" not in volume_columns[0].lower():
+            volume_col = volume_columns[0]
+        else:
+            raise ValueError(
+                "Cannot identify one total flooding-volume column in Node Flooding Summary"
+            )
+
         for col in df.columns:
             cl = col.lower()
-            if "volume" in cl and ("10^6" in cl or "vol" in cl or "m3" in cl):
-                rename_map[col] = "flooding_volume_m3_raw"
-            elif "duration" in cl or "hours" in cl:
+            if col == volume_col:
+                rename_map[col] = "flooding_volume_raw"
+            elif "duration" in cl or "hours_flooded" in cl:
                 rename_map[col] = "flooding_duration_hrs"
 
         df = df.rename(columns=rename_map)
         df = df.rename(columns={node_col: "node_id"})
 
-        if "flooding_volume_m3_raw" in df.columns:
-            # .rpt reports volume in 10^6 litres; 1 × 10^6 L = 1000 m³
-            df["flooding_volume_m3"] = pd.to_numeric(
-                df["flooding_volume_m3_raw"], errors="coerce"
-            ) * 1000.0
+        volume_label = str(volume_col).lower()
+        if "10^6" in volume_label and ("ltr" in volume_label or "liter" in volume_label):
+            volume_factor_to_m3 = 1000.0
+        elif "10^6" in volume_label and "gal" in volume_label:
+            volume_factor_to_m3 = 3785.411784
+        elif "m3" in volume_label or "m^3" in volume_label:
+            volume_factor_to_m3 = 1.0
+        else:
+            raise ValueError(f"Unsupported or ambiguous flooding-volume units: {volume_col}")
+        df["flooding_volume_m3"] = pd.to_numeric(
+            df["flooding_volume_raw"], errors="coerce"
+        ) * volume_factor_to_m3
         if "flooding_duration_hrs" in df.columns:
             df["flooding_duration_min"] = pd.to_numeric(
                 df["flooding_duration_hrs"], errors="coerce"

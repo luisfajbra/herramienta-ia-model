@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 from pathlib import Path
 
 
@@ -93,6 +94,9 @@ def read_tail_window_observables(
         # OSError: [Errno 22] Invalid argument si es negativo -- se ajusta al
         # primer paso disponible en vez de dejar que la libreria falle.
         start_time = max(start_time, out.index[0])
+        observed_window_hours = max(
+            0.0, (end_time - start_time).total_seconds() / 3600.0
+        )
 
         node_inflow = out.get_part(kind="node", variable="total_inflow", start=start_time, end=end_time)
         node_flooding = out.get_part(kind="node", variable="flooding", start=start_time, end=end_time)
@@ -108,6 +112,7 @@ def read_tail_window_observables(
 
     return {
         "n_report_steps": n_report_steps,
+        "observed_window_hours": observed_window_hours,
         "has_link_data": has_link_data,
         "node_total_inflow_lps": _part_to_dict(node_inflow),
         "node_flooding_lps": _part_to_dict(node_flooding),
@@ -119,20 +124,36 @@ def read_tail_window_observables(
 DRAINAGE_STATE_POLICY_VERSION = "tail_window_v1"
 
 
-def _max_abs_value(series_by_id: dict) -> float:
+def _max_abs_value(series_by_id: dict) -> float | None:
     """Maximo absoluto entre todos los valores de todas las series de `series_by_id`."""
-    values = [abs(v) for series in series_by_id.values() for v in series]
-    return max(values) if values else 0.0
-
-
-def _max_abs_step_delta(series_by_id: dict) -> float:
-    """Maxima diferencia absoluta entre pasos consecutivos, entre todas las series."""
-    deltas = [
-        abs(series[i + 1] - series[i])
+    if not isinstance(series_by_id, dict):
+        return None
+    values = [
+        abs(float(value))
         for series in series_by_id.values()
-        for i in range(len(series) - 1)
+        for value in series
+        if _is_finite_number(value)
     ]
-    return max(deltas) if deltas else 0.0
+    return max(values) if values else None
+
+
+def _max_abs_step_delta(series_by_id: dict) -> float | None:
+    """Maxima diferencia absoluta entre pasos consecutivos, entre todas las series."""
+    if not isinstance(series_by_id, dict):
+        return None
+    deltas = []
+    for series in series_by_id.values():
+        for i in range(len(series) - 1):
+            if _is_finite_number(series[i]) and _is_finite_number(series[i + 1]):
+                deltas.append(abs(float(series[i + 1]) - float(series[i])))
+    return max(deltas) if deltas else None
+
+
+def _is_finite_number(value) -> bool:
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError, OverflowError):
+        return False
 
 
 def classify_drainage_state(
@@ -158,26 +179,68 @@ def classify_drainage_state(
     manifiesto sea auditable.
     """
     failed_checks: list[str] = []
+    node_series = (
+        observables.get("node_total_inflow_lps", {}),
+        observables.get("node_flooding_lps", {}),
+        observables.get("node_volume_m3", {}),
+    )
+    link_series = observables.get("link_flow_lps", {})
 
-    if observables["n_report_steps"] < min_report_steps:
+    if any(
+        not _is_finite_number(tolerance) or float(tolerance) < 0
+        for tolerance in (
+            inflow_tolerance_lps,
+            flooding_tolerance_lps,
+            storage_change_tolerance_m3,
+            residual_flow_tolerance_lps,
+        )
+    ):
+        failed_checks.append("invalid_tolerance_policy")
+    if not _is_finite_number(window_hours) or window_hours <= 0:
+        failed_checks.append("invalid_requested_window")
+    if (
+        observables.get("observed_window_hours") is not None
+        and (
+            not _is_finite_number(observables["observed_window_hours"])
+            or observables["observed_window_hours"] + 1e-9 < window_hours
+        )
+    ):
+        failed_checks.append("insufficient_observed_window")
+    if len({frozenset(series) for series in node_series if isinstance(series, dict)}) != 1:
+        failed_checks.append("incomplete_node_variable_coverage")
+    if any(
+        not isinstance(series_dict, dict)
+        or any(
+            not isinstance(values, (list, tuple))
+            or any(not _is_finite_number(value) for value in values)
+            for values in series_dict.values()
+        )
+        for series_dict in (*node_series, link_series)
+    ):
+        failed_checks.append("non_finite_observables")
+
+    if observables.get("n_report_steps", 0) < min_report_steps:
         failed_checks.append("insufficient_report_steps")
-    if not observables["has_link_data"]:
+    if not observables.get("has_link_data") or not link_series:
         failed_checks.append("missing_link_data")
     if (
-        not observables["node_total_inflow_lps"]
-        or not observables["node_flooding_lps"]
-        or not observables["node_volume_m3"]
+        not node_series[0]
+        or not node_series[1]
+        or not node_series[2]
     ):
         failed_checks.append("missing_node_data")
     if any(
         len(series) < min_report_steps
-        for series_dict in (
-            observables["node_total_inflow_lps"], observables["node_flooding_lps"],
-            observables["node_volume_m3"], observables["link_flow_lps"],
-        )
+        for series_dict in (*node_series, link_series)
         for series in series_dict.values()
     ):
         failed_checks.append("insufficient_series_length")
+    if any(
+        len(series) != observables.get("n_report_steps")
+        for series_dict in (*node_series, link_series)
+        for series in series_dict.values()
+    ):
+        failed_checks.append("incomplete_report_series")
 
     if failed_checks:
         state = "unverified"
@@ -213,14 +276,15 @@ def classify_drainage_state(
         "policy_version": DRAINAGE_STATE_POLICY_VERSION,
         "state": state,
         "failed_checks": failed_checks,
-        "n_report_steps": observables["n_report_steps"],
-        "has_link_data": observables["has_link_data"],
+        "n_report_steps": observables.get("n_report_steps"),
+        "observed_window_hours": observables.get("observed_window_hours"),
+        "has_link_data": observables.get("has_link_data"),
         "window_hours": window_hours,
         "min_report_steps": min_report_steps,
-        "max_inflow_lps": _max_abs_value(observables["node_total_inflow_lps"]),
-        "max_flooding_lps": _max_abs_value(observables["node_flooding_lps"]),
-        "max_storage_change_m3": _max_abs_step_delta(observables["node_volume_m3"]),
-        "max_residual_flow_lps": _max_abs_value(observables["link_flow_lps"]),
+        "max_inflow_lps": _max_abs_value(observables.get("node_total_inflow_lps", {})),
+        "max_flooding_lps": _max_abs_value(observables.get("node_flooding_lps", {})),
+        "max_storage_change_m3": _max_abs_step_delta(observables.get("node_volume_m3", {})),
+        "max_residual_flow_lps": _max_abs_value(observables.get("link_flow_lps", {})),
         "tolerances": {
             "inflow_tolerance_lps": inflow_tolerance_lps,
             "flooding_tolerance_lps": flooding_tolerance_lps,

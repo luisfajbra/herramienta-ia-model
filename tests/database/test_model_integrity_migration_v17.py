@@ -154,6 +154,7 @@ def test_fresh_database_applies_all_migrations_idempotently(tmp_path):
             (6, "tributary_contract"),
             (7, "tributary_training_view"),
             (8, "v4_21_provenance_guards"),
+            (9, "run_hydraulic_quality"),
         ]
         checksums = conn.execute(
             "SELECT checksum_sha256 FROM schema_migrations ORDER BY version"

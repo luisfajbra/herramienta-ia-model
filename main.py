@@ -9,6 +9,7 @@ Uso:
   python main.py --predict --factor 3.5              # Inferencia sin SWMM
 """
 import argparse
+import json
 import math
 import sys
 import shutil
@@ -24,7 +25,7 @@ from swmm_resilience.dataset.shape_selection import augmented_shape_rows, base_s
 from swmm_resilience.dataset.validator import validate_dataset
 from swmm_resilience.database.training_queries import load_training_frame
 from swmm_resilience.extraction.dynamic_features import compute_dynamic_features
-from swmm_resilience.extraction.labels import extract_labels
+from swmm_resilience.extraction.labels import FloodingReportError, extract_labels
 from swmm_resilience.extraction.static_features import extract_static_features
 from swmm_resilience.extraction.topology import build_network_graph, compute_topology_features
 from swmm_resilience.ml.evaluator import evaluate_models
@@ -54,6 +55,35 @@ METRICS_DIR = Path("outputs/metrics")
 
 
 BENCH_ROOT = Path("outputs/bench")
+
+
+def _read_scenario_manifest(path: Path):
+    """Read provenance JSON conservatively; missing or malformed means unknown."""
+    try:
+        with path.open("r", encoding="utf-8") as manifest_file:
+            value = json.load(manifest_file)
+        return value if isinstance(value, dict) else None
+    except (OSError, json.JSONDecodeError):
+        return None
+
+
+def _extract_labels_for_quality(rpt_path: Path, node_ids, threshold_m3: float) -> pd.DataFrame:
+    """Preserve a failed label extraction as an explicit, ineligible scenario."""
+    try:
+        return extract_labels(rpt_path, node_ids, threshold_m3)
+    except FloodingReportError as exc:
+        failed = pd.DataFrame({
+            "node_id": [str(node_id) for node_id in node_ids],
+            "vol_inundacion_m3": [0.0] * len(node_ids),
+            "inunda": [0] * len(node_ids),
+        })
+        failed.attrs["flooding_report_manifest"] = {
+            "parser": "strict_text_v1",
+            "parser_version": "strict_text_v1",
+            "failure_code": exc.code,
+            "failure_message": str(exc),
+        }
+        return failed
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -1123,6 +1153,39 @@ def main():
             )
         print(f"  {df.shape[0]} rows x {df.shape[1]} cols")
 
+        quality_report_path = config.dataset.output_path.with_suffix(
+            config.dataset.output_path.suffix + ".hydraulic_quality.json"
+        )
+        try:
+            quality_report = json.loads(quality_report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            parser.error(
+                "--persist-sql requires the hydraulic-quality report produced with "
+                f"the dataset ({quality_report_path}): {exc}"
+            )
+        if (not isinstance(quality_report, dict)
+                or quality_report.get("schema_version") != "scenario_hydraulic_quality_report_v1"
+                or not isinstance(quality_report.get("scenarios"), list)):
+            parser.error(f"Unsupported hydraulic-quality report: {quality_report_path}")
+        quality_decisions = {}
+        for decision in quality_report.get("scenarios", []):
+            if not isinstance(decision, dict):
+                parser.error(f"Malformed scenario entry in hydraulic-quality report: {quality_report_path}")
+            try:
+                key = (str(decision["shape_id"]), round(float(decision["factor_mult"]), 6))
+            except (KeyError, TypeError, ValueError):
+                parser.error(f"Malformed scenario key in hydraulic-quality report: {quality_report_path}")
+            if key in quality_decisions:
+                parser.error(f"Duplicate scenario key in hydraulic-quality report: {key}")
+            quality_decisions[key] = decision
+        for scenario in df[["shape_id", "factor_mult"]].drop_duplicates().itertuples(index=False):
+            key = (str(scenario.shape_id), round(float(scenario.factor_mult), 6))
+            if quality_decisions.get(key, {}).get("eligible") is not True:
+                parser.error(
+                    "CSV includes a scenario without an eligible matching hydraulic-quality "
+                    f"decision: shape_id={key[0]!r}, factor_mult={key[1]}"
+                )
+
         try:
             validate_database_path(config.dataset.db_path)
         except RuntimeError as exc:
@@ -1140,6 +1203,7 @@ def main():
             config.network.name,
             source_dataset_path=config.dataset.output_path,
             hydrograph_shapes_dir=config.simulation.hydrograph_shapes_dir,
+            hydraulic_quality_decisions=quality_decisions,
         )
         print(f"  network_id={info['network_id']}  nodes={len(info['node_pk_by_id'])}  "
               f"runs={len(info['run_id_by_key'])}")
@@ -1330,6 +1394,10 @@ def main():
 
     if not use_existing_dataset:
         from swmm_resilience.simulation.batch import run_batch, run_batch_shapes
+        from swmm_resilience.validation.scenario_quality import (
+            assess_scenario_quality,
+            filter_simulation_results_by_quality,
+        )
         from swmm_resilience.simulation.hydrograph_shapes import (
             get_shape_stats, load_all_shapes,
         )
@@ -1356,6 +1424,10 @@ def main():
 
         print("\nExtracting labels and dynamic features...")
         simulation_results = []
+        scenario_quality_assessments = []
+        continuity_limit_rationale = (
+            "Owner-approved provisional 5% continuity limit; hydraulic justification pending."
+        )
         for factor, rpt_path in sim_results:
             dynamic_df = compute_dynamic_features(
                 static_topo_df, factor,
@@ -1365,10 +1437,34 @@ def main():
             dynamic_df["shape_id"] = "base"
             from swmm_resilience.simulation.swmm_api_io import read_continuity_error
 
-            dynamic_df["continuity_error_pct"] = read_continuity_error(rpt_path)
+            continuity_error_pct = read_continuity_error(rpt_path)
+            dynamic_df["continuity_error_pct"] = continuity_error_pct
 
-            labels_df = extract_labels(rpt_path, all_node_ids, config.dataset.flood_threshold_m3)
+            labels_df = _extract_labels_for_quality(
+                rpt_path, all_node_ids, config.dataset.flood_threshold_m3
+            )
             simulation_results.append((factor, dynamic_df, labels_df))
+            scenario_id = Path(rpt_path).stem
+            decision = assess_scenario_quality(
+                dynamic_df,
+                labels_df,
+                expected_node_ids=all_node_ids,
+                continuity_error_pct=continuity_error_pct,
+                max_continuity_error_pct=config.validation.max_continuity_error_pct,
+                continuity_limit_rationale=continuity_limit_rationale,
+                drainage_manifest=_read_scenario_manifest(
+                    Path(rpt_path).with_name(f"{scenario_id}.drainage_state.json")
+                ),
+                initial_condition_manifest=_read_scenario_manifest(
+                    Path(rpt_path).with_name(f"{scenario_id}.initial_condition.json")
+                ),
+            )
+            scenario_quality_assessments.append({
+                **decision,
+                "scenario_id": scenario_id,
+                "shape_id": "base",
+                "factor_mult": float(factor),
+            })
 
         # ── Additional shapes ─────────────────────────────────────────────
         if config.simulation.hydrograph_shapes_dir is not None:
@@ -1396,7 +1492,8 @@ def main():
                 dynamic_df["shape_id"] = shape_id
                 from swmm_resilience.simulation.swmm_api_io import read_continuity_error
 
-                dynamic_df["continuity_error_pct"] = read_continuity_error(rpt_path)
+                continuity_error_pct = read_continuity_error(rpt_path)
+                dynamic_df["continuity_error_pct"] = continuity_error_pct
 
                 from swmm_resilience.simulation.hydrograph_shapes import apply_shape
                 from swmm_resilience.simulation.inflow_closure import apply_closure_policy
@@ -1434,11 +1531,73 @@ def main():
                 # dynamic_df: dynamic_df es justo lo que assemble_dataset()
                 # escribe a disco.
 
-                labels_df = extract_labels(
+                labels_df = _extract_labels_for_quality(
                     rpt_path, all_node_ids, config.dataset.flood_threshold_m3
                 )
                 simulation_results.append((factor, dynamic_df, labels_df))
+                scenario_id = Path(rpt_path).stem
+                decision = assess_scenario_quality(
+                    dynamic_df,
+                    labels_df,
+                    expected_node_ids=all_node_ids,
+                    continuity_error_pct=continuity_error_pct,
+                    max_continuity_error_pct=config.validation.max_continuity_error_pct,
+                    continuity_limit_rationale=continuity_limit_rationale,
+                    drainage_manifest=_read_scenario_manifest(
+                        Path(rpt_path).with_name(f"{scenario_id}.drainage_state.json")
+                    ),
+                    initial_condition_manifest=_read_scenario_manifest(
+                        Path(rpt_path).with_name(f"{scenario_id}.initial_condition.json")
+                    ),
+                )
+                scenario_quality_assessments.append({
+                    **decision,
+                    "scenario_id": scenario_id,
+                    "shape_id": str(shape_id),
+                    "factor_mult": float(factor),
+                })
 
+        simulation_results, excluded_assessments = filter_simulation_results_by_quality(
+            simulation_results, scenario_quality_assessments
+        )
+        assessments_by_key = {
+            (str(item.get("shape_id", "base")), round(float(item["factor_mult"]), 6)): item
+            for item in scenario_quality_assessments
+        }
+        for missing in excluded_assessments:
+            key = (str(missing.get("shape_id", "base")), round(float(missing["factor_mult"]), 6))
+            if key not in assessments_by_key:
+                scenario_quality_assessments.append(missing)
+        quality_report = {
+            "schema_version": "scenario_hydraulic_quality_report_v1",
+            "continuity_limit_rationale": continuity_limit_rationale,
+            "total_scenarios": len(scenario_quality_assessments),
+            "eligible_scenarios": sum(
+                bool(item.get("eligible")) for item in scenario_quality_assessments
+            ),
+            "excluded_scenarios": sum(
+                not bool(item.get("eligible")) for item in scenario_quality_assessments
+            ),
+            "scenarios": scenario_quality_assessments,
+        }
+        quality_report_path = config.dataset.output_path.with_suffix(
+            config.dataset.output_path.suffix + ".hydraulic_quality.json"
+        )
+        quality_report_path.parent.mkdir(parents=True, exist_ok=True)
+        quality_report_path.write_text(
+            json.dumps(quality_report, indent=2, sort_keys=True, allow_nan=False),
+            encoding="utf-8",
+        )
+        excluded_count = quality_report["excluded_scenarios"]
+        print(
+            f"\nHydraulic quality: {quality_report['eligible_scenarios']} eligible, "
+            f"{excluded_count} excluded. Report: {quality_report_path}"
+        )
+        if not simulation_results:
+            raise ValueError(
+                "No scenarios passed the hydraulic quality gate; training was stopped. "
+                f"Review {quality_report_path}."
+            )
         n_simulations = len(simulation_results)
         print("\nAssembling dataset...")
         df = assemble_dataset(static_topo_df, simulation_results, config.dataset.output_path)

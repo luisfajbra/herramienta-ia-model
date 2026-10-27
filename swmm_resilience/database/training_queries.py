@@ -276,6 +276,14 @@ def load_training_samples(
     feature_contract=TABULAR_V3_17,
     node_features_table: str = "node_features",
 ) -> pd.DataFrame:
+    if max_continuity_error_pct is not None:
+        try:
+            continuity_limit = float(max_continuity_error_pct)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("max_continuity_error_pct must be finite and non-negative") from exc
+        if not np.isfinite(continuity_limit) or continuity_limit < 0:
+            raise ValueError("max_continuity_error_pct must be finite and non-negative")
+        max_continuity_error_pct = continuity_limit
     normalized_run_ids = _normalize_run_ids(run_ids)
     run_filter, params = _run_id_selection(normalized_run_ids)
     with _stable_read_snapshot(conn):
@@ -296,19 +304,27 @@ def load_training_samples(
             )
         continuity_filter = ""
         continuity_params: list[float] = []
+        quality_filter = (
+            " AND EXISTS ("
+            "SELECT 1 FROM run_hydraulic_quality AS quality"
+            " WHERE quality.run_id = sample.run_id"
+            " AND quality.eligible = 1"
+            " AND quality.continuity_error_pct IS NOT NULL)"
+        )
         if max_continuity_error_pct is not None:
             continuity_filter = (
-                " AND run_id NOT IN ("
+                " AND sample.run_id NOT IN ("
                 "SELECT run_id FROM runs"
-                " WHERE continuity_error_pct IS NOT NULL"
-                " AND ABS(continuity_error_pct) > ?)"
+                " WHERE continuity_error_pct IS NULL"
+                " OR ABS(continuity_error_pct) > ?)"
             )
             continuity_params = [max_continuity_error_pct]
         columns = IDENTITY_COLUMNS + tuple(feature_columns) + TARGET_COLUMNS
         sql = (
-            f"SELECT {', '.join(columns)} FROM {view_name}"
-            f" WHERE 1 = 1{run_filter}{continuity_filter}"
-            " ORDER BY run_id, node_id"
+            f"SELECT {', '.join(f'sample.{column}' for column in columns)} "
+            f"FROM {view_name} AS sample"
+            f" WHERE 1 = 1{run_filter}{quality_filter}{continuity_filter}"
+            " ORDER BY sample.run_id, sample.node_id"
         )
         frame = pd.read_sql_query(sql, conn, params=params + continuity_params)
         if frame.empty:
@@ -435,8 +451,8 @@ def load_training_frame(
     most callers are reporting/visualisation paths that must keep seeing the
     full historical set. Callers that train or rank a model pass
     ``config.validation.max_continuity_error_pct`` explicitly so runs whose
-    routing continuity error exceeds the threshold are dropped (a NULL
-    continuity is never excluded -- see ``load_training_samples``).
+    routing continuity error exceeds the threshold are dropped; with a
+    configured threshold, NULL continuity is excluded as unverified.
 
     The read leaves a transaction open (``load_training_samples`` reads inside
     a savepoint); closing discards it, which is safe because nothing here
@@ -482,15 +498,24 @@ def load_training_frame(
                 raise ValueError(
                     f"No COMPLETE training runs found for network_ids {list(normalized_network_ids)}"
                 )
-        frame = load_training_samples(
-            conn,
-            run_ids=selected_run_ids,
-            max_continuity_error_pct=max_continuity_error_pct,
-            view_name=view_name,
-            feature_columns=feature_columns,
-            feature_contract=feature_contract,
-            node_features_table=node_features_table,
-        )
+        try:
+            frame = load_training_samples(
+                conn,
+                run_ids=selected_run_ids,
+                max_continuity_error_pct=max_continuity_error_pct,
+                view_name=view_name,
+                feature_columns=feature_columns,
+                feature_contract=feature_contract,
+                node_features_table=node_features_table,
+            )
+        except ValueError as exc:
+            if normalized_network_ids and str(exc).startswith("No COMPLETE "):
+                raise ValueError(
+                    "Requested network_ids have no included training rows after "
+                    "continuity and data-quality filters: "
+                    f"{list(normalized_network_ids)}"
+                ) from exc
+            raise
         _check_single_snapshot(
             frame,
             allow_multiple_networks=explicit_selection,

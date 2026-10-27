@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from pathlib import Path
 
@@ -60,8 +61,6 @@ def _insert_network(conn, network_id=1):
             "2026-08-21T00:00:00+00:00",
         ),
     )
-
-
 def _insert_node(conn, node_pk, node_id, network_id=1):
     conn.execute(
         """
@@ -82,7 +81,7 @@ def _insert_scenario_and_run(
     network_id=1,
     scenario_id=None,
     node_count=1,
-    continuity_error_pct=None,
+    continuity_error_pct=0.0,
 ):
     scenario_id = scenario_id if scenario_id is not None else 100 + run_id
     conn.execute(
@@ -121,6 +120,45 @@ def _insert_scenario_and_run(
             continuity_error_pct,
         ),
     )
+    if status == "COMPLETE" and continuity_error_pct is not None:
+        eligible = int(abs(continuity_error_pct) <= 5.0)
+        reasons = "[]" if eligible else '["continuity_limit_exceeded"]'
+        drainage = "drained" if eligible else "not_drained"
+        quality_manifest = {
+            "eligible": bool(eligible),
+            "reason_codes": [] if eligible else ["continuity_limit_exceeded"],
+            "continuity_error_pct": continuity_error_pct,
+            "finite_coverage_ok": True,
+            "drainage_state": drainage,
+            "flooding_report": {
+                "parser": "fixture",
+                "parser_version": "1",
+                "report_sha256": "b" * 64,
+            },
+        }
+        conn.execute(
+            """INSERT INTO run_hydraulic_quality (
+                run_id, policy_version, policy_json, policy_sha256,
+                continuity_error_pct, finite_coverage_ok, drainage_state,
+                initial_condition_json, eligible, reason_codes_json,
+                manifest_json, created_at_utc
+            ) VALUES (?, 'test-quality-v1', ?, ?,
+                      ?, 1, ?, ?, ?, ?, ?, '2026-10-26T00:00:00Z')""",
+            (
+                run_id,
+                json.dumps({
+                    "max_continuity_error_pct": 5,
+                    "continuity_limit_rationale": "synthetic fixture",
+                }),
+                "f" * 64,
+                continuity_error_pct,
+                drainage,
+                json.dumps({"policy_id": "synthetic", "state_sha256": "a" * 64}),
+                eligible,
+                reasons,
+                json.dumps(quality_manifest),
+            ),
+        )
 
 
 def _insert_feature(conn, run_id, node_pk, *, network_id=1, elev_fondo=None):
@@ -251,6 +289,11 @@ def _target_validation_connection(*, inunda=1, vol_inundacion_m3=12.5):
         INSERT INTO runs VALUES (1, 'COMPLETE', 1);
         INSERT INTO node_features VALUES (1, 10);
         INSERT INTO node_results VALUES (1, 10);
+        CREATE TABLE run_hydraulic_quality (
+            run_id INTEGER PRIMARY KEY, eligible INTEGER,
+            continuity_error_pct REAL
+        );
+        INSERT INTO run_hydraulic_quality VALUES (1, 1, 0.0);
         """
     )
     row = {
@@ -875,7 +918,7 @@ def test_load_training_samples_excludes_runs_above_continuity_threshold(migrated
     assert set(frame["run_id"]) == {1}
 
 
-def test_load_training_samples_includes_null_continuity_as_not_excluded(migrated_conn):
+def test_load_training_samples_excludes_null_continuity_when_threshold_is_configured(migrated_conn):
     conn = migrated_conn
     _insert_network(conn)
     _insert_node(conn, node_pk=1, node_id="N1")
@@ -884,11 +927,19 @@ def test_load_training_samples_includes_null_continuity_as_not_excluded(migrated
     _insert_feature(conn, run_id=1, node_pk=1)
     _insert_result(conn, run_id=1, node_pk=1, inunda=1)
 
-    frame = load_training_samples(conn, max_continuity_error_pct=5.0)
-    assert set(frame["run_id"]) == {1}
+    with pytest.raises(ValueError, match="No COMPLETE training_samples_v17 training samples"):
+        load_training_samples(conn, max_continuity_error_pct=5.0)
 
 
-def test_load_training_samples_without_threshold_includes_everything(migrated_conn):
+@pytest.mark.parametrize("threshold", [float("nan"), float("inf"), -1.0])
+def test_load_training_samples_rejects_invalid_continuity_threshold(migrated_conn, threshold):
+    with pytest.raises(ValueError, match="must be finite and non-negative"):
+        load_training_samples(migrated_conn, max_continuity_error_pct=threshold)
+
+
+def test_load_training_samples_excludes_quality_ineligible_run_without_override(
+    migrated_conn,
+):
     conn = migrated_conn
     _insert_network(conn)
     _insert_node(conn, node_pk=1, node_id="N1")
@@ -897,8 +948,11 @@ def test_load_training_samples_without_threshold_includes_everything(migrated_co
     _insert_feature(conn, run_id=1, node_pk=1)
     _insert_result(conn, run_id=1, node_pk=1, inunda=1)
 
-    frame = load_training_samples(conn)
-    assert set(frame["run_id"]) == {1}
+    with pytest.raises(
+        ValueError,
+        match="No COMPLETE training_samples_v17 training samples",
+    ):
+        load_training_samples(conn)
 
 
 def test_load_continuity_excluded_returns_only_scenarios_above_threshold(migrated_conn):

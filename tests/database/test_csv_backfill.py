@@ -12,6 +12,7 @@ from swmm_resilience.database.csv_backfill import (
     backfill_networks_and_runs,
     persist_training_run,
 )
+from swmm_resilience.database.hydraulic_quality import build_hydraulic_quality_decision
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
 
 
@@ -93,6 +94,54 @@ def test_backfill_creates_expected_row_counts(migrated_managed_conn, fake_inp):
     assert [tuple(r) for r in migrated_managed_conn.execute(
         "SELECT DISTINCT status FROM runs"
     ).fetchall()] == [("COMPLETE",)]
+
+
+def test_backfill_persists_only_explicitly_eligible_hydraulic_quality(
+    migrated_managed_conn, fake_inp,
+):
+    dataset = _synthetic_dataset(n_nodes=2, factors=(1.0,), shapes=("base",))
+    dataset["continuity_error_pct"] = 0.5
+    decision = build_hydraulic_quality_decision(
+        continuity_error_pct=0.5,
+        max_continuity_error_pct=5.0,
+        continuity_limit_rationale="Provisional fixture limit.",
+        finite_coverage_ok=True,
+        drainage_state="drained",
+        initial_condition={"policy_id": "fixture", "state_sha256": "a" * 64},
+        flooding_report_manifest={
+            "parser": "fixture", "parser_version": "1", "report_sha256": "b" * 64,
+        },
+    )
+    info = backfill_networks_and_runs(
+        migrated_managed_conn,
+        dataset,
+        fake_inp,
+        "Test Network",
+        hydraulic_quality_decisions={("base", 1.0): decision},
+    )
+
+    run_id = next(iter(info["run_id_by_key"].values()))
+    row = migrated_managed_conn.execute(
+        "SELECT eligible, continuity_error_pct, drainage_state "
+        "FROM run_hydraulic_quality WHERE run_id = ?",
+        (run_id,),
+    ).fetchone()
+    assert tuple(row) == (1, 0.5, "drained")
+
+
+def test_backfill_quality_mode_fails_closed_when_scenario_decision_is_missing(
+    migrated_managed_conn, fake_inp,
+):
+    dataset = _synthetic_dataset(n_nodes=2, factors=(1.0,), shapes=("base",))
+    with pytest.raises(ValueError, match="requires an eligible hydraulic-quality decision"):
+        backfill_networks_and_runs(
+            migrated_managed_conn,
+            dataset,
+            fake_inp,
+            "Test Network",
+            hydraulic_quality_decisions={},
+        )
+    assert migrated_managed_conn.execute("SELECT COUNT(*) FROM networks").fetchone()[0] == 0
 
 
 def test_backfill_rejects_duplicate_scenario_node_rows_before_writing(

@@ -9,6 +9,7 @@ END_TIME / END_DATE to match the last CSV data point.
 from __future__ import annotations
 
 import datetime
+import math
 import warnings
 from pathlib import Path
 
@@ -121,6 +122,15 @@ def write_scenario_inp(
         if drain_down_hours > 0:
             data.append((scenario.last_time_hours + drain_down_hours, 0.0))
         inp["TIMESERIES"][ts_name].data = data
+        # CSV scenario values are absolute L/s inputs. Remove any base, scaling,
+        # or pattern from the original INP so SWMM receives the same values.
+        inflow = inp["INFLOWS"][(node_id, "FLOW")]
+        inflow.scale_factor = 1.0
+        inflow.base_value = 0.0
+        # swmm-api omits NaN optional fields when serializing an INP. Assigning
+        # Python None writes the literal token "NONE", which EPA SWMM rejects
+        # as an undefined pattern object.
+        inflow.pattern = math.nan
 
     # --- Adjust END_TIME / END_DATE -----------------------------------------
     opts = inp["OPTIONS"]

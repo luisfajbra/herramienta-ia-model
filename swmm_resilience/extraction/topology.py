@@ -13,7 +13,7 @@ def build_network_graph(inp):
 
 def _build_graph(inp):
     """Build directed graph (from_node → to_node) and return (G, outfalls_set)."""
-    G = nx.DiGraph()
+    G = nx.MultiDiGraph()
     outfalls = set()
     if "JUNCTIONS" in inp:
         for nid in inp["JUNCTIONS"]:
@@ -26,6 +26,7 @@ def _build_graph(inp):
         for lid, c in inp["CONDUITS"].items():
             G.add_edge(
                 str(c.from_node), str(c.to_node),
+                key=str(lid),
                 length=float(c.length) if c.length else 0.0,
                 link_id=str(lid),
             )
@@ -89,10 +90,7 @@ def compute_topology_features(static_df: pd.DataFrame, inp_path: Path) -> pd.Dat
 
         # upstream_capacity_lps: Manning full-flow capacity of immediate upstream conduits
         cap_total = 0.0
-        for pred in G.predecessors(nid):
-            lid = G[pred][nid].get("link_id")
-            if lid is None:
-                continue
+        for pred, _, lid, _ in G.in_edges(nid, keys=True, data=True):
             diam = xsections.get(lid)
             meta = conduit_meta.get(lid, {})
             roughness = meta.get("roughness")

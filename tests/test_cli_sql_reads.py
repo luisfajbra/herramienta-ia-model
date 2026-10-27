@@ -1,4 +1,5 @@
 import sys
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -150,10 +151,12 @@ def test_persist_sql_writes_to_config_dataset_db_path(monkeypatch):
     csv_frame = pd.DataFrame(
         {
             "shape_id": ["base"],
+            "factor_mult": [1.0],
             "inunda": [1],
             "node_id": ["N0"],
         }
     )
+    _mock_hydraulic_quality_report(monkeypatch, csv_frame)
 
     class FakeCursor:
         def fetchall(self):
@@ -222,7 +225,7 @@ def test_migrate_db_is_the_explicit_schema_write_command(tmp_path, monkeypatch):
     try:
         assert conn.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 8
+        ).fetchone()[0] == 9
     finally:
         conn.close()
 
@@ -233,6 +236,8 @@ def _persist_sql_fakes(monkeypatch, csv_frame, captured):
     import swmm_resilience.database.migrations as migrations_module
     import swmm_resilience.database.csv_backfill as csv_backfill_module
     import swmm_resilience.database.training_queries as training_queries_module
+
+    _mock_hydraulic_quality_report(monkeypatch, csv_frame)
 
     class FakeCursor:
         def fetchall(self):
@@ -277,6 +282,27 @@ def _persist_sql_fakes(monkeypatch, csv_frame, captured):
     monkeypatch.setattr(sys, "argv", ["main.py", "--persist-sql"])
 
 
+def _mock_hydraulic_quality_report(monkeypatch, csv_frame):
+    original_read_text = Path.read_text
+    scenarios = csv_frame[["shape_id", "factor_mult"]].drop_duplicates()
+    report = {
+        "schema_version": "scenario_hydraulic_quality_report_v1",
+        "scenarios": [
+            {"shape_id": str(row.shape_id), "factor_mult": float(row.factor_mult), "eligible": True}
+            for row in scenarios.itertuples(index=False)
+        ],
+    }
+    monkeypatch.setattr(
+        Path,
+        "read_text",
+        lambda path, *args, **kwargs: (
+            json.dumps(report)
+            if path.name.endswith(".hydraulic_quality.json")
+            else original_read_text(path, *args, **kwargs)
+        ),
+    )
+
+
 def test_persist_sql_excludes_high_continuity_rows_from_legacy_training(monkeypatch):
     """Fase C2 / revision final (C1): el XGBoost legacy entrena sobre el CSV
     crudo, nunca sobre SQL, asi que el filtro por continuidad debe aplicarse
@@ -285,6 +311,7 @@ def test_persist_sql_excludes_high_continuity_rows_from_legacy_training(monkeypa
     csv_frame = pd.DataFrame(
         {
             "shape_id": ["base", "base", "base"],
+            "factor_mult": [1.0, 1.0, 1.0],
             "inunda": [1, 1, 1],
             "node_id": ["N0", "N1", "N2"],
             "continuity_error_pct": [1.0, -7.31, float("nan")],
@@ -318,6 +345,7 @@ def test_persist_sql_keeps_every_row_when_the_csv_has_no_continuity_column(monke
     csv_frame = pd.DataFrame(
         {
             "shape_id": ["base", "base"],
+            "factor_mult": [1.0, 1.0],
             "inunda": [1, 1],
             "node_id": ["N0", "N1"],
         }
@@ -339,6 +367,7 @@ def test_persist_sql_errors_when_the_filter_removes_every_flooded_row(
     csv_frame = pd.DataFrame(
         {
             "shape_id": ["base", "base"],
+            "factor_mult": [1.0, 1.0],
             "inunda": [1, 0],
             "node_id": ["N0", "N1"],
             "continuity_error_pct": [-9.0, 0.1],

@@ -12,6 +12,31 @@ from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
 FEATURE_COLS = list(FEATURE_COLUMNS_V17)
 
 
+def _qualify_synthetic_training_runs(conn):
+    """These fixture datasets represent intentionally QA-qualified toy runs."""
+    run_ids = [row[0] for row in conn.execute("SELECT run_id FROM runs")]
+    for run_id in run_ids:
+        conn.execute(
+            "UPDATE runs SET continuity_error_pct=0.0 WHERE run_id=?",
+            (run_id,),
+        )
+        conn.execute(
+            """INSERT INTO run_hydraulic_quality (
+                run_id, policy_version, policy_json, policy_sha256,
+                continuity_error_pct, finite_coverage_ok, drainage_state,
+                initial_condition_json, eligible, reason_codes_json,
+                manifest_json, created_at_utc
+            ) VALUES (?, 'test-quality-v1',
+                      '{"max_continuity_error_pct":5,"continuity_limit_rationale":"synthetic fixture"}', ?,
+                      0.0, 1, 'drained',
+                      '{"policy_id":"synthetic","state_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}',
+                      1, '[]',
+                      '{"eligible":true,"reason_codes":[],"continuity_error_pct":0.0,"finite_coverage_ok":true,"drainage_state":"drained","flooding_report":{"parser":"fixture","parser_version":"1","report_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}',
+                      '2026-10-26T00:00:00Z')""",
+            (run_id, "f" * 64),
+        )
+
+
 @pytest.fixture
 def tiny_config_factory(tmp_path: Path):
     def _factory(algorithm: str = "random_forest", use_scaler: bool = False):
@@ -108,6 +133,8 @@ def sql_training_db(tmp_path: Path, csv_shaped_dataset: pd.DataFrame) -> Path:
         backfill_networks_and_runs(
             conn, csv_shaped_dataset, inp_path, "Fixture Network"
         )
+        _qualify_synthetic_training_runs(conn)
+        conn.commit()
     finally:
         conn.close()
     return db_path
@@ -176,6 +203,8 @@ def sql_training_db_six_factors(
         backfill_networks_and_runs(
             conn, csv_shaped_dataset_six_factors, inp_path, "Fixture Network Six"
         )
+        _qualify_synthetic_training_runs(conn)
+        conn.commit()
     finally:
         conn.close()
     return db_path
@@ -244,6 +273,8 @@ def sql_training_db_six_shapes(
         backfill_networks_and_runs(
             conn, csv_shaped_dataset_six_shapes, inp_path, "Fixture Network Shapes"
         )
+        _qualify_synthetic_training_runs(conn)
+        conn.commit()
     finally:
         conn.close()
     return db_path

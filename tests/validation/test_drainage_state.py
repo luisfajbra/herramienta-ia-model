@@ -225,6 +225,15 @@ def test_classify_unverified_when_link_data_is_missing():
     assert "missing_link_data" in diag["failed_checks"]
 
 
+def test_classify_unverified_when_link_data_flag_disagrees_with_empty_series():
+    obs = _obs(has_link_data=True, link_flow_lps={})
+
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0)
+
+    assert state == "unverified"
+    assert "missing_link_data" in diag["failed_checks"]
+
+
 def test_save_drainage_state_manifest_writes_readable_json(tmp_path):
     _, diag = classify_drainage_state(_obs(), **_TOL, window_hours=1.0, min_report_steps=2)
     path = save_drainage_state_manifest(diag, tmp_path, "scenario_1")
@@ -254,6 +263,60 @@ def test_classify_unverified_when_a_series_is_shorter_than_min_report_steps():
     state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0, min_report_steps=2)
     assert state == "unverified"
     assert "insufficient_series_length" in diag["failed_checks"]
+
+
+def test_classify_unverified_when_observables_are_all_nan():
+    obs = _obs(
+        node_total_inflow_lps={"A": [float("nan"), float("nan"), float("nan")]},
+        node_flooding_lps={"A": [float("nan"), float("nan"), float("nan")]},
+        node_volume_m3={"A": [float("nan"), float("nan"), float("nan")]},
+        link_flow_lps={"L1": [float("nan"), float("nan"), float("nan")]},
+    )
+
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0)
+
+    assert state == "unverified"
+    assert "non_finite_observables" in diag["failed_checks"]
+
+
+def test_classify_unverified_when_observable_has_partial_missing_values():
+    obs = _obs(node_volume_m3={"A": [1.0, None, 1.0]})
+
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0)
+
+    assert state == "unverified"
+    assert "non_finite_observables" in diag["failed_checks"]
+
+
+def test_classify_unverified_when_node_variable_object_coverage_differs():
+    obs = _obs(node_flooding_lps={"B": [0.0, 0.0, 0.0]})
+
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0)
+
+    assert state == "unverified"
+    assert "incomplete_node_variable_coverage" in diag["failed_checks"]
+
+
+def test_classify_unverified_when_reported_window_is_shorter_than_requested():
+    obs = _obs(observed_window_hours=0.25)
+
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0)
+
+    assert state == "unverified"
+    assert "insufficient_observed_window" in diag["failed_checks"]
+
+
+def test_classify_unverified_when_any_series_does_not_cover_all_report_steps():
+    obs = _obs(
+        node_flooding_lps={"A": [0.0, 0.0]},
+        node_volume_m3={"A": [1.0, 1.0]},
+        link_flow_lps={"L1": [0.0, 0.0]},
+    )
+
+    state, diag = classify_drainage_state(obs, **_TOL, window_hours=1.0)
+
+    assert state == "unverified"
+    assert "incomplete_report_series" in diag["failed_checks"]
 
 
 # ============================================================================
@@ -295,3 +358,15 @@ def test_read_and_classify_chain_together_without_error(tiny_out_file):
     )
     assert state in {"drained", "not_drained", "unverified"}
     assert diagnostics["policy_version"] == DRAINAGE_STATE_POLICY_VERSION
+
+
+def test_classify_empty_observables_returns_unverified_diagnostics():
+    state, diagnostics = classify_drainage_state(
+        {}, **_TOL, window_hours=1.0
+    )
+
+    assert state == "unverified"
+    assert diagnostics["max_inflow_lps"] is None
+    assert diagnostics["max_flooding_lps"] is None
+    assert diagnostics["max_storage_change_m3"] is None
+    assert diagnostics["max_residual_flow_lps"] is None
