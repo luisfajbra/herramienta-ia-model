@@ -32,9 +32,25 @@ def _validate_groupkfold5_groups(groups: pd.Series) -> None:
         )
 
 
+def _validate_leave_one_network_out_groups(groups: pd.Series) -> None:
+    if groups.isna().any():
+        raise ValueError(
+            "LeaveOneNetworkOut does not allow null network_id values"
+        )
+    distinct = int(groups.nunique(dropna=True))
+    if distinct < 2:
+        raise ValueError(
+            "LeaveOneNetworkOut needs at least 2 networks; "
+            f"the dataset has {distinct}"
+        )
+
+
 def n_folds_for(groups: pd.Series, protocol: str) -> int:
     """Número de folds que producirá ``protocol`` sobre ``groups``."""
     if protocol in ("LOSO", "LeaveOneShapeOut"):
+        return int(groups.nunique())
+    if protocol == "LeaveOneNetworkOut":
+        _validate_leave_one_network_out_groups(groups)
         return int(groups.nunique())
     if protocol == "GroupKFold5":
         _validate_groupkfold5_groups(groups)
@@ -44,6 +60,9 @@ def n_folds_for(groups: pd.Series, protocol: str) -> int:
 
 def _splitter(groups: pd.Series, protocol: str):
     if protocol in ("LOSO", "LeaveOneShapeOut"):
+        return LeaveOneGroupOut()
+    if protocol == "LeaveOneNetworkOut":
+        _validate_leave_one_network_out_groups(groups)
         return LeaveOneGroupOut()
     if protocol == "GroupKFold5":
         _validate_groupkfold5_groups(groups)

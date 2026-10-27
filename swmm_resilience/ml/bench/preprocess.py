@@ -36,8 +36,8 @@ from ..contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
 from .folds import build_all_folds
 from .quality import build_quality_report
 from .schemas import (
+    DEFAULT_PROTOCOLS,
     KEY_COLUMNS,
-    PROTOCOLS,
     PreparedDataset,
     TRAINING_FRAME_FINGERPRINT_VERSION,
     compute_prep_id,
@@ -364,7 +364,7 @@ def _source_provenance(
 def prepare_dataset(
     db_path: Path | str,
     *,
-    protocols: Sequence[str] = PROTOCOLS,
+    protocols: Sequence[str] = DEFAULT_PROTOCOLS,
     flood_threshold_m3: float,
     output_dir: Path | str,
     max_continuity_error_pct: float | None = None,

@@ -274,7 +274,12 @@ class ValidationConfig:
     drainage_extension_max_retries: int = 2
 
 
-BENCH_PROTOCOLS = ("LeaveOneShapeOut", "LOSO", "GroupKFold5")
+BENCH_PROTOCOLS = (
+    "LeaveOneShapeOut",
+    "LOSO",
+    "GroupKFold5",
+    "LeaveOneNetworkOut",
+)
 
 # Debe permanecer igual a swmm_resilience.ml.bench.registry.available_families().
 # No se importa registry aquí a propósito: registry importa las cinco familias

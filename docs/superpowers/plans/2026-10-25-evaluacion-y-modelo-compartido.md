@@ -23,11 +23,11 @@
 
 ### Task 1: Add and validate a network-held-out outer protocol
 
-**Files:** Modify `swmm_resilience/ml/bench/schemas.py`, `folds.py`; test `tests/ml/bench/test_schemas.py`, `tests/ml/bench/test_folds.py`.
+**Files:** Modify `swmm_resilience/ml/bench/schemas.py`, `folds.py`, `preprocess.py`, and `config.py`; test `tests/ml/bench/test_schemas.py`, `tests/ml/bench/test_folds.py`, and `tests/ml/bench/test_bench_config.py`.
 
 **Interfaces:** Add protocol `LeaveOneNetworkOut` with group column `network_id`. Its fold rows use the current `FOLD_COLUMNS` schema; every fold tests one whole network and no `network_id` occurs in both train and test within that fold.
 
-- [ ] Add tests with three networks, repeated node/scenario/event IDs in each, and assert each network is held out once, all of its samples are in test, and its identifiers never appear in that fold's train split. Add error tests for fewer than two networks and null `network_id`.
+- [x] Add tests with three networks, repeated node/scenario/event IDs in each, and assert each network is held out once, all of its samples are in test, and its identifiers never appear in that fold's train split. Add error tests for fewer than two networks and null `network_id`.
 
 ```python
 folds = build_folds(keys, "LeaveOneNetworkOut")
@@ -39,12 +39,11 @@ for _, fold in folds.groupby("fold_id"):
     assert train_ids.isdisjoint(test_ids)
     assert test_ids == set(held_out)
 ```
-- [ ] Run `python -m pytest tests/ml/bench/test_schemas.py tests/ml/bench/test_folds.py -q`; confirm the protocol is rejected as unknown.
-- [ ] Implement `LeaveOneNetworkOut` through `sklearn.model_selection.LeaveOneGroupOut`. Extend manifest protocol validation to enforce one held-out network per fold and exactly one test appearance per row.
-- [ ] Preserve the existing protocol names/semantics and prepared-dataset fingerprint rules. Update `PROTOCOL_INTERPRETATION` to state this protocol tests network transfer and requires at least two networks.
-- [ ] Run the focused tests and `tests/ml/bench/test_preprocess.py tests/ml/bench/test_evaluate_candidate.py -q`.
-- [ ] Commit with `feat: add leave one network out evaluation folds`.
-
+- [x] Run `python -m pytest tests/ml/bench/test_schemas.py tests/ml/bench/test_folds.py -q`; confirm the protocol is rejected as unknown.
+- [x] Implement `LeaveOneNetworkOut` through `sklearn.model_selection.LeaveOneGroupOut`. Extend manifest protocol validation to enforce one held-out network per fold and exactly one test appearance per row.
+- [x] Preserve the existing protocol names/semantics and prepared-dataset fingerprint rules. Update `PROTOCOL_INTERPRETATION` to state this protocol tests network transfer and requires at least two networks.
+- [x] Run the focused tests and `tests/ml/bench/test_preprocess.py tests/ml/bench/test_evaluate_candidate.py -q`.
+- [x] Commit with `feat: add leave one network out evaluation folds`.
 ### Task 2: Add an inner tuning loop confined to each outer training set
 
 **Files:** Modify `swmm_resilience/ml/bench/tune.py`, `evaluate.py`, and bench config validation/loader; create `tests/ml/bench/test_nested_network_evaluation.py`.

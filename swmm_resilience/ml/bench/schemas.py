@@ -54,13 +54,20 @@ OOF_COLUMNS = (
     "y_pred_reg",
 )
 
-PROTOCOLS = ("LOSO", "GroupKFold5", "LeaveOneShapeOut")
+PROTOCOLS = (
+    "LOSO",
+    "GroupKFold5",
+    "LeaveOneShapeOut",
+    "LeaveOneNetworkOut",
+)
+DEFAULT_PROTOCOLS = ("LOSO", "GroupKFold5", "LeaveOneShapeOut")
 TRAINING_FRAME_FINGERPRINT_VERSION = "training_frame_canonical_v1"
 
 PROTOCOL_GROUP_COLUMNS = {
     "LOSO": "factor_mult",
     "GroupKFold5": "factor_mult",
     "LeaveOneShapeOut": "shape_id",
+    "LeaveOneNetworkOut": "network_id",
 }
 
 PROTOCOL_INTERPRETATION = {
@@ -75,6 +82,10 @@ PROTOCOL_INTERPRETATION = {
     ),
     "LeaveOneShapeOut": (
         "Generalization to unseen hydrograph shapes: one full shape is held out."
+    ),
+    "LeaveOneNetworkOut": (
+        "Transfer to an unseen network: one whole network is held out per fold; "
+        "at least two distinct, non-null network IDs are required."
     ),
 }
 
@@ -224,6 +235,19 @@ def _validate_fold_provenance(
             f"protocols. {_REGENERATE_MESSAGE}"
         )
 
+    if "LeaveOneNetworkOut" in manifest_protocols:
+        network_ids = keys["network_id"]
+        if network_ids.isna().any():
+            raise ValueError(
+                "LeaveOneNetworkOut network_id values cannot be null. "
+                f"{_REGENERATE_MESSAGE}"
+            )
+        if network_ids.nunique(dropna=True) < 2:
+            raise ValueError(
+                "LeaveOneNetworkOut needs at least 2 distinct network_id values. "
+                f"{_REGENERATE_MESSAGE}"
+            )
+
     invalid_splits = set(folds["split"]) - {"train", "test"}
     if invalid_splits:
         raise ValueError(
@@ -361,7 +385,7 @@ def _validate_fold_provenance(
             )
         group_column = group_column_for(protocol)
         distinct_groups = int(keys[group_column].nunique())
-        if protocol in ("LOSO", "LeaveOneShapeOut"):
+        if protocol in ("LOSO", "LeaveOneShapeOut", "LeaveOneNetworkOut"):
             if any(
                 group_count != 1
                 for group_count in held_group_counts_by_protocol[protocol]

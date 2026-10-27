@@ -59,6 +59,57 @@ def test_leave_one_shape_out_isolates_each_shape_with_explicit_provenance():
         ]
 
 
+def test_leave_one_network_out_holds_out_every_row_for_one_network():
+    # Node/scenario/event identifiers intentionally repeat between networks.
+    keys = pd.DataFrame(
+        {
+            "network_id": ["A", "A", "B", "B", "C", "C"],
+            "run_id": [1, 1, 1, 1, 1, 1],
+            "scenario_id": [1, 2, 1, 2, 1, 2],
+            "node_id": ["N1", "N2"] * 3,
+            "event_id": ["event-1"] * 6,
+        }
+    )
+
+    folds = build_folds(keys["network_id"], "LeaveOneNetworkOut")
+
+    assert folds["fold_id"].nunique() == n_folds_for(
+        keys["network_id"], "LeaveOneNetworkOut"
+    ) == 3
+    tested = folds.loc[folds["split"] == "test", "sample_idx"]
+    assert sorted(tested) == list(range(len(keys)))
+    assert tested.duplicated().sum() == 0
+    for _, chunk in folds.groupby("fold_id"):
+        train_idx = chunk.loc[chunk["split"] == "train", "sample_idx"]
+        test_idx = chunk.loc[chunk["split"] == "test", "sample_idx"]
+        train_networks = set(keys.loc[train_idx, "network_id"])
+        test_networks = set(keys.loc[test_idx, "network_id"])
+
+        assert train_networks.isdisjoint(test_networks)
+        assert len(test_networks) == 1
+        assert chunk["group_column"].unique().tolist() == ["network_id"]
+        assert chunk["held_out_groups"].unique().tolist() == [
+            json.dumps(sorted(test_networks), ensure_ascii=False)
+        ]
+
+
+def test_leave_one_network_out_requires_two_networks():
+    groups = pd.Series(["A", "A"], name="network_id")
+
+    with pytest.raises(ValueError, match="LeaveOneNetworkOut needs at least 2 networks"):
+        build_folds(groups, "LeaveOneNetworkOut")
+
+    with pytest.raises(ValueError, match="LeaveOneNetworkOut needs at least 2 networks"):
+        n_folds_for(groups, "LeaveOneNetworkOut")
+
+
+def test_leave_one_network_out_rejects_null_network_ids():
+    groups = pd.Series(["A", "B", None], name="network_id")
+
+    with pytest.raises(ValueError, match="LeaveOneNetworkOut does not allow null network_id"):
+        build_folds(groups, "LeaveOneNetworkOut")
+
+
 def test_every_sample_is_tested_exactly_once_per_protocol(groups_25x7):
     for protocol in ("LOSO", "GroupKFold5"):
         folds = build_folds(groups_25x7, protocol)

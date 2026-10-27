@@ -73,6 +73,21 @@ def test_bench_block_is_parsed(tmp_path):
     assert config.bench.promote == "none"
 
 
+def test_bench_config_accepts_leave_one_network_out(tmp_path):
+    yaml = _BENCH_YAML.replace(
+        '"GroupKFold5"', '"GroupKFold5", "LeaveOneNetworkOut"'
+    )
+
+    config = load_config(_write_config(tmp_path, yaml))
+
+    assert config.bench.protocols == [
+        "LeaveOneShapeOut",
+        "LOSO",
+        "GroupKFold5",
+        "LeaveOneNetworkOut",
+    ]
+
+
 def test_ranking_criterion_is_built_from_the_yaml(tmp_path):
     criterion = load_config(_write_config(tmp_path, _BENCH_YAML)).bench.ranking
 

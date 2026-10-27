@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 from swmm_resilience.ml.bench.schemas import (
+    DEFAULT_PROTOCOLS,
     FOLD_COLUMNS,
     KEY_COLUMNS,
     OOF_COLUMNS,
@@ -15,6 +16,7 @@ from swmm_resilience.ml.bench.schemas import (
     compute_prep_id,
     group_column_for,
 )
+from swmm_resilience.ml.bench.folds import build_folds
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
 
 
@@ -136,7 +138,12 @@ def test_column_constants_match_the_contract():
         "y_prob_clf",
         "y_pred_reg",
     )
-    assert PROTOCOLS == ("LOSO", "GroupKFold5", "LeaveOneShapeOut")
+    assert PROTOCOLS == (
+        "LOSO",
+        "GroupKFold5",
+        "LeaveOneShapeOut",
+        "LeaveOneNetworkOut",
+    )
 
 
 def test_protocols_select_their_required_group_column():
@@ -144,10 +151,71 @@ def test_protocols_select_their_required_group_column():
         "LOSO": "factor_mult",
         "GroupKFold5": "factor_mult",
         "LeaveOneShapeOut": "shape_id",
+        "LeaveOneNetworkOut": "network_id",
     }
     assert group_column_for("LOSO") == "factor_mult"
     assert group_column_for("GroupKFold5") == "factor_mult"
     assert group_column_for("LeaveOneShapeOut") == "shape_id"
+    assert group_column_for("LeaveOneNetworkOut") == "network_id"
+    assert DEFAULT_PROTOCOLS == ("LOSO", "GroupKFold5", "LeaveOneShapeOut")
+
+
+def _tiny_network_prepared() -> PreparedDataset:
+    prepared = _tiny_prepared()
+    keys = prepared.keys.copy()
+    keys["network_id"] = [1, 2, 3, 4, 1, 2]
+    folds = build_folds(keys["network_id"], "LeaveOneNetworkOut")
+    manifest = dict(prepared.manifest)
+    manifest["protocols"] = ["LeaveOneNetworkOut"]
+    manifest["protocol_definitions"] = {
+        "LeaveOneNetworkOut": {"group_column": "network_id"}
+    }
+    manifest["source_network_ids"] = [1, 2, 3, 4]
+    prep_id = compute_prep_id(
+        {field: manifest[field] for field in PREP_ID_DESCRIPTOR_FIELDS}
+    )
+    manifest["prep_id"] = prep_id
+    return replace(
+        prepared,
+        prep_id=prep_id,
+        keys=keys,
+        folds=folds,
+        manifest=manifest,
+    )
+
+
+def test_leave_one_network_out_manifest_requires_one_held_network_per_fold():
+    prepared = _tiny_network_prepared()
+    folds = prepared.folds.copy()
+    fold_zero = folds["fold_id"] == 0
+    network_two_positions = set(
+        prepared.keys.index[prepared.keys["network_id"] == 2]
+    )
+    fold_zero_network_two = fold_zero & folds["sample_idx"].isin(
+        network_two_positions
+    )
+    folds.loc[fold_zero_network_two, "split"] = "test"
+    folds.loc[fold_zero, "held_out_groups"] = '["1", "2"]'
+    folds = folds[folds["fold_id"] != 1].reset_index(drop=True)
+
+    with pytest.raises(
+        ValueError,
+        match="LeaveOneNetworkOut must hold out exactly one group per fold",
+    ):
+        _rebuild_prepared(prepared, folds=folds)
+
+
+def test_leave_one_network_out_manifest_requires_two_non_null_network_ids():
+    prepared = _tiny_network_prepared()
+    one_network_keys = prepared.keys.copy()
+    one_network_keys["network_id"] = 1
+    with pytest.raises(ValueError, match="at least 2 distinct network_id values"):
+        _rebuild_prepared(replace(prepared, keys=one_network_keys))
+
+    null_network_keys = prepared.keys.copy()
+    null_network_keys.loc[0, "network_id"] = None
+    with pytest.raises(ValueError, match="network_id values cannot be null"):
+        _rebuild_prepared(replace(prepared, keys=null_network_keys))
 
 
 def test_group_column_for_rejects_an_unknown_protocol():
