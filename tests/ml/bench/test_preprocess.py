@@ -13,9 +13,17 @@ from swmm_resilience.ml.bench.preprocess import (
 )
 from swmm_resilience.ml.bench.schemas import KEY_COLUMNS
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
+from tests.conftest import qualify_synthetic_runs
 
 
-def _build_sql_db(tmp_path, dataset: pd.DataFrame, name: str):
+def _build_sql_db(
+    tmp_path,
+    dataset: pd.DataFrame,
+    name: str,
+    *,
+    quality_limit_pct: float = 10.0,
+    default_continuity_error_pct: float | None = 0.0,
+):
     """Build a fresh migrated v17 database from ``dataset`` (mirrors sql_training_db)."""
     from swmm_resilience.database.connection import connect_managed_database
     from swmm_resilience.database.csv_backfill import backfill_networks_and_runs
@@ -28,6 +36,12 @@ def _build_sql_db(tmp_path, dataset: pd.DataFrame, name: str):
     try:
         apply_migrations(conn)
         backfill_networks_and_runs(conn, dataset, inp_path, "Fixture Network")
+        qualify_synthetic_runs(
+            conn,
+            max_continuity_error_pct=quality_limit_pct,
+            default_continuity_error_pct=default_continuity_error_pct,
+        )
+        conn.commit()
     finally:
         conn.close()
     return db_path
@@ -148,6 +162,8 @@ def _build_sql_db_v4_21(tmp_path):
             info["node_pk_by_id"],
             info["network_id"],
         )
+        qualify_synthetic_runs(conn)
+        conn.commit()
     finally:
         conn.close()
     return db_path
@@ -614,12 +630,21 @@ def test_prepare_dataset_drops_runs_above_the_continuity_threshold(
     assert filtered.prep_id != unfiltered.prep_id
 
 
-def test_prepare_dataset_keeps_runs_with_null_continuity(csv_shaped_dataset, tmp_path):
-    """Ruling "NULL = no excluido": una corrida sin medicion de continuidad
-    (p.ej. backfill viejo) no se descarta."""
+def test_prepare_dataset_excludes_runs_with_null_continuity(csv_shaped_dataset, tmp_path):
+    """Unknown continuity remains unverified and is excluded from training."""
     dataset = csv_shaped_dataset.copy()
-    dataset["continuity_error_pct"] = float("nan")
-    db_path = _build_sql_db(tmp_path, dataset, "null_continuity")
+    dataset["continuity_error_pct"] = 0.5
+    dataset.loc[
+        (dataset["shape_id"] == "storm_a") & (dataset["factor_mult"] == 3.0),
+        "continuity_error_pct",
+    ] = float("nan")
+    db_path = _build_sql_db(
+        tmp_path,
+        dataset,
+        "null_continuity",
+        quality_limit_pct=10.0,
+        default_continuity_error_pct=None,
+    )
 
     prepared = prepare_dataset(
         db_path, protocols=("LOSO",), flood_threshold_m3=1.0,
@@ -627,7 +652,8 @@ def test_prepare_dataset_keeps_runs_with_null_continuity(csv_shaped_dataset, tmp
         max_continuity_error_pct=5.0,
     )
 
-    assert prepared.manifest["n_rows"] == len(dataset)
+    assert prepared.manifest["n_rows"] == len(dataset) - dataset["node_id"].nunique()
+    assert ("storm_a", 3.0) not in _shape_factor_pairs(prepared.keys)
 
 
 def test_prepare_dataset_without_threshold_keeps_high_continuity_runs(
@@ -638,7 +664,9 @@ def test_prepare_dataset_without_threshold_keeps_high_continuity_runs(
         csv_shaped_dataset, high_shape_id="storm_a", high_factor=3.0,
         high_value=-7.31,
     )
-    db_path = _build_sql_db(tmp_path, dataset, "unfiltered_default")
+    db_path = _build_sql_db(
+        tmp_path, dataset, "unfiltered_default", quality_limit_pct=10.0
+    )
 
     prepared = prepare_dataset(
         db_path, protocols=("LOSO",), flood_threshold_m3=1.0,

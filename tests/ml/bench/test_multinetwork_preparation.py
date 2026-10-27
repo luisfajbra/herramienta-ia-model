@@ -19,6 +19,7 @@ from swmm_resilience.ml.bench.schemas import PreparedDataset
 from swmm_resilience.ml.bench import preprocess as preprocess_module
 from swmm_resilience.ml.bench.train import load_candidate, train_candidate
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V21, TABULAR_V4_21
+from tests.conftest import qualify_synthetic_runs
 
 
 def _datasets():
@@ -113,6 +114,10 @@ def test_cli_prepares_and_reloads_v4_21_for_two_selected_networks(tmp_path, monk
             )
         conn.commit()
         network_ids.append(info["network_id"])
+    # The quality gate is part of training selection; these toy runs need an
+    # explicit, internally consistent manifest before the CLI can prepare them.
+    qualify_synthetic_runs(conn, max_continuity_error_pct=10.0)
+    conn.commit()
     conn.close()
 
     config = SimpleNamespace(

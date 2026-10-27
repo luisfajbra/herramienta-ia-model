@@ -13,27 +13,85 @@ FEATURE_COLS = list(FEATURE_COLUMNS_V17)
 
 
 def _qualify_synthetic_training_runs(conn):
-    """These fixture datasets represent intentionally QA-qualified toy runs."""
-    run_ids = [row[0] for row in conn.execute("SELECT run_id FROM runs")]
-    for run_id in run_ids:
-        conn.execute(
-            "UPDATE runs SET continuity_error_pct=0.0 WHERE run_id=?",
-            (run_id,),
-        )
+    """Mark ordinary toy runs as clean, verified fixtures."""
+    qualify_synthetic_runs(conn, max_continuity_error_pct=5.0)
+
+
+def qualify_synthetic_runs(
+    conn,
+    *,
+    max_continuity_error_pct: float = 5.0,
+    default_continuity_error_pct: float | None = 0.0,
+):
+    """Attach internally consistent QA manifests to synthetic database rows.
+
+    A missing continuity value is filled only when the fixture explicitly asks
+    for a known-good default. Passing ``None`` keeps it unknown and ineligible.
+    Existing finite values are preserved so tests can exercise threshold logic.
+    """
+    import hashlib
+    import json
+
+    policy = {
+        "max_continuity_error_pct": float(max_continuity_error_pct),
+        "continuity_limit_rationale": "synthetic fixture policy",
+    }
+    policy_json = json.dumps(policy, sort_keys=True, separators=(",", ":"))
+    policy_sha256 = hashlib.sha256(policy_json.encode("utf-8")).hexdigest()
+    initial_condition = {
+        "policy_id": "synthetic_fixture_initial_state_v1",
+        "state_sha256": "a" * 64,
+    }
+    initial_json = json.dumps(initial_condition, sort_keys=True, separators=(",", ":"))
+
+    rows = conn.execute(
+        "SELECT run_id, continuity_error_pct FROM runs ORDER BY run_id"
+    ).fetchall()
+    for run_id, observed_continuity in rows:
+        continuity = observed_continuity
+        if continuity is None and default_continuity_error_pct is not None:
+            continuity = float(default_continuity_error_pct)
+            conn.execute(
+                "UPDATE runs SET continuity_error_pct=? WHERE run_id=?",
+                (continuity, run_id),
+            )
+        eligible = continuity is not None and abs(float(continuity)) <= max_continuity_error_pct
+        reason_codes = [] if eligible else [
+            "continuity_unavailable" if continuity is None else "continuity_exceeds_limit"
+        ]
+        manifest = {
+            "eligible": eligible,
+            "reason_codes": reason_codes,
+            "continuity_error_pct": continuity,
+            "finite_coverage_ok": eligible,
+            "drainage_state": "drained" if eligible else "unverified",
+            "flooding_report": {
+                "parser": "synthetic_fixture",
+                "parser_version": "1",
+                "report_sha256": "b" * 64,
+            },
+        }
+        manifest_json = json.dumps(manifest, sort_keys=True, separators=(",", ":"))
         conn.execute(
             """INSERT INTO run_hydraulic_quality (
                 run_id, policy_version, policy_json, policy_sha256,
                 continuity_error_pct, finite_coverage_ok, drainage_state,
                 initial_condition_json, eligible, reason_codes_json,
                 manifest_json, created_at_utc
-            ) VALUES (?, 'test-quality-v1',
-                      '{"max_continuity_error_pct":5,"continuity_limit_rationale":"synthetic fixture"}', ?,
-                      0.0, 1, 'drained',
-                      '{"policy_id":"synthetic","state_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}',
-                      1, '[]',
-                      '{"eligible":true,"reason_codes":[],"continuity_error_pct":0.0,"finite_coverage_ok":true,"drainage_state":"drained","flooding_report":{"parser":"fixture","parser_version":"1","report_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}}',
+            ) VALUES (?, 'test-quality-v1', ?, ?, ?, ?, ?, ?, ?, ?, ?,
                       '2026-10-26T00:00:00Z')""",
-            (run_id, "f" * 64),
+            (
+                run_id,
+                policy_json,
+                policy_sha256,
+                continuity,
+                int(eligible),
+                "drained" if eligible else "unverified",
+                initial_json,
+                int(eligible),
+                json.dumps(reason_codes, separators=(",", ":")),
+                manifest_json,
+            ),
         )
 
 

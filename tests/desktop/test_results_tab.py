@@ -4,12 +4,22 @@ from __future__ import annotations
 
 import tkinter as tk
 
+import pytest
+
 from swmm_resilience.desktop.app import ResilienciaDesktopApp
 
 
-def test_results_tab_exists():
-    root = tk.Tk()
+def _make_root():
+    try:
+        root = tk.Tk()
+    except tk.TclError as exc:
+        pytest.skip(f"Tk runtime is unavailable in this environment: {exc}")
     root.withdraw()
+    return root
+
+
+def test_results_tab_exists():
+    root = _make_root()
     app = ResilienciaDesktopApp(root)
     try:
         tabs = [app.notebook.tab(i, "text") for i in range(app.notebook.index("end"))]
@@ -19,8 +29,7 @@ def test_results_tab_exists():
 
 
 def test_results_tree_has_four_folders():
-    root = tk.Tk()
-    root.withdraw()
+    root = _make_root()
     app = ResilienciaDesktopApp(root)
     try:
         children = app.results_tree.get_children()
@@ -36,8 +45,7 @@ def test_results_tree_has_four_folders():
 
 def test_predict_surr_button_disabled_without_artifacts():
     """Button is disabled when surrogate_cnn_weights.pt does not exist."""
-    root = tk.Tk()
-    root.withdraw()
+    root = _make_root()
     app = ResilienciaDesktopApp(root)
     try:
         app.predict_inp_var.set("/nonexistent/path/model.inp")
@@ -48,8 +56,7 @@ def test_predict_surr_button_disabled_without_artifacts():
 
 def test_refresh_tree_populates_children(tmp_path, monkeypatch):
     """Tree gets populated when map files exist in network directories."""
-    root = tk.Tk()
-    root.withdraw()
+    root = _make_root()
     app = ResilienciaDesktopApp(root)
     try:
         network_dir = tmp_path / "test_network"
@@ -70,8 +77,7 @@ def test_refresh_tree_populates_children(tmp_path, monkeypatch):
 
 def test_display_image_shows_selected_map(tmp_path):
     """Selecting a tree item displays the image in the right panel."""
-    root = tk.Tk()
-    root.withdraw()
+    root = _make_root()
     app = ResilienciaDesktopApp(root)
     try:
         network_dir = tmp_path / "test_network"
@@ -100,8 +106,7 @@ def test_display_image_shows_selected_map(tmp_path):
 
 def test_refresh_tree_empty_when_no_dirs_exist():
     """Tree is empty when no map directories exist."""
-    root = tk.Tk()
-    root.withdraw()
+    root = _make_root()
     app = ResilienciaDesktopApp(root)
     try:
         app.predict_inp_var.set("/nonexistent/path/model.inp")
@@ -114,8 +119,7 @@ def test_refresh_tree_empty_when_no_dirs_exist():
 
 def test_refresh_tree_shows_all_categories(tmp_path):
     """Tree populates children under each category folder."""
-    root = tk.Tk()
-    root.withdraw()
+    root = _make_root()
     app = ResilienciaDesktopApp(root)
     try:
         network_dir = tmp_path / "test_network"

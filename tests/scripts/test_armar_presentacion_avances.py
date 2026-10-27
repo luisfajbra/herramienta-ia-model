@@ -2,6 +2,8 @@
 
 import csv
 import hashlib
+import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -367,6 +369,27 @@ def _png(path: Path, color, size=(40, 20)):
     return path
 
 
+def _figuras_de_prueba(tmp_path):
+    """Provide image placeholders while keeping the real numeric inputs."""
+    figuras_dir = tmp_path / "figures_part2"
+    figuras_dir.mkdir()
+    for filename in ("figure_numbers.json", "INDEX.md"):
+        shutil.copy2(FIGURAS_REALES / filename, figuras_dir / filename)
+    nums = json.loads((figuras_dir / "figure_numbers.json").read_text(encoding="utf-8"))
+    filenames = {
+        "parity_nodes_3models.png",
+        "parity_scenario_totals_3models.png",
+        "error_by_shape.png",
+    }
+    for selected in nums["selected_scenarios"]:
+        shape = selected["shape"]
+        factor = selected["factor"]
+        filenames.add(f"flood_map_{selected['rule']}_{shape}_f{factor:.1f}.png")
+    for filename in filenames:
+        _png(figuras_dir / filename, (120, 150, 180))
+    return figuras_dir
+
+
 def _prs_con_imagen(tmp_path):
     prs = Presentation()
     prs.slide_width, prs.slide_height = Emu(deck.SLIDE_W), Emu(deck.SLIDE_H)
@@ -413,11 +436,11 @@ def test_replace_base_pictures_fails_for_unknown_picture_or_file(tmp_path):
 
 @pytest.mark.skipif(not (FIGURAS_REALES / "figure_numbers.json").exists(),
                     reason="docs/figures_part2 not available")
-def test_figure_slides_use_the_numbers_of_figure_numbers_json():
-    import json
-    nums = json.loads((FIGURAS_REALES / "figure_numbers.json").read_text(encoding="utf-8"))
+def test_figure_slides_use_the_numbers_of_figure_numbers_json(tmp_path):
+    figuras_dir = _figuras_de_prueba(tmp_path)
+    nums = json.loads((figuras_dir / "figure_numbers.json").read_text(encoding="utf-8"))
     prs = _prs_base()
-    nuevas = deck.agregar_slides_figuras(prs, FIGURAS_REALES)
+    nuevas = deck.agregar_slides_figuras(prs, figuras_dir)
     assert [_titulo(x) for x in nuevas] == [
         "Parity per node: predicted vs SWMM volume",
         "Parity per scenario: total flooded volume",
@@ -449,7 +472,8 @@ def test_figure_slides_use_the_numbers_of_figure_numbers_json():
                     reason="docs/figures_part2 not available")
 def test_results_with_figures_puts_them_before_the_conclusions(tmp_path):
     datos = _datos_parte2_falsos(tmp_path / "datos_parte2")
-    nuevas = deck.agregar_slide_resultados(_prs_base(), datos, FIGURAS_REALES)
+    figuras_dir = _figuras_de_prueba(tmp_path)
+    nuevas = deck.agregar_slide_resultados(_prs_base(), datos, figuras_dir)
     assert len(nuevas) == 3 + 6 + 1
     assert _titulo(nuevas[-1]) == "Conclusions and next steps"
     assert _titulo(nuevas[2]).startswith("Confusion matrices")
