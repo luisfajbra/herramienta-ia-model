@@ -30,4 +30,4 @@ The warnings are existing Matplotlib/Pyparsing deprecations. The first run also 
 
 ## Commit
 
-Feature commit: pending.
+Feature commit: `c3790ab324b415fe9eee5827eb8ee32fb708dbd1` (`feat: persist immutable run source artifact links`).
