@@ -21,4 +21,13 @@ Therefore the current historical A/B records cannot pass the importer, and none 
 
 ## Review and commit
 
-Parent review requested atomic cleanup on manifest write errors; the importer now removes a partially created manifest and rolls back SQLite links, covered by a synthetic failure-injection test. `git diff --check` is clean. Committed as `feat: bind frozen simulation manifests to run ids` on `fix/test-suite-contracts-2026-10-27`.
+Parent review requested atomic cleanup on manifest write errors; the importer removes a partially created manifest and rolls back SQLite links, covered by a synthetic failure-injection test. The first implementation was committed as `965677ab` (`feat: bind frozen simulation manifests to run ids`) on `fix/test-suite-contracts-2026-10-27`.
+
+## Independent review fixes
+
+Review found that the importer checked only `expected_scenarios` count and could accept a different batch scenario at the same count. Protocols must now carry a unique explicit `expected_scenario_keys` list of the exact planned key set; the importer checks equality and duplicates before file/database linking. It does not derive keys from shapes/factors or infer a special key for `base`. A synthetic `base` scenario with an arbitrary explicit key verifies this contract. Review also found that calling the importer inside an outer SQLite transaction could allow a caller rollback after the manifest file was written. The importer now rejects `conn.in_transaction` at entry and documents that it owns the atomic transaction. A test confirms the rejection leaves no artifact rows or output manifest.
+
+- RED: the review-fix tests reproduced both findings: same-count unexpected key was only rejected later by DB key mismatch, while active outer transaction was accepted.
+- GREEN: focused importer suite — **11 passed**.
+- Regression: importer + source artifact + migrations 009/010/catalog — **36 passed**, 13 existing matplotlib/pyparsing deprecation warnings.
+- Review-fix commit: `fix: seal exact frozen scenario key set` (separate from the initial Task 5b feature commit).

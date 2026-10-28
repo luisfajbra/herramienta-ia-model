@@ -124,6 +124,33 @@ def _prepare_import(conn: sqlite3.Connection, root: Path) -> tuple[dict, list[di
     expected = protocol.get("expected_scenarios")
     if type(expected) is not int or expected != len(raw_results):
         raise ValueError("batch result count does not match frozen protocol expected_scenarios")
+    expected_keys = protocol.get("expected_scenario_keys")
+    if (
+        not isinstance(expected_keys, list)
+        or not expected_keys
+        or any(not isinstance(key, str) or not key.strip() for key in expected_keys)
+        or len(set(expected_keys)) != len(expected_keys)
+    ):
+        raise ValueError("protocol must freeze a unique, non-empty expected_scenario_keys list")
+    if len(expected_keys) != expected:
+        raise ValueError("frozen expected_scenario_keys count does not match expected_scenarios")
+    actual_keys = []
+    for index, record in enumerate(raw_results):
+        if not isinstance(record, dict):
+            raise ValueError(f"batch result {index} must be an object")
+        scenario_key = record.get("scenario_key")
+        if not isinstance(scenario_key, str) or not scenario_key.strip():
+            raise ValueError(f"batch result {index} requires the exact scenario_key")
+        actual_keys.append(scenario_key)
+    if len(set(actual_keys)) != len(actual_keys):
+        raise ValueError("batch results contain duplicate scenario_key values")
+    if set(actual_keys) != set(expected_keys):
+        missing_keys = sorted(set(expected_keys) - set(actual_keys))
+        extra_keys = sorted(set(actual_keys) - set(expected_keys))
+        raise ValueError(
+            "frozen scenario-key set mismatch "
+            f"(missing={missing_keys}, extra={extra_keys})"
+        )
 
     network = _resolve_recorded_file(
         root, protocol.get("input_inp"), protocol.get("input_inp_sha256"), "source network INP"
@@ -220,8 +247,14 @@ def import_frozen_experiment_manifest(
 
     Protocol and batch input paths are relative to ``experiment_root``. The
     new manifest is created exclusively; existing manifests are never replaced.
-    This function does not run SWMM or write scenario/feature/label data.
+    The caller must provide a connection with no active transaction; this
+    function owns and commits its atomic SQLite/file transaction. It does not
+    run SWMM or write scenario/feature/label data.
     """
+    if conn.in_transaction:
+        raise RuntimeError(
+            "importer owns its transaction; pass a connection with no active transaction"
+        )
     root = Path(experiment_root).resolve(strict=True)
     if not root.is_dir():
         raise ValueError("experiment_root must be an existing directory")

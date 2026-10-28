@@ -15,7 +15,8 @@ def _sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _fixture(tmp_path, *, db_runs=1, batch_runs=1, eligible=True):
+def _fixture(tmp_path, *, db_runs=1, batch_runs=1, eligible=True,
+             shape_id="shape_a", factor=1.0, scenario_key="shape_a@1.0"):
     root = tmp_path / "experiment"
     root.mkdir(parents=True)
     conn = connect_managed_database(tmp_path / "source.sqlite3")
@@ -34,8 +35,8 @@ def _fixture(tmp_path, *, db_runs=1, batch_runs=1, eligible=True):
             """INSERT INTO scenarios (scenario_id, network_id, scenario_key,
                        scenario_kind, factor_mult, shape_id, duracion_horas,
                        tiempo_al_pico_h, config_json, config_sha256)
-               VALUES (?, ?, ?, 'factor', 1.0, 'shape_a', 1, 0.5, '{}', ?)""",
-            (run_id, 1, "shape_a@1.0", hex(run_id)[2:] * 64),
+               VALUES (?, ?, ?, 'factor', ?, ?, 1, 0.5, '{}', ?)""",
+            (run_id, 1, scenario_key, factor, shape_id, hex(run_id)[2:] * 64),
         )
         conn.execute(
             """INSERT INTO runs (run_id, network_id, scenario_id, status,
@@ -74,8 +75,8 @@ def _fixture(tmp_path, *, db_runs=1, batch_runs=1, eligible=True):
                 artifacts[role] = {"path": path.relative_to(root).as_posix(), "sha256": _sha(path)}
         rpt = artifacts["swmm_rpt"]
         records.append({
-            "shape_id": "shape_a", "factor": 1.0,
-            "scenario_key": "shape_a@1.0", "scenario_id": "synthetic-run-key",
+            "shape_id": shape_id, "factor": factor,
+            "scenario_key": scenario_key, "scenario_id": "synthetic-run-key",
             "rpt": rpt["path"], "rpt_sha256": rpt["sha256"],
             "eligible_by_software_qa": True, "reason_codes": [],
             "flooding_report": {"report_sha256": rpt["sha256"]},
@@ -86,12 +87,14 @@ def _fixture(tmp_path, *, db_runs=1, batch_runs=1, eligible=True):
         "protocol_id": "synthetic-frozen-v1", "status": "frozen_before_run",
         "input_inp": "network.inp", "input_inp_sha256": network_hash,
         "shape_csvs": {"shape_a": {"path": "events/shape_a.csv", "sha256": _sha(shape_csv)}},
+        "expected_scenario_keys": [scenario_key],
         "expected_scenarios": batch_runs,
     }
     protocol_path = root / "protocol.json"
     protocol_path.write_text(json.dumps(protocol, sort_keys=True, indent=2) + "\n", encoding="utf-8")
     batch = {"protocol_sha256": _sha(protocol_path), "status": "complete", "results": records}
     (root / "batch_progress.json").write_text(json.dumps(batch, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+    conn.commit()
     return conn, root
 
 
@@ -155,10 +158,11 @@ def test_import_rejects_duplicate_record_and_scenario_key_mismatch(tmp_path):
     protocol_path = root / "protocol.json"
     protocol = json.loads(protocol_path.read_text())
     protocol["expected_scenarios"] = 2
+    protocol["expected_scenario_keys"] = ["shape_a@1.0", "shape_a@1.1"]
     protocol_path.write_text(json.dumps(protocol), encoding="utf-8")
     batch["protocol_sha256"] = _sha(protocol_path)
     batch_path.write_text(json.dumps(batch), encoding="utf-8")
-    with pytest.raises(ValueError, match="duplicate batch record"):
+    with pytest.raises(ValueError, match="duplicate scenario_key"):
         import_frozen_experiment_manifest(conn, root)
     conn.close()
 
@@ -166,6 +170,12 @@ def test_import_rejects_duplicate_record_and_scenario_key_mismatch(tmp_path):
     batch_path = root / "batch_progress.json"
     batch = json.loads(batch_path.read_text())
     batch["results"][0]["scenario_key"] = "different@1.0"
+    batch_path.write_text(json.dumps(batch), encoding="utf-8")
+    protocol_path = root / "protocol.json"
+    protocol = json.loads(protocol_path.read_text())
+    protocol["expected_scenario_keys"] = ["different@1.0"]
+    protocol_path.write_text(json.dumps(protocol), encoding="utf-8")
+    batch["protocol_sha256"] = _sha(protocol_path)
     batch_path.write_text(json.dumps(batch), encoding="utf-8")
     with pytest.raises(ValueError, match="scenario_key mismatch"):
         import_frozen_experiment_manifest(conn, root)
@@ -186,6 +196,23 @@ def test_import_rejects_protocol_seal_and_missing_shape_source_path(tmp_path):
     batch_path.write_text(json.dumps(batch), encoding="utf-8")
     with pytest.raises(ValueError, match="frozen shape source"):
         import_frozen_experiment_manifest(conn, root)
+    conn.close()
+
+
+def test_import_rejects_protocol_without_frozen_scenario_key_list(tmp_path):
+    conn, root = _fixture(tmp_path)
+    protocol_path = root / "protocol.json"
+    protocol = json.loads(protocol_path.read_text())
+    protocol.pop("expected_scenario_keys")
+    protocol_path.write_text(json.dumps(protocol), encoding="utf-8")
+    batch_path = root / "batch_progress.json"
+    batch = json.loads(batch_path.read_text())
+    batch["protocol_sha256"] = _sha(protocol_path)
+    batch_path.write_text(json.dumps(batch), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="expected_scenario_keys"):
+        import_frozen_experiment_manifest(conn, root)
+    assert conn.execute("SELECT COUNT(*) FROM run_source_artifacts").fetchone()[0] == 0
     conn.close()
 
 
@@ -220,4 +247,44 @@ def test_manifest_write_failure_removes_partial_output_and_rolls_back_links(tmp_
         import_frozen_experiment_manifest(conn, root)
     assert not output.exists()
     assert conn.execute("SELECT COUNT(*) FROM run_source_artifacts").fetchone()[0] == 0
+    conn.close()
+
+
+def test_import_rejects_missing_and_extra_scenario_key_with_unchanged_count(tmp_path):
+    conn, root = _fixture(tmp_path)
+    batch_path = root / "batch_progress.json"
+    batch = json.loads(batch_path.read_text())
+    batch["results"][0]["scenario_key"] = "unexpected@9.0"
+    batch_path.write_text(json.dumps(batch), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="frozen scenario-key set mismatch"):
+        import_frozen_experiment_manifest(conn, root)
+    assert conn.execute("SELECT COUNT(*) FROM run_source_artifacts").fetchone()[0] == 0
+    assert not (root / "experiment_source_manifest.json").exists()
+    conn.close()
+
+
+def test_import_uses_explicit_frozen_base_scenario_key_without_inference(tmp_path):
+    conn, root = _fixture(
+        tmp_path, shape_id="base", factor=0.2, scenario_key="inp_native_case_alpha"
+    )
+
+    manifest = import_frozen_experiment_manifest(conn, root)
+
+    assert manifest["runs"][0]["scenario_key"] == "inp_native_case_alpha"
+    assert manifest["runs"][0]["shape_id"] == "base"
+    conn.close()
+
+
+def test_import_rejects_an_open_transaction_before_any_side_effect(tmp_path):
+    conn, root = _fixture(tmp_path)
+    conn.execute("BEGIN")
+
+    with pytest.raises(RuntimeError, match="importer owns its transaction"):
+        import_frozen_experiment_manifest(conn, root)
+
+    assert conn.in_transaction
+    assert conn.execute("SELECT COUNT(*) FROM run_source_artifacts").fetchone()[0] == 0
+    assert not (root / "experiment_source_manifest.json").exists()
+    conn.rollback()
     conn.close()
