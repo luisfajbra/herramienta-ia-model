@@ -1,5 +1,6 @@
 import hashlib
 import json
+from pathlib import Path
 
 import pytest
 
@@ -13,7 +14,8 @@ def _sha(path):
 
 def _fixture(tmp_path, *, event_nodes=("J1",), continuity=0.5, two_scenarios=False,
              add_unmodified_series=False, add_non_event_flow=False,
-             add_shared_event_series=False, add_shared_event_consumer=False):
+             add_shared_event_series=False, add_shared_event_consumer=False,
+             add_zero_peak_flow=False):
     from tests.validation.test_network_admission import _FIXTURE
 
     root = tmp_path / "frozen-b"
@@ -39,6 +41,14 @@ def _fixture(tmp_path, *, event_nodes=("J1",), continuity=0.5, two_scenarios=Fal
         source_content = source_content.replace(
             "J1 FLOW EVENT_J1 FLOW 1.0 1.0 2.5",
             "J1 FLOW EVENT_J1 FLOW 1.0 1.0 2.5\nJ2 FLOW EVENT_J1 FLOW 1.0 0.0 0.0",
+        )
+    if add_zero_peak_flow:
+        source_content = source_content.replace(
+            "J1 FLOW EVENT_J1 FLOW 1.0 1.0 2.5",
+            "J1 FLOW EVENT_J1 FLOW 1.0 1.0 2.5\nJ2 FLOW ZERO_PEAK_TS FLOW 1.0 0.0 0.0",
+        ).replace(
+            "EVENT_J1 0:15 0.0",
+            "EVENT_J1 0:15 0.0\nZERO_PEAK_TS 0:00 0.0\nZERO_PEAK_TS 0:10 0.0",
         )
     if add_shared_event_consumer:
         source_content = source_content.replace(
@@ -139,6 +149,37 @@ def _fixture(tmp_path, *, event_nodes=("J1",), continuity=0.5, two_scenarios=Fal
     return db, root, batch, anchor_path
 
 
+def test_empty_tags_section_is_equivalent_to_omitted_section(tmp_path, monkeypatch):
+    import swmm_resilience.database.label_free_b_staging as staging
+
+    source = tmp_path / "source.inp"
+    effective = tmp_path / "effective.inp"
+    source.write_text("source", encoding="utf-8")
+    effective.write_text("effective", encoding="utf-8")
+    physical = {"JUNCTIONS": {"J1": {"elevation": 10.0}}}
+    parsed = {
+        source: {**physical, "TAGS": {}},
+        effective: physical,
+    }
+    monkeypatch.setattr(staging, "load_inp", lambda path: parsed[Path(path)])
+
+    staging._assert_hydraulic_inp_descriptor_matches(source, effective)
+
+
+def test_a_base_event_may_include_zero_peak_source_flow_nodes(tmp_path):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+
+    conn, root, _, anchor = _fixture(
+        tmp_path, event_nodes=("J1", "J2"), add_zero_peak_flow=True,
+    )
+    staged = stage_frozen_b_label_free(
+        conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor,
+    )
+    assert staged["manifest"]["run_order"][0]["eligible"] is True
+    assert len(staged["features"]) == len(staged["keys"]) > 0
+    conn.close()
+
+
 @pytest.fixture(autouse=True)
 def _synthetic_swmm_qa(monkeypatch):
     import pandas as pd
@@ -229,7 +270,7 @@ def test_frozen_b_staging_rejects_event_hash_change_and_incomplete_node_coverage
     manifest["runs"][0]["artifacts"]["event_source"]["sha256"] = _sha(root / "event.csv")
     manifest["runs"][0]["artifacts"]["event_source"]["path"] = "event.csv"
     (root / "frozen_b_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    with pytest.raises(ValueError, match="node coverage|Incorrect nodes"):
+    with pytest.raises(ValueError, match="node coverage|Incorrect nodes|event-source nodes"):
         stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
     assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
     conn.close()

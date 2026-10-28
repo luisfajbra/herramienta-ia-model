@@ -133,11 +133,19 @@ def _make_features(inp_path: Path, event_path: Path, feature_contract_id: str) -
     full = compute_topology_features(static, inp_path)
     inp = load_inp(inp_path)
     graph, _ = build_network_graph(inp)
-    expected_inflow_nodes = set(
+    positive_flow_nodes = set(
         full.loc[full["base_inflow_lps"].astype(float) > 0.0, "node_id"].astype(str)
     )
-    scenario = load_scenario(event_path, expected_nodes=expected_inflow_nodes)
-    if not expected_inflow_nodes:
+    flow_nodes = set(get_node_timeseries_map(inp))
+    event_csv_nodes = set(pd.read_csv(event_path, usecols=["node_id"])["node_id"].astype(str))
+    scenario = load_scenario(event_path, expected_nodes=event_csv_nodes)
+    if event_csv_nodes not in (positive_flow_nodes, flow_nodes):
+        raise ValueError(
+            "feature event nodes must match positive-peak FLOW nodes or all FLOW nodes: "
+            f"event={sorted(event_csv_nodes)}, positive={sorted(positive_flow_nodes)}, "
+            f"all_flow={sorted(flow_nodes)}"
+        )
+    if not positive_flow_nodes:
         raise ValueError("effective INP has no positive inflow nodes for the frozen event")
     peak_map = {node: max(value for _, value in series) for node, series in scenario.node_series.items()}
     representative = next(iter(scenario.node_series.values()))
@@ -268,7 +276,13 @@ def _parsed_hydraulic_inp_descriptor(inp_path: Path | str) -> dict:
                 key: value for key, value in section.items()
                 if str(key).upper() not in _HYDRAULIC_INP_EXCLUDED_OPTIONS
             }
-        descriptor[section_name] = _normalize_inp_descriptor_value(section)
+        normalized = _normalize_inp_descriptor_value(section)
+        # swmm-api can retain an empty optional section in the source INP but
+        # omit it when serializing an effective INP. Empty sections have no
+        # parsed hydraulic content, so their presence is semantically inert.
+        if normalized in ({}, [], None):
+            continue
+        descriptor[section_name] = normalized
     return descriptor
 
 
@@ -319,24 +333,36 @@ def _assert_scenario_inp_changes_match_source(
     source = load_inp(source_inp)
     effective = load_inp(effective_inp)
     source_static = extract_static_features(Path(source_inp))
-    event_nodes = set(
+    positive_flow_nodes = set(
         source_static.loc[source_static["base_inflow_lps"].astype(float) > 0.0, "node_id"].astype(str)
     )
-    scenario = load_scenario(event_path, expected_nodes=event_nodes)
-    source_flow_map = get_node_timeseries_map(source)
-    effective_flow_map = get_node_timeseries_map(effective)
-
     source_inflows = source["INFLOWS"] if "INFLOWS" in source else {}
     effective_inflows = effective["INFLOWS"] if "INFLOWS" in effective else {}
     if set(source_inflows) != set(effective_inflows):
         raise ValueError("effective INP inflow identities differ from source INP")
     source_flow_nodes = {str(node) for (node, constituent) in source_inflows
                          if str(constituent).upper() == "FLOW"}
-    if not event_nodes.issubset(source_flow_nodes):
+    if not positive_flow_nodes.issubset(source_flow_nodes):
         raise ValueError(
-            "event-source nodes differ from source INP positive effective FLOW inflow nodes: "
-            f"event={sorted(event_nodes)}, source={sorted(source_flow_nodes)}"
+            "source positive-flow feature nodes are missing FLOW inflows: "
+            f"positive={sorted(positive_flow_nodes)}, source={sorted(source_flow_nodes)}"
         )
+    # load_scenario requires an expected node set. Read only the declared node
+    # identities first, then let its normal strict validation check the full
+    # CSV against that set before applying the two frozen source contracts.
+    event_csv_nodes = set(pd.read_csv(event_path, usecols=["node_id"])["node_id"].astype(str))
+    scenario = load_scenario(event_path, expected_nodes=event_csv_nodes)
+    event_nodes = set(scenario.node_series)
+    allowed_event_node_sets = {frozenset(positive_flow_nodes), frozenset(source_flow_nodes)}
+    if frozenset(event_nodes) not in allowed_event_node_sets:
+        raise ValueError(
+            "event-source nodes must match either all positive-peak source FLOW nodes "
+            "(synthetic shape event) or all source FLOW nodes (base event): "
+            f"event={sorted(event_nodes)}, positive={sorted(positive_flow_nodes)}, "
+            f"source={sorted(source_flow_nodes)}"
+        )
+    source_flow_map = get_node_timeseries_map(source)
+    effective_flow_map = get_node_timeseries_map(effective)
     if source_flow_map != effective_flow_map:
         raise ValueError("effective INP FLOW node-to-timeseries references differ from source INP")
     event_series_names = []

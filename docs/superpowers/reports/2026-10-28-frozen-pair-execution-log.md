@@ -18,4 +18,14 @@ The runner now retries checkpoint replacement after bounded delays when it recei
 
 ## Authoritative execution
 
-Pending. The next run must finish both batches and produce complete A and B manifests before either dataset is staged. The interrupted roots are retained for audit and comparison only.
+The current authoritative root is `outputs/experiments/frozen_pair_rerun_20261028/20261028T194035Z`, anchored before simulation at commit `4efc53a`. A completed all 1,000 scenarios with no technical errors. Recalculated QA currently excludes 134 runs (100 not drained under the frozen retry policy, 35 above the provisional 5% continuity limit, and one with both reasons); all 1,000 have finite coverage. The remaining 866 are provisionally eligible for A training, subject to successful manifest staging.
+
+B remains in progress and is still sealed from model selection. At the last checkpoint, 63 of 975 scenarios had completed; 26 were hydraulically ineligible and none had a technical error. These counts are operational checkpoints, not final B results.
+
+## Staging corrections found by the real A manifest
+
+The first A staging attempt exposed a representational difference in the INP parser/writer: an empty optional `[TAGS]` section can be present in the source and omitted from the effective INP. Since the parsed section is empty, it carries no hydraulic objects or values. The hydraulic descriptor comparison now ignores only empty sections; a regression test covers this exact equivalence.
+
+A second attempt exposed the distinct frozen event contracts. Synthetic shape events contain every source `FLOW` node with positive base peak. The `base` event preserves every source `FLOW` node, including 13 whose peak is zero. The verifier and feature constructor now accept exactly either set and reject any other node set. A regression fixture exercises a base event with a zero-peak `FLOW` node. The two staging suites pass: 43 tests.
+
+The first two failed staging databases and their diagnostic artifacts are preserved and must not be reused. A third, fresh SQLite staging is underway with unique v3 manifest names. Until it completes and its final manifest is verified, A is not yet a prepared training dataset. No A model fitting or hyperparameter search has started; B targets have not been read.
