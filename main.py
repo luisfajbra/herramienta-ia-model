@@ -389,6 +389,8 @@ def _run_bench(args, config) -> None:
         result = run_study(
             prepared, families[0],
             n_trials=tuning_cfg.n_trials, n_splits=tuning_cfg.n_splits,
+            objective=tuning_cfg.objective or "mean_inner_fold_rmse",
+            inner_protocol="GroupKFold",
         )
         study_path = save_tune_result(result, BENCH_ROOT / "tuning")
         print(f"Optuna study saved to {study_path}")

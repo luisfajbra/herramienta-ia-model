@@ -601,6 +601,42 @@ def test_bench_tune_writes_a_study_and_touches_neither_models_nor_ranking(
     assert not (tmp_path / "outputs" / "bench" / "reports" / "ranking.csv").exists()
 
 
+def test_bench_tune_passes_configured_objective_and_grouped_fold_protocol(
+    sql_training_db_six_shapes, tmp_path, monkeypatch
+):
+    import main
+    import swmm_resilience.ml.bench.tune as tune
+    from types import SimpleNamespace
+
+    monkeypatch.chdir(tmp_path)
+    config = _make_config(
+        inp_path=tmp_path / "network.inp", db_path=sql_training_db_six_shapes,
+        families=["xgboost"], protocols=("LeaveOneShapeOut",),
+        tuning=BenchTuningConfig(n_trials=3, n_splits=5, objective="macro_network_rmse"),
+    )
+    main._run_bench(_make_args(bench_prepare=True), config)
+
+    captured = {}
+
+    def fake_run_study(prepared, family, **kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            objective_metric=kwargs.get("objective"), best_value=1.0, n_trials=3,
+            status="estimacion_exploratoria_condicionada", status_reason="test",
+        )
+
+    monkeypatch.setattr(tune, "run_study", fake_run_study)
+    monkeypatch.setattr(tune, "save_tune_result", lambda *_: tmp_path / "study.json")
+    main._run_bench(_make_args(bench_tune=True, models="xgboost"), config)
+
+    assert captured == {
+        "n_trials": 3,
+        "n_splits": 5,
+        "objective": "macro_network_rmse",
+        "inner_protocol": "GroupKFold",
+    }
+
+
 # ── baselines fallidas / umbral del manifiesto ───────────────────────────
 
 
