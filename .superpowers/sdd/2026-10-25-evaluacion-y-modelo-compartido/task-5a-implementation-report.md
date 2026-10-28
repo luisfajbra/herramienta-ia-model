@@ -60,4 +60,4 @@ The tests cover SQL guards and post-guard verification for scenario/config/statu
 
 `git diff --check` passed. The fix changes only the source-artifact registry/API, focused migration/API tests, and Task 5a documentation/report. `predict_transfer` and `score_transfer`, project data/output databases, simulations, and model fitting remain untouched.
 
-Review-fix commit: pending.
+Review-fix commit: `34e0e435b6411adafccbcb4ab0c8b90ef8be8abe` (`fix: bind source artifacts to immutable run identity`).
