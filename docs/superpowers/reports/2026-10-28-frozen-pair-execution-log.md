@@ -20,7 +20,7 @@ The runner now retries checkpoint replacement after bounded delays when it recei
 
 The current authoritative root is `outputs/experiments/frozen_pair_rerun_20261028/20261028T194035Z`, anchored before simulation at commit `4efc53a`. A completed all 1,000 scenarios with no technical errors. Recalculated QA currently excludes 134 runs (100 not drained under the frozen retry policy, 35 above the provisional 5% continuity limit, and one with both reasons); all 1,000 have finite coverage. The remaining 866 are provisionally eligible for A training, subject to successful manifest staging.
 
-B remains in progress and is still sealed from model selection. At the last checkpoint, 63 of 975 scenarios had completed; 26 were hydraulically ineligible and none had a technical error. These counts are operational checkpoints, not final B results.
+B remains in progress and sealed from model selection. Its initial checkpoint was 63/975; at 2026-10-28 22:45 UTC it had 159/975 results and 69 QA exclusions. These are operational counts, not final B results.
 
 ## Staging corrections found by the real A manifest
 
@@ -42,7 +42,7 @@ The third fresh A staging completed successfully. It records all 1,000 `COMPLETE
 
 PreparedDataset `813323e3ef75b752` contains those 138,560 rows from A and the `tabular_v4_21` contract. Its `GroupKFold5` split integrity was reloaded and checked: all five folds have zero `shape_id` overlap between train and validation. The frozen A protocol has 40 groups (39 synthetic forms plus `base`); QA left no eligible run for `base`, `long_moderate`, `shape_2h`, or `shape_5h`. Ten other groups have between 16 and 24 eligible factors rather than all 25. The training data therefore represent 36/40 groups, with no manual repair or target substitution.
 
-Selection is preregistered in `A/model_selection_Aonly_813323e3ef75b752/selection_preregistration_v2.json` (SHA-256 `6d5b729e33bd11622c2aba70063facdef4e9997c2dffb2aee7dcc8e54b64fd77`). The earlier v1 file is preserved but superseded because its `excluded_run_ids` field held exclusion records rather than integer IDs; the corrected v2 was sealed before either study began. The XGBoost study is now running with 50 trials, GroupKFold(5), A-only rows, the declared objective, and `n_jobs=1` per estimator. No B targets have been read.
+Selection is preregistered in `A/model_selection_Aonly_813323e3ef75b752/selection_preregistration_v2.json` (SHA-256 `6d5b729e33bd11622c2aba70063facdef4e9997c2dffb2aee7dcc8e54b64fd77`). The earlier v1 file is preserved but superseded because its `excluded_run_ids` field held exclusion records rather than integer IDs; the corrected v2 was sealed before either study began. XGBoost completed 50 A-only trials with GroupKFold(5) and `macro_network_rmse`. The best result was 73.78205679320975 at trial 13. Its study JSON is `A/model_selection_Aonly_813323e3ef75b752/studies/xgboost/813323e3ef75b752_20261028T224207Z/study.json` (SHA-256 `5b3ace9ece0223b86c538c63e56ccaff60f6ff37de8e0221021adca57764cd93`). The fitted candidate at `A/candidates/xgboost` records the study and preregistration hashes; model SHA-256 values are classifier `a1a6e504cca9a4553e93edeed3340da48c70b5b74167716c4bc96946f376046f` and regressor `045526a91a4a99a89bde1f473bfc4e67eefa950c5baacf835dcc595c5ecc1b7f`. Candidate provenance reload verification passed. The 50-trial MLP search has now started over the same A-only `PreparedDataset`, GroupKFold(5), seed 42, `macro_network_rmse`, 200 epochs, and batch size 256. Neither study uses B targets.
 
 ## Source-bound A-to-B scoring gate
 
