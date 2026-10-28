@@ -47,6 +47,8 @@ _TARGET_NAMES = frozenset({
     "labels", "targets", "inunda", "vol_inundacion_m3", "peak_flooding_lps",
     "flooding_duration_min", "max_depth_m", "max_depth_ratio", "node_results",
 })
+_STATIC_FEATURE_MATCH_RTOL = 1e-9
+_STATIC_FEATURE_MATCH_ATOL = 1e-9
 
 
 def _canonical(value: object) -> str:
@@ -179,6 +181,36 @@ def _inp_object_ids(inp_path: Path | str) -> tuple[set[str], set[str]]:
         for object_id in inp[section]
     }
     return node_ids, link_ids
+
+
+def _assert_static_features_match(source: pd.DataFrame, effective: pd.DataFrame) -> None:
+    """Require identical source/effective physical features, except event inflow."""
+    source_by_node = source.set_index(source["node_id"].astype(str)).sort_index()
+    effective_by_node = effective.set_index(effective["node_id"].astype(str)).sort_index()
+    if list(source_by_node.index) != list(effective_by_node.index):
+        raise ValueError("effective INP static feature junction IDs differ from source INP")
+    for column in source.columns:
+        if column in {"node_id", "base_inflow_lps"}:
+            continue
+        for node_id in source_by_node.index:
+            expected = source_by_node.at[node_id, column]
+            observed = effective_by_node.at[node_id, column]
+            expected_missing = pd.isna(expected)
+            observed_missing = pd.isna(observed)
+            if expected_missing or observed_missing:
+                if bool(expected_missing) != bool(observed_missing):
+                    raise ValueError(
+                        f"effective INP static feature {column} differs from source INP at node {node_id}: NaN mismatch"
+                    )
+                continue
+            if not np.isclose(
+                float(expected), float(observed),
+                rtol=_STATIC_FEATURE_MATCH_RTOL, atol=_STATIC_FEATURE_MATCH_ATOL,
+            ):
+                raise ValueError(
+                    f"effective INP static feature {column} differs from source INP at node {node_id} "
+                    f"(rtol={_STATIC_FEATURE_MATCH_RTOL}, atol={_STATIC_FEATURE_MATCH_ATOL})"
+                )
 
 
 def _derive_hydraulic_quality(
@@ -431,6 +463,7 @@ def stage_frozen_b_label_free(
         if (effective_node_ids != network_node_ids or effective_link_ids != network_link_ids
                 or set(effective_static["node_id"].astype(str)) != network_junction_ids):
             raise ValueError("effective INP junction coverage differs from the frozen source network")
+        _assert_static_features_match(static_features, effective_static)
         # Every QA evidence field is derived from the verified source artifacts;
         # caller-supplied values below are checked only as declarations.
         derived_qa = _derive_hydraulic_quality(

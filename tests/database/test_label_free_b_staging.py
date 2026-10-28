@@ -215,6 +215,32 @@ def test_effective_inp_must_preserve_all_source_node_and_link_ids(tmp_path):
     conn.close()
 
 
+@pytest.mark.parametrize(
+    ("source_text", "changed_text", "label"),
+    [
+        ("J1 2.0 2.0 0.0 0.0", "J1 2.5 2.0 0.0 0.0", "elevation"),
+        ("C1 CIRCULAR 0.5 0 0 0", "C1 CIRCULAR 0.7 0 0 0", "diameter"),
+    ],
+)
+def test_effective_inp_static_physics_must_match_source_except_base_inflow(
+    tmp_path, source_text, changed_text, label,
+):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+
+    conn, root, manifest, anchor = _fixture(tmp_path)
+    effective = root / "network.inp"
+    original = effective.read_text(encoding="utf-8")
+    assert source_text in original, f"synthetic fixture lacks {label} marker"
+    effective.write_text(original.replace(source_text, changed_text, 1), encoding="utf-8")
+    manifest["runs"][0]["artifacts"]["effective_inp"]["sha256"] = _sha(effective)
+    (root / "frozen_b_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="static feature.*differs"):
+        stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+    conn.close()
+
+
 def test_ineligible_run_is_staged_and_reported_without_features(tmp_path):
     from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
 
