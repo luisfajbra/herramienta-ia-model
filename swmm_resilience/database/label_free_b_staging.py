@@ -11,6 +11,8 @@ import json
 import math
 from pathlib import Path
 import sqlite3
+from datetime import date, datetime, time
+from enum import Enum
 
 import numpy as np
 import pandas as pd
@@ -49,6 +51,8 @@ _TARGET_NAMES = frozenset({
 })
 _STATIC_FEATURE_MATCH_RTOL = 1e-9
 _STATIC_FEATURE_MATCH_ATOL = 1e-9
+_HYDRAULIC_INP_EXCLUDED_SECTIONS = frozenset({"INFLOWS", "TIMESERIES"})
+_HYDRAULIC_INP_EXCLUDED_OPTIONS = frozenset({"END_DATE", "END_TIME"})
 
 
 def _canonical(value: object) -> str:
@@ -211,6 +215,89 @@ def _assert_static_features_match(source: pd.DataFrame, effective: pd.DataFrame)
                     f"effective INP static feature {column} differs from source INP at node {node_id} "
                     f"(rtol={_STATIC_FEATURE_MATCH_RTOL}, atol={_STATIC_FEATURE_MATCH_ATOL})"
                 )
+
+
+def _normalize_inp_descriptor_value(value: object) -> object:
+    """Convert swmm_api parsed INP values to stable JSON-compatible data."""
+    if isinstance(value, Enum):
+        return _normalize_inp_descriptor_value(value.value)
+    if isinstance(value, (datetime, date, time)):
+        return value.isoformat()
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, (float, np.floating)):
+        number = float(value)
+        if math.isnan(number):
+            return {"$float": "NaN"}
+        if math.isinf(number):
+            return {"$float": "Infinity" if number > 0 else "-Infinity"}
+        return number
+    if isinstance(value, np.integer):
+        return int(value)
+    if isinstance(value, dict) or callable(getattr(value, "items", None)):
+        pairs = []
+        for key, item in value.items():
+            normalized_key = _normalize_inp_descriptor_value(key)
+            stable_key = json.dumps(normalized_key, sort_keys=True, separators=(",", ":"), allow_nan=False)
+            pairs.append((stable_key, _normalize_inp_descriptor_value(item)))
+        return {key: item for key, item in sorted(pairs)}
+    if isinstance(value, (list, tuple)):
+        return [_normalize_inp_descriptor_value(item) for item in value]
+    attributes = getattr(value, "__dict__", None)
+    if isinstance(attributes, dict):
+        return _normalize_inp_descriptor_value(attributes)
+    if hasattr(value, "item"):
+        try:
+            return _normalize_inp_descriptor_value(value.item())
+        except (TypeError, ValueError):
+            pass
+    raise ValueError(f"unsupported parsed INP descriptor value: {type(value).__name__}")
+
+
+def _parsed_hydraulic_inp_descriptor(inp_path: Path | str) -> dict:
+    """Capture parsed physical INP data, allowing only event series/date exclusions."""
+    inp = load_inp(inp_path)
+    descriptor = {}
+    for raw_section_name in inp.keys():
+        section_name = str(raw_section_name).upper()
+        if section_name in _HYDRAULIC_INP_EXCLUDED_SECTIONS:
+            continue
+        section = inp[raw_section_name]
+        if section_name == "OPTIONS" and callable(getattr(section, "items", None)):
+            section = {
+                key: value for key, value in section.items()
+                if str(key).upper() not in _HYDRAULIC_INP_EXCLUDED_OPTIONS
+            }
+        descriptor[section_name] = _normalize_inp_descriptor_value(section)
+    return descriptor
+
+
+def _first_descriptor_difference(left: object, right: object, path: str = "$") -> str | None:
+    if isinstance(left, dict) and isinstance(right, dict):
+        for key in sorted(set(left) | set(right)):
+            if key not in left or key not in right:
+                return f"{path}.{key}"
+            difference = _first_descriptor_difference(left[key], right[key], f"{path}.{key}")
+            if difference:
+                return difference
+        return None
+    if isinstance(left, list) and isinstance(right, list):
+        if len(left) != len(right):
+            return f"{path}.length"
+        for index, (left_item, right_item) in enumerate(zip(left, right)):
+            difference = _first_descriptor_difference(left_item, right_item, f"{path}[{index}]")
+            if difference:
+                return difference
+        return None
+    return None if left == right else path
+
+
+def _assert_hydraulic_inp_descriptor_matches(source_inp: Path | str, effective_inp: Path | str) -> None:
+    source_descriptor = _parsed_hydraulic_inp_descriptor(source_inp)
+    effective_descriptor = _parsed_hydraulic_inp_descriptor(effective_inp)
+    difference = _first_descriptor_difference(source_descriptor, effective_descriptor)
+    if difference:
+        raise ValueError(f"effective INP parsed hydraulic descriptor differs from source INP at {difference}")
 
 
 def _derive_hydraulic_quality(
@@ -464,6 +551,7 @@ def stage_frozen_b_label_free(
                 or set(effective_static["node_id"].astype(str)) != network_junction_ids):
             raise ValueError("effective INP junction coverage differs from the frozen source network")
         _assert_static_features_match(static_features, effective_static)
+        _assert_hydraulic_inp_descriptor_matches(network_rec["path"], checked["effective_inp"]["path"])
         # Every QA evidence field is derived from the verified source artifacts;
         # caller-supplied values below are checked only as declarations.
         derived_qa = _derive_hydraulic_quality(

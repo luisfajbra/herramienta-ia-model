@@ -220,6 +220,10 @@ def test_effective_inp_must_preserve_all_source_node_and_link_ids(tmp_path):
     [
         ("J1 2.0 2.0 0.0 0.0", "J1 2.5 2.0 0.0 0.0", "elevation"),
         ("C1 CIRCULAR 0.5 0 0 0", "C1 CIRCULAR 0.7 0 0 0", "diameter"),
+        # C1_PAR is not the maximum-diameter conduit, so aggregated static
+        # features remain unchanged when only its roughness is edited.
+        ("C1_PAR J1 J2 120 0.014 0.0 0.0", "C1_PAR J1 J2 120 0.021 0.0 0.0", "non-dominant conduit roughness"),
+        ("C1_PAR J1 J2 120 0.014 0.0 0.0", "C1_PAR J1 S1 120 0.014 0.0 0.0", "conduit endpoint"),
     ],
 )
 def test_effective_inp_static_physics_must_match_source_except_base_inflow(
@@ -235,9 +239,36 @@ def test_effective_inp_static_physics_must_match_source_except_base_inflow(
     manifest["runs"][0]["artifacts"]["effective_inp"]["sha256"] = _sha(effective)
     (root / "frozen_b_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="static feature.*differs"):
+    with pytest.raises(ValueError, match="effective INP (static feature|parsed hydraulic descriptor).*differs"):
         stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
     assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+    conn.close()
+
+
+def test_hydraulic_descriptor_allows_only_explicit_event_and_end_time_changes(tmp_path):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+
+    conn, root, manifest, anchor = _fixture(tmp_path)
+    effective = root / "network.inp"
+    content = effective.read_text(encoding="utf-8")
+    for old, new in (
+        ("END_DATE 01/01/2025", "END_DATE 01/02/2025"),
+        ("END_TIME 00:15:00", "END_TIME 00:20:00"),
+        ("J1 FLOW EVENT_J1 FLOW 1.0 1.0 2.5", "J1 FLOW EVENT_J1 FLOW 1.0 1.0 4.5"),
+        ("EVENT_J1 0:05 2.0", "EVENT_J1 0:05 3.0"),
+    ):
+        assert old in content
+        content = content.replace(old, new, 1)
+    effective.write_text(content, encoding="utf-8")
+    manifest["runs"][0]["artifacts"]["effective_inp"]["sha256"] = _sha(effective)
+    (root / "frozen_b_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    staged = stage_frozen_b_label_free(
+        conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor,
+    )
+    assert staged["manifest"]["run_order"][0]["eligible"] is True
+    assert len(staged["features"]) == len(staged["keys"]) > 0
+    assert conn.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] == 0
     conn.close()
 
 
