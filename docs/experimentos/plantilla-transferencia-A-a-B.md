@@ -28,4 +28,35 @@ Para cada resultado, el manifiesto congelado debe incluir `shape_id`, `factor`/`
 
 El importador requiere una conexión SQLite sin transacción activa y es dueño de la transacción completa: registra los cinco enlaces con el helper inmutable y crea `experiment_source_manifest.json` en modo exclusivo, con `run_id`, claves de escenarios, rutas relativas, hashes, tamaños, hash del protocolo, hash de la tabla de enlaces y hash del manifiesto. No copia ni modifica fuentes. La transacción se revierte si la validación o la escritura del manifiesto falla. El registro no habilita predicción ni scoring.
 
-**Inventario de solo lectura de los manifiestos A/B actuales:** ambos `protocol.json` congelan hashes SHA-256 de los CSV de formas en `shape_csvs`, pero no incluyen rutas de esos CSV ni una lista `expected_scenario_keys`; aunque enumeran factores y formas, el formato exacto de `scenario_key` (en especial para `base`) no está congelado. El protocolo registra `input_inp` relativo al repositorio, no al directorio del experimento. Los resultados actuales de `batch_progress.json` solo contienen la ruta/hash del RPT; faltan `scenario_key`, rutas/hashes del INP efectivo, evento materializado y OUT, además de `event_series_sha256`. Por tanto no son admisibles por el importador y no se importaron ni alteraron. No se infieren rutas a partir de nombres de archivo, carpetas, combinaciones de forma/factor o del orden de resultados. Hace falta emitir un manifiesto congelado nuevo con esas claves y enlaces explícitos antes de Task 5c.
+**Inventario de solo lectura de los manifiestos históricos A/B:** ambos `protocol.json` congelan hashes SHA-256 de CSV de formas en `shape_csvs`, pero no incluyen sus rutas ni una lista `expected_scenario_keys`; el formato de `scenario_key` (en especial para `base`) tampoco está congelado. Los resultados de `batch_progress.json` contienen solo ruta/hash del RPT; faltan `scenario_key`, rutas/hashes del INP efectivo, evento materializado y OUT, además de `event_series_sha256`. Por tanto no son admisibles por el importador histórico y no se importaron ni alteraron. No se infieren rutas desde nombres de archivo, carpetas, combinaciones de forma/factor ni orden. Para la regeneración se usa el manifiesto separado descrito abajo.
+
+## Staging label-free para redes regeneradas (Task 5c)
+
+Para las corridas regeneradas A/B, usar la nueva entrada `swmm_resilience.database.label_free_b_staging.stage_frozen_b_label_free` (no el importador histórico 5b). Primero crear y guardar `protocol.json` **antes** de simular: `schema_version=b_transfer_protocol_v1`, `status=frozen_before_run`, `network={path,sha256}`, `expected_scenario_keys` como lista ordenada y `scenarios` con una definición en ese mismo orden (`scenario_key`, `shape_id`, `factor_mult`, `duracion_horas`, `tiempo_al_pico_h`). No generar claves de escenario implícitamente ni reconstruir el orden desde nombres de archivo.
+
+Al terminar las corridas, emitir `frozen_b_manifest.json` con `schema_version=frozen_b_transfer_manifest_v1`, `status=complete`, `protocol_path`, `protocol_sha256` (hash de los bytes exactos de `protocol.json`) y un registro por cada `scenario_key` con exactamente dos grupos: `hydraulic_quality` y `artifacts`. Este último debe contener cinco roles, cada uno con ruta relativa y hash explícito: `source_network_inp`, `effective_inp`, `event_source`, `swmm_rpt`, `swmm_out`. No se infieren nombres ni se unen resultados por orden. El ejemplo de estructura QA es:
+
+```json
+{
+  "continuity_error_pct": 0.7,
+  "max_continuity_error_pct": 5.0,
+  "continuity_limit_rationale": "umbral provisional aprobado para esta etapa",
+  "finite_coverage_ok": true,
+  "drainage_state": "drained",
+  "initial_condition": {"policy_id": "...", "state_sha256": "<64 hex>"},
+  "flooding_report": {
+    "parser": "<id del parser>", "parser_version": "<versión>",
+    "report_sha256": "<igual al hash de swmm_rpt>"
+  }
+}
+```
+
+Los campos QA deben derivarse de la corrida y sus archivos y conservar la política/versión usada; el staging reconstruye la decisión software con esos campos y exige que el hash del reporte coincida con el `.rpt`. **Task 5c no vuelve a ejecutar el parser hidráulico del `.rpt` ni demuestra que los campos caller-supplied sean verdaderos.** El SHA-256 detecta cambios respecto a lo declarado, pero no autentica el origen; la revisión/verificación de QA de las corridas reales sigue siendo obligatoria antes de inferencia.
+
+Cada evento debe ser un CSV validable por `load_scenario` (`node_id,time,value_lps`) con la cobertura de nodos de aporte positivo del INP de red. Su duración y tiempo al pico deben coincidir con los valores congelados. El INP efectivo debe tener exactamente la misma cobertura de junctions que el INP de red. Las features de red/topología se calculan desde el INP base congelado y las dinámicas desde el evento; el INP efectivo se verifica como fuente de corrida y cobertura, pero no sustituye al INP base en esas features. La extracción usa las funciones compartidas y el contrato del candidato (`tabular_v3_17` o `tabular_v4_21`).
+
+Preparar una base SQLite nueva, vacía y migrada; `stage_frozen_b_label_free(conn, experiment_root, feature_contract_id=...)` asigna `run_id` en orden del protocolo. El `feature_contract_id` debe coincidir con metadata del candidato que luego se use en `register_and_predict_staged_transfer`. Staging persiste network, junctions, scenarios, `COMPLETE` runs, QA, cinco enlaces inmutables y features elegibles; crea `experiment_source_manifest.json` en modo exclusivo. Cada ejecución debe tener su propia base/raíz nuevas. Un lote QA-no-elegible queda guardado y aparece en `run_order` con `reason_codes`, pero no recibe features ni keys.
+
+`register_and_predict_staged_transfer(candidate_dir, domain_policy, volume_bands_m3, output_root, conn, staged)` reconstruye el plan desde el manifiesto sellado, tabla SQLite y enlaces verificados; compara contrato de features con metadata del candidato, llama a `register_transfer`, vuelve a verificar hashes, identidad/configuración de escenarios, QA, coverage y features inmediatamente antes de inferencia, y entrega a `predict_transfer` las ocho columnas `KEY_COLUMNS` (`run_id`, `network_id`, `scenario_id`, `scenario_key`, `scenario_kind`, `node_id`, `factor_mult`, `shape_id`), features del contrato y QA reconstruido desde SQLite. Las corridas QA no elegibles conservan `run_id`, decisión QA y enlaces de fuente y se reportan como excluidas; no generan `node_features`, claves de entrada ni predicciones. `node_results` permanece vacío y esta etapa no lee etiquetas del RPT. La entrada `score_transfer` sigue bloqueada hasta Task 5d.
+
+El hash del protocolo y del manifiesto detecta cambios accidentales; no autentica quién los generó ni constituye una firma independiente. La aceptación automática de QA tampoco valida por sí misma la idoneidad de los umbrales hidráulicos provisionales.

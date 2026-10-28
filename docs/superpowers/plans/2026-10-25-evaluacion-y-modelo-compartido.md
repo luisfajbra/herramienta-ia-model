@@ -192,12 +192,14 @@ The sealed A→B report uses an A-only pair and records B hydraulic eligibility 
 
 **Files:** Add a B preparation entry point in `swmm_resilience/ml/bench` or `database` after locating the narrowest existing loader; add tests in `tests/ml/bench/test_frozen_transfer_experiment.py` and database tests.
 
-- [ ] Add a failing integration test showing the B `run_id`, scenario, hydraulic QA, source artifact links and `node_features` exist before prediction while `node_results` is empty.
-- [ ] Allocate B `run_id` rows from the verified scenario manifest in stable order; link source artifacts and record hydraulic QA before exposing features. Require exact node coverage from the verified effective INP.
-- [ ] Build the label-free key/feature frame through the same feature contract and extraction code used for training. Reject any request to include targets in the predictor input.
-- [ ] Verify the source manifest and all file hashes immediately before prediction, then write and seal predictions. Add B labels from the `.rpt` only after the seal, checking the `.rpt` hash and `(network_id, run_id, node_id)` coverage again.
-- [ ] Run focused tests; confirm changing a B label cannot alter registration, A selection, features or sealed predictions.
-- [ ] Commit with `feat: prepare verified label-free B transfer runs`.
+- [x] Add synthetic integration tests showing fresh B `run_id`, scenario, hydraulic QA, source artifact links and contract features are staged before prediction while `node_results` stays empty.
+- [x] Allocate run IDs in the pre-run protocol's declared stable order; require explicit scenario keys, protocol SHA, five file links, reconstructible QA and exact junction coverage in the effective INP. Preserve QA-ineligible runs with rejection codes but write no feature/key rows for them.
+- [x] Build v3.17/v4.21 label-free frames with the shared static, topology, scenario-dynamic and tributary feature functions. Reject target fields and reject frozen duration/peak times that disagree with the event series.
+- [x] Reverify source manifest/protocol bytes, SQLite run identity, source registry links/hashes, QA and persisted features immediately before prediction. The wrapper reconstructs preregistration plans from SQLite, invokes `register_transfer`, then passes exact `KEY_COLUMNS`, features and reconstructed QA metadata to `predict_transfer`.
+- [x] Keep B label parsing/import explicitly deferred to Task 5d; Task 5c has no target argument or `node_results` write path. `score_transfer` remains unconditionally blocked.
+- [x] Run focused synthetic/source-binding regressions and commit only Task 5c as `feat: prepare verified label-free B transfer runs`.
+
+**Task 5c scope note:** the previous 5b importer remains for historical runs with exact database mappings. New A/B regeneration uses a separate two-document protocol: `protocol.json` is frozen before simulation and fixes network identity, ordered scenario keys and explicit timing; `frozen_b_manifest.json` is completed after simulation, binds to the protocol byte hash and supplies exact source paths/hashes and hydraulic-QA evidence. These hashes detect changes but are not signatures. No current output databases were used or changed.
 
 #### Task 5d: Open real scoring only after end-to-end source verification
 
