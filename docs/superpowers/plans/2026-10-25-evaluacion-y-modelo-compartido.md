@@ -157,3 +157,47 @@ The sealed A→B report uses an A-only pair and records B hydraulic eligibility 
 **Task 5 source-binding gate after review:** `score_transfer` raises unconditionally. Implement and test a verified label-free B input view whose keys/features and eligible node coverage bind to actual INP/event files, run QA and SWMM report; only after prediction seals, load labels from the same verified artifact and check their hashes/report linkage. `PreparedDataset.load` alone currently does not authenticate parquet contents or prove report linkage. Synthetic-only helper outputs must never be used to claim transfer results.
 
 **Integrity fix, 2026-10-28:** `PreparedDataset.load` reconstructs the SQL-ordered training frame from `keys.parquet`, `features.parquet` and `targets.parquet` and checks its fingerprint against `manifest.json`. It also regenerates the fold assignment from the declared protocols and rejects altered `folds.parquet`. Tests first reproduced silent acceptance of changed sample/fold data; 80 focused schema/preparation tests and the full 512-test ML bench suite passed. These checks detect changed sample content and non-reproducible splits, but do not authenticate the artifact against SWMM reports or input files, and do not open the Task 5 scoring gate. See the source-binding gate above.
+
+**Task 5 source-registration decision, 2026-10-28:** keep source files in their persistent experiment directories and link by resolved path, byte size and SHA-256; do not copy them. Create the B `run_id` in SQLite before prediction and QA, but do not write `node_results` until the prediction seal exists. Historical links may be populated only from the frozen protocol and exact `(network_id, shape_id, factor_mult)` identity. A missing or changed source fails closed. See the matching decision in the design spec.
+
+#### Task 5a: Persist immutable source artifact links
+
+**Files:** Add migration `swmm_resilience/database/sql/010_run_source_artifacts.sql`; add file registration and verification helpers in `swmm_resilience/database/run_source_artifacts.py`; extend migration and database tests.
+
+**Interface:** `register_run_source_artifacts(conn, run_id, artifacts, source_manifest_sha256)` accepts one complete, named set of resolved artifact paths for a completed run with immutable hydraulic QA. Required roles are the effective INP, event source, SWMM `.rpt` and `.out`; the source network INP is identified by the network row and verified through its stored hash. `verify_run_source_artifacts(conn, run_id)` re-hashes every linked file and checks the `.rpt` hash against that run's hydraulic QA manifest. Rows are append-only and keyed by `(run_id, artifact_role)`. Registration is atomic; partial role sets, non-files, empty files, changed hashes, malformed hashes, duplicate roles or a QA/report mismatch fail without inserting rows.
+
+- [x] Add failing SQLite tests for successful complete registration; missing role; changed file after registration; `.rpt` hash/QA mismatch; duplicate registration; and update/delete rejection.
+- [x] Add migration 010 with role/path/hash/size/manifest-hash columns, strict checks, FK to `runs`, and immutable insert/update/delete guards.
+- [x] Implement the helper to resolve paths, hash bytes and size, validate completed run plus QA, compare report hash, and insert the full role set in one transaction.
+- [x] Run `tests/database/test_migration_010_run_source_artifacts.py` and `tests/database/test_run_source_artifacts.py`; confirm all negative cases fail closed.
+- [x] Commit with `feat: persist immutable run source artifact links`.
+
+**Task 5a outcome:** registration and verification now check persistent four-file links, exact content hashes and sizes, and the `.rpt`/hydraulic-QA binding. The experiment source manifest is not yet consumed by `predict_transfer`; feature/target derivation and label-free B preparation remain outstanding, and `score_transfer` remains unconditionally blocked.
+
+#### Task 5b: Register the historical A/B source manifests
+
+**Files:** Add a source-manifest importer beside the database helper and tests using synthetic protocols; update the Task 5 runbook.
+
+- [ ] Add failing tests for exact mapping from `(network hash, shape_id, factor_mult)` to database `run_id`, plus rejection of duplicate, missing, ambiguous, ineligible or hash-mismatched mappings.
+- [ ] Import only records present in the frozen `protocol.json`/`batch_progress.json`; verify the protocol seal, each referenced source file, `.rpt` and `.out`, report hash in QA, INP hash, event-series hash, and exact scenario key before writing artifact links.
+- [ ] Write an immutable experiment manifest with run IDs, relative artifact paths under the recorded experiment root, file hashes/sizes, protocol hash and link-table hash. Preserve original files in place.
+- [ ] Test against synthetic manifests and run read-only inventory of the stored A/B experiments; do not modify the canonical database or open real scoring.
+- [ ] Commit with `feat: bind frozen simulation manifests to run ids`.
+
+#### Task 5c: Build label-free B rows with preassigned SQLite run IDs
+
+**Files:** Add a B preparation entry point in `swmm_resilience/ml/bench` or `database` after locating the narrowest existing loader; add tests in `tests/ml/bench/test_frozen_transfer_experiment.py` and database tests.
+
+- [ ] Add a failing integration test showing the B `run_id`, scenario, hydraulic QA, source artifact links and `node_features` exist before prediction while `node_results` is empty.
+- [ ] Allocate B `run_id` rows from the verified scenario manifest in stable order; link source artifacts and record hydraulic QA before exposing features. Require exact node coverage from the verified effective INP.
+- [ ] Build the label-free key/feature frame through the same feature contract and extraction code used for training. Reject any request to include targets in the predictor input.
+- [ ] Verify the source manifest and all file hashes immediately before prediction, then write and seal predictions. Add B labels from the `.rpt` only after the seal, checking the `.rpt` hash and `(network_id, run_id, node_id)` coverage again.
+- [ ] Run focused tests; confirm changing a B label cannot alter registration, A selection, features or sealed predictions.
+- [ ] Commit with `feat: prepare verified label-free B transfer runs`.
+
+#### Task 5d: Open real scoring only after end-to-end source verification
+
+- [ ] Add a failing test proving `score_transfer` rejects a missing run-source manifest, altered INP/event/RPT/OUT, altered features, or an incomplete source-to-label join.
+- [ ] Enable `score_transfer` only for sealed predictions whose A candidate/preparation/study and B source manifests all verify; compute labels by parsing the verified `.rpt` after prediction seal, never from caller-supplied labels.
+- [ ] Produce a real report only after the source links and hydraulic admission pass. Until then, preserve the unconditional scoring block and synthetic-only status.
+- [ ] Run the complete relevant suite plus independent review. Commit with `feat: score only source-bound frozen transfer predictions`.
