@@ -76,7 +76,7 @@ def test_bench_block_is_parsed(tmp_path):
 def test_bench_config_accepts_leave_one_network_out(tmp_path):
     yaml = _BENCH_YAML.replace(
         '"GroupKFold5"', '"GroupKFold5", "LeaveOneNetworkOut"'
-    ) + "\n  tuning: {objective: macro_network_rmse}\n"
+    ) + "\n  tuning: {objective: macro_network_rmse}\n  reporting: {volume_band_edges_m3: [10, 100]}\n"
 
     config = load_config(_write_config(tmp_path, yaml))
 
@@ -87,6 +87,7 @@ def test_bench_config_accepts_leave_one_network_out(tmp_path):
         "LeaveOneNetworkOut",
     ]
     assert config.bench.tuning.objective == "macro_network_rmse"
+    assert config.bench.reporting.volume_band_edges_m3 == (10.0, 100.0)
 
 
 def test_network_held_out_config_requires_explicit_tuning_objective(tmp_path):
@@ -94,6 +95,7 @@ def test_network_held_out_config_requires_explicit_tuning_objective(tmp_path):
         '"GroupKFold5"', '"GroupKFold5", "LeaveOneNetworkOut"'
     )
 
+    yaml += "\n  reporting: {volume_band_edges_m3: [10, 100]}\n"
     with pytest.raises(ValueError, match="bench.tuning.objective is required"):
         load_config(_write_config(tmp_path, yaml))
 
@@ -101,10 +103,47 @@ def test_network_held_out_config_requires_explicit_tuning_objective(tmp_path):
 def test_network_held_out_config_rejects_unknown_tuning_objective(tmp_path):
     yaml = _BENCH_YAML.replace(
         '"GroupKFold5"', '"GroupKFold5", "LeaveOneNetworkOut"'
-    ) + "\n  tuning: {objective: convenient_mean}\n"
+    ) + "\n  tuning: {objective: convenient_mean}\n  reporting: {volume_band_edges_m3: [10, 100]}\n"
 
     with pytest.raises(ValueError, match="must be 'pooled_rmse' or 'macro_network_rmse'"):
         load_config(_write_config(tmp_path, yaml))
+
+
+def test_network_held_out_config_requires_explicit_volume_bands(tmp_path):
+    yaml = _BENCH_YAML.replace(
+        '"GroupKFold5"', '"GroupKFold5", "LeaveOneNetworkOut"'
+    ) + "\n  tuning: {objective: macro_network_rmse}\n"
+
+    with pytest.raises(ValueError, match="bench.reporting.volume_band_edges_m3"):
+        load_config(_write_config(tmp_path, yaml))
+
+
+def test_network_held_out_volume_bands_must_start_at_or_above_flood_threshold(tmp_path):
+    yaml = _BENCH_YAML.replace(
+        '"GroupKFold5"', '"GroupKFold5", "LeaveOneNetworkOut"'
+    ) + "\n  tuning: {objective: macro_network_rmse}\n  reporting: {volume_band_edges_m3: [0.5, 10]}\n"
+
+    with pytest.raises(ValueError, match="flood_threshold_m3"):
+        load_config(_write_config(tmp_path, yaml))
+
+
+@pytest.mark.parametrize(
+    "edges", [[], [10, 10], [100, 10], [-1, 10], [10, "inf"], "10,100"]
+)
+def test_network_held_out_config_rejects_invalid_volume_bands(tmp_path, edges):
+    import yaml as yaml_module
+
+    encoded_edges = (
+        f"'{edges}'"
+        if isinstance(edges, str)
+        else yaml_module.safe_dump(edges, default_flow_style=True).strip()
+    )
+    config_yaml = _BENCH_YAML.replace(
+        '"GroupKFold5"', '"GroupKFold5", "LeaveOneNetworkOut"'
+    ) + f"\n  tuning: {{objective: macro_network_rmse}}\n  reporting: {{volume_band_edges_m3: {encoded_edges}}}\n"
+
+    with pytest.raises(ValueError, match="volume_band_edges_m3"):
+        load_config(_write_config(tmp_path, config_yaml))
 
 
 def test_ranking_criterion_is_built_from_the_yaml(tmp_path):

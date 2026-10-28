@@ -1,8 +1,10 @@
 from types import SimpleNamespace
 from dataclasses import replace
+from datetime import datetime, timezone
 import json
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from tests.ml.bench.prepared_factory import make_prepared
@@ -25,7 +27,11 @@ def _two_network_prepared():
                             "tiempo_al_pico_h": float(factor),
                         }
                     )
-    return make_prepared(rows, ("LeaveOneNetworkOut",))
+    prepared = make_prepared(rows, ("LeaveOneNetworkOut",))
+    return replace(
+        prepared,
+        manifest={**prepared.manifest, "flood_threshold_m3": 1.0},
+    )
 
 
 def test_nested_evaluation_tunes_only_outer_training_networks(monkeypatch):
@@ -66,6 +72,7 @@ def test_nested_evaluation_tunes_only_outer_training_networks(monkeypatch):
         "xgboost",
         ("LeaveOneShapeOut",),
         objective="macro_network_rmse",
+        volume_band_edges_m3=(10.0, 100.0),
         n_trials=1,
         n_splits=2,
         seed=17,
@@ -118,7 +125,8 @@ def test_nested_config_entry_point_passes_configured_objective_and_budget(monkey
         bench=SimpleNamespace(
             tuning=SimpleNamespace(
                 objective="macro_network_rmse", n_trials=7, n_splits=3
-            )
+            ),
+            reporting=SimpleNamespace(volume_band_edges_m3=(10.0, 100.0)),
         )
     )
 
@@ -131,6 +139,7 @@ def test_nested_config_entry_point_passes_configured_objective_and_budget(monkey
     assert captured["kwargs"]["n_trials"] == 7
     assert captured["kwargs"]["n_splits"] == 3
     assert captured["kwargs"]["seed"] == 13
+    assert captured["kwargs"]["volume_band_edges_m3"] == (10.0, 100.0)
 
 
 def test_nested_config_entry_point_requires_explicit_objective():
@@ -145,6 +154,110 @@ def test_nested_config_entry_point_requires_explicit_objective():
         evaluate_module.evaluate_nested_networks_from_config(
             _two_network_prepared(), "xgboost", ("LeaveOneShapeOut",), config
         )
+
+
+def test_nested_report_breaks_metrics_down_by_network_and_hydrograph_shape():
+    import swmm_resilience.ml.bench.evaluate as evaluate_module
+
+    prepared = _two_network_prepared()
+    oof = pd.DataFrame(
+        {
+            "sample_idx": np.arange(len(prepared.keys)),
+            "protocol": "LeaveOneNetworkOut",
+            "fold_id": np.where(
+                prepared.keys["network_id"].to_numpy() == "A", 0, 1
+            ),
+            "y_pred_clf": 0,
+            "y_prob_clf": 0.25,
+            "y_pred_reg": 0.5,
+        }
+    )
+
+    report = evaluate_module.nested_network_event_metrics(
+        prepared, oof, volume_band_edges_m3=(1.0, 2.0)
+    )
+
+    assert set(report["by_network"]) == {"A", "B"}
+    assert {
+        (item["network_id"], item["shape_id"])
+        for item in report["by_network_event"]
+    } == {
+        (network_id, shape_id)
+        for network_id in ("A", "B")
+        for shape_id in ("shape-0", "shape-1", "shape-2", "shape-3")
+    }
+    a = report["by_network"]["A"]
+    assert a["n_samples"] == 16
+    assert a["confusion_matrix"]["fn"] == a["n_actual_flooded"]
+    a_idx = np.flatnonzero(prepared.keys["network_id"].to_numpy() == "A")
+    assert a["rmse_m3"] == pytest.approx(
+        np.sqrt(np.mean(prepared.y_reg.iloc[a_idx].to_numpy() ** 2))
+    )
+    assert a["mae_m3"] == pytest.approx(
+        np.mean(prepared.y_reg.iloc[a_idx].to_numpy())
+    )
+    assert a["volume_bias_m3"] == pytest.approx(
+        -prepared.y_reg.iloc[a_idx].sum()
+    )
+    assert len(a["false_negatives_by_volume_band"]) == 3
+    assert sum(
+        item["false_negatives"] for item in a["false_negatives_by_volume_band"]
+    ) == a["confusion_matrix"]["fn"]
+    assert a["pr_auc"] == pytest.approx(a["n_actual_flooded"] / a["n_samples"])
+
+
+@pytest.mark.parametrize(
+    "edges", [(), (1.0, 1.0), (2.0, 1.0), (-1.0, 2.0), (0.5, 2.0)]
+)
+def test_nested_report_rejects_invalid_volume_band_edges(edges):
+    import swmm_resilience.ml.bench.evaluate as evaluate_module
+
+    prepared = _two_network_prepared()
+    oof = pd.DataFrame(
+        {
+            "sample_idx": np.arange(len(prepared.keys)),
+            "protocol": "LeaveOneNetworkOut",
+            "fold_id": 0,
+            "y_pred_clf": 0,
+            "y_prob_clf": 0.25,
+            "y_pred_reg": 0.5,
+        }
+    )
+    with pytest.raises(ValueError, match="volume_band_edges_m3"):
+        evaluate_module.nested_network_event_metrics(
+            prepared, oof, volume_band_edges_m3=edges
+        )
+
+
+def test_nested_report_marks_pr_auc_undefined_when_a_group_has_one_class():
+    import swmm_resilience.ml.bench.evaluate as evaluate_module
+
+    prepared = _two_network_prepared()
+    no_flood = replace(
+        prepared,
+        y_clf=pd.Series(
+            np.zeros(len(prepared.keys), dtype=int), name=prepared.y_clf.name
+        ),
+    )
+    oof = pd.DataFrame(
+        {
+            "sample_idx": np.arange(len(no_flood.keys)),
+            "protocol": "LeaveOneNetworkOut",
+            "fold_id": np.where(
+                no_flood.keys["network_id"].to_numpy() == "A", 0, 1
+            ),
+            "y_pred_clf": 0,
+            "y_prob_clf": 0.25,
+            "y_pred_reg": 0.5,
+        }
+    )
+
+    report = evaluate_module.nested_network_event_metrics(
+        no_flood, oof, volume_band_edges_m3=(10.0,)
+    )
+
+    assert report["by_network"]["A"]["pr_auc"] is None
+    assert report["by_network"]["A"]["recall"] is None
 
 
 def test_outer_test_targets_do_not_change_the_inner_training_fingerprint():
@@ -177,6 +290,13 @@ def test_nested_evaluation_saves_immutable_split_and_study_provenance(
 ):
     import swmm_resilience.ml.bench.evaluate as evaluate_module
 
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 28, 12, 0, 0, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(evaluate_module, "datetime", FrozenDatetime)
+
     prepared = _two_network_prepared()
     monkeypatch.setattr(
         evaluate_module,
@@ -203,6 +323,7 @@ def test_nested_evaluation_saves_immutable_split_and_study_provenance(
         "xgboost",
         ("LeaveOneShapeOut",),
         objective="macro_network_rmse",
+        volume_band_edges_m3=(10.0, 100.0),
         n_trials=1,
         n_splits=2,
     )
@@ -213,6 +334,8 @@ def test_nested_evaluation_saves_immutable_split_and_study_provenance(
     manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["objective"] == "macro_network_rmse"
     assert manifest["network_aggregation"] == "equal_weight_per_network"
+    assert manifest["reporting_config"]["volume_band_edges_m3"] == [10.0, 100.0]
+    assert output.name.endswith(manifest["reporting_config_sha256"][:8])
     assert len(manifest["folds"]) == 2
     assert all(fold["optuna_study_id"] for fold in manifest["folds"])
     assert all(fold["inner_prep_id"] for fold in manifest["folds"])

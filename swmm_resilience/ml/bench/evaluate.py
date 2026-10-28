@@ -26,6 +26,7 @@ from typing import NamedTuple, Sequence
 
 import numpy as np
 import pandas as pd
+from sklearn.metrics import average_precision_score
 
 from .metrics import (
     classifier_metrics,
@@ -80,6 +81,7 @@ class NestedNetworkResult:
     family: str
     prep_id: str
     objective: str
+    volume_band_edges_m3: tuple[float, ...]
     oof: pd.DataFrame
     folds: tuple[NestedNetworkFold, ...]
     metrics: dict
@@ -513,12 +515,180 @@ def evaluate_candidate(
     return oof, metrics
 
 
+def _nested_reporting_entry(
+    y_clf_true,
+    y_clf_pred,
+    y_clf_prob,
+    volume_true,
+    volume_pred,
+    volume_band_edges_m3,
+    flood_threshold_m3,
+) -> dict:
+    y_clf_true = np.asarray(y_clf_true, dtype=int)
+    y_clf_pred = np.asarray(y_clf_pred, dtype=int)
+    y_clf_prob = np.asarray(y_clf_prob, dtype=float)
+    volume_true = np.asarray(volume_true, dtype=float)
+    volume_pred = np.asarray(volume_pred, dtype=float)
+    counts = confusion_counts(y_clf_true, y_clf_pred)
+    classifier = fold_classifier_metrics(y_clf_true, y_clf_pred)
+    pr_auc = (
+        float(average_precision_score(y_clf_true, y_clf_prob))
+        if np.unique(y_clf_true).size == 2
+        else None
+    )
+    classifier = {
+        key: (None if np.isnan(value) else float(value))
+        for key, value in classifier.items()
+    }
+    real_total = float(volume_true.sum())
+    predicted_total = float(volume_pred.sum())
+    band_rows = []
+    starts = (float(flood_threshold_m3), *volume_band_edges_m3[:-1])
+    for band_index, (lower, upper) in enumerate(
+        zip(starts, volume_band_edges_m3)
+    ):
+        if band_index == 0:
+            band_mask = (volume_true >= lower) & (volume_true <= upper)
+            label = f"[{lower:g}, {upper:g}]"
+        else:
+            band_mask = (volume_true > lower) & (volume_true <= upper)
+            label = f"({lower:g}, {upper:g}]"
+        actual_positive = band_mask & (y_clf_true == 1)
+        false_negative = actual_positive & (y_clf_pred == 0)
+        positive_count = int(actual_positive.sum())
+        band_rows.append(
+            {
+                "band_m3": label,
+                "lower_m3_inclusive": float(lower),
+                "upper_m3_inclusive": float(upper),
+                "n_samples": int(band_mask.sum()),
+                "n_actual_flooded": positive_count,
+                "false_negatives": int(false_negative.sum()),
+                "recall": (
+                    float((actual_positive & (y_clf_pred == 1)).sum() / positive_count)
+                    if positive_count
+                    else None
+                ),
+            }
+        )
+    lower = volume_band_edges_m3[-1]
+    band_mask = volume_true > lower
+    actual_positive = band_mask & (y_clf_true == 1)
+    false_negative = actual_positive & (y_clf_pred == 0)
+    positive_count = int(actual_positive.sum())
+    band_rows.append(
+        {
+            "band_m3": f"> {lower:g}",
+            "lower_m3_exclusive": float(lower),
+            "upper_m3_inclusive": None,
+            "n_samples": int(band_mask.sum()),
+            "n_actual_flooded": positive_count,
+            "false_negatives": int(false_negative.sum()),
+            "recall": (
+                float((actual_positive & (y_clf_pred == 1)).sum() / positive_count)
+                if positive_count
+                else None
+            ),
+        }
+    )
+    return {
+        "n_samples": int(len(y_clf_true)),
+        "n_actual_flooded": int(y_clf_true.sum()),
+        "confusion_matrix": counts,
+        "precision": classifier["precision"],
+        "recall": classifier["recall"],
+        "f1": classifier["f1"],
+        "pr_auc": pr_auc,
+        "rmse_m3": float(np.sqrt(np.mean((volume_true - volume_pred) ** 2))),
+        "mae_m3": float(np.mean(np.abs(volume_true - volume_pred))),
+        "volume_bias_m3": predicted_total - real_total,
+        "volume_bias_pct": (
+            100.0 * (predicted_total - real_total) / real_total
+            if real_total > 0
+            else None
+        ),
+        "false_negatives_by_volume_band": band_rows,
+    }
+
+
+def nested_network_event_metrics(
+    prepared: PreparedDataset,
+    oof: pd.DataFrame,
+    *,
+    volume_band_edges_m3: Sequence[float],
+) -> dict:
+    """Report network and hydrograph-shape OOF metrics using fixed volume bands.
+
+    ``shape_id`` identifies the hydrograph shape represented in the prepared
+    data. It is a reporting stratum, not a claim that event-family leakage has
+    been controlled; event-family holdout remains a separate protocol.
+    """
+    from ...config import validate_volume_band_edges
+
+    edges = validate_volume_band_edges(volume_band_edges_m3, required=True)
+    flood_threshold_m3 = float(prepared.manifest["flood_threshold_m3"])
+    if edges[0] < flood_threshold_m3:
+        raise ValueError(
+            "The first volume_band_edges_m3 value must be at least the configured "
+            "flood_threshold_m3."
+        )
+    _validate_oof(prepared, oof, protocols=("LeaveOneNetworkOut",))
+    predictions = oof.set_index("sample_idx").sort_index()
+    keys = prepared.keys.reset_index(drop=True)
+    y_clf_true = prepared.y_clf.to_numpy(dtype=int)
+    volume_true = prepared.y_reg.to_numpy(dtype=float)
+    sample_indices = np.arange(len(keys))
+    y_clf_pred = predictions.loc[sample_indices, "y_pred_clf"].to_numpy(dtype=int)
+    y_clf_prob = predictions.loc[sample_indices, "y_prob_clf"].to_numpy(dtype=float)
+    volume_pred_raw = predictions.loc[sample_indices, "y_pred_reg"].to_numpy(
+        dtype=float
+    )
+    volume_pred = np.where(y_clf_pred == 1, volume_pred_raw, 0.0)
+
+    def entry(sample_idx):
+        sample_idx = np.asarray(sample_idx, dtype=int)
+        return _nested_reporting_entry(
+            y_clf_true[sample_idx],
+            y_clf_pred[sample_idx],
+            y_clf_prob[sample_idx],
+            volume_true[sample_idx],
+            volume_pred[sample_idx],
+            edges,
+            flood_threshold_m3,
+        )
+
+    by_network = {}
+    for network_id, group in keys.groupby("network_id", sort=True):
+        by_network[str(network_id)] = entry(group.index.to_numpy())
+
+    by_network_event = []
+    for (network_id, shape_id), group in keys.groupby(
+        ["network_id", "shape_id"], sort=True, dropna=False
+    ):
+        by_network_event.append(
+            {
+                "network_id": str(network_id),
+                "shape_id": str(shape_id),
+                **entry(group.index.to_numpy()),
+            }
+        )
+    return {
+        "event_unit": "shape_id (hydrograph shape; not event-family holdout)",
+        "pr_auc_method": "average_precision_score",
+        "flood_threshold_m3": flood_threshold_m3,
+        "volume_band_edges_m3": list(edges),
+        "by_network": by_network,
+        "by_network_event": by_network_event,
+    }
+
+
 def evaluate_nested_networks(
     prepared: PreparedDataset,
     family: str,
     inner_protocols: Sequence[str],
     objective: str,
     *,
+    volume_band_edges_m3: Sequence[float],
     n_trials: int = 50,
     n_splits: int = 5,
     seed: int = 42,
@@ -534,6 +704,7 @@ def evaluate_nested_networks(
     de la red externa.
     """
     from ...config import validate_tuning_objective
+    from ...config import validate_volume_band_edges
 
     if tuple(inner_protocols) != ("LeaveOneShapeOut",):
         raise ValueError(
@@ -541,6 +712,9 @@ def evaluate_nested_networks(
             "inner_protocols=('LeaveOneShapeOut',)."
         )
     validate_tuning_objective(("LeaveOneNetworkOut",), objective)
+    volume_band_edges_m3 = validate_volume_band_edges(
+        volume_band_edges_m3, required=True
+    )
     outer_folds = prepared.folds[
         (prepared.folds["protocol"] == "LeaveOneNetworkOut")
     ]
@@ -665,11 +839,15 @@ def evaluate_nested_networks(
         "pooled_rmse": float(np.sqrt(np.mean((pooled_true - pooled_pred) ** 2))),
         "per_network_rmse": per_network_rmse,
         "benchmark": benchmark_metrics,
+        "network_and_event": nested_network_event_metrics(
+            prepared, oof, volume_band_edges_m3=volume_band_edges_m3
+        ),
     }
     return NestedNetworkResult(
         family=family,
         prep_id=prepared.prep_id,
         objective=objective,
+        volume_band_edges_m3=volume_band_edges_m3,
         oof=oof,
         folds=tuple(fold_results),
         metrics=metrics,
@@ -709,6 +887,7 @@ def evaluate_nested_networks_from_config(
         seed=seed,
         fold_n_jobs=fold_n_jobs,
         fixed_params=fixed_params,
+        volume_band_edges_m3=bench.reporting.volume_band_edges_m3,
     )
 
 
@@ -717,7 +896,19 @@ def save_nested_network_result(
 ) -> Path:
     """Persists an immutable nested run under a timestamped experiment ID."""
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    experiment_id = f"{timestamp}-{result.prep_id[:12]}"
+    reporting_config = {
+        "event_unit": "shape_id (hydrograph shape; not event-family holdout)",
+        "flood_threshold_m3": float(
+            result.metrics["network_and_event"]["flood_threshold_m3"]
+        ),
+        "volume_band_edges_m3": list(result.volume_band_edges_m3),
+    }
+    reporting_config_sha256 = hashlib.sha256(
+        json.dumps(reporting_config, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
+    experiment_id = (
+        f"{timestamp}-{result.prep_id[:12]}-{reporting_config_sha256[:8]}"
+    )
     experiment_dir = Path(output_dir) / experiment_id
     experiment_dir.mkdir(parents=True, exist_ok=False)
     manifest = {
@@ -729,6 +920,8 @@ def save_nested_network_result(
         "inner_protocols": ["LeaveOneShapeOut"],
         "objective": result.objective,
         "network_aggregation": "equal_weight_per_network",
+        "reporting_config": reporting_config,
+        "reporting_config_sha256": reporting_config_sha256,
         "metrics": result.metrics,
         "folds": [asdict(fold) for fold in result.folds],
     }

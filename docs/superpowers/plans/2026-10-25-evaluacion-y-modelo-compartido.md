@@ -89,8 +89,9 @@ Define `macro_network_rmse(y_true_by_network: dict[str, np.ndarray], y_pred_by_n
 - [x] Implement objective dispatch and fail-fast config validation. Keep existing same-network benchmark configuration readable through an explicit compatibility setting, but require an objective for any `LeaveOneNetworkOut` run.
 - [x] Connect the configured objective and tuning budget to the nested-evaluation entry point; reject absent objectives before trials start.
 - [x] Record each trial's state, objective, inner-fold RMSE values and per-network RMSE values for later explanation and audit.
-- [ ] Emit per-network/event sample counts, RMSE/MAE m³, volume bias, confusion counts, recall, PR-AUC where both classes permit it, and false negatives grouped by configured actual-volume bands. Store band edges in experiment config and include them in its identity.
-- [ ] Run the focused tests plus `tests/ml/bench/test_parity_with_legacy_evaluator.py`; confirm old evaluator behavior remains labelled as legacy and new ranking uses the recorded objective.
+- [x] Emit per-network and per-network/shape sample counts, RMSE/MAE m³, volume bias, confusion counts, recall, PR-AUC where both classes permit it, and false negatives grouped by configured actual-volume bands. Require fixed band edges in nested network configuration and include their hash in the immutable experiment ID.
+- [x] Run the focused tests plus `tests/ml/bench/test_parity_with_legacy_evaluator.py`; confirm old evaluator behavior remains labelled as legacy and new ranking uses the recorded objective.
+- [ ] Confirm the proposed A-derived volume-band cut points and record them in the project config before launching a real nested evaluation.
 - [ ] Commit with `feat: report explicit network weighted model objectives`.
 
 ### Task 4: Add paired artifact manifests and deterministic multi-seed MLP runs

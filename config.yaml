@@ -65,6 +65,8 @@ bench:
   tuning:
     n_trials: 50
     n_splits: 5
+    # Equal-weight network RMSE for the explicit nested transfer evaluation.
+    objective: "macro_network_rmse"
   families:
     xgboost:
       enabled: true

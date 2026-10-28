@@ -6,6 +6,7 @@ Keep this file limited to paths and high-level parameters.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, Union
@@ -313,12 +314,18 @@ class BenchTuningConfig:
 
 
 @dataclass
+class BenchReportingConfig:
+    volume_band_edges_m3: tuple[float, ...] = ()
+
+
+@dataclass
 class BenchConfig:
     protocols: list
     ranking: BenchRankingConfig
     promote: str
     families: dict
     tuning: BenchTuningConfig
+    reporting: BenchReportingConfig = field(default_factory=BenchReportingConfig)
 
     def enabled_families(self) -> list:
         return [name for name, family in self.families.items() if family.enabled]
@@ -345,7 +352,9 @@ class Config:
         return values
 
 
-def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
+def _parse_bench(
+    raw_bench: dict | None, flood_threshold_m3: float | None = None
+) -> Optional[BenchConfig]:
     """El bloque bench es opcional mientras conviva con ml:/evaluation:."""
     if not raw_bench:
         return None
@@ -378,6 +387,20 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
     n_splits = int(tuning_raw.get("n_splits", 5))
     tuning_objective = tuning_raw.get("objective")
     validate_tuning_objective(protocols, tuning_objective)
+    reporting_raw = raw_bench.get("reporting") or {}
+    volume_band_edges_m3 = validate_volume_band_edges(
+        reporting_raw.get("volume_band_edges_m3", ()),
+        required="LeaveOneNetworkOut" in set(protocols),
+    )
+    if (
+        volume_band_edges_m3
+        and flood_threshold_m3 is not None
+        and volume_band_edges_m3[0] < float(flood_threshold_m3)
+    ):
+        raise ValueError(
+            "bench.reporting.volume_band_edges_m3 must start at or above "
+            "dataset.flood_threshold_m3."
+        )
     if n_trials <= 0:
         raise ValueError(f"bench.tuning.n_trials must be positive; received {n_trials}")
     if n_splits <= 0:
@@ -399,7 +422,40 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
             n_splits=n_splits,
             objective=str(tuning_objective) if tuning_objective is not None else None,
         ),
+        reporting=BenchReportingConfig(volume_band_edges_m3=volume_band_edges_m3),
     )
+
+
+def validate_volume_band_edges(edges, *, required: bool = False) -> tuple[float, ...]:
+    """Validate fixed ascending flood-volume cut points used in reports (m³)."""
+    if edges is None:
+        edges = ()
+    if isinstance(edges, (str, bytes, dict)):
+        raise ValueError(
+            "bench.reporting.volume_band_edges_m3 must be a sequence of finite numbers."
+        )
+    try:
+        raw_edges = tuple(edges)
+        if any(isinstance(edge, bool) for edge in raw_edges):
+            raise ValueError("boolean cut points are not volumes")
+        parsed = tuple(float(edge) for edge in raw_edges)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            "bench.reporting.volume_band_edges_m3 must be a sequence of finite numbers."
+        ) from exc
+    if required and not parsed:
+        raise ValueError(
+            "bench.reporting.volume_band_edges_m3 is required for LeaveOneNetworkOut."
+        )
+    if any(not math.isfinite(edge) or edge <= 0 for edge in parsed):
+        raise ValueError(
+            "bench.reporting.volume_band_edges_m3 must contain finite positive values."
+        )
+    if any(left >= right for left, right in zip(parsed, parsed[1:])):
+        raise ValueError(
+            "bench.reporting.volume_band_edges_m3 must be strictly increasing."
+        )
+    return parsed
 
 
 def validate_tuning_objective(protocols, objective: str | None) -> str | None:
@@ -526,5 +582,7 @@ def load_config(config_path: str = "config.yaml") -> Config:
             ),
             drainage_extension_max_retries=drainage_extension_max_retries,
         ),
-        bench=_parse_bench(raw.get("bench")),
+        bench=_parse_bench(
+            raw.get("bench"), flood_threshold_m3=float(ds["flood_threshold_m3"])
+        ),
     )
