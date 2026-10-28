@@ -65,6 +65,13 @@ def test_config_without_a_bench_block_still_loads(tmp_path):
     assert config.bench is None
 
 
+def test_project_config_records_approved_nested_reporting_bands():
+    config = load_config(Path(__file__).resolve().parents[3] / "config.yaml")
+
+    assert config.bench.tuning.objective == "macro_network_rmse"
+    assert config.bench.reporting.volume_band_edges_m3 == (24.0, 108.0, 344.0)
+
+
 def test_bench_block_is_parsed(tmp_path):
     config = load_config(_write_config(tmp_path, _BENCH_YAML))
 

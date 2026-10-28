@@ -91,8 +91,8 @@ Define `macro_network_rmse(y_true_by_network: dict[str, np.ndarray], y_pred_by_n
 - [x] Record each trial's state, objective, inner-fold RMSE values and per-network RMSE values for later explanation and audit.
 - [x] Emit per-network and per-network/shape sample counts, RMSE/MAE m³, volume bias, confusion counts, recall, PR-AUC where both classes permit it, and false negatives grouped by configured actual-volume bands. Require fixed band edges in nested network configuration and include their hash in the immutable experiment ID.
 - [x] Run the focused tests plus `tests/ml/bench/test_parity_with_legacy_evaluator.py`; confirm old evaluator behavior remains labelled as legacy and new ranking uses the recorded objective.
-- [ ] Confirm the proposed A-derived volume-band cut points and record them in the project config before launching a real nested evaluation.
-- [ ] Commit with `feat: report explicit network weighted model objectives`.
+- [x] Confirm the A-derived volume-band cut points (24, 108, 344 m³) and record them in the project config before launching a real nested evaluation. These are descriptive reporting strata derived from A-only eligible targets; for B→A they are used only after prediction, never for tuning or model selection.
+- [x] Commit implementation with `feat: report nested network and event metrics` (`a207b61`); record the approved reporting bands in a follow-up decision commit.
 
 ### Task 4: Add paired artifact manifests and deterministic multi-seed MLP runs
 

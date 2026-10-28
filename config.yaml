@@ -67,6 +67,9 @@ bench:
     n_splits: 5
     # Equal-weight network RMSE for the explicit nested transfer evaluation.
     objective: "macro_network_rmse"
+  reporting:
+    # A-only volume quartiles; reporting strata, not hydraulic severity limits.
+    volume_band_edges_m3: [24.0, 108.0, 344.0]
   families:
     xgboost:
       enabled: true
