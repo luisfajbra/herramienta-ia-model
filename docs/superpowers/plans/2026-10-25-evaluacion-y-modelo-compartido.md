@@ -179,11 +179,13 @@ The sealed A→B report uses an A-only pair and records B hydraulic eligibility 
 
 **Files:** Add a source-manifest importer beside the database helper and tests using synthetic protocols; update the Task 5 runbook.
 
-- [ ] Add failing tests for exact mapping from `(network hash, shape_id, factor_mult)` to database `run_id`, plus rejection of duplicate, missing, ambiguous, ineligible or hash-mismatched mappings.
-- [ ] Import only records present in the frozen `protocol.json`/`batch_progress.json`; verify the protocol seal, each referenced source file, `.rpt` and `.out`, report hash in QA, INP hash, event-series hash, and exact scenario key before writing artifact links.
-- [ ] Write an immutable experiment manifest with run IDs, relative artifact paths under the recorded experiment root, file hashes/sizes, protocol hash and link-table hash. Preserve original files in place.
-- [ ] Test against synthetic manifests and run read-only inventory of the stored A/B experiments; do not modify the canonical database or open real scoring.
-- [ ] Commit with `feat: bind frozen simulation manifests to run ids`.
+- [x] Add failing tests for exact mapping from `(network hash, shape_id, factor_mult)` to database `run_id`, plus rejection of duplicate, missing, ambiguous, ineligible or hash-mismatched mappings.
+- [x] Import only records present in the frozen `protocol.json`/`batch_progress.json`; verify the protocol seal, each referenced source file, `.rpt` and `.out`, report hash in QA, INP hash, event-series hash, and exact scenario key before writing artifact links.
+- [x] Write an immutable experiment manifest with run IDs, relative artifact paths under the recorded experiment root, file hashes/sizes, protocol hash and link-table hash. Preserve original files in place.
+- [x] Test against synthetic manifests and run read-only inventory of the stored A/B experiments; do not modify the canonical database or open real scoring.
+- [x] Commit with `feat: bind frozen simulation manifests to run ids`.
+
+**Task 5b outcome (implementation ready for review):** the importer is fail-closed and supports explicit, frozen artifact links. Synthetic fixtures verify exact matching and rejection cases. The existing experiment manifests are not admissible yet: `protocol.json` has shape CSV hashes but omits their paths, and `batch_progress.json` stores RPT references only, without `scenario_key`, event series, effective INP, OUT, or their hashes. Their INP paths also resolve from repository root rather than experiment root. No historical rows/files were imported or changed; regenerate an explicit frozen manifest before Task 5c. The actual scoring barrier remains closed.
 
 #### Task 5c: Build label-free B rows with preassigned SQLite run IDs
 
