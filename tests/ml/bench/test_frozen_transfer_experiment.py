@@ -42,13 +42,13 @@ def experiment(sql_training_db, tmp_path):
     return candidate, inp, policy, keys, x, decision
 
 
-def plan(run):
+def plan(run, expected_node_ids=('J1', 'J2')):
     qa = run['hydraulic_quality']
-    return {key:run[key] for key in ('network_id','run_id','event_series_sha256')} | {'event_series_components':EVENT, 'hydraulic_policy':qa['policy'], 'hydraulic_policy_sha256':qa['policy_sha256']}
+    return {key:run[key] for key in ('network_id','run_id','event_series_sha256')} | {'expected_node_ids':list(expected_node_ids), 'event_series_components':EVENT, 'hydraulic_policy':qa['policy'], 'hydraulic_policy_sha256':qa['policy_sha256']}
 
 
 def test_predictions_sealed_before_labels_and_immutable(experiment, tmp_path):
-    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer, score_transfer
+    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer, _score_synthetic_transfer as score_transfer
     candidate, inp, policy, keys, x, decision = experiment
     run = {'network_id': 999, 'run_id': 9999, 'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
     directory = register_transfer(candidate.classifier_path.parent, inp, policy, [plan(run)],
@@ -63,7 +63,7 @@ def test_predictions_sealed_before_labels_and_immutable(experiment, tmp_path):
     score_transfer(directory, labels)
     assert (directory / 'predictions.csv').read_bytes() == before
     assert seal['predictions_sha256']
-    assert json.loads((directory / 'scores.json').read_text())['overall']['n_samples'] == 2
+    assert json.loads((directory / 'synthetic_scores.json').read_text())['overall']['n_samples'] == 2
     with pytest.raises(FileExistsError):
         predict_transfer(directory, keys, x, [run])
     with pytest.raises(FileExistsError):
@@ -81,12 +81,12 @@ def test_invalid_hydraulic_run_is_reported_without_score(experiment, tmp_path):
     predict_transfer(directory, keys, x, [run])
     assert (directory / 'rejections.json').exists()
     assert not (directory / 'prediction_seal.json').exists()
-    assert not (directory / 'scores.json').exists()
+    assert not (directory / 'synthetic_scores.json').exists()
 
 
 
 def test_tampering_with_predictions_or_event_hash_is_rejected(experiment, tmp_path):
-    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer, score_transfer
+    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer, _score_synthetic_transfer as score_transfer
     candidate, inp, policy, keys, x, decision = experiment
     run = {'network_id': 999, 'run_id': 9999, 'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
     directory = register_transfer(candidate.classifier_path.parent, inp, policy, [plan(run)], [24,108,344], tmp_path/'outputs')
@@ -135,7 +135,7 @@ def test_can_preregister_policy_before_hydraulic_outputs_exist(experiment, tmp_p
     from swmm_resilience.ml.bench.frozen_transfer import register_transfer
     candidate, inp, policy, keys, x, decision = experiment
     planned = {'network_id':999, 'run_id':9999, 'event_series_sha256':EVENT_HASH,
-               'event_series_components':EVENT, 'hydraulic_policy':decision['policy'], 'hydraulic_policy_sha256':decision['policy_sha256']}
+               'expected_node_ids':['J1','J2'], 'event_series_components':EVENT, 'hydraulic_policy':decision['policy'], 'hydraulic_policy_sha256':decision['policy_sha256']}
     directory = register_transfer(candidate.classifier_path.parent, inp, policy, [planned], [24,108,344], tmp_path/'outputs')
     assert (directory/'registration_seal.json').exists()
 
@@ -159,14 +159,14 @@ def test_prediction_rejects_labels_smuggled_in_run_record(experiment, tmp_path):
 
 
 def test_mixed_runs_only_score_eligible_and_report_ineligible(experiment, tmp_path):
-    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer, score_transfer
+    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer, _score_synthetic_transfer as score_transfer
     candidate, inp, policy, keys, x, decision = experiment
     keys.loc[1, 'run_id'] = 9998
     good = {'network_id':999, 'run_id':9999, 'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
     bad_decision = deepcopy(decision)
     bad_decision['eligible'] = False
     bad = {'network_id':999, 'run_id':9998, 'event_series_sha256':EVENT_HASH, 'hydraulic_quality':bad_decision}
-    directory = register_transfer(candidate.classifier_path.parent, inp, policy, [plan(good), plan(bad)], [24,108,344], tmp_path/'outputs')
+    directory = register_transfer(candidate.classifier_path.parent, inp, policy, [plan(good, ('J1',)), plan(bad, ('J2',))], [24,108,344], tmp_path/'outputs')
     predict_transfer(directory, keys, x, [good, bad])
     predictions = pd.read_csv(directory/'predictions.csv')
     assert set(predictions.run_id) == {9999}
@@ -177,7 +177,7 @@ def test_mixed_runs_only_score_eligible_and_report_ineligible(experiment, tmp_pa
     labels['vol_inundacion_m3'] = 0.0
     labels['inunda'] = 0
     score_transfer(directory, labels)
-    assert json.loads((directory/'scores.json').read_text())['overall']['n_samples'] == 1
+    assert json.loads((directory/'synthetic_scores.json').read_text())['overall']['n_samples'] == 1
 
 
 def test_study_using_b_network_is_rejected(experiment, tmp_path, sql_training_db):
@@ -196,7 +196,7 @@ def test_study_using_b_network_is_rejected(experiment, tmp_path, sql_training_db
 
 
 def test_changed_b_labels_do_not_change_pair_or_sealed_predictions(experiment, tmp_path):
-    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer, score_transfer
+    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer, _score_synthetic_transfer as score_transfer
     candidate, inp, policy, keys, x, decision = experiment
     run = {'network_id':999, 'run_id':9999, 'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
     candidate_hash = hashlib.sha256(candidate.classifier_path.read_bytes()).hexdigest()
@@ -212,7 +212,7 @@ def test_changed_b_labels_do_not_change_pair_or_sealed_predictions(experiment, t
     score_transfer(directories[1], labels)
     assert hashlib.sha256(candidate.classifier_path.read_bytes()).hexdigest() == candidate_hash
     assert (directories[0]/'predictions.csv').read_bytes() == (directories[1]/'predictions.csv').read_bytes()
-    assert json.loads((directories[0]/'scores.json').read_text())['overall']['rmse_m3'] != json.loads((directories[1]/'scores.json').read_text())['overall']['rmse_m3']
+    assert json.loads((directories[0]/'synthetic_scores.json').read_text())['overall']['rmse_m3'] != json.loads((directories[1]/'synthetic_scores.json').read_text())['overall']['rmse_m3']
 
 
 def test_failed_run_needs_no_feature_rows(experiment, tmp_path):
@@ -229,7 +229,7 @@ def test_failed_run_needs_no_feature_rows(experiment, tmp_path):
 
 
 def test_seal_covers_inference_inputs(experiment, tmp_path):
-    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer, score_transfer
+    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer, _score_synthetic_transfer as score_transfer
     candidate, inp, policy, keys, x, decision = experiment
     run = {'network_id':999, 'run_id':9999, 'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
     directory = register_transfer(candidate.classifier_path.parent, inp, policy, [plan(run)], [24,108,344], tmp_path/'outputs')
@@ -243,3 +243,92 @@ def test_seal_covers_inference_inputs(experiment, tmp_path):
     labels['vol_inundacion_m3'] = [0.,20.]
     with pytest.raises(ValueError, match='input seal'):
         score_transfer(directory, labels)
+
+
+def test_public_scoring_rejects_unbound_sources(experiment, tmp_path):
+    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer, score_transfer
+    candidate, inp, policy, keys, x, decision = experiment
+    run = {'network_id':999, 'run_id':9999, 'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
+    directory = register_transfer(candidate.classifier_path.parent, inp, policy, [plan(run)], [24,108,344], tmp_path/'outputs')
+    predict_transfer(directory, keys, x, [run])
+    labels = keys[['network_id','run_id','node_id']].copy()
+    labels['inunda'] = [0,1]
+    labels['vol_inundacion_m3'] = [0.,20.]
+    with pytest.raises(NotImplementedError, match='source binding'):
+        score_transfer(directory, labels)
+    assert not (directory/'synthetic_scores.json').exists()
+
+
+def test_partial_node_coverage_fails_before_prediction(experiment, tmp_path):
+    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer
+    candidate, inp, policy, keys, x, decision = experiment
+    run = {'network_id':999, 'run_id':9999, 'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
+    directory = register_transfer(candidate.classifier_path.parent, inp, policy, [plan(run)], [24,108,344], tmp_path/'outputs')
+    with pytest.raises(ValueError, match='coverage'):
+        predict_transfer(directory, keys.iloc[:1], x.iloc[:1], [run])
+    assert not (directory/'prediction_seal.json').exists()
+
+
+@pytest.mark.parametrize('shapes', [[None, 'base'], ['base', 'different'], ['', 'base']])
+def test_missing_or_inconsistent_shape_fails_before_prediction(experiment, tmp_path, shapes):
+    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer
+    candidate, inp, policy, keys, x, decision = experiment
+    run = {'network_id':999, 'run_id':9999, 'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
+    directory = register_transfer(candidate.classifier_path.parent, inp, policy, [plan(run)], [24,108,344], tmp_path/'outputs')
+    keys['shape_id'] = shapes
+    with pytest.raises(ValueError, match='shape_id'):
+        predict_transfer(directory, keys, x, [run])
+
+
+def test_one_seed_mlp_is_rejected(experiment, tmp_path, sql_training_db):
+    from swmm_resilience.ml.bench.frozen_transfer import register_transfer
+    candidate, inp, policy, keys, x, decision = experiment
+    prepared = prepare_dataset(sql_training_db, protocols=('LOSO',), flood_threshold_m3=1.0, output_dir=tmp_path/'prepared_mlp')
+    params = {'hidden_sizes':(4,), 'epochs':1}
+    single = train_candidate(prepared, 'mlp', params, params, tmp_path/'mlp', objective='macro_network_rmse', trial_metadata=candidate.metadata['trial_metadata'])
+    run = {'network_id':999, 'run_id':9999, 'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
+    with pytest.raises(ValueError, match='five.seed MLP ensemble'):
+        register_transfer(single.classifier_path.parent, inp, policy, [plan(run)], [24,108,344], tmp_path/'outputs')
+
+
+def test_approved_five_seed_mlp_ensemble_is_accepted(experiment, tmp_path, sql_training_db, monkeypatch):
+    from swmm_resilience.ml.bench.frozen_transfer import register_transfer
+    from swmm_resilience.ml.bench.train import train_mlp_ensemble
+    _, inp, policy, keys, x, decision = experiment
+    prepared = prepare_dataset(sql_training_db, protocols=('LOSO',), flood_threshold_m3=1.0, output_dir=tmp_path/'prepared_mlp_ensemble')
+    params = {'hidden_sizes':[4], 'epochs':1}
+    trial = {'state':'COMPLETE', 'value':1.0, 'classifier_params':params, 'regressor_params':params, 'objective_metric':'macro_network_rmse', 'inner_fold_rmse':[1.0], 'inner_network_rmse':{str(prepared.manifest['source_network_ids'][0]):1.0}}
+    result = TuneResult(family='mlp', prep_id=prepared.prep_id, study_id='test-mlp', inner_cv={'method':'LeaveOneShapeOut'}, objective_metric='macro_network_rmse', direction='minimize', n_trials=1, seed=42, optuna_version='test', started_at_utc='test', finished_at_utc='test', duration_s=1.0, trials=[trial], best_classifier_params=params, best_regressor_params=params, best_value=1.0)
+    study = save_tune_result(result, tmp_path/'mlp-studies')
+    evidence = {'selection':'inner_tuning', 'study_path':str(study), 'study_sha256':hashlib.sha256(study.read_bytes()).hexdigest()}
+    ensemble, _ = train_mlp_ensemble(prepared, params, params, tmp_path/'mlp-models', objective='macro_network_rmse', trial_metadata=evidence)
+    run = {'network_id':999, 'run_id':9999, 'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
+    directory = register_transfer(ensemble.classifier_path.parent, inp, policy, [plan(run)], [24,108,344], tmp_path/'outputs')
+    registration = json.loads((directory/'registration.json').read_text())
+    assert registration['seeds'] == [42,43,44,45,46]
+    assert registration['classification_threshold'] == 0.5
+    from swmm_resilience.ml.bench import frozen_transfer
+    loaded_classifier, loaded_regressor, metadata = frozen_transfer.load_candidate_pair(ensemble.classifier_path.parent, ensemble.classifier_path.parent)
+    for index, (field, value) in enumerate((('classification_threshold', 0.7), ('conditional_volume_min_m3_per_seed', -1), ('probability', 'median'))):
+        altered = deepcopy(metadata)
+        altered['ensemble'][field] = value
+        monkeypatch.setattr(frozen_transfer, 'load_candidate_pair', lambda *_args: (loaded_classifier, loaded_regressor, altered))
+        with pytest.raises(ValueError, match='five-seed MLP ensemble'):
+            register_transfer(ensemble.classifier_path.parent, inp, policy, [plan(run)], [24,108,344], tmp_path/f'bad-policy-{index}')
+
+
+def test_node_and_event_coverage_is_locked_in_registration(experiment, tmp_path):
+    from swmm_resilience.ml.bench.frozen_transfer import register_transfer, predict_transfer, _score_synthetic_transfer
+    candidate, inp, policy, keys, x, decision = experiment
+    run = {'network_id':999, 'run_id':9999, 'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
+    directory = register_transfer(candidate.classifier_path.parent, inp, policy, [plan(run)], [24,108,344], tmp_path/'outputs')
+    registration = json.loads((directory/'registration.json').read_text())
+    assert registration['b_runs'][0]['expected_node_ids'] == ['J1', 'J2']
+    predict_transfer(directory, keys, x, [run])
+    labels = keys[['network_id','run_id','node_id']].copy()
+    labels['inunda'] = [0,1]
+    labels['vol_inundacion_m3'] = [0.,20.]
+    _score_synthetic_transfer(directory, labels)
+    scores = json.loads((directory/'synthetic_scores.json').read_text())
+    assert sum(row['n_samples'] for row in scores['by_event']) == scores['overall']['n_samples'] == 2
+    assert scores['usage'] == 'synthetic_only_unbound_sources'

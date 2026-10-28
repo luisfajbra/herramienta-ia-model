@@ -15,7 +15,8 @@ from ...validation.network_admission import inspect_network_inp
 from ...validation.network_policy import validate_network_profile
 from ..contracts import resolve_feature_contract
 from .evaluate import _nested_reporting_entry
-from .train import load_candidate_pair, _sha256
+from .train import load_candidate_pair, _sha256, MLP_SEEDS
+from .models.mlp_family import SeedEnsembleClassifier, SeedEnsembleRegressor
 from .schemas import KEY_COLUMNS
 
 
@@ -47,7 +48,21 @@ def register_transfer(candidate_dir, inp_path, domain_policy, b_runs, volume_ban
     declared hydraulic policy. No B labels or fitted estimator is accepted.
     """
     candidate_dir = Path(candidate_dir).resolve()
-    _, _, meta = load_candidate_pair(candidate_dir, candidate_dir)
+    classifier, regressor, meta = load_candidate_pair(candidate_dir, candidate_dir)
+    if meta.get('family') == 'mlp':
+        expected_aggregation = {'probability': 'arithmetic_mean', 'conditional_volume': 'mean_after_expm1_m3', 'conditional_volume_min_m3_per_seed': 0.0, 'classification_threshold': 0.5, 'dry_routed_volume_m3': 0.0}
+        members = meta.get('members') or []
+        try:
+            estimator_seeds = [[est.named_steps['model'].random_state for est in ensemble.estimators] for ensemble in (classifier, regressor)]
+        except (AttributeError, KeyError, TypeError):
+            estimator_seeds = []
+        if (not isinstance(classifier, SeedEnsembleClassifier) or not isinstance(regressor, SeedEnsembleRegressor)
+                or meta.get('random_seed') is not None or meta.get('random_seeds') != list(MLP_SEEDS)
+                or meta.get('ensemble') != expected_aggregation
+                or [member.get('random_seed') for member in members] != list(MLP_SEEDS)
+                or any(not _digest(member.get('classifier_sha256')) or not _digest(member.get('regressor_sha256')) for member in members)
+                or estimator_seeds != [list(MLP_SEEDS), list(MLP_SEEDS)]):
+            raise ValueError('The approved five-seed MLP ensemble and aggregation policy are required')
     if meta.get('manifest_version') != 'paired_experiment_v1':
         raise ValueError('A candidate requires paired experiment provenance')
     if meta.get('objective') != 'macro_network_rmse' or meta.get('trial_metadata', {}).get('selection') != 'inner_tuning':
@@ -94,17 +109,20 @@ def register_transfer(candidate_dir, inp_path, domain_policy, b_runs, volume_ban
     for run in b_runs:
         policy = run.get('hydraulic_policy')
         policy_sha256 = run.get('hydraulic_policy_sha256')
-        if set(run) != {'network_id', 'run_id', 'event_series_sha256', 'event_series_components', 'hydraulic_policy', 'hydraulic_policy_sha256'}:
+        if set(run) != {'network_id', 'run_id', 'event_series_sha256', 'event_series_components', 'hydraulic_policy', 'hydraulic_policy_sha256', 'expected_node_ids'}:
             raise ValueError('Preregistration accepts planned inputs and policy only, no run results or labels')
         if not isinstance(policy, dict) or not _digest(policy_sha256) or _hash(policy) != policy_sha256:
             raise ValueError('A complete hashed hydraulic policy is required for each B run')
-        records.append({'network_id': run['network_id'], 'run_id': run['run_id'],
+        nodes = run.get('expected_node_ids')
+        if not isinstance(nodes, list) or not nodes or any(not isinstance(node, str) or not node.strip() for node in nodes) or len(set(nodes)) != len(nodes):
+            raise ValueError('Each planned run needs unique nonempty expected_node_ids for coverage')
+        records.append({'expected_node_ids': nodes, 'network_id': run['network_id'], 'run_id': run['run_id'],
                         'event_series_sha256': run['event_series_sha256'], 'event_series_components': run['event_series_components'], 'hydraulic_policy': policy,
                         'hydraulic_policy_sha256': policy_sha256})
     identifier = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + meta['prep_id'][:12]
     directory = Path(output_root) / identifier / 'A_to_B_frozen'
     directory.mkdir(parents=True, exist_ok=False)
-    registration = {'schema': 'frozen_transfer_v1', 'candidate_dir': str(candidate_dir),
+    registration = {'usage': 'synthetic_only_unbound_sources', 'schema': 'frozen_transfer_v1', 'candidate_dir': str(candidate_dir),
         'candidate_metadata_sha256': _sha256(candidate_dir / 'metadata.json'),
         'classifier_sha256': meta['classifier_sha256'], 'regressor_sha256': meta['regressor_sha256'],
         'prep_id': meta['prep_id'], 'a_network_id': networks[0]['network_id'], 'a_run_ids': train_ids,
@@ -182,6 +200,14 @@ def predict_transfer(directory, keys, features, b_runs):
     eligible_runs = {status['run_id'] for status in statuses if status['eligible']}
     if not reg['domain_issues'] and not eligible_runs.issubset(set(keys.run_id)):
         raise ValueError('Every eligible B run must have feature rows')
+    for run_id in eligible_runs:
+        rows = keys.loc[keys.run_id == run_id]
+        nodes = rows['node_id'].astype(str)
+        if len(nodes) != len(expected[run_id]['expected_node_ids']) or set(nodes) != set(expected[run_id]['expected_node_ids']):
+            raise ValueError(f'Incomplete or unexpected node coverage for B run {run_id}')
+        shapes = rows['shape_id']
+        if shapes.isna().any() or any(not isinstance(value, str) or not value.strip() for value in shapes) or shapes.nunique() != 1:
+            raise ValueError(f'Invalid or inconsistent shape_id for B run {run_id}')
     if rejections:
         _write(directory / 'rejections.json', {'run_status':statuses, 'rejections':rejections})
     if reg['domain_issues'] or not eligible_runs:
@@ -209,9 +235,14 @@ def predict_transfer(directory, keys, features, b_runs):
 
 
 def score_transfer(directory, labels):
-    """Join labels only to already sealed predictions, then write immutable metrics."""
+    """Fail closed until verified source binding is implemented."""
+    raise NotImplementedError('Real scoring is blocked: verified B source binding is not implemented')
+
+
+def _score_synthetic_transfer(directory, labels):
+    """Exercise scoring mechanics in synthetic unit tests only; not a real result."""
     directory = Path(directory)
-    if (directory / 'scores.json').exists():
+    if (directory / 'synthetic_scores.json').exists():
         raise FileExistsError('Transfer score already exists')
     reg = _registration(directory)
     seal = _read(directory / 'prediction_seal.json')
@@ -221,7 +252,7 @@ def score_transfer(directory, labels):
         raise ValueError('Inference input seal mismatch')
     if seal['rejections_sha256'] is not None and _sha256(directory / 'rejections.json') != seal['rejections_sha256']:
         raise ValueError('Rejection report seal mismatch')
-    preds = pd.read_csv(directory / 'predictions.csv', dtype={'node_id':str})
+    preds = pd.read_csv(directory / 'predictions.csv', dtype={'node_id':str}, keep_default_na=False)
     labels = labels.copy()
     labels['node_id'] = labels['node_id'].astype(str)
     keys = ['network_id','run_id','node_id']
@@ -237,6 +268,6 @@ def score_transfer(directory, labels):
     def metrics(frame):
         return _nested_reporting_entry(frame['inunda'], frame['y_pred_clf'], frame['y_prob_clf'],
             frame['vol_inundacion_m3'], frame['volume_routed_m3'], reg['volume_bands_m3'], reg['flood_threshold_m3'])
-    output = {'prediction_sha256':seal['predictions_sha256'], 'labels_sha256':_hash(labels.sort_values(keys).to_dict(orient='records')),
+    output = {'usage':'synthetic_only_unbound_sources', 'prediction_sha256':seal['predictions_sha256'], 'labels_sha256':_hash(labels.sort_values(keys).to_dict(orient='records')),
               'overall':metrics(joined), 'by_event':[{'shape_id':str(shape), **metrics(group)} for shape, group in joined.groupby('shape_id')]}
-    _write(directory / 'scores.json', output)
+    _write(directory / 'synthetic_scores.json', output)
