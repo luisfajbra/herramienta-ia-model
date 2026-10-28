@@ -302,6 +302,7 @@ def score_transfer(directory, labels=None, *, conn=None, staged=None):
     expected_rows = []
     labels_rows = []
     label_sources = []
+    pending_label_runs = []
     eligible_run_ids = set()
     excluded_runs = []
     for entry in ordered:
@@ -344,37 +345,7 @@ def score_transfer(directory, labels=None, *, conn=None, staged=None):
             "scenario_key": str(scenario[2]), "scenario_kind": str(scenario[3]),
             "node_id": node, "factor_mult": float(scenario[5]), "shape_id": str(scenario[4]),
         } for node in nodes)
-
-        # This is the first target extraction in the score path. Every source
-        # file hash and the previously sealed, label-free predictions are
-        # already verified above.
-        linked = verify_run_source_artifacts(conn, run_id)["artifacts"]
-        rpt = linked["swmm_rpt"]
-        rpt_path = Path(rpt["resolved_path"]).resolve(strict=True)
-        if _sha256(rpt_path) != rpt["sha256"] or rpt["sha256"] != entry["artifacts"]["swmm_rpt"]["sha256"]:
-            raise ValueError(f"B RPT source hash changed for run {run_id}")
-        qa = entry.get("hydraulic_quality", {})
-        report_qa = qa.get("flooding_report", {})
-        if report_qa.get("report_sha256") != rpt["sha256"]:
-            raise ValueError(f"B QA flooding-report link differs from RPT for run {run_id}")
-        labels = extract_labels(rpt_path, nodes, threshold_m3=float(reg["flood_threshold_m3"]))
-        label_report = labels.attrs.get("flooding_report_manifest", {})
-        if label_report.get("report_sha256") != rpt["sha256"]:
-            raise ValueError(f"B labels did not come from the QA-validated RPT for run {run_id}")
-        labels = labels.copy()
-        labels["node_id"] = labels["node_id"].astype(str)
-        if (labels["node_id"].duplicated().any()
-                or set(labels["node_id"]) != set(nodes)):
-            raise ValueError(f"B RPT labels have incomplete or duplicate node coverage for run {run_id}")
-        labels["network_id"] = int(scenario[0])
-        labels["run_id"] = run_id
-        labels["shape_id"] = str(scenario[4])
-        labels["scenario_key"] = str(scenario[2])
-        labels_rows.append(labels[["network_id", "run_id", "node_id", "inunda", "vol_inundacion_m3"]])
-        label_sources.append({"run_id": run_id, "scenario_key": str(scenario[2]),
-                              "swmm_rpt_sha256": rpt["sha256"],
-                              "flooding_report_sha256": report_qa["report_sha256"],
-                              "label_rows": len(labels)})
+        pending_label_runs.append((entry, run_id, scenario, nodes))
 
     if not eligible_run_ids:
         raise ValueError("No B runs passed frozen hydraulic QA; there are no transfer scores")
@@ -421,6 +392,56 @@ def score_transfer(directory, labels=None, *, conn=None, staged=None):
         actual_values = actual.loc[:, list(contract.feature_names)].to_numpy(dtype=float)
         if not np.allclose(stored_values, actual_values, rtol=1e-12, atol=1e-12, equal_nan=True):
             raise ValueError(f"Sealed inference feature values differ from SQLite for B run {run_id}")
+    probability = preds["y_prob_clf"].to_numpy(dtype=float)
+    predicted_class = preds["y_pred_clf"].to_numpy(dtype=float)
+    conditional_volume = preds["volume_conditional_m3"].to_numpy(dtype=float)
+    routed_volume = preds["volume_routed_m3"].to_numpy(dtype=float)
+    threshold = float(reg["classification_threshold"])
+    if (not np.isfinite(probability).all() or ((probability < 0) | (probability > 1)).any()
+            or not np.isin(predicted_class, [0, 1]).all()
+            or not np.isfinite(conditional_volume).all() or (conditional_volume < 0).any()
+            or not np.isfinite(routed_volume).all() or (routed_volume < 0).any()
+            or not np.array_equal(predicted_class.astype(int), (probability >= threshold).astype(int))
+            or not np.allclose(routed_volume, np.where(predicted_class == 1, conditional_volume, 0.0),
+                               rtol=1e-12, atol=1e-12)):
+        raise ValueError("Sealed predictions violate the registered cascade or contain invalid values")
+    classifier, regressor, _ = load_candidate_pair(candidate_dir, candidate_dir)
+    expected_probability = np.asarray(classifier.predict_proba(inputs.loc[:, list(contract.feature_names)]))[:, 1]
+    expected_conditional = np.maximum(
+        np.expm1(np.asarray(regressor.predict(inputs.loc[:, list(contract.feature_names)]), dtype=float)), 0.0
+    )
+    if (not np.allclose(probability, expected_probability, rtol=1e-9, atol=1e-9)
+            or not np.allclose(conditional_volume, expected_conditional, rtol=1e-9, atol=1e-9)):
+        raise ValueError("Sealed B predictions do not reproduce from the registered candidate and verified features")
+
+    # Target extraction starts only after the complete label-free prediction
+    # table, its keys/features and its registered model outputs all verify.
+    for entry, run_id, scenario, nodes in pending_label_runs:
+        linked = verify_run_source_artifacts(conn, run_id)["artifacts"]
+        rpt = linked["swmm_rpt"]
+        rpt_path = Path(rpt["resolved_path"]).resolve(strict=True)
+        if _sha256(rpt_path) != rpt["sha256"] or rpt["sha256"] != entry["artifacts"]["swmm_rpt"]["sha256"]:
+            raise ValueError(f"B RPT source hash changed for run {run_id}")
+        qa = entry.get("hydraulic_quality", {})
+        report_qa = qa.get("flooding_report", {})
+        if report_qa.get("report_sha256") != rpt["sha256"]:
+            raise ValueError(f"B QA flooding-report link differs from RPT for run {run_id}")
+        labels = extract_labels(rpt_path, nodes, threshold_m3=float(reg["flood_threshold_m3"]))
+        label_report = labels.attrs.get("flooding_report_manifest", {})
+        if label_report.get("report_sha256") != rpt["sha256"]:
+            raise ValueError(f"B labels did not come from the QA-validated RPT for run {run_id}")
+        labels = labels.copy()
+        labels["node_id"] = labels["node_id"].astype(str)
+        if (labels["node_id"].duplicated().any()
+                or set(labels["node_id"]) != set(nodes)):
+            raise ValueError(f"B RPT labels have incomplete or duplicate node coverage for run {run_id}")
+        labels["network_id"] = int(scenario[0])
+        labels["run_id"] = run_id
+        labels_rows.append(labels[["network_id", "run_id", "node_id", "inunda", "vol_inundacion_m3"]])
+        label_sources.append({"run_id": run_id, "scenario_key": str(scenario[2]),
+                              "swmm_rpt_sha256": rpt["sha256"],
+                              "flooding_report_sha256": report_qa["report_sha256"],
+                              "label_rows": len(labels)})
     predictions_sha = seal["predictions_sha256"]
     truth = pd.concat(labels_rows, ignore_index=True)
     keys = ["network_id", "run_id", "node_id"]

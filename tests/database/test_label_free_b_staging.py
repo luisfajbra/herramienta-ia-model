@@ -722,7 +722,8 @@ def test_verified_transfer_scoring_reads_labels_from_the_sealed_run_report(tmp_p
         "contract_id": "tabular_v4_21",
         "b_inp_path": str(Path(root / role_items["source_network_inp"]["path"]).resolve()),
         "b_inp_sha256": role_items["source_network_inp"]["sha256"],
-        "flood_threshold_m3": 1.0, "volume_bands_m3": [24.0, 108.0, 344.0],
+        "flood_threshold_m3": 1.0, "classification_threshold": 0.5,
+        "volume_bands_m3": [24.0, 108.0, 344.0],
         "b_runs": [{
             "network_id": staged["network_id"], "run_id": staged["run_ids"][0],
             "event_series_sha256": event_hash, "event_series_components": components,
@@ -752,6 +753,18 @@ def test_verified_transfer_scoring_reads_labels_from_the_sealed_run_report(tmp_p
         "rejections_sha256": None,
     }
     (transfer_dir / "prediction_seal.json").write_text(json.dumps(seal), encoding="utf-8")
+    class FakeClassifier:
+        def predict_proba(self, features):
+            return pd.DataFrame({"dry": [0.25] * len(features), "flood": [0.75] * len(features)}).to_numpy()
+
+    class FakeRegressor:
+        def predict(self, features):
+            import numpy as np
+            return np.log1p([30.0] * len(features))
+
+    monkeypatch.setattr(transfer, "load_candidate_pair", lambda *_: (
+        FakeClassifier(), FakeRegressor(), {},
+    ))
     def labels_after_seal(path, nodes, threshold_m3):
         assert (transfer_dir / "prediction_seal.json").is_file()
         assert transfer._sha256(transfer_dir / "predictions.csv") == seal["predictions_sha256"]
