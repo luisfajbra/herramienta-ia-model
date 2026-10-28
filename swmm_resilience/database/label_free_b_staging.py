@@ -571,6 +571,10 @@ def stage_frozen_b_label_free(
     protocol_anchor_db_path: str | Path,
     manifest_name: str = "frozen_b_manifest.json",
     output_manifest_name: str = "experiment_source_manifest.json",
+    expected_network_role: str = "B",
+    expected_manifest_schema: str = "frozen_b_transfer_manifest_v1",
+    expected_network_path: str | Path | None = None,
+    expected_scenario_keys: list[str] | None = None,
 ) -> dict:
     """Allocate fresh SQLite run IDs and return features without reading targets.
 
@@ -595,12 +599,21 @@ def stage_frozen_b_label_free(
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ValueError("cannot read complete frozen B manifest") from exc
     if not isinstance(manifest, dict):
-        raise ValueError("frozen B manifest must be a JSON object")
+        raise ValueError("frozen run manifest must be a JSON object")
     _reject_target_fields(manifest)
-    if manifest.get("schema_version") != "frozen_b_transfer_manifest_v1" or manifest.get("status") != "complete":
-        raise ValueError("unsupported or non-frozen B transfer manifest")
+    if expected_network_role not in {"A", "B"}:
+        raise ValueError("expected_network_role must be A or B")
+    expected_schema = ("frozen_b_transfer_manifest_v1" if expected_network_role == "B"
+                       else "frozen_a_training_manifest_v1")
+    if expected_manifest_schema != expected_schema:
+        raise ValueError(f"network role {expected_network_role} requires manifest schema {expected_schema}")
+    if (manifest.get("schema_version") != expected_manifest_schema
+            or manifest.get("status") != "complete"):
+        raise ValueError(f"unsupported or non-frozen {expected_network_role} run manifest")
+    if expected_network_role == "A" and (expected_network_path is None or expected_scenario_keys is None):
+        raise ValueError("A staging requires the configured A INP path and complete approved scenario-key allowlist")
     if set(manifest) != {"schema_version", "status", "protocol_path", "protocol_sha256", "protocol_anchor", "runs"}:
-        raise ValueError("frozen B manifest has missing or unsupported fields")
+        raise ValueError("frozen run manifest has missing or unsupported fields")
     protocol_relative = manifest["protocol_path"]
     if not isinstance(protocol_relative, str) or Path(protocol_relative).is_absolute():
         raise ValueError("protocol_path must be an explicit relative path")
@@ -619,7 +632,7 @@ def stage_frozen_b_label_free(
     if anchor_receipt["protocol_sha256"] != manifest["protocol_sha256"]:
         raise ValueError("batch protocol hash differs from its pre-run external anchor")
     if not isinstance(protocol, dict) or protocol.get("schema_version") != "b_transfer_protocol_v2" or protocol.get("status") != "frozen_before_run":
-        raise ValueError("unsupported or non-frozen B protocol")
+        raise ValueError("unsupported or non-frozen run protocol")
     if set(protocol) != {"schema_version", "status", "network", "expected_scenario_keys", "scenarios",
                          "hydraulic_policy", "initial_condition"}:
         raise ValueError("frozen B protocol has missing or unsupported fields")
@@ -629,8 +642,18 @@ def stage_frozen_b_label_free(
         raise FileExistsError("immutable B source manifest already exists or has an invalid name")
     if feature_contract_id not in {"tabular_v3_17", "tabular_v4_21"}:
         raise ValueError("feature_contract_id must be read from the selected candidate metadata")
+    run_scenario_kind = "frozen_transfer" if expected_network_role == "B" else "frozen_a_training"
 
     network_rec = _artifact(root, protocol["network"], "source network INP", allow_external=True)
+    if expected_network_role == "A":
+        if protocol["network"].get("name") != "A":
+            raise ValueError("A protocol network role must be exactly 'A'")
+        if anchor_receipt.get("execution_context", {}).get("network_role") != "A":
+            raise ValueError("A protocol anchor must record execution_context.network_role='A'")
+        configured_inp = Path(expected_network_path).resolve(strict=True)
+        if (network_rec["path"].resolve(strict=True) != configured_inp
+                or network_rec["sha256"] != _hash_bytes(configured_inp.read_bytes())):
+            raise ValueError("A protocol source network path/hash differs from config.network.inp_path")
     actual_source_initial = build_initial_condition_manifest(network_rec["path"])
     frozen_initial = protocol["initial_condition"]
     if (frozen_initial.get("source_inp_sha256") != network_rec["sha256"]
@@ -643,6 +666,8 @@ def stage_frozen_b_label_free(
         raise ValueError("frozen B manifest needs non-empty ordered scenarios")
     if any(not isinstance(key, str) or not key.strip() for key in expected_keys) or len(set(expected_keys)) != len(expected_keys):
         raise ValueError("expected_scenario_keys must be ordered, unique, non-empty strings")
+    if expected_network_role == "A" and expected_keys != expected_scenario_keys:
+        raise ValueError("A protocol scenario keys do not match the complete approved allowlist")
     definitions = protocol["scenarios"]
     if not isinstance(definitions, list) or len(definitions) != len(expected_keys):
         raise ValueError("frozen protocol scenario definitions do not match its ordered keys")
@@ -801,8 +826,8 @@ def stage_frozen_b_label_free(
             scenario_id = conn.execute(
                 """INSERT INTO scenarios (network_id,scenario_key,scenario_kind,factor_mult,
                            shape_id,duracion_horas,tiempo_al_pico_h,config_json,config_sha256)
-                   VALUES (?,?, 'frozen_transfer',?,?,?,?,?,?)""",
-                (network_id, item["key"], float(definition["factor_mult"]), definition["shape_id"],
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
+                (network_id, item["key"], run_scenario_kind, float(definition["factor_mult"]), definition["shape_id"],
                  float(definition["duracion_horas"]), float(definition["tiempo_al_pico_h"]), _canonical(config), config_sha),
             ).lastrowid
             run_id = conn.execute(
@@ -861,7 +886,7 @@ def stage_frozen_b_label_free(
             if item["qa_decision"]["eligible"]:
                 keys = pd.DataFrame({
                     "run_id": run_id, "network_id": network_id, "scenario_id": scenario_id,
-                    "scenario_key": item["key"], "scenario_kind": "frozen_transfer",
+                    "scenario_key": item["key"], "scenario_kind": run_scenario_kind,
                     "node_id": item["node_ids"], "factor_mult": float(definition["factor_mult"]),
                     "shape_id": definition["shape_id"],
                 }, columns=KEY_COLUMNS)
@@ -884,7 +909,7 @@ def stage_frozen_b_label_free(
                 "hydraulic_policy": json.loads(qa_row[1]), "hydraulic_policy_sha256": qa_row[2],
                 "expected_node_ids": sorted(network_junction_ids)})
             out_runs.append({"run_id": run_id, "scenario_key": item["key"], "source_manifest_sha256": linked["source_manifest_sha256"],
-                "scenario": {"scenario_kind": "frozen_transfer", "shape_id": definition["shape_id"],
+                "scenario": {"scenario_kind": run_scenario_kind, "shape_id": definition["shape_id"],
                     "factor_mult": float(definition["factor_mult"]), "duracion_horas": float(definition["duracion_horas"]),
                     "tiempo_al_pico_h": float(definition["tiempo_al_pico_h"]), "config_sha256": config_sha},
                 "eligible": item["qa_decision"]["eligible"], "reason_codes": item["qa_decision"]["reason_codes"],
@@ -895,7 +920,8 @@ def stage_frozen_b_label_free(
                               for role, info in item["artifacts"].items()}})
         if conn.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] != 0:
             raise ValueError("label-free staging must leave node_results empty")
-        seal = {"schema_version": "label_free_b_source_manifest_v1",
+        seal = {"schema_version": ("label_free_b_source_manifest_v1" if expected_network_role == "B"
+                                    else "a_verified_source_manifest_v1"),
             "input_manifest_path": manifest_path.name,
             "input_manifest_sha256": _hash_bytes(manifest_path.read_bytes()),
             "protocol_path": protocol_path.relative_to(root).as_posix(),
