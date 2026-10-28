@@ -75,6 +75,10 @@ Los reportes mostrarán métricas por red y por evento y definirán los pesos ag
 
 Para seleccionar hiperparámetros en evaluación multired se usará `macro_network_rmse`: calcular el RMSE de volumen en cada red y promediar esos RMSE con el mismo peso por red, sin ponderar por su número de nodos o corridas. La razón es que la pregunta principal es la transferencia entre redes y una red grande no debe dominar la selección. El `pooled_rmse` se conservará como resultado complementario para describir error por fila; no reemplazará el objetivo macro ni se usará para cambiar retrospectivamente la selección. Cada configuración, estudio Optuna y reporte registrará el objetivo explícito. La decisión fue confirmada por el usuario el 27 de octubre de 2026.
 
+**Alcance estadístico con dos redes:** en cada fold externo LeaveOneNetworkOut solo queda una red en entrenamiento. Los folds internos LeaveOneShapeOut particionan sus formas, por lo que `macro_network_rmse` dentro de cada estudio tiene una sola red y equivale a su RMSE. No debe describirse como una media macro entre varias redes ni como prueba de selección transferible a una población de redes. Se conservan por separado los resultados A→B y B→A; una tercera red reservada es necesaria para una verificación externa independiente de redes no vistas.
+
+La entrada de ejecución `evaluate_nested_networks_from_config(...)` toma objetivo, número de trials y folds de `bench.tuning`; no se permite que una llamada de producción sustituya silenciosamente la decisión configurada. El manifiesto de cada trial registra estado Optuna, métrica objetivo, valor, RMSE por fold interno y RMSE por red interna, además de parámetros y duración. Estos campos dejan rastro suficiente para reconstruir por qué se seleccionó cada candidato.
+
 ## Componentes esperados
 
 - `swmm_resilience/ml/contracts.py`: catálogo y validación de contratos, incluyendo la selección explícita de v4_21.

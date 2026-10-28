@@ -102,6 +102,51 @@ def test_nested_evaluation_tunes_only_outer_training_networks(monkeypatch):
         assert fold.optuna_study_id
 
 
+def test_nested_config_entry_point_passes_configured_objective_and_budget(monkeypatch):
+    import swmm_resilience.ml.bench.evaluate as evaluate_module
+
+    prepared = _two_network_prepared()
+    captured = {}
+
+    def spy_evaluate(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return "nested-result"
+
+    monkeypatch.setattr(evaluate_module, "evaluate_nested_networks", spy_evaluate)
+    config = SimpleNamespace(
+        bench=SimpleNamespace(
+            tuning=SimpleNamespace(
+                objective="macro_network_rmse", n_trials=7, n_splits=3
+            )
+        )
+    )
+
+    result = evaluate_module.evaluate_nested_networks_from_config(
+        prepared, "xgboost", ("LeaveOneShapeOut",), config, seed=13
+    )
+
+    assert result == "nested-result"
+    assert captured["kwargs"]["objective"] == "macro_network_rmse"
+    assert captured["kwargs"]["n_trials"] == 7
+    assert captured["kwargs"]["n_splits"] == 3
+    assert captured["kwargs"]["seed"] == 13
+
+
+def test_nested_config_entry_point_requires_explicit_objective():
+    import swmm_resilience.ml.bench.evaluate as evaluate_module
+
+    config = SimpleNamespace(
+        bench=SimpleNamespace(
+            tuning=SimpleNamespace(objective=None, n_trials=1, n_splits=2)
+        )
+    )
+    with pytest.raises(ValueError, match="bench.tuning.objective"):
+        evaluate_module.evaluate_nested_networks_from_config(
+            _two_network_prepared(), "xgboost", ("LeaveOneShapeOut",), config
+        )
+
+
 def test_outer_test_targets_do_not_change_the_inner_training_fingerprint():
     import swmm_resilience.ml.bench.evaluate as evaluate_module
 

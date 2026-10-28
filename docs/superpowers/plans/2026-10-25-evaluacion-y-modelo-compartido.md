@@ -69,11 +69,13 @@ assert result.oof.groupby("sample_idx").size().eq(1).all()
 
 **Project decision (2026-10-27):** use `macro_network_rmse` as the configured selection objective. Each network contributes equally; retain `pooled_rmse` as a separately named descriptive metric.
 
+**Interpretation for the current two-network study:** each outer fold trains on the other single network. Therefore its inner `macro_network_rmse` contains one network and numerically equals that network's RMSE; it does not estimate an average across training networks. The outer A-to-B and B-to-A scores remain separate transfer results. They are not evidence of expected performance over a population of unseen networks. Revisit this limitation when additional admitted networks are available.
+
 **Files:** Modify `swmm_resilience/config.py`, `swmm_resilience/ml/bench/tune.py`, `metrics.py`, `reports.py`; test `tests/ml/bench/test_bench_config.py`, `test_tune.py`, `test_metrics.py`, `test_reports.py`.
 
 **Interfaces:** `validate_tuning_objective(protocols, objective)` in `swmm_resilience/config.py` requires `pooled_rmse` or `macro_network_rmse` when network-held-out evaluation is enabled. Configuration records the per-network aggregation rule. Each Optuna trial record persists the objective name, value, network IDs and fold scores. Metrics output contains both pooled and per-network values regardless of which one selects a candidate.
 
-- [ ] Add tests that absent/unknown objective fails before Optuna starts, pooled RMSE is calculated on concatenated held-out rows, and macro-network RMSE is the unweighted mean of network RMSEs independent of network row counts.
+- [x] Add tests that absent/unknown objective fails before Optuna starts, pooled RMSE is calculated on concatenated held-out rows, and macro-network RMSE is the unweighted mean of network RMSEs independent of network row counts.
 
 ```python
 with pytest.raises(ValueError, match="tuning_objective"):
@@ -83,8 +85,10 @@ assert macro_network_rmse({"A": [1.0, 1.0], "B": [2.0, 2.0]},
 ```
 
 Define `macro_network_rmse(y_true_by_network: dict[str, np.ndarray], y_pred_by_network: dict[str, np.ndarray]) -> float` beside the existing pooled metric helpers in `swmm_resilience/ml/bench/metrics.py`.
-- [ ] Run the focused tests; confirm current tuning starts without an explicit objective and optimizes mean fold RMSE.
-- [ ] Implement objective dispatch and fail-fast config validation. Keep existing same-network benchmark configuration readable through an explicit compatibility setting, but require an objective for any `LeaveOneNetworkOut` run.
+- [x] Run the focused tests; confirm current tuning starts without an explicit objective and optimizes mean fold RMSE.
+- [x] Implement objective dispatch and fail-fast config validation. Keep existing same-network benchmark configuration readable through an explicit compatibility setting, but require an objective for any `LeaveOneNetworkOut` run.
+- [x] Connect the configured objective and tuning budget to the nested-evaluation entry point; reject absent objectives before trials start.
+- [x] Record each trial's state, objective, inner-fold RMSE values and per-network RMSE values for later explanation and audit.
 - [ ] Emit per-network/event sample counts, RMSE/MAE m³, volume bias, confusion counts, recall, PR-AUC where both classes permit it, and false negatives grouped by configured actual-volume bands. Store band edges in experiment config and include them in its identity.
 - [ ] Run the focused tests plus `tests/ml/bench/test_parity_with_legacy_evaluator.py`; confirm old evaluator behavior remains labelled as legacy and new ranking uses the recorded objective.
 - [ ] Commit with `feat: report explicit network weighted model objectives`.

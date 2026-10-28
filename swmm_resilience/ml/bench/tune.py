@@ -232,19 +232,40 @@ def _objective(
             )["rmse_vol_todos_nodos"]
         )
     if objective == "macro_network_rmse":
-        return macro_network_rmse(
+        network_score = macro_network_rmse(
             {key: np.concatenate(value) for key, value in true_by_network.items()},
             {key: np.concatenate(value) for key, value in pred_by_network.items()},
         )
-    if objective == "pooled_rmse":
+    elif objective == "pooled_rmse":
         y_true = np.concatenate(
             [part for values in true_by_network.values() for part in values]
         )
         y_pred = np.concatenate(
             [part for values in pred_by_network.values() for part in values]
         )
-        return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
-    return float(np.mean(fold_values))
+        network_score = float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
+    else:
+        network_score = float(np.mean(fold_values))
+    trial.set_user_attr("objective_metric", objective)
+    trial.set_user_attr("inner_fold_rmse", [float(value) for value in fold_values])
+    trial.set_user_attr(
+        "inner_network_rmse",
+        {
+            network_id: float(
+                np.sqrt(
+                    np.mean(
+                        (
+                            np.concatenate(true_by_network[network_id])
+                            - np.concatenate(pred_by_network[network_id])
+                        )
+                        ** 2
+                    )
+                )
+            )
+            for network_id in sorted(true_by_network)
+        },
+    )
+    return float(network_score)
 
 
 @dataclass(frozen=True)
@@ -326,9 +347,13 @@ def run_study(
     trials = [
         {
             "number": t.number,
+            "state": t.state.name,
+            "objective_metric": objective,
             "classifier_params": t.user_attrs.get("classifier_params"),
             "regressor_params": t.user_attrs.get("regressor_params"),
             "value": t.value,
+            "inner_fold_rmse": t.user_attrs.get("inner_fold_rmse"),
+            "inner_network_rmse": t.user_attrs.get("inner_network_rmse"),
             "duration_s": t.duration.total_seconds() if t.duration else None,
         }
         for t in study.trials

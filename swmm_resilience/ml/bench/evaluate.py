@@ -676,6 +676,42 @@ def evaluate_nested_networks(
     )
 
 
+def evaluate_nested_networks_from_config(
+    prepared: PreparedDataset,
+    family: str,
+    inner_protocols: Sequence[str],
+    config,
+    *,
+    seed: int = 42,
+    fold_n_jobs: int = 1,
+    fixed_params: dict | None = None,
+) -> NestedNetworkResult:
+    """Runs nested evaluation using the objective and tuning budget in Config.
+
+    This is the application entry point for a loaded project config; it avoids
+    copying the selection objective into a separate call-site argument.
+    """
+    bench = getattr(config, "bench", None)
+    if bench is None:
+        raise ValueError("Nested network evaluation requires a bench config block.")
+    tuning = bench.tuning
+    if tuning.objective is None:
+        raise ValueError(
+            "Nested network evaluation requires bench.tuning.objective."
+        )
+    return evaluate_nested_networks(
+        prepared,
+        family,
+        inner_protocols,
+        objective=tuning.objective,
+        n_trials=tuning.n_trials,
+        n_splits=tuning.n_splits,
+        seed=seed,
+        fold_n_jobs=fold_n_jobs,
+        fixed_params=fixed_params,
+    )
+
+
 def save_nested_network_result(
     result: NestedNetworkResult, output_dir: Path | str
 ) -> Path:

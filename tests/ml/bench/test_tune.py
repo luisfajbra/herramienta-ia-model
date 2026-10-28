@@ -170,6 +170,12 @@ def test_run_study_records_macro_network_rmse_objective(prepared_six_shapes):
     assert result.objective_metric == "macro_network_rmse"
     assert result.study_id
     assert np.isfinite(result.best_value)
+    assert len(result.trials) == 1
+    trial = result.trials[0]
+    assert trial["state"] == "COMPLETE"
+    assert trial["objective_metric"] == "macro_network_rmse"
+    assert len(trial["inner_fold_rmse"]) == 2
+    assert trial["inner_network_rmse"]
 
 
 def test_run_study_survives_a_failing_trial_and_keeps_the_completed_ones(
