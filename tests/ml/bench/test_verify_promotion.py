@@ -63,6 +63,24 @@ def test_matching_hashes_are_verified(tmp_path):
     assert result["discrepancies"] == []
 
 
+def test_promotion_copies_and_verifies_complete_source_manifest(tmp_path, sql_training_db):
+    from swmm_resilience.ml.bench.preprocess import prepare_dataset
+    from swmm_resilience.ml.bench.train import train_candidate
+    from swmm_resilience.ml.bench.promote import promote_candidate
+    prepared = prepare_dataset(sql_training_db, protocols=("LOSO",), flood_threshold_m3=1.,
+                               output_dir=tmp_path / "prepared")
+    params = {"n_estimators": 2, "max_depth": 1}
+    candidate = train_candidate(prepared, "xgboost", params, params, tmp_path / "candidates")
+    inp = tmp_path / "toy.inp"
+    inp.write_text("synthetic network", encoding="utf-8")
+    target = tmp_path / "active"
+    record = promote_candidate(candidate.metadata_path.parent, target, inp)
+    assert record["source_manifest"] == prepared.manifest
+    assert verify_promotion(target)["ok"]
+    (target / "source_manifest.json").write_text("{}", encoding="utf-8")
+    assert verify_promotion(target)["status"] == "mismatch"
+
+
 def test_a_replaced_model_is_reported_with_both_hashes(tmp_path):
     models = _models_dir(tmp_path, tamper=True)
     record = json.loads((models / "promotion.json").read_text(encoding="utf-8"))

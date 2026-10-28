@@ -198,3 +198,42 @@ def build_regressor(params: dict) -> Pipeline:
 
 def preprocessing_descriptor(params: dict) -> dict:
     return {"imputer": "median", "scaler": "standard", "pca": None}
+
+
+def ensemble_predictions(classifiers, regressors, X):
+    """Average probabilities and inverse-transformed conditional m³, then route."""
+    if not classifiers or len(classifiers) != len(regressors):
+        raise ValueError("Ensemble needs a nonempty matched classifier/regressor list")
+    probability = np.mean([model.predict_proba(X)[:, 1] for model in classifiers], axis=0)
+    conditional = np.mean([np.maximum(0.0, np.expm1(model.predict(X))) for model in regressors], axis=0)
+    flooded = (probability >= 0.5).astype(int)
+    return flooded, probability, conditional, np.where(flooded == 1, conditional, 0.0)
+
+
+class SeedEnsembleClassifier(ClassifierMixin, BaseEstimator):
+    """Frozen classifier ensemble with the standard inference interface."""
+
+    def __init__(self, estimators):
+        self.estimators = estimators
+        self.n_features_in_ = estimators[0].n_features_in_
+        self.feature_names_in_ = estimators[0].feature_names_in_
+        self.classes_ = np.array([0, 1])
+
+    def predict_proba(self, X):
+        return np.mean([model.predict_proba(X) for model in self.estimators], axis=0)
+
+    def predict(self, X):
+        return (self.predict_proba(X)[:, 1] >= 0.5).astype(int)
+
+
+class SeedEnsembleRegressor(RegressorMixin, BaseEstimator):
+    """Return log1p(mean conditional m³) for existing expm1 inference callers."""
+
+    def __init__(self, estimators):
+        self.estimators = estimators
+        self.n_features_in_ = estimators[0].n_features_in_
+        self.feature_names_in_ = estimators[0].feature_names_in_
+
+    def predict(self, X):
+        conditional = [np.maximum(0.0, np.expm1(model.predict(X))) for model in self.estimators]
+        return np.log1p(np.mean(conditional, axis=0))

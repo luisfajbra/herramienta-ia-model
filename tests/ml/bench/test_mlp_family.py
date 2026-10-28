@@ -11,6 +11,70 @@ from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17
 PARAMS = {"hidden_sizes": (16, 8), "epochs": 20, "learning_rate": 0.01, "batch_size": 16}
 
 
+def test_ensemble_averages_probabilities_and_conditional_m3_before_routing():
+    from sklearn.dummy import DummyClassifier, DummyRegressor
+    from swmm_resilience.ml.bench.models.mlp_family import ensemble_predictions
+    X = np.zeros((2, 2))
+    classifiers = [DummyClassifier(strategy="prior").fit(np.zeros((5, 2)), y)
+                   for y in ([0, 0, 0, 1, 1], [0, 0, 1, 1, 1])]
+    regressors = [DummyRegressor(constant=np.log1p(v), strategy="constant").fit(X, [0, 0])
+                  for v in (2., 8.)]
+    pred, prob, conditional, routed = ensemble_predictions(classifiers, regressors, X)
+    np.testing.assert_allclose(prob, [0.5, 0.5])
+    np.testing.assert_array_equal(pred, [1, 1])
+    np.testing.assert_allclose(conditional, [5., 5.])
+    np.testing.assert_allclose(routed, conditional)
+    dry = DummyClassifier(strategy="prior").fit(np.zeros((5, 2)), [0, 0, 0, 0, 1])
+    pred, prob, conditional, routed = ensemble_predictions([dry, dry], regressors, X)
+    np.testing.assert_allclose(conditional, [5., 5.])
+    np.testing.assert_allclose(routed, [0., 0.])
+
+
+def test_seed_report_includes_each_seed_mean_and_sample_standard_deviation():
+    from swmm_resilience.ml.bench.reports import summarize_seeds
+    report = summarize_seeds({42: {"rmse": 2.0}, 43: {"rmse": 4.0}})
+    assert report["per_seed"] == {"42": {"rmse": 2.0}, "43": {"rmse": 4.0}}
+    assert report["mean"]["rmse"] == 3.0
+    assert report["sample_std"]["rmse"] == pytest.approx(np.sqrt(2.0))
+
+
+def test_seeded_oof_ensemble_uses_identical_rows_and_reports_every_seed(tmp_path):
+    from tests.ml.bench.prepared_factory import make_prepared
+    from swmm_resilience.ml.bench.evaluate import evaluate_mlp_seeds
+    prepared = make_prepared([
+        {"shape_id": shape, "node_id": node, "factor_mult": float(factor),
+         "vol": float(node * 2), "duracion_horas": 1., "tiempo_al_pico_h": .5}
+        for shape in ("a", "b") for factor in (1, 2) for node in (0, 1)
+    ], ("LeaveOneShapeOut",))
+    params = {"hidden_sizes": (4,), "epochs": 1}
+    oof, metrics, per_seed, report = evaluate_mlp_seeds(prepared, params, params)
+    assert sorted(per_seed) == [42, 43, 44, 45, 46]
+    np.testing.assert_allclose(oof.y_prob_clf, np.mean([frame.y_prob_clf for frame in per_seed.values()], axis=0))
+    np.testing.assert_allclose(oof.y_pred_reg, np.mean([frame.y_pred_reg for frame in per_seed.values()], axis=0))
+    np.testing.assert_array_equal(oof.y_pred_clf, (oof.y_prob_clf >= .5).astype(int))
+    assert set(report["per_seed"]) == {"42", "43", "44", "45", "46"}
+    assert metrics["LeaveOneShapeOut"]["end_to_end"]
+    from swmm_resilience.ml.bench.reports import save_mlp_seed_evaluation
+    directory = save_mlp_seed_evaluation(prepared, oof, metrics, per_seed, report, tmp_path / "run")
+    for seed in per_seed:
+        saved = pd.read_parquet(directory / f"seed-{seed}" / "oof.parquet")
+        pd.testing.assert_frame_equal(saved, per_seed[seed])
+    with pytest.raises(FileExistsError):
+        save_mlp_seed_evaluation(prepared, oof, metrics, per_seed, report, tmp_path / "run")
+
+
+def test_ensemble_preserves_nonnegative_conditional_volume_policy():
+    from sklearn.dummy import DummyClassifier, DummyRegressor
+    from swmm_resilience.ml.bench.models.mlp_family import ensemble_predictions
+    X = pd.DataFrame(np.zeros((2, 2)), columns=["a", "b"])
+    classifier = DummyClassifier(strategy="constant", constant=1).fit(X, [0, 1])
+    regressors = [DummyRegressor(strategy="constant", constant=v).fit(X, [0., 0.])
+                  for v in (-1., np.log1p(2.))]
+    _, _, conditional, routed = ensemble_predictions([classifier, classifier], regressors, X)
+    np.testing.assert_allclose(conditional, [1., 1.])
+    np.testing.assert_allclose(routed, [1., 1.])
+
+
 @pytest.fixture
 def toy_data():
     rng = np.random.default_rng(7)

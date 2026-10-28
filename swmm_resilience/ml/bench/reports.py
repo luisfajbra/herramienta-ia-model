@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 
 from .schemas import PROTOCOL_INTERPRETATION, PreparedDataset
 
@@ -41,6 +42,52 @@ def _json_safe(obj):
 
 
 METRICS_DEFINITION = "classifier_pooled_v2"
+
+
+def summarize_seeds(metrics_by_seed: dict[int, dict]) -> dict:
+    """Report each seed and recursive mean/sample SD; never rank seeds."""
+    def aggregate(values, std=False):
+        if all(isinstance(value, dict) for value in values):
+            return {key: aggregate([value[key] for value in values], std)
+                    for key in values[0] if all(key in value for value in values)}
+        if all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in values):
+            finite = [value for value in values if math.isfinite(value)]
+            return (float(np.std(finite, ddof=1)) if len(finite) > 1 else None) if std else (
+                float(np.mean(finite)) if finite else None)
+        return None
+    if not metrics_by_seed:
+        raise ValueError("At least one seed is required")
+    values = list(metrics_by_seed.values())
+    return {"per_seed": {str(seed): _json_safe(metrics) for seed, metrics in metrics_by_seed.items()},
+            "mean": aggregate(values), "sample_std": aggregate(values, True),
+            "selection": "all_predeclared_seeds; no_outer_test_seed_selection"}
+
+
+def save_mlp_seed_evaluation(prepared, oof, metrics, per_seed, summary, output_dir):
+    """Persist one immutable OOF experiment, with a separate directory per seed."""
+    from .train import MLP_SEEDS, _sha256
+
+    if tuple(sorted(per_seed)) != MLP_SEEDS:
+        raise ValueError("An MLP experiment must contain all five predeclared seeds")
+    directory = Path(output_dir)
+    directory.mkdir(parents=True, exist_ok=False)
+    for seed, frame in per_seed.items():
+        seed_dir = directory / f"seed-{seed}"
+        seed_dir.mkdir()
+        frame.to_parquet(seed_dir / "oof.parquet", index=False)
+    oof.to_parquet(directory / "ensemble.parquet", index=False)
+    payload = {
+        "prep_id": prepared.prep_id,
+        "source_manifest": prepared.manifest,
+        "random_seeds": list(MLP_SEEDS),
+        "seed_summary": summary,
+        "ensemble_metrics": metrics,
+        "oof_sha256": {str(path.relative_to(directory)): _sha256(path)
+                       for path in sorted(directory.rglob("*.parquet"))},
+    }
+    (directory / "manifest.json").write_text(
+        json.dumps(_json_safe(payload), indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+    return directory
 
 
 def write_metrics_files(

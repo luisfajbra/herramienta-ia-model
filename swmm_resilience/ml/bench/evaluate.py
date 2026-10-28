@@ -515,6 +515,27 @@ def evaluate_candidate(
     return oof, metrics
 
 
+def evaluate_mlp_seeds(prepared, classifier_params, regressor_params, *, protocols=None, n_jobs=1):
+    """Evaluate the same splits for five fixed seeds and score their mean ensemble."""
+    from .train import MLP_SEEDS
+    from .reports import summarize_seeds
+
+    per_seed, seed_metrics = {}, {}
+    for seed in MLP_SEEDS:
+        oof, metrics = evaluate_candidate(
+            prepared, "mlp", {**classifier_params, "random_state": seed},
+            {**regressor_params, "random_state": seed}, protocols=protocols, n_jobs=n_jobs,
+        )
+        per_seed[seed] = oof.sort_values(["protocol", "fold_id", "sample_idx"]).reset_index(drop=True)
+        seed_metrics[seed] = metrics
+    ensemble = per_seed[MLP_SEEDS[0]].copy()
+    ensemble["y_prob_clf"] = np.mean([oof.y_prob_clf for oof in per_seed.values()], axis=0)
+    ensemble["y_pred_clf"] = (ensemble.y_prob_clf >= 0.5).astype(int)
+    ensemble["y_pred_reg"] = np.mean([oof.y_pred_reg for oof in per_seed.values()], axis=0)
+    metrics = score_predictions(prepared, ensemble, {"prep_id": prepared.prep_id}, protocols=protocols)
+    return ensemble, metrics, per_seed, summarize_seeds(seed_metrics)
+
+
 def _nested_reporting_entry(
     y_clf_true,
     y_clf_pred,

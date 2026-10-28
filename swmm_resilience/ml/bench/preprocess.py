@@ -206,6 +206,7 @@ def _source_provenance(
             params.extend(network_ids)
         rows = conn.execute(
             """SELECT run.run_id, run.network_id, run.continuity_error_pct,
+                      run.swmm_version,
                       run.config_sha256 AS run_config_sha256,
                       scenario.scenario_id, scenario.shape_id, scenario.factor_mult,
                       scenario.config_json, scenario.config_sha256 AS scenario_config_sha256,
@@ -218,6 +219,13 @@ def _source_provenance(
                WHERE """ + " AND ".join(clauses) + " ORDER BY run.network_id, run.run_id",
             params,
         ).fetchall()
+        quality_by_run = {
+            int(row["run_id"]): dict(row)
+            for row in conn.execute(
+                "SELECT run_id, policy_version, policy_sha256, policy_json, manifest_json "
+                "FROM run_hydraulic_quality"
+            ).fetchall()
+        }
     finally:
         conn.close()
 
@@ -333,6 +341,18 @@ def _source_provenance(
                 "scenario_id": int(row["scenario_id"]),
                 "shape_id": row["shape_id"],
                 "factor_mult": row["factor_mult"],
+                "run_config_sha256": row["run_config_sha256"],
+                "scenario_config_sha256": row["scenario_config_sha256"],
+                "swmm_version": row["swmm_version"] or "unknown",
+                "hydraulic_quality": (
+                    {
+                        "policy_version": quality_by_run[int(row["run_id"])]["policy_version"],
+                        "policy_sha256": quality_by_run[int(row["run_id"])]["policy_sha256"],
+                        "policy": json.loads(quality_by_run[int(row["run_id"])]["policy_json"]),
+                        "manifest": json.loads(quality_by_run[int(row["run_id"])]["manifest_json"]),
+                    }
+                    if int(row["run_id"]) in quality_by_run else None
+                ),
                 "event_series_sha256": source.get("event_series_sha256"),
                 "event_series_components": event_components,
                 "v17_dataset": source.get("training_dataset"),

@@ -39,6 +39,157 @@ def test_artifacts_are_written(prepared, tmp_path):
     assert artifacts.classifier_path.parent.name == "xgboost"
 
 
+def test_mlp_five_seeds_are_distinct_immutable_and_reproducible(prepared, tmp_path):
+    from swmm_resilience.ml.bench.train import train_seed_candidates
+    params = {"hidden_sizes": (4,), "epochs": 1, "dropout": 0.0}
+    candidates = train_seed_candidates(prepared, "mlp", params, params, tmp_path / "first")
+    assert [c.metadata["random_seed"] for c in candidates] == [42, 43, 44, 45, 46]
+    assert len({c.classifier_path.parent for c in candidates}) == 5
+    for candidate in candidates:
+        assert candidate.metadata["library_versions"]["torch"]
+        assert candidate.metadata["random_seeds"] == [42, 43, 44, 45, 46]
+        assert load_candidate(candidate.classifier_path.parent).metadata == candidate.metadata
+    repeat = train_seed_candidates(prepared, "mlp", params, params, tmp_path / "repeat")
+    for first, second in zip(candidates, repeat):
+        np.testing.assert_array_equal(joblib.load(first.classifier_path).predict_proba(prepared.X),
+                                      joblib.load(second.classifier_path).predict_proba(prepared.X))
+    original = candidates[0].classifier_path.read_bytes()
+    with pytest.raises(FileExistsError):
+        train_seed_candidates(prepared, "mlp", params, params, tmp_path / "first")
+    assert candidates[0].classifier_path.read_bytes() == original
+
+
+def test_complete_manifest_binds_sources_splits_seeds_and_models(prepared, tmp_path):
+    artifacts = train_candidate(prepared, "xgboost", TINY, TINY, tmp_path)
+    metadata = artifacts.metadata
+    assert metadata["source_manifest"] == prepared.manifest
+    assert metadata["objective"] == "macro_network_rmse"
+    assert metadata["target_threshold_m3"] == prepared.manifest["flood_threshold_m3"]
+    assert metadata["quality_policy"]["version"]
+    assert "swmm_version" in metadata
+    for filename in ("source_manifest.json", "splits.json", "quality_report.json", "experiment.json"):
+        assert filename in metadata["provenance_files_sha256"]
+        path = artifacts.metadata_path.parent / filename
+        original = path.read_bytes()
+        path.write_bytes(original + b" ")
+        from swmm_resilience.ml.model_provenance import ModelProvenanceError
+        with pytest.raises(ModelProvenanceError, match="SHA-256"):
+            load_candidate(path.parent)
+        path.write_bytes(original)
+
+
+def test_preparation_records_run_config_swmm_and_qa_from_snapshot(prepared):
+    for network in prepared.manifest["source_networks"]:
+        for run in network["runs"]:
+            assert len(run["run_config_sha256"]) == 64
+            assert run["run_config_sha256"] == run["scenario_config_sha256"]
+            assert "swmm_version" in run
+            assert run["hydraulic_quality"]["policy_version"]
+            assert len(run["hydraulic_quality"]["policy_sha256"]) == 64
+            assert run["hydraulic_quality"]["manifest"]
+
+
+def test_saved_ensemble_matches_members_and_keeps_their_hashes(prepared, tmp_path):
+    from swmm_resilience.ml.bench.train import train_mlp_ensemble
+    from swmm_resilience.ml.bench.models.mlp_family import ensemble_predictions
+    params = {"hidden_sizes": (4,), "epochs": 1}
+    ensemble, members = train_mlp_ensemble(prepared, params, params, tmp_path)
+    classifiers = [joblib.load(c.classifier_path) for c in members]
+    regressors = [joblib.load(c.regressor_path) for c in members]
+    pred, prob, conditional, _ = ensemble_predictions(classifiers, regressors, prepared.X)
+    classifier = joblib.load(ensemble.classifier_path)
+    regressor = joblib.load(ensemble.regressor_path)
+    np.testing.assert_allclose(classifier.predict_proba(prepared.X)[:, 1], prob)
+    np.testing.assert_array_equal(classifier.predict(prepared.X), pred)
+    np.testing.assert_allclose(np.expm1(regressor.predict(prepared.X)), conditional, rtol=1e-6)
+    assert len(ensemble.metadata["members"]) == 5
+    assert ensemble.metadata["random_seeds"] == [42, 43, 44, 45, 46]
+    load_candidate(ensemble.classifier_path.parent)
+
+
+@pytest.mark.parametrize("component", ["network", "event", "split", "seed"])
+def test_experiment_hash_changes_with_source_split_or_seed(prepared, tmp_path, component, monkeypatch):
+    import copy
+    from datetime import datetime, timezone
+    from types import SimpleNamespace
+    from swmm_resilience.ml.bench import train
+    frozen = datetime(2026, 10, 28, tzinfo=timezone.utc)
+    monkeypatch.setattr(train, "datetime", SimpleNamespace(now=lambda tz: frozen))
+    params = {"hidden_sizes": (4,), "epochs": 1}
+    before = train_candidate(prepared, "mlp", params, params, tmp_path / "before")
+    changed = copy.deepcopy(prepared)
+    if component == "network":
+        changed.manifest["source_networks"][0]["network_sha256"] = "f" * 64
+    elif component == "event":
+        changed.manifest["source_networks"][0]["runs"][0]["event_series_sha256"] = "f" * 64
+    elif component == "split":
+        changed.folds.loc[0, "held_out_groups"] = '["different"]'
+    after = train_candidate(changed, "mlp", params, params, tmp_path / "after",
+                            random_seed=43 if component == "seed" else 42)
+    if component == "split":
+        assert before.metadata["split_sha256"] != after.metadata["split_sha256"]
+    assert before.metadata["provenance_files_sha256"]["experiment.json"] != after.metadata["provenance_files_sha256"]["experiment.json"]
+
+
+def test_source_files_are_hashed_snapshotted_and_verified(prepared, tmp_path):
+    import hashlib
+    from swmm_resilience.ml.model_provenance import ModelProvenanceError
+    source = tmp_path / "network.inp"
+    source.write_bytes(b"synthetic network")
+    network = prepared.manifest["source_networks"][0]
+    network["inp_path"] = str(source)
+    network["network_sha256"] = hashlib.sha256(source.read_bytes()).hexdigest()
+    for index, role in enumerate(("v17_dataset", "v4_21_dataset")):
+        path = tmp_path / f"dataset-{index}.csv"
+        path.write_bytes(f"toy dataset {index}".encode())
+        network["runs"][0][role] = {"path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    event = tmp_path / "event.csv"
+    event.write_bytes(b"synthetic event")
+    network["runs"][0]["event_series_components"] = {
+        "hydrograph_path": str(event), "hydrograph_sha256": hashlib.sha256(event.read_bytes()).hexdigest()}
+    candidate = train_candidate(prepared, "xgboost", TINY, TINY, tmp_path / "candidate")
+    assert len(candidate.metadata["source_files"]) == 4
+    copied = next(item for item in candidate.metadata["source_files"] if item["source_path"] == str(source.resolve()))
+    assert copied["source_path"] == str(source.resolve())
+    assert copied["sha256"] == network["network_sha256"]
+    source.unlink()
+    load_candidate(candidate.metadata_path.parent)
+    snapshot = candidate.metadata_path.parent / copied["snapshot_file"]
+    snapshot.write_bytes(b"tamper")
+    with pytest.raises(ModelProvenanceError, match="SHA-256"):
+        load_candidate(candidate.metadata_path.parent)
+
+
+def test_source_snapshot_hash_cannot_be_removed_from_complete_manifest(prepared, tmp_path):
+    import hashlib
+    from swmm_resilience.ml.model_provenance import ModelProvenanceError
+    source = tmp_path / "source.inp"
+    source.write_bytes(b"synthetic")
+    prepared.manifest["source_networks"][0].update(
+        inp_path=str(source), network_sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    candidate = train_candidate(prepared, "xgboost", TINY, TINY, tmp_path / "candidate")
+    metadata = candidate.metadata
+    snapshot = metadata["source_files"][0]["snapshot_file"]
+    metadata["provenance_files_sha256"].pop(snapshot)
+    candidate.metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    with pytest.raises(ModelProvenanceError, match="source"):
+        load_candidate(candidate.metadata_path.parent)
+
+
+@pytest.mark.parametrize("field", ["prep_id", "source_snapshot_sha256", "source_networks", "random_seed"])
+def test_pair_loading_rejects_different_experiment_identity(prepared, tmp_path, field):
+    from swmm_resilience.ml.bench.train import load_candidate_pair
+    from swmm_resilience.ml.model_provenance import ModelProvenanceError
+    artifacts = train_candidate(prepared, "xgboost", TINY, TINY, tmp_path / "original")
+    other = tmp_path / "other"
+    shutil.copytree(artifacts.classifier_path.parent, other)
+    metadata = dict(artifacts.metadata)
+    metadata[field] = "different"
+    (other / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    with pytest.raises(ModelProvenanceError, match=field):
+        load_candidate_pair(artifacts.classifier_path.parent, other)
+
+
 def test_metadata_records_the_prep_id_and_feature_order(prepared, tmp_path):
     artifacts = train_candidate(prepared, "xgboost", TINY, TINY, tmp_path / "candidates")
     metadata = json.loads(artifacts.metadata_path.read_text(encoding="utf-8"))

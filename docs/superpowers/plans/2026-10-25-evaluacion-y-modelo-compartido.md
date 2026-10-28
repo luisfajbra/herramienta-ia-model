@@ -100,7 +100,7 @@ Define `macro_network_rmse(y_true_by_network: dict[str, np.ndarray], y_pred_by_n
 
 **Interfaces:** An experiment manifest identifies both classifier and regressor, family, selected parameters, all random seeds, contract ID/hash, prep ID, source network/run/event hashes, outer/inner split protocol, objective, target threshold, quality policy version and library/SWMM versions.
 
-- [ ] Add tests that two MLP seeds yield two distinct candidate directories/manifests and a report of mean/spread, and that mismatched classifier/regressor prep IDs or source-run hashes fail pair loading.
+- [x] Add tests that two MLP seeds yield two distinct candidate directories/manifests and a report of mean/spread, and that mismatched classifier/regressor prep IDs or source-run hashes fail pair loading.
 
 ```python
 assert len({candidate.metadata["random_seed"] for candidate in candidates}) == len(candidates)
@@ -108,11 +108,11 @@ assert len({candidate.classifier_path.parent for candidate in candidates}) == le
 with pytest.raises(ModelProvenanceError, match="prep_id"):
     load_candidate_pair(classifier_dir, regressor_dir)
 ```
-- [ ] Run the focused tests; confirm current artifact metadata records one seed and does not encode a complete multired source manifest.
-- [ ] Implement deterministic seed enumeration for MLP and preserve the best-selection rule in config. Save each seed separately; never overwrite an OOF directory with another seed. Keep XGBoost trial/seed metadata explicit too.
-- [ ] Extend `verify_promotion`/candidate verification to compare both artifacts with one complete manifest and hash all source-manifest files. Do not automatically promote the best result.
-- [ ] Run focused tests and verify manifest hash changes if one source network, event, split, seed or model file changes.
-- [ ] Commit with `feat: persist paired multired model experiment provenance`.
+- [x] Run the focused tests; confirm current artifact metadata records one seed and does not encode a complete multired source manifest.
+- [x] Implement deterministic seed enumeration for MLP and preserve the best-selection rule in config. Save each seed separately; never overwrite an OOF directory with another seed. Keep XGBoost trial/seed metadata explicit too.
+- [x] Extend `verify_promotion`/candidate verification to compare both artifacts with one complete manifest and hash all source-manifest files. Do not automatically promote the best result.
+- [x] Run focused tests and verify manifest hash changes if one source network, event, split, seed or model file changes.
+- [x] Commit with `feat: persist paired multired model experiment provenance`.
 
 ### Task 5: Execute the frozen A→B transfer experiment
 

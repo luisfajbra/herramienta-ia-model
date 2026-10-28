@@ -83,6 +83,31 @@ Los resultados nested se desglosan por red y por red–`shape_id`. `shape_id` re
 
 **Decisión registrada — 28 de octubre de 2026:** el usuario confirmó usar los cortes A-derivados de 24, 108 y 344 m³. La propuesta se obtuvo sin usar predicciones ni etiquetas de B: resumió los 154.080 targets del artefacto A-only software-elegible `758d3a0ad79e8506`, bajo el umbral configurado de 1 m³. Había 46.225 positivos; los cuartiles de su volumen fueron 24, 108 y 344 m³. Las bandas resultantes son `[1,24]`, `(24,108]`, `(108,344]` y `>344` m³, con recuentos A de 11.689, 11.506, 11.488 y 11.542 positivos. Son estratos descriptivos, no límites de severidad hidráulica ni criterios de admisión. Se fijan en `bench.reporting.volume_band_edges_m3`; para B→A se aplicarán solo al reporte posterior a la predicción y nunca al tuning o selección del modelo.
 
+### Semillas y ensemble MLP — decisión confirmada el 28 de octubre de 2026
+
+Cada experimento MLP completo usará exactamente cinco semillas deterministas,
+`[42, 43, 44, 45, 46]`, derivadas de `ML_RANDOM_STATE=42`. Cada pareja
+clasificador/regresor se conservará en su propio directorio inmutable. Se
+informarán las métricas de cada semilla, su media y su desviación estándar
+muestral (`ddof=1`); no se elegirá una semilla por su desempeño en el test externo.
+
+El ensemble final promediará las probabilidades de inundación de las cinco
+semillas y aplicará el umbral de clasificación existente de 0,5 a esa media.
+Para el volumen condicional, primero se aplicará `expm1` a cada regresor y se
+mantendrá el mínimo físico existente de 0 m³ por semilla; después se promediarán
+esas predicciones en m³. El volumen encaminado será cero si la clasificación
+del ensemble es seca y será la media condicional si es inundada. La pareja
+persistida conservará las interfaces de inferencia existentes: el regresor
+devolverá `log1p(media_condicional_m3)` para que el consumidor aplique `expm1`.
+
+Estas decisiones no cambian `macro_network_rmse` como objetivo configurado de
+selección de hiperparámetros ni autorizan una promoción automática. La evaluación
+por semillas y los artefactos ajustados con todas las filas preparadas son
+productos distintos; el manifiesto identifica expresamente ese alcance y no
+presenta los artefactos finales como modelos de un fold externo. Esta tarea se
+valida únicamente con fixtures sintéticas, sin simulaciones ni ajuste de redes
+reales. Las entradas nuevas son APIs del banco; no añaden comandos CLI.
+
 ## Componentes esperados
 
 - `swmm_resilience/ml/contracts.py`: catálogo y validación de contratos, incluyendo la selección explícita de v4_21.

@@ -22,6 +22,7 @@ from ..model_provenance import (
     ModelProvenanceError,
     load_verified_model_pair,
     validate_model_metadata,
+    validate_experiment_files,
 )
 from .train import _sha256, load_candidate
 
@@ -90,6 +91,7 @@ def verify_promotion(models_dir: Path | str) -> dict:
                 "actual": actual_network_hash,
             })
     try:
+        validate_experiment_files(record, target)
         validate_model_metadata(
             record,
             require_prep_id=record.get("feature_contract_id") != "tabular_v3_17"
@@ -254,9 +256,12 @@ def promote_candidate(
 
     shutil.copy2(candidate.classifier_path, target / "classifier.joblib")
     shutil.copy2(candidate.regressor_path, target / "regressor.joblib")
+    for filename in candidate.metadata.get("provenance_files_sha256", {}):
+        shutil.copy2(candidate.metadata_path.parent / filename, target / filename)
     (target / "training_inp_hash.txt").write_text(_md5(Path(inp_path)))
 
     record = {
+        **candidate.metadata,
         "family": candidate.family,
         "prep_id": candidate.metadata["prep_id"],
         "feature_contract_id": candidate.metadata.get("feature_contract_id", "tabular_v3_17"),

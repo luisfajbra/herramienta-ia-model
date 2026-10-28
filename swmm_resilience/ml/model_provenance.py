@@ -104,6 +104,7 @@ def validate_estimators(record: dict, classifier, regressor) -> None:
 def validate_pair_files(record: dict, classifier_path: Path, regressor_path: Path) -> None:
     """Check artifact presence and both SHA-256 values against one metadata record."""
     validate_model_metadata(record, require_prep_id=not _is_documented_legacy_v17(record))
+    validate_experiment_files(record, classifier_path.parent)
     for path, key in (
         (classifier_path, "classifier_sha256"),
         (regressor_path, "regressor_sha256"),
@@ -116,6 +117,29 @@ def validate_pair_files(record: dict, classifier_path: Path, regressor_path: Pat
             raise ModelProvenanceError(
                 f"{path.name} SHA-256 does not match model metadata"
             )
+
+
+def validate_experiment_files(record: dict, directory: Path) -> None:
+    """Verify every persisted provenance document and its shared pair identity."""
+    if record.get("manifest_version") != "paired_experiment_v1":
+        return  # Existing explicit legacy records remain readable.
+    hashes = record.get("provenance_files_sha256")
+    required = {"experiment.json", "source_manifest.json", "splits.json", "quality_report.json"}
+    if not isinstance(hashes, dict) or not required.issubset(hashes):
+        raise ModelProvenanceError("Incomplete experiment provenance_files_sha256")
+    for source in record.get("source_files", []):
+        if hashes.get(source.get("snapshot_file")) != source.get("sha256"):
+            raise ModelProvenanceError("Incomplete source snapshot SHA-256 record")
+    for name, expected in hashes.items():
+        if Path(name).name != name:
+            raise ModelProvenanceError("Invalid provenance filename")
+        path = directory / name
+        if not path.is_file() or sha256_file(path) != expected:
+            raise ModelProvenanceError(f"{name} SHA-256 does not match experiment metadata")
+    experiment = json.loads((directory / "experiment.json").read_text(encoding="utf-8"))
+    for field, value in experiment.items():
+        if record.get(field) != value:
+            raise ModelProvenanceError(f"Experiment manifest differs in {field}")
 
 
 def validate_training_network_record(record: dict, directory: Path) -> None:
@@ -212,6 +236,12 @@ def load_verified_model_pair(classifier_path: Path | str, regressor_path: Path |
                 raise ModelProvenanceError(
                     "Classifier and regressor metadata do not describe the same artifact pair"
                 )
+            for field in ("source_snapshot_sha256", "source_networks", "random_seed",
+                          "random_seeds", "provenance_files_sha256"):
+                if classifier_record.get(field) != regressor_record.get(field):
+                    raise ModelProvenanceError(f"Classifier and regressor provenance differ in {field}")
+            validate_experiment_files(classifier_record, classifier_path.parent)
+            validate_experiment_files(regressor_record, regressor_path.parent)
             _validate_single_artifact(classifier_record, classifier_path, "classifier")
             _validate_single_artifact(regressor_record, regressor_path, "regressor")
             if str(classifier_record_path).endswith("promotion.json"):

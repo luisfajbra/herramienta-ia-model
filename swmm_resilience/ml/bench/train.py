@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import platform
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from importlib.metadata import version as _package_version
@@ -27,6 +28,92 @@ from ..model_provenance import (
 )
 from .registry import get_family
 from .schemas import PreparedDataset
+
+MLP_SEEDS = tuple(ML_RANDOM_STATE + offset for offset in range(5))
+
+
+def _write_json(path: Path, value) -> None:
+    path.write_text(json.dumps(value, indent=2, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+
+
+def _snapshot_source_files(source_networks: list, directory: Path) -> list[dict]:
+    """Snapshot every file named by network/event/dataset source manifests."""
+    references = {}
+
+    def collect(value):
+        if isinstance(value, dict):
+            for path_key, hash_key in (("inp_path", "network_sha256"),
+                                       ("hydrograph_path", "hydrograph_sha256"),
+                                       ("path", "sha256")):
+                if value.get(path_key):
+                    path = Path(value[path_key]).expanduser().resolve()
+                    expected = value.get(hash_key)
+                    if path in references and references[path] != expected:
+                        raise ModelProvenanceError(f"Conflicting source hashes for {path}")
+                    references[path] = expected
+            for child in value.values():
+                collect(child)
+        elif isinstance(value, list):
+            for child in value:
+                collect(child)
+
+    collect(source_networks)
+    snapshots = []
+    for path, expected in sorted(references.items(), key=lambda item: str(item[0])):
+        if not path.is_file() or _sha256(path) != expected:
+            raise ModelProvenanceError(f"Source file SHA-256 does not match manifest: {path}")
+        snapshot_name = f"source-{expected}.bin"
+        snapshot = directory / snapshot_name
+        if not snapshot.exists():
+            shutil.copy2(path, snapshot)
+        if _sha256(snapshot) != expected:
+            raise ModelProvenanceError(f"Source snapshot SHA-256 changed while copying {path}")
+        snapshots.append({"source_path": str(path), "snapshot_file": snapshot_name, "sha256": expected})
+    return snapshots
+
+
+def _persist_provenance(directory, metadata, prepared):
+    metadata["manifest_version"] = "paired_experiment_v1"
+    metadata["source_manifest"] = prepared.manifest
+    metadata["source_files"] = _snapshot_source_files(prepared.manifest["source_networks"], directory)
+    metadata["target_threshold_m3"] = prepared.manifest.get("flood_threshold_m3")
+    metadata["quality_policy"] = {
+        "version": sorted({
+            (run.get("hydraulic_quality") or {}).get("policy_version", "unknown")
+            for network in prepared.manifest["source_networks"] for run in network["runs"]
+        }) or ["unknown"],
+        "max_continuity_error_pct": prepared.manifest.get("max_continuity_error_pct"),
+        "per_run": [
+            {"run_id": run["run_id"], "quality": run.get("hydraulic_quality")}
+            for network in prepared.manifest["source_networks"] for run in network["runs"]
+        ],
+    }
+    metadata["swmm_version"] = [
+        {"run_id": run["run_id"], "version": run.get("swmm_version") or "unknown"}
+        for network in prepared.manifest["source_networks"] for run in network["runs"]
+    ]
+    metadata["split_protocol"] = {
+        "outer": list(prepared.manifest["protocols"]),
+        "inner": list(metadata.pop("inner_protocols", [])),
+        "artifact_training_scope": "all_prepared_rows (not an outer-fold model)",
+    }
+    normalized = json.loads(json.dumps(metadata))
+    metadata.clear()
+    metadata.update(normalized)
+    documents = {
+        "source_manifest.json": prepared.manifest,
+        "splits.json": prepared.folds.to_dict(orient="records"),
+        "quality_report.json": prepared.quality,
+    }
+    for filename, document in documents.items():
+        _write_json(directory / filename, document)
+    metadata["source_manifest_sha256"] = _sha256(directory / "source_manifest.json")
+    metadata["split_sha256"] = _sha256(directory / "splits.json")
+    metadata["quality_report_sha256"] = _sha256(directory / "quality_report.json")
+    _write_json(directory / "experiment.json", dict(metadata))
+    filenames = [*documents, "experiment.json", *(source["snapshot_file"] for source in metadata["source_files"])]
+    metadata["provenance_files_sha256"] = {name: _sha256(directory / name) for name in filenames}
+    _write_json(directory / "metadata.json", metadata)
 
 
 @dataclass(frozen=True)
@@ -49,7 +136,7 @@ def _sha256(path: Path) -> str:
 def _library_versions() -> dict:
     return {
         name: _package_version(name)
-        for name in ("pandas", "numpy", "scikit-learn", "xgboost")
+        for name in ("pandas", "numpy", "scikit-learn", "xgboost", "torch")
     }
 
 
@@ -59,6 +146,12 @@ def train_candidate(
     classifier_params: dict,
     regressor_params: dict,
     output_dir: Path | str,
+    *,
+    random_seed: int | None = None,
+    random_seeds: tuple[int, ...] | None = None,
+    objective: str = "macro_network_rmse",
+    inner_protocols: tuple[str, ...] = (),
+    trial_metadata: dict | None = None,
 ) -> CandidateArtifacts:
     """Ajusta la cascada sobre todo el dataset y persiste los artefactos."""
     family = get_family(family_name)
@@ -66,8 +159,16 @@ def train_candidate(
         prepared.manifest,
         tuple(prepared.X.columns),
     )
+    actual_seed = ML_RANDOM_STATE if random_seed is None else int(random_seed)
+    if family_name != "mlp" and actual_seed != ML_RANDOM_STATE:
+        raise ValueError("Only MLP supports explicit candidate seeds")
+    if family_name == "mlp":
+        classifier_params = {**classifier_params, "random_state": actual_seed}
+        regressor_params = {**regressor_params, "random_state": actual_seed}
     directory = Path(output_dir) / family_name
-    directory.mkdir(parents=True, exist_ok=True)
+    if family_name == "mlp":
+        directory = directory / f"seed-{actual_seed}"
+    directory.mkdir(parents=True, exist_ok=False)
 
     X = prepared.X
     y_clf = prepared.y_clf.to_numpy()
@@ -118,7 +219,11 @@ def train_candidate(
         "target_transform": {"regressor": "log1p", "inverse": "expm1"},
         "scale_pos_weight": float(scale_pos_weight),
         "regressor_training_rows": n_positive,
-        "random_seed": ML_RANDOM_STATE,
+        "random_seed": actual_seed,
+        "random_seeds": list(random_seeds or (actual_seed,)),
+        "objective": objective,
+        "inner_protocols": list(inner_protocols),
+        "trial_metadata": trial_metadata or {"selection": "configured_parameters", "trials": []},
         "classifier_sha256": _sha256(classifier_path),
         "regressor_sha256": _sha256(regressor_path),
         "python_version": platform.python_version(),
@@ -126,9 +231,7 @@ def train_candidate(
         "created_at_utc": datetime.now(timezone.utc).isoformat(),
     }
     metadata_path = directory / "metadata.json"
-    metadata_path.write_text(
-        json.dumps(metadata, indent=2, ensure_ascii=False), encoding="utf-8"
-    )
+    _persist_provenance(directory, metadata, prepared)
 
     return CandidateArtifacts(
         family=family_name,
@@ -137,6 +240,62 @@ def train_candidate(
         metadata_path=metadata_path,
         metadata=metadata,
     )
+
+
+def train_seed_candidates(prepared, family_name, classifier_params, regressor_params, output_dir, **kwargs):
+    """Persist all five predeclared MLP seeds, without selecting on test results."""
+    seeds = MLP_SEEDS if family_name == "mlp" else (ML_RANDOM_STATE,)
+    for seed in seeds:
+        directory = Path(output_dir) / family_name
+        if family_name == "mlp":
+            directory = directory / f"seed-{seed}"
+        if directory.exists():
+            raise FileExistsError(f"Candidate is immutable: {directory}")
+    return tuple(train_candidate(prepared, family_name, classifier_params, regressor_params,
+                                 output_dir, random_seed=seed, random_seeds=seeds, **kwargs)
+                 for seed in seeds)
+
+
+def load_candidate_pair(classifier_dir, regressor_dir):
+    from ..model_provenance import load_verified_model_pair
+    return load_verified_model_pair(Path(classifier_dir) / "classifier.joblib",
+                                    Path(regressor_dir) / "regressor.joblib")
+
+
+def train_mlp_ensemble(prepared, classifier_params, regressor_params, output_dir, **kwargs):
+    """Fit five immutable seed pairs and persist their frozen mean ensemble."""
+    from .models.mlp_family import SeedEnsembleClassifier, SeedEnsembleRegressor
+
+    directory = Path(output_dir) / "mlp" / "ensemble"
+    if directory.exists():
+        raise FileExistsError(f"Candidate is immutable: {directory}")
+    members = train_seed_candidates(prepared, "mlp", classifier_params, regressor_params, output_dir, **kwargs)
+    directory.mkdir(parents=True, exist_ok=False)
+    classifier_path = directory / "classifier.joblib"
+    regressor_path = directory / "regressor.joblib"
+    joblib.dump(SeedEnsembleClassifier([joblib.load(c.classifier_path) for c in members]), classifier_path)
+    joblib.dump(SeedEnsembleRegressor([joblib.load(c.regressor_path) for c in members]), regressor_path)
+    metadata = {key: value for key, value in members[0].metadata.items()
+                if key not in {"provenance_files_sha256", "manifest_version", "split_protocol"}}
+    metadata.update({
+        "random_seed": None,
+        "classifier_params": classifier_params,
+        "regressor_params": regressor_params,
+        "classifier_sha256": _sha256(classifier_path),
+        "regressor_sha256": _sha256(regressor_path),
+        "inner_protocols": list(kwargs.get("inner_protocols", ())),
+        "ensemble": {"probability": "arithmetic_mean", "conditional_volume": "mean_after_expm1_m3",
+                     "conditional_volume_min_m3_per_seed": 0.0,
+                     "classification_threshold": 0.5, "dry_routed_volume_m3": 0.0},
+        "members": [{"random_seed": c.metadata["random_seed"],
+                     "classifier_sha256": c.metadata["classifier_sha256"],
+                     "regressor_sha256": c.metadata["regressor_sha256"],
+                     "provenance_files_sha256": c.metadata["provenance_files_sha256"]}
+                    for c in members],
+    })
+    _persist_provenance(directory, metadata, prepared)
+    return CandidateArtifacts("mlp", classifier_path, regressor_path,
+                              directory / "metadata.json", metadata), members
 
 
 def load_candidate(directory: Path | str) -> CandidateArtifacts:
