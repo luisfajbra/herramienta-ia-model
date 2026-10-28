@@ -537,13 +537,43 @@ class PreparedDataset:
             manifest,
             tuple(features.columns),
         )
+        keys = pd.read_parquet(directory / _COMPONENT_FILES["keys"])
+        targets = targets.loc[:, [_CLF_TARGET_NAME, _REG_TARGET_NAME]]
+        from ...database.training_queries import IDENTITY_COLUMNS
+        from .preprocess import _training_frame_sha256
+
+        training_frame = pd.concat(
+            [keys.loc[:, list(IDENTITY_COLUMNS)], features, targets],
+            axis=1,
+            ignore_index=False,
+        )
+        actual_training_frame_sha256 = _training_frame_sha256(training_frame)
+        if actual_training_frame_sha256 != manifest["training_frame_sha256"]:
+            raise ValueError(
+                "Persisted keys/features/targets do not match the manifest "
+                "training_frame_sha256. "
+                f"{_REGENERATE_MESSAGE}"
+            )
+        folds = pd.read_parquet(directory / _COMPONENT_FILES["folds"])
+        from .folds import build_all_folds
+
+        expected_folds = build_all_folds(keys, tuple(manifest["protocols"]))
+        sort_columns = ["protocol", "fold_id", "split", "sample_idx"]
+        actual_fold_rows = folds.sort_values(sort_columns).reset_index(drop=True)
+        expected_fold_rows = expected_folds.sort_values(sort_columns).reset_index(drop=True)
+        if not actual_fold_rows.equals(expected_fold_rows):
+            raise ValueError(
+                "Persisted folds.parquet does not match the deterministic "
+                "folds for the manifest protocols. "
+                f"{_REGENERATE_MESSAGE}"
+            )
         return cls(
             prep_id=manifest["prep_id"],
-            keys=pd.read_parquet(directory / _COMPONENT_FILES["keys"]),
+            keys=keys,
             X=features,
             y_clf=targets[_CLF_TARGET_NAME],
             y_reg=targets[_REG_TARGET_NAME],
-            folds=pd.read_parquet(directory / _COMPONENT_FILES["folds"]),
+            folds=folds,
             manifest=manifest,
             quality=json.loads(
                 (directory / _COMPONENT_FILES["quality"]).read_text(encoding="utf-8")

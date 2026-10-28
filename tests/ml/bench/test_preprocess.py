@@ -474,6 +474,37 @@ def test_artifacts_are_written_to_disk(prepared, tmp_path):
     assert json.loads((directory / "manifest.json").read_text(encoding="utf-8"))
 
 
+@pytest.mark.parametrize("component", ["features.parquet", "targets.parquet"])
+def test_resolve_prepared_rejects_changed_training_frame_component(
+    prepared, tmp_path, component
+):
+    directory = prepared.save(tmp_path / "integrity")
+    path = directory / component
+    frame = pd.read_parquet(path)
+    frame.iloc[0, 0] = frame.iloc[0, 0] + 1
+    frame.to_parquet(path, index=False)
+
+    with pytest.raises(ValueError, match="training_frame_sha256"):
+        resolve_prepared(tmp_path / "integrity", prepared.prep_id)
+
+
+def test_resolve_prepared_rejects_altered_but_valid_fold_assignment(prepared, tmp_path):
+    directory = prepared.save(tmp_path / "fold-integrity")
+    path = directory / "folds.parquet"
+    folds = pd.read_parquet(path)
+    held_out = folds[["fold_id", "held_out_groups"]].drop_duplicates()
+    fold_ids = sorted(held_out["fold_id"].unique())
+    rotated = {fold_id: fold_ids[(i + 1) % len(fold_ids)] for i, fold_id in enumerate(fold_ids)}
+    old_group_by_fold = dict(zip(held_out["fold_id"], held_out["held_out_groups"]))
+    new_group_by_fold = {rotated[old]: old_group_by_fold[old] for old in fold_ids}
+    folds["fold_id"] = folds["fold_id"].map(rotated)
+    folds["held_out_groups"] = folds["fold_id"].map(new_group_by_fold)
+    folds.to_parquet(path, index=False)
+
+    with pytest.raises(ValueError, match="folds.parquet.*protocol"):
+        resolve_prepared(tmp_path / "fold-integrity", prepared.prep_id)
+
+
 def test_folds_cover_every_sample_exactly_once_per_protocol(prepared):
     tested = prepared.folds.loc[prepared.folds["split"] == "test", "sample_idx"]
     assert sorted(tested) == list(range(len(prepared.X)))

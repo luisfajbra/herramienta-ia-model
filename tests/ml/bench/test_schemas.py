@@ -17,7 +17,9 @@ from swmm_resilience.ml.bench.schemas import (
     group_column_for,
 )
 from swmm_resilience.ml.bench.folds import build_folds
+from swmm_resilience.ml.bench.preprocess import _training_frame_sha256
 from swmm_resilience.ml.contracts import FEATURE_COLUMNS_V17, TABULAR_V3_17
+from swmm_resilience.database.training_queries import IDENTITY_COLUMNS
 
 
 def _tiny_prepared() -> PreparedDataset:
@@ -37,6 +39,8 @@ def _tiny_prepared() -> PreparedDataset:
     X = pd.DataFrame(
         {col: [float(i) for i in range(n)] for col in FEATURE_COLUMNS_V17}
     )
+    y_clf = pd.Series([0, 0, 1, 1, 1, 0], name="inunda")
+    y_reg = pd.Series([0.0, 0.0, 5.0, 7.0, 9.0, 0.0], name="vol_inundacion_m3")
     folds = pd.DataFrame(
         [
             {
@@ -75,7 +79,9 @@ def _tiny_prepared() -> PreparedDataset:
         "source_capture_method": "sqlite_backup_readonly_v1",
         "source_snapshot_sha256": "d" * 64,
         "training_frame_fingerprint_version": "training_frame_canonical_v1",
-        "training_frame_sha256": "c" * 64,
+        "training_frame_sha256": _training_frame_sha256(
+            pd.concat([keys.loc[:, list(IDENTITY_COLUMNS)], X, y_clf, y_reg], axis=1)
+        ),
     }
     prep_id = compute_prep_id(
         {field: descriptor[field] for field in PREP_ID_DESCRIPTOR_FIELDS}
@@ -84,8 +90,8 @@ def _tiny_prepared() -> PreparedDataset:
         prep_id=prep_id,
         keys=keys,
         X=X,
-        y_clf=pd.Series([0, 0, 1, 1, 1, 0], name="inunda"),
-        y_reg=pd.Series([0.0, 0.0, 5.0, 7.0, 9.0, 0.0], name="vol_inundacion_m3"),
+        y_clf=y_clf,
+        y_reg=y_reg,
         folds=folds,
         manifest=dict(descriptor, prep_id=prep_id),
         quality={"n_rows": n},
