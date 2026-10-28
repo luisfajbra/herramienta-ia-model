@@ -180,7 +180,14 @@ def _validate_run_cardinality(
                 WHERE result.run_id = run.run_id
             ) AS result_count
         FROM runs AS run
-        WHERE run.status = 'COMPLETE'{run_filter}
+        WHERE run.status = 'COMPLETE'
+          AND EXISTS (
+              SELECT 1
+              FROM run_hydraulic_quality AS quality
+              WHERE quality.run_id = run.run_id
+                AND quality.eligible = 1
+                AND quality.continuity_error_pct IS NOT NULL
+          ){run_filter}
         ORDER BY run.run_id
         """,
         params,
@@ -229,7 +236,14 @@ def _find_key_mismatches(
         WITH selected_runs AS (
             SELECT run_id
             FROM runs
-            WHERE status = 'COMPLETE'{run_filter}
+            WHERE status = 'COMPLETE'
+              AND EXISTS (
+                  SELECT 1
+                  FROM run_hydraulic_quality AS quality
+                  WHERE quality.run_id = runs.run_id
+                    AND quality.eligible = 1
+                    AND quality.continuity_error_pct IS NOT NULL
+              ){run_filter}
         ),
         mismatches AS (
             SELECT

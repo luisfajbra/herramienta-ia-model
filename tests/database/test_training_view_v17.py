@@ -531,6 +531,32 @@ def test_loader_rejects_complete_run_with_no_child_rows(migrated_conn):
     assert "node_count=1, feature_count=0, result_count=0" in str(error.value)
 
 
+def test_loader_ignores_missing_details_for_quality_ineligible_complete_run(
+    migrated_conn,
+):
+    conn = migrated_conn
+    _insert_network(conn)
+    _insert_node(conn, node_pk=10, node_id="eligible-node")
+
+    _insert_scenario_and_run(conn, run_id=1, node_count=1)
+    _insert_feature(conn, run_id=1, node_pk=10)
+    _insert_result(conn, run_id=1, node_pk=10, inunda=1)
+
+    # COMPLETE but excluded by hydraulic QA. Failed runs may have no details.
+    _insert_scenario_and_run(
+        conn, run_id=2, scenario_id=202, node_count=1,
+        continuity_error_pct=-7.31,
+    )
+    conn.commit()
+
+    frame = load_training_samples(conn)
+
+    assert frame["run_id"].unique().tolist() == [1]
+    assert frame[["run_id", "node_id"]].to_dict("records") == [
+        {"run_id": 1, "node_id": "eligible-node"}
+    ]
+
+
 @pytest.mark.parametrize("node_count", [None, 0, -1, 1.5])
 def test_loader_rejects_invalid_persisted_node_count(
     migrated_conn,
