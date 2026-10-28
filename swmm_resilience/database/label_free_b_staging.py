@@ -24,7 +24,12 @@ from ..extraction.topology import build_network_graph, compute_topology_features
 from ..ml.contracts import FEATURE_COLUMNS_V17, FEATURE_COLUMNS_V21, resolve_feature_contract
 from ..ml.bench.schemas import KEY_COLUMNS
 from ..simulation.swmm_api_io import load_inp
+from ..simulation.swmm_api_io import read_continuity_error
+from ..simulation.initial_conditions import build_initial_condition_manifest
+from ..extraction.labels import FloodingReportError, extract_labels, read_flooding_volumes_with_manifest
+from ..validation.drainage_state import classify_drainage_state, read_tail_window_observables
 from ..validation.hydrograph_csv import load_scenario
+from .b_transfer_protocol import verify_b_transfer_protocol_anchor
 from .hydraulic_quality import build_hydraulic_quality_decision, record_run_hydraulic_quality
 from .run_source_artifacts import register_run_source_artifacts, verify_run_source_artifacts
 
@@ -68,18 +73,26 @@ def _reject_target_fields(value: object, where: str = "manifest") -> None:
             _reject_target_fields(item, f"{where}[{index}]")
 
 
-def _artifact(root: Path, record: object, label: str) -> dict:
-    if not isinstance(record, dict) or set(record) != {"path", "sha256"}:
+def _artifact(root: Path, record: object, label: str, *, allow_external: bool = False) -> dict:
+    allowed_fields = {"path", "sha256", "name"} if label == "source network INP" else {"path", "sha256"}
+    if (not isinstance(record, dict) or not {"path", "sha256"}.issubset(record)
+            or set(record) - allowed_fields):
         raise ValueError(f"{label} requires an explicit path and SHA-256")
     relative = record["path"]
     digest = record["sha256"]
-    if not isinstance(relative, str) or not relative.strip() or Path(relative).is_absolute():
-        raise ValueError(f"{label} path must be an explicit relative path")
+    if not isinstance(relative, str) or not relative.strip():
+        raise ValueError(f"{label} path must be explicit")
+    is_absolute = Path(relative).is_absolute()
+    if is_absolute and not allow_external:
+        raise ValueError(f"{label} path must remain inside the experiment root")
+    if is_absolute and label == "source network INP" and digest is None:
+        raise ValueError("an absolute source network path requires an explicit SHA-256")
     if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
         raise ValueError(f"{label} SHA-256 is invalid")
     try:
-        path = (root / relative).resolve(strict=True)
-        path.relative_to(root)
+        path = (Path(relative) if is_absolute else (root / relative)).resolve(strict=True)
+        if not is_absolute:
+            path.relative_to(root)
     except (OSError, RuntimeError, ValueError) as exc:
         raise ValueError(f"{label} path is missing or escapes the frozen root") from exc
     if not path.is_file():
@@ -150,11 +163,110 @@ def _make_features(inp_path: Path, event_path: Path, feature_contract_id: str) -
     }
 
 
+def _derive_hydraulic_quality(
+    *, source_inp: Path, effective_inp: Path, rpt_path: Path, out_path: Path,
+    expected_node_ids: set[str], policy: dict,
+) -> dict:
+    """Recalculate run QA from the verified hydraulic artifacts, never caller values."""
+    try:
+        continuity = read_continuity_error(rpt_path)
+    except Exception:
+        continuity = None
+    try:
+        volumes, report_manifest = read_flooding_volumes_with_manifest(rpt_path)
+        labels = extract_labels(rpt_path, sorted(expected_node_ids))
+        if labels.attrs.get("flooding_report_manifest") != report_manifest:
+            raise FloodingReportError("manifest_mismatch", "RPT parser provenance changed between reads")
+        report_ids = set(volumes["node_id"].astype(str))
+        label_ids = labels["node_id"].astype(str).tolist()
+        finite_labels = (
+            len(label_ids) == len(expected_node_ids) and set(label_ids) == expected_node_ids
+            and not labels["node_id"].astype(str).duplicated().any()
+            and report_ids.issubset(expected_node_ids)
+        )
+        label_diagnostic = {"coverage": len(label_ids) == len(expected_node_ids) and set(label_ids) == expected_node_ids,
+                             "report_nodes_known": report_ids.issubset(expected_node_ids)}
+    except (FloodingReportError, OSError, ValueError, TypeError, KeyError) as exc:
+        try:
+            report_hash = _hash_bytes(rpt_path.read_bytes())
+        except OSError:
+            report_hash = None
+        report_manifest = {
+            "schema_version": "flooding_report_v1", "parser": "failed_closed",
+            "parser_version": "1", "report_sha256": report_hash,
+            "failure_code": getattr(exc, "code", "label_parse_failed"),
+        }
+        finite_labels = False
+        label_diagnostic = {"parse_failed": getattr(exc, "code", type(exc).__name__)}
+    try:
+        observables = read_tail_window_observables(
+            out_path, drain_down_hours=policy["drain_down_hours"],
+            tail_window_hours=policy["tail_window_hours"],
+        )
+        drainage_state, drainage_manifest = classify_drainage_state(
+            observables,
+            inflow_tolerance_lps=policy["inflow_tolerance_lps"],
+            flooding_tolerance_lps=policy["flooding_tolerance_lps"],
+            storage_change_tolerance_m3=policy["storage_change_tolerance_m3"],
+            residual_flow_tolerance_lps=policy["residual_flow_tolerance_lps"],
+            window_hours=min(policy["tail_window_hours"], policy["drain_down_hours"]),
+            min_report_steps=policy["min_report_steps"],
+        )
+        required_nodes = ("node_total_inflow_lps", "node_flooding_lps", "node_volume_m3")
+        node_coverage = all(
+            isinstance(observables.get(name), dict)
+            and set(observables[name]) == expected_node_ids
+            for name in required_nodes
+        )
+        step_count = observables.get("n_report_steps")
+        finite_out = node_coverage and isinstance(step_count, int) and step_count >= policy["min_report_steps"]
+        out_diagnostic = {"node_coverage": node_coverage, "n_report_steps": step_count,
+                          "has_link_data": observables.get("has_link_data")}
+        if finite_out:
+            for name in required_nodes:
+                for series in observables[name].values():
+                    try:
+                        values = np.asarray(series, dtype=float)
+                    except (TypeError, ValueError):
+                        finite_out = False
+                        break
+                    if len(values) != step_count or not np.isfinite(values).all():
+                        finite_out = False
+                        break
+        finite_coverage = bool(finite_labels and finite_out)
+    except Exception as exc:
+        drainage_state = "unverified"
+        drainage_manifest = {"policy_version": "tail_window_v1", "state": "unverified",
+                             "failed_checks": [f"out_read_failed:{type(exc).__name__}"]}
+        finite_coverage = False
+        out_diagnostic = {"read_failed": type(exc).__name__}
+        label_diagnostic = locals().get("label_diagnostic", {"unknown": True})
+
+    source_initial = build_initial_condition_manifest(source_inp)
+    effective_initial = build_initial_condition_manifest(effective_inp)
+    if source_initial["state_sha256"] != effective_initial["state_sha256"]:
+        raise ValueError("effective INP initial hydraulic state differs from the frozen source INP")
+    return {
+        "continuity_error_pct": continuity,
+        "finite_coverage_ok": finite_coverage,
+        "drainage_state": drainage_state,
+        "drainage_manifest": drainage_manifest,
+        "initial_condition": {
+            "policy_id": source_initial["policy_id"], "state_sha256": source_initial["state_sha256"],
+            "source_inp_sha256": source_initial["source_inp_sha256"],
+            "effective_inp_sha256": effective_initial["source_inp_sha256"],
+        },
+        "flooding_report": report_manifest,
+        "finite_coverage_diagnostics": {"rpt": label_diagnostic, "out": out_diagnostic},
+    }
+
+
 def stage_frozen_b_label_free(
     conn: sqlite3.Connection,
     experiment_root: str | Path,
     *,
     feature_contract_id: str,
+    protocol_anchor_db_path: str | Path,
     manifest_name: str = "frozen_b_manifest.json",
     output_manifest_name: str = "experiment_source_manifest.json",
 ) -> dict:
@@ -168,6 +280,13 @@ def stage_frozen_b_label_free(
     if conn.in_transaction:
         raise RuntimeError("staging owns its transaction; pass a connection with no active transaction")
     root = Path(experiment_root).resolve(strict=True)
+    anchor_db_path = Path(protocol_anchor_db_path).resolve(strict=True)
+    try:
+        anchor_db_path.relative_to(root)
+    except ValueError:
+        pass
+    else:
+        raise ValueError("protocol anchor DB must remain outside experiment_root")
     manifest_path = root / manifest_name
     try:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -178,7 +297,7 @@ def stage_frozen_b_label_free(
     _reject_target_fields(manifest)
     if manifest.get("schema_version") != "frozen_b_transfer_manifest_v1" or manifest.get("status") != "complete":
         raise ValueError("unsupported or non-frozen B transfer manifest")
-    if set(manifest) != {"schema_version", "status", "protocol_path", "protocol_sha256", "runs"}:
+    if set(manifest) != {"schema_version", "status", "protocol_path", "protocol_sha256", "protocol_anchor", "runs"}:
         raise ValueError("frozen B manifest has missing or unsupported fields")
     protocol_relative = manifest["protocol_path"]
     if not isinstance(protocol_relative, str) or Path(protocol_relative).is_absolute():
@@ -192,9 +311,15 @@ def stage_frozen_b_label_free(
     protocol_sha = _hash_bytes(protocol_path.read_bytes())
     if manifest["protocol_sha256"] != protocol_sha:
         raise ValueError("frozen protocol SHA-256 does not match batch manifest")
+    anchor_receipt = verify_b_transfer_protocol_anchor(
+        protocol_anchor_db_path, protocol_path, manifest["protocol_anchor"]
+    )
+    if anchor_receipt["protocol_sha256"] != manifest["protocol_sha256"]:
+        raise ValueError("batch protocol hash differs from its pre-run external anchor")
     if not isinstance(protocol, dict) or protocol.get("schema_version") != "b_transfer_protocol_v1" or protocol.get("status") != "frozen_before_run":
         raise ValueError("unsupported or non-frozen B protocol")
-    if set(protocol) != {"schema_version", "status", "network", "expected_scenario_keys", "scenarios"}:
+    if set(protocol) != {"schema_version", "status", "network", "expected_scenario_keys", "scenarios",
+                         "hydraulic_policy", "initial_condition"}:
         raise ValueError("frozen B protocol has missing or unsupported fields")
     if conn.execute("SELECT COUNT(*) FROM networks").fetchone()[0] or conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0]:
         raise ValueError("B staging requires a fresh database with no networks or runs")
@@ -203,7 +328,13 @@ def stage_frozen_b_label_free(
     if feature_contract_id not in {"tabular_v3_17", "tabular_v4_21"}:
         raise ValueError("feature_contract_id must be read from the selected candidate metadata")
 
-    network_rec = _artifact(root, protocol["network"], "source network INP")
+    network_rec = _artifact(root, protocol["network"], "source network INP", allow_external=True)
+    actual_source_initial = build_initial_condition_manifest(network_rec["path"])
+    frozen_initial = protocol["initial_condition"]
+    if (frozen_initial.get("source_inp_sha256") != network_rec["sha256"]
+            or frozen_initial.get("state_sha256") != actual_source_initial["state_sha256"]):
+        raise ValueError("source INP initial state differs from the pre-run protocol")
+    policy = protocol["hydraulic_policy"]
     run_records = manifest["runs"]
     expected_keys = protocol["expected_scenario_keys"]
     if not isinstance(run_records, list) or not run_records or not isinstance(expected_keys, list):
@@ -250,28 +381,57 @@ def stage_frozen_b_label_free(
         peak_time = _finite(definition["tiempo_al_pico_h"], f"{scenario_key}.tiempo_al_pico_h", minimum=0)
         if peak_time > duration:
             raise ValueError(f"scenario {scenario_key} peak time exceeds duration")
-        qa = record["hydraulic_quality"]
-        if not isinstance(qa, dict) or set(qa) != _QA_FIELDS:
-            raise ValueError(f"scenario {scenario_key} requires explicit reconstructible hydraulic QA fields")
+        declared_qa = record["hydraulic_quality"]
+        if not isinstance(declared_qa, dict) or set(declared_qa) != _QA_FIELDS:
+            raise ValueError(f"scenario {scenario_key} requires explicit QA declarations for comparison")
         artifacts = record["artifacts"]
         if not isinstance(artifacts, dict) or set(artifacts) != _ARTIFACT_ROLES:
             raise ValueError(f"scenario {scenario_key} must declare exactly five source artifact roles")
-        checked = {role: _artifact(root, item, f"{scenario_key} {role}") for role, item in artifacts.items()}
-        if checked["source_network_inp"]["sha256"] != network_rec["sha256"]:
+        checked = {role: _artifact(root, item, f"{scenario_key} {role}", allow_external=(role == "source_network_inp"))
+                   for role, item in artifacts.items()}
+        if (checked["source_network_inp"]["sha256"] != network_rec["sha256"]
+                or checked["source_network_inp"]["path"] != network_rec["path"]):
             raise ValueError("source_network_inp role differs from frozen network INP")
         effective_static = extract_static_features(checked["effective_inp"]["path"])
         if set(effective_static["node_id"].astype(str)) != network_node_ids:
             raise ValueError("effective INP junction coverage differs from the frozen source network")
-        rpt_hash = checked["swmm_rpt"]["sha256"]
-        if not isinstance(qa["flooding_report"], dict) or qa["flooding_report"].get("report_sha256") != rpt_hash:
-            raise ValueError(f"scenario {scenario_key} RPT hash does not match hydraulic QA")
-        # Parse/compute the complete QA decision before any database rows exist.
+        # Every QA evidence field is derived from the verified source artifacts;
+        # caller-supplied values below are checked only as declarations.
+        derived_qa = _derive_hydraulic_quality(
+            source_inp=network_rec["path"], effective_inp=checked["effective_inp"]["path"],
+            rpt_path=checked["swmm_rpt"]["path"], out_path=checked["swmm_out"]["path"],
+            expected_node_ids=network_node_ids, policy=policy,
+        )
+        if (declared_qa["max_continuity_error_pct"] != policy["max_continuity_error_pct"]
+                or declared_qa["continuity_limit_rationale"] != policy["continuity_limit_rationale"]):
+            raise ValueError(f"scenario {scenario_key} QA policy declaration differs from frozen protocol")
+        if declared_qa["continuity_error_pct"] != derived_qa["continuity_error_pct"]:
+            raise ValueError(f"scenario {scenario_key} continuity_error_pct declaration differs from RPT")
+        for key in ("finite_coverage_ok", "drainage_state"):
+            if declared_qa[key] != derived_qa[key]:
+                raise ValueError(f"scenario {scenario_key} {key} declaration {declared_qa[key]!r} differs from derived {derived_qa[key]!r} using OUT/INP/RPT; details={derived_qa.get('finite_coverage_diagnostics')}")
+        declared_initial = declared_qa["initial_condition"]
+        if (not isinstance(declared_initial, dict) or set(declared_initial) != {"policy_id", "state_sha256"}
+                or declared_initial.get("policy_id") != derived_qa["initial_condition"]["policy_id"]
+                or declared_initial.get("state_sha256") != derived_qa["initial_condition"]["state_sha256"]):
+            raise ValueError(f"scenario {scenario_key} initial_condition declaration differs from source/effective INP")
+        if declared_qa["flooding_report"] != derived_qa["flooding_report"]:
+            raise ValueError(f"scenario {scenario_key} flooding report declaration differs from parsed RPT")
+        qa = {
+            "continuity_error_pct": derived_qa["continuity_error_pct"],
+            "max_continuity_error_pct": policy["max_continuity_error_pct"],
+            "continuity_limit_rationale": policy["continuity_limit_rationale"],
+            "finite_coverage_ok": derived_qa["finite_coverage_ok"],
+            "drainage_state": derived_qa["drainage_state"],
+            "initial_condition": derived_qa["initial_condition"],
+            "flooding_report": derived_qa["flooding_report"],
+        }
+        # Build the stored eligibility from the derived values only.
         try:
             qa_decision = build_hydraulic_quality_decision(
-                continuity_error_pct=qa["continuity_error_pct"],
-                max_continuity_error_pct=qa["max_continuity_error_pct"],
-                continuity_limit_rationale=qa["continuity_limit_rationale"],
-                finite_coverage_ok=qa["finite_coverage_ok"], drainage_state=qa["drainage_state"],
+                continuity_error_pct=qa["continuity_error_pct"], max_continuity_error_pct=policy["max_continuity_error_pct"],
+                continuity_limit_rationale=policy["continuity_limit_rationale"],
+                finite_coverage_ok=derived_qa["finite_coverage_ok"], drainage_state=derived_qa["drainage_state"],
                 initial_condition=qa["initial_condition"], flooding_report_manifest=qa["flooding_report"],
             )
         except (TypeError, ValueError) as exc:
@@ -286,7 +446,7 @@ def stage_frozen_b_label_free(
         prepared.append({
             "key": scenario_key, "record": record, "definition": definition, "artifacts": checked, "qa": qa,
             "qa_decision": qa_decision, "features": features, "node_ids": node_ids,
-            "feature_data": extraction,
+            "feature_data": extraction, "derived_qa": derived_qa,
         })
 
     source_manifest_path = root / output_manifest_name
@@ -339,7 +499,7 @@ def stage_frozen_b_label_free(
                 (scenario_id, network_id, config_sha, item["qa_decision"]["continuity_error_pct"], len(item["node_ids"])),
             ).lastrowid
             qa = item["qa"]
-            record_run_hydraulic_quality(
+            stored_quality = record_run_hydraulic_quality(
                 conn, run_id=run_id, continuity_error_pct=item["qa_decision"]["continuity_error_pct"],
                 max_continuity_error_pct=qa["max_continuity_error_pct"],
                 continuity_limit_rationale=qa["continuity_limit_rationale"],
@@ -414,7 +574,10 @@ def stage_frozen_b_label_free(
                     "factor_mult": float(definition["factor_mult"]), "duracion_horas": float(definition["duracion_horas"]),
                     "tiempo_al_pico_h": float(definition["tiempo_al_pico_h"]), "config_sha256": config_sha},
                 "eligible": item["qa_decision"]["eligible"], "reason_codes": item["qa_decision"]["reason_codes"],
-                "artifacts": {role: {"path": info["path"].relative_to(root).as_posix(), "sha256": info["sha256"], "byte_size": info["byte_size"]}
+                "hydraulic_quality": {key: value for key, value in stored_quality.items()
+                                      if key not in {"initial_condition_json", "reason_codes_json", "manifest_json"}},
+                "drainage_diagnostics": item["derived_qa"]["drainage_manifest"],
+                "artifacts": {role: {"path": _manifest_path(info["path"], root), "sha256": info["sha256"], "byte_size": info["byte_size"]}
                               for role, info in item["artifacts"].items()}})
         if conn.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] != 0:
             raise ValueError("label-free staging must leave node_results empty")
@@ -423,6 +586,8 @@ def stage_frozen_b_label_free(
             "input_manifest_sha256": _hash_bytes(manifest_path.read_bytes()),
             "protocol_path": protocol_path.relative_to(root).as_posix(),
             "protocol_sha256": protocol_sha,
+            "protocol_anchor": anchor_receipt,
+            "protocol_anchor_db_path": str(anchor_db_path),
             "network_sha256": network_rec["sha256"], "feature_contract_id": feature_contract_id,
             "feature_contract_sha256": resolve_feature_contract(feature_contract_id).descriptor_sha256,
             "run_order": out_runs, "node_results_rows": 0}
@@ -440,7 +605,8 @@ def stage_frozen_b_label_free(
             "feature_columns": list(resolve_feature_contract(feature_contract_id).feature_names),
             "feature_contract_id": feature_contract_id, "b_runs": b_runs,
             "planned_runs": planned_runs, "manifest": seal,
-            "experiment_root": str(root), "manifest_path": str(source_manifest_path)}
+            "experiment_root": str(root), "manifest_path": str(source_manifest_path),
+            "protocol_anchor_db_path": str(anchor_db_path)}
     except Exception:
         if wrote_manifest:
             source_manifest_path.unlink(missing_ok=True)
@@ -453,6 +619,13 @@ def _none(value):
     return None if pd.isna(value) else float(value)
 
 
+def _manifest_path(path: Path, root: Path) -> str:
+    try:
+        return path.resolve().relative_to(root).as_posix()
+    except ValueError:
+        return str(path.resolve())
+
+
 def _verify_staged_state(conn: sqlite3.Connection, staged: dict) -> dict:
     manifest_path = Path(staged["manifest_path"]).resolve(strict=True)
     persisted_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -461,10 +634,17 @@ def _verify_staged_state(conn: sqlite3.Connection, staged: dict) -> dict:
     if manifest_digest != _hash_json(digest_payload) or persisted_manifest != staged.get("manifest"):
         raise ValueError("B source manifest seal mismatch")
     root = Path(staged["experiment_root"]).resolve(strict=True)
+    if str(Path(staged["protocol_anchor_db_path"]).resolve(strict=True)) != persisted_manifest.get("protocol_anchor_db_path"):
+        raise ValueError("protocol anchor database path differs from the sealed source manifest")
     input_manifest = (root / persisted_manifest["input_manifest_path"]).resolve(strict=True)
     input_manifest.relative_to(root)
     protocol_manifest = (root / persisted_manifest["protocol_path"]).resolve(strict=True)
     protocol_manifest.relative_to(root)
+    verified_anchor = verify_b_transfer_protocol_anchor(
+        staged["protocol_anchor_db_path"], protocol_manifest, persisted_manifest["protocol_anchor"]
+    )
+    if verified_anchor["protocol_sha256"] != persisted_manifest["protocol_sha256"]:
+        raise ValueError("pre-run protocol anchor differs from the staged source manifest")
     if _hash_bytes(input_manifest.read_bytes()) != persisted_manifest["input_manifest_sha256"]:
         raise ValueError("frozen B manifest changed after staging")
     if _hash_bytes(protocol_manifest.read_bytes()) != persisted_manifest["protocol_sha256"]:
@@ -514,16 +694,23 @@ def _verify_staged_state(conn: sqlite3.Connection, staged: dict) -> dict:
             raise ValueError(f"source manifest digest changed for B run {run_id}")
         for role, artifact in entry["artifacts"].items():
             registered = verified["artifacts"][role]
-            relative = Path(registered["resolved_path"]).resolve().relative_to(root).as_posix()
-            if (relative != artifact["path"] or registered["sha256"] != artifact["sha256"]
+            recorded_path = _manifest_path(Path(registered["resolved_path"]), root)
+            if (recorded_path != artifact["path"] or registered["sha256"] != artifact["sha256"]
                     or registered["byte_size"] != artifact["byte_size"]):
                 raise ValueError(f"source artifact record changed for B run {run_id}, role {role}")
         quality = conn.execute(
-            "SELECT manifest_json FROM run_hydraulic_quality WHERE run_id=?", (run_id,)
+            "SELECT manifest_json,policy_json,policy_sha256,created_at_utc FROM run_hydraulic_quality WHERE run_id=?",
+            (run_id,)
         ).fetchone()
         quality_manifest = json.loads(quality[0])
-        if quality_manifest.get("eligible") is not entry["eligible"] or quality_manifest.get("reason_codes") != entry["reason_codes"]:
-            raise ValueError(f"hydraulic QA differs from the sealed report for B run {run_id}")
+        persisted_quality = {
+            **quality_manifest, "policy": json.loads(quality[1]), "policy_sha256": quality[2],
+            "created_at_utc": quality[3],
+        }
+        if (_canonical(persisted_quality) != _canonical(entry["hydraulic_quality"])
+                or quality_manifest.get("eligible") is not entry["eligible"]
+                or quality_manifest.get("reason_codes") != entry["reason_codes"]):
+            raise ValueError(f"derived hydraulic QA differs from the sealed report for B run {run_id}")
     if conn.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] != 0:
         raise ValueError("B labels appeared before prediction; refusing label-free inference")
     return persisted_manifest

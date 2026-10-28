@@ -12,23 +12,28 @@
 - La interfaz previa al predictor recibe el esquema exacto `KEY_COLUMNS`, features ordenadas y QA observado reconstruido; `node_results` queda vacío.
 - El wrapper conecta stage → `register_transfer` → reverificación → `predict_transfer`; no modifica `score_transfer`, no lee etiquetas del RPT y no escribe métricas reales.
 
-## Límites de procedencia
+## Hallazgos de revisión independiente corregidos
 
-Los hashes detectan cambios contra el manifiesto, pero no prueban autoría ni son firmas independientes. En particular, Task 5c no ejecuta un parser nuevo sobre el RPT para regenerar cada medida QA: requiere campos QA caller-supplied y valida consistencia/hash del reporte usando la política existente. Para las corridas reales será necesario emitir esos campos desde el parser/calificador aprobado y revisar el resultado; el staging por sí solo no demuestra que sean físicamente correctos ni justifica los umbrales hidráulicos provisionales. No se ejecutaron simulaciones ni se importaron/modificaron bases/output canónicos.
+1. **QA caller-supplied no era evidencia.** El staging ahora deriva continuidad de RPT, QA de inundación/procedencia con los parsers compartidos, finite coverage con RPT/OUT/INP, estado de drenaje con la ventana final OUT y las condiciones iniciales con INP fuente y efectivo. Rechaza declaraciones del batch que discrepen. Solo persiste/pasa al predictor esos valores derivados; los valores de inundación que construye `extract_labels` se descartan y nunca llegan a la interfaz de inferencia ni a `node_results`.
+2. **Un SHA final era recalculable junto con el protocolo.** `freeze_b_transfer_protocol` escribe el protocolo en modo exclusivo y añade un receipt en una SQLite externa con triggers append-only, hash encadenado, commit Git y contexto de ejecución. Batch y stage deben verificar el receipt y los bytes anclados; la prueba modifica el protocolo y recalcula el SHA del batch y confirma rechazo antes de crear filas.
+
+La ancla separada mejora integridad operativa, no proporciona firma ni identidad autenticada. Un operador con capacidad para reemplazar/recrear también la SQLite externa puede reconstruir una cadena falsa; evitar ese riesgo requiere servicio/medio independiente con escritura controlada. Los umbrales hidráulicos continúan siendo decisiones provisionales documentadas. El INP fuente puede permanecer en `data/networks` como enlace absoluto con hash; no se copia. INP efectivo, CSV de evento, RPT y OUT se mantienen bajo la raíz del experimento.
+
+El importador histórico Task 5b aún no consume la nueva ancla ni el esquema de protocolo. La API de freeze es reutilizable, pero un runner/adapter deberá verificar el mismo receipt al generar/importar A; el importador actual no se considera admisión de A regenerada. No se ejecutaron simulaciones ni se importaron/modificaron bases/output canónicos.
 
 ## TDD y verificación
 
-**RED:** antes de crear el módulo, las pruebas sintéticas fallaron por ausencia de `label_free_b_staging` (3 fallos esperados). Durante la revisión de la integración se añadió un caso adversarial adicional: alterar en SQLite `factor_mult` luego del staging debe impedir inferencia. El primer intento de regresión dentro del sandbox tampoco pudo crear/leer temporales pytest preexistentes por `PermissionError`; se volvió a ejecutar con acceso normal a temporales, sin cambiar outputs del proyecto.
+**RED:** las pruebas sintéticas iniciales fallaron por ausencia de `label_free_b_staging`. Después de la revisión independiente, un nuevo test falló porque el staging aceptaba una continuidad declarada distinta del RPT; los dos tests del freeze/anchor fallaron por falta de API. Esos fallos precedieron a las correcciones. El primer intento de regresión dentro del sandbox tampoco pudo crear/leer temporales pytest preexistentes por `PermissionError`; se volvió a ejecutar con acceso normal a temporales.
 
-**GREEN:** suite de staging, registro de artefactos, importador histórico y predictor congelado pasó con `60 passed`. Incluye orden estable de IDs aunque las filas del manifiesto de lote estén reordenadas; campos target prohibidos; hash modificado; cobertura de nodos incompleta; tiempo/duración discordantes; corrida QA no elegible excluida y reportada; escenario SQLite alterado; artefactos y QA/features disponibles antes de predicción; `node_results` vacío; esquema exacto de keys y wrapper de registro/inferencia.
+**GREEN:** los tests sintéticos focalizados de ancla/staging pasaron con `16 passed`. Incluyen triggers no-update/no-delete; fuente INP externa enlazada; QA caller alterada en continuidad/cobertura/drenaje/initial-state rechazada; protocolo y hash del batch reescritos sin receipt rechazados; orden estable de IDs aunque batch llegue reordenado; hash de artefactos alterado; cobertura/tiempos incorrectos; QA no elegible excluida; escenario SQLite alterado; esquema exacto `KEY_COLUMNS`; features/QA disponibles antes de predecir; sin volumen en la salida y `node_results` vacío.
 
 Comando de regresión:
 
 ```powershell
-venv\Scripts\python.exe -m pytest tests/database/test_label_free_b_staging.py tests/database/test_run_source_artifacts.py tests/database/test_source_manifest_importer.py tests/ml/bench/test_frozen_transfer_experiment.py -q --basetemp=<directorio-temporal-nuevo>
+venv\Scripts\python.exe -m pytest tests/database/test_b_transfer_protocol_anchor.py tests/database/test_label_free_b_staging.py tests/database/test_run_source_artifacts.py tests/database/test_source_manifest_importer.py tests/ml/bench/test_frozen_transfer_experiment.py -q --basetemp=<directorio-temporal-nuevo>
 ```
 
-La pasada completa final, compilación y `git diff --check` deben confirmarse antes del commit. Linter Ruff no está instalado en el entorno virtual. No hubo revisión independiente de subagente en este turno; se efectuó revisión local enfocada en la frontera de predicción, escenarios mutables, hashes, cobertura y flujo stage→register→predict.
+La regresión completa (ancla, staging, fuente SQLite, importador histórico y predictor congelado) pasó: **66 passed, 13 warnings**. `compileall` y `git diff --check` también pasaron. Ruff no está instalado en el entorno virtual. La revisión independiente solicitó estos dos bloqueos P1 y ambos quedan cubiertos por tests sintéticos; se revisó localmente también el flujo stage→register→predict y el sello de metadatos.
 
 ## Próximo paso
 
