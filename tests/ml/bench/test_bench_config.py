@@ -76,7 +76,7 @@ def test_bench_block_is_parsed(tmp_path):
 def test_bench_config_accepts_leave_one_network_out(tmp_path):
     yaml = _BENCH_YAML.replace(
         '"GroupKFold5"', '"GroupKFold5", "LeaveOneNetworkOut"'
-    )
+    ) + "\n  tuning: {objective: macro_network_rmse}\n"
 
     config = load_config(_write_config(tmp_path, yaml))
 
@@ -86,6 +86,25 @@ def test_bench_config_accepts_leave_one_network_out(tmp_path):
         "GroupKFold5",
         "LeaveOneNetworkOut",
     ]
+    assert config.bench.tuning.objective == "macro_network_rmse"
+
+
+def test_network_held_out_config_requires_explicit_tuning_objective(tmp_path):
+    yaml = _BENCH_YAML.replace(
+        '"GroupKFold5"', '"GroupKFold5", "LeaveOneNetworkOut"'
+    )
+
+    with pytest.raises(ValueError, match="bench.tuning.objective is required"):
+        load_config(_write_config(tmp_path, yaml))
+
+
+def test_network_held_out_config_rejects_unknown_tuning_objective(tmp_path):
+    yaml = _BENCH_YAML.replace(
+        '"GroupKFold5"', '"GroupKFold5", "LeaveOneNetworkOut"'
+    ) + "\n  tuning: {objective: convenient_mean}\n"
+
+    with pytest.raises(ValueError, match="must be 'pooled_rmse' or 'macro_network_rmse'"):
+        load_config(_write_config(tmp_path, yaml))
 
 
 def test_ranking_criterion_is_built_from_the_yaml(tmp_path):

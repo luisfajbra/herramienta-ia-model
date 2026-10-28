@@ -309,6 +309,7 @@ class BenchRankingConfig:
 class BenchTuningConfig:
     n_trials: int
     n_splits: int
+    objective: str | None = None
 
 
 @dataclass
@@ -375,6 +376,8 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
     tuning_raw = raw_bench.get("tuning") or {}
     n_trials = int(tuning_raw.get("n_trials", 50))
     n_splits = int(tuning_raw.get("n_splits", 5))
+    tuning_objective = tuning_raw.get("objective")
+    validate_tuning_objective(protocols, tuning_objective)
     if n_trials <= 0:
         raise ValueError(f"bench.tuning.n_trials must be positive; received {n_trials}")
     if n_splits <= 0:
@@ -391,8 +394,29 @@ def _parse_bench(raw_bench: dict | None) -> Optional[BenchConfig]:
         ),
         promote=str(raw_bench.get("promote", "none")),
         families=families,
-        tuning=BenchTuningConfig(n_trials=n_trials, n_splits=n_splits),
+        tuning=BenchTuningConfig(
+            n_trials=n_trials,
+            n_splits=n_splits,
+            objective=str(tuning_objective) if tuning_objective is not None else None,
+        ),
     )
+
+
+def validate_tuning_objective(protocols, objective: str | None) -> str | None:
+    """Valida el objetivo de tuning, requerido al evaluar transferencia entre redes."""
+    network_evaluation = "LeaveOneNetworkOut" in set(protocols)
+    if objective is None:
+        if network_evaluation:
+            raise ValueError(
+                "bench.tuning.objective is required for LeaveOneNetworkOut; "
+                "choose 'pooled_rmse' or 'macro_network_rmse'."
+            )
+        return None
+    if objective not in {"pooled_rmse", "macro_network_rmse"}:
+        raise ValueError(
+            "bench.tuning.objective must be 'pooled_rmse' or 'macro_network_rmse'."
+        )
+    return objective
 
 
 def load_config(config_path: str = "config.yaml") -> Config:

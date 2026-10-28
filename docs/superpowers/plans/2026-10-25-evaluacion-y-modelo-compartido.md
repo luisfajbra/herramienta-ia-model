@@ -50,7 +50,7 @@ for _, fold in folds.groupby("fold_id"):
 
 **Interfaces:** Add `evaluate_nested_networks(prepared, family, inner_protocols, objective, ...)` which builds outer network folds, creates an inner training-only `PreparedDataset` per outer fold, tunes only on those rows, fits the selected candidate on that outer train, and returns predictions/metrics for the untouched outer network plus full split/trial provenance.
 
-- [ ] Add a tiny deterministic fixture with two networks, multiple event families and at least enough event/shape groups within each network for the configured inner splitter. Spy on `run_study` to prove it receives only outer-train rows; assert all outer-test rows appear once and none appear in Optuna's training fingerprint.
+- [x] Add a tiny deterministic fixture with two networks, repeated node/scenario identifiers, and enough shape groups within each network for the configured inner splitter. Spy on `run_study` to prove it receives only outer-train rows; assert all outer-test rows appear once and changes to outer-test targets do not alter Optuna's training fingerprint. Physical event-family reservation remains in Task 6.
 
 ```python
 result = evaluate_nested_networks(prepared, "xgboost", ("LeaveOneShapeOut",), objective="macro_network_rmse")
@@ -59,13 +59,15 @@ for fold in result.folds:
     assert set(fold.outer_test_run_ids).isdisjoint(fold.inner_run_ids)
 assert result.oof.groupby("sample_idx").size().eq(1).all()
 ```
-- [ ] Run `python -m pytest tests/ml/bench/test_nested_network_evaluation.py -q`; confirm it fails because no nested evaluator exists.
-- [ ] Implement a fold-local preparation view that carries only the outer-train runs, builds inner event/shape folds, and creates a fresh preprocessing/model pipeline per inner split. Prevent any scaler/imputer fit on outer-test data.
-- [ ] Persist outer fold ID, held-out network, train/test run IDs, inner prep IDs, Optuna study ID, selected params, score definition, seed and OOF row keys.
-- [ ] Run the new test plus `tests/ml/bench/test_tune.py tests/ml/bench/test_evaluate_candidate.py tests/ml/bench/test_parallel_folds.py -q`.
-- [ ] Commit with `feat: nest model tuning inside network-held-out folds`.
+- [x] Run `python -m pytest tests/ml/bench/test_nested_network_evaluation.py -q`; confirm it fails because no nested evaluator exists.
+- [x] Implement a fold-local preparation view that carries only the outer-train runs, builds inner event/shape folds, and creates a fresh preprocessing/model pipeline per inner split. Prevent any scaler/imputer fit on outer-test data.
+- [x] Persist outer fold ID, held-out network, train/test run IDs, inner prep IDs, Optuna study ID, selected params, score definition, seed and OOF row keys.
+- [x] Run the new test plus `tests/ml/bench/test_tune.py tests/ml/bench/test_evaluate_candidate.py tests/ml/bench/test_parallel_folds.py -q`.
+- [x] Commit with `feat: nest model tuning inside network-held-out folds`.
 
 ### Task 3: Make the tuning objective and network aggregation explicit
+
+**Project decision (2026-10-27):** use `macro_network_rmse` as the configured selection objective. Each network contributes equally; retain `pooled_rmse` as a separately named descriptive metric.
 
 **Files:** Modify `swmm_resilience/config.py`, `swmm_resilience/ml/bench/tune.py`, `metrics.py`, `reports.py`; test `tests/ml/bench/test_bench_config.py`, `test_tune.py`, `test_metrics.py`, `test_reports.py`.
 

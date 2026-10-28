@@ -8,6 +8,7 @@ from swmm_resilience.ml.bench.metrics import (
     end_to_end_pooled_metrics,
     fold_classifier_metrics,
     mean_metrics,
+    macro_network_rmse,
     nse,
     pooled_classifier_metrics,
     pooled_regressor_metrics,
@@ -15,6 +16,18 @@ from swmm_resilience.ml.bench.metrics import (
     shape_breakdown_entry,
     summarize_fold_metrics,
 )
+
+
+def test_macro_network_rmse_weights_each_network_equally():
+    y_true = {"large": np.array([0.0, 0.0, 0.0, 0.0]), "small": np.array([0.0])}
+    y_pred = {"large": np.array([0.0, 0.0, 0.0, 0.0]), "small": np.array([2.0])}
+
+    assert macro_network_rmse(y_true, y_pred) == pytest.approx(1.0)
+
+
+def test_macro_network_rmse_rejects_mismatched_network_sets():
+    with pytest.raises(ValueError, match="network IDs must match"):
+        macro_network_rmse({"A": np.array([1.0])}, {"B": np.array([1.0])})
 
 
 def test_nse_is_one_for_a_perfect_prediction():

@@ -67,6 +67,23 @@ def test_build_tuning_folds_rejects_too_few_shapes_for_n_splits():
         build_tuning_folds(keys, n_splits=5)
 
 
+def test_build_tuning_folds_leave_one_shape_out_holds_exactly_one_shape():
+    keys = _keys_six_shapes()
+    folds = build_tuning_folds(keys, protocol="LeaveOneShapeOut")
+
+    assert folds["fold_id"].nunique() == keys["shape_id"].nunique() == 6
+    tested = folds.loc[folds["split"] == "test", "sample_idx"]
+    assert sorted(tested.tolist()) == list(range(len(keys)))
+    assert not tested.duplicated().any()
+    for _, chunk in folds.groupby("fold_id"):
+        test_idx = chunk.loc[chunk["split"] == "test", "sample_idx"].to_numpy()
+        train_idx = chunk.loc[chunk["split"] == "train", "sample_idx"].to_numpy()
+        assert len(set(keys.iloc[test_idx]["shape_id"])) == 1
+        assert set(keys.iloc[test_idx]["shape_id"]).isdisjoint(
+            set(keys.iloc[train_idx]["shape_id"])
+        )
+
+
 @pytest.mark.parametrize("family_name", ["xgboost", "random_forest", "linear", "svm", "mlp"])
 @pytest.mark.parametrize("task", ["classifier", "regressor"])
 def test_sample_params_returns_only_declared_keys_within_range(family_name, task):
@@ -141,6 +158,20 @@ def test_run_study_rejects_a_family_with_too_few_shapes_for_the_inner_cv(prepare
         run_study(prepared_six_shapes, "xgboost", n_trials=1, n_splits=99)
 
 
+def test_run_study_records_macro_network_rmse_objective(prepared_six_shapes):
+    result = run_study(
+        prepared_six_shapes,
+        "xgboost",
+        n_trials=1,
+        n_splits=2,
+        objective="macro_network_rmse",
+    )
+
+    assert result.objective_metric == "macro_network_rmse"
+    assert result.study_id
+    assert np.isfinite(result.best_value)
+
+
 def test_run_study_survives_a_failing_trial_and_keeps_the_completed_ones(
     prepared_six_shapes, monkeypatch
 ):
@@ -192,7 +223,7 @@ def test_save_tune_result_writes_the_declared_schema(prepared_six_shapes, tmp_pa
     assert path.exists()
     payload = json.loads(path.read_text(encoding="utf-8"))
     for key in (
-        "family", "prep_id", "inner_cv", "objective_metric", "direction",
+        "family", "prep_id", "study_id", "inner_cv", "objective_metric", "direction",
         "n_trials", "seed", "optuna_version", "started_at_utc", "finished_at_utc",
         "duration_s", "trials", "best_classifier_params", "best_regressor_params",
         "best_value", "status", "status_reason",

@@ -25,18 +25,21 @@ from pathlib import Path
 import numpy as np
 import optuna
 import pandas as pd
-from sklearn.model_selection import GroupKFold
+from sklearn.model_selection import GroupKFold, LeaveOneGroupOut
 
 from ...config import ML_RANDOM_STATE
 from .evaluate import _fit_predict_fold, fit_predict_folds_parallel
-from .metrics import end_to_end_metrics
+from .metrics import end_to_end_metrics, macro_network_rmse
 from .schemas import PreparedDataset
 
 
 def build_tuning_folds(
-    keys: pd.DataFrame, n_splits: int = 5, seed: int = ML_RANDOM_STATE
+    keys: pd.DataFrame,
+    n_splits: int = 5,
+    seed: int = ML_RANDOM_STATE,
+    protocol: str = "GroupKFold",
 ) -> pd.DataFrame:
-    """GroupKFold(n_splits) agrupado por shape_id sobre todo `keys`.
+    """Build ephemeral shape-held-out folds for hyperparameter tuning.
 
     Devuelve un frame con columnas ('fold_id', 'split', 'sample_idx'), sin
     'protocol': estos folds son efímeros, por-trial, y nunca se escriben en
@@ -44,12 +47,21 @@ def build_tuning_folds(
     """
     groups = keys["shape_id"]
     distinct = int(groups.nunique())
-    if distinct < n_splits:
-        raise ValueError(
-            f"GroupKFold({n_splits}) for tuning needs at least {n_splits} "
-            f"distinct shapes (shape_id); the dataset has {distinct}."
-        )
-    splitter = GroupKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    if protocol == "GroupKFold":
+        if distinct < n_splits:
+            raise ValueError(
+                f"GroupKFold({n_splits}) for tuning needs at least {n_splits} "
+                f"distinct shapes (shape_id); the dataset has {distinct}."
+            )
+        splitter = GroupKFold(n_splits=n_splits, shuffle=True, random_state=seed)
+    elif protocol == "LeaveOneShapeOut":
+        if groups.isna().any() or distinct < 2:
+            raise ValueError(
+                "LeaveOneShapeOut for tuning needs at least 2 non-null shapes."
+            )
+        splitter = LeaveOneGroupOut()
+    else:
+        raise ValueError(f"Unknown inner tuning protocol: {protocol!r}")
     x_dummy = np.zeros((len(groups), 1))
     records: list[dict] = []
     for fold_id, (train_idx, test_idx) in enumerate(
@@ -163,6 +175,7 @@ def _objective(
     tuning_folds: pd.DataFrame,
     fold_n_jobs: int = 1,
     fixed_params: dict | None = None,
+    objective: str = "mean_inner_fold_rmse",
 ) -> float:
     classifier_params = _merge_fixed(
         _sample_params(
@@ -203,13 +216,34 @@ def _objective(
         ]
 
     fold_values: list[float] = []
+    true_by_network: dict[str, list[np.ndarray]] = {}
+    pred_by_network: dict[str, list[np.ndarray]] = {}
+    network_ids = prepared.keys["network_id"].astype(str).to_numpy()
     for (_, test_idx), (yc_pred, _, yr_pred) in zip(splits, predictions):
         routed = np.where(yc_pred == 1, yr_pred, 0.0)
+        if objective in {"macro_network_rmse", "pooled_rmse"}:
+            for network_id in sorted(set(network_ids[test_idx])):
+                mask = network_ids[test_idx] == network_id
+                true_by_network.setdefault(network_id, []).append(y_reg_all[test_idx][mask])
+                pred_by_network.setdefault(network_id, []).append(routed[mask])
         fold_values.append(
             end_to_end_metrics(
                 y_reg_all[test_idx], routed, y_clf_all[test_idx], yc_pred,
             )["rmse_vol_todos_nodos"]
         )
+    if objective == "macro_network_rmse":
+        return macro_network_rmse(
+            {key: np.concatenate(value) for key, value in true_by_network.items()},
+            {key: np.concatenate(value) for key, value in pred_by_network.items()},
+        )
+    if objective == "pooled_rmse":
+        y_true = np.concatenate(
+            [part for values in true_by_network.values() for part in values]
+        )
+        y_pred = np.concatenate(
+            [part for values in pred_by_network.values() for part in values]
+        )
+        return float(np.sqrt(np.mean((y_true - y_pred) ** 2)))
     return float(np.mean(fold_values))
 
 
@@ -217,6 +251,7 @@ def _objective(
 class TuneResult:
     family: str
     prep_id: str
+    study_id: str
     inner_cv: dict
     objective_metric: str
     direction: str
@@ -244,6 +279,8 @@ def run_study(
     seed: int = ML_RANDOM_STATE,
     fold_n_jobs: int = 1,
     fixed_params: dict | None = None,
+    objective: str = "mean_inner_fold_rmse",
+    inner_protocol: str = "GroupKFold",
 ) -> TuneResult:
     """Corre un estudio Optuna sobre `family_name`, inner GroupKFold(n_splits) por shape_id.
 
@@ -261,8 +298,15 @@ def run_study(
             f"Family without a declared search space: {family_name!r}. "
             f"Available: {', '.join(sorted(SEARCH_SPACES))}"
         )
+    if objective not in {"mean_inner_fold_rmse", "pooled_rmse", "macro_network_rmse"}:
+        raise ValueError(f"Unknown tuning objective: {objective!r}")
 
-    tuning_folds = build_tuning_folds(prepared.keys, n_splits=n_splits, seed=seed)
+    tuning_folds = build_tuning_folds(
+        prepared.keys,
+        n_splits=n_splits,
+        seed=seed,
+        protocol=inner_protocol,
+    )
 
     sampler = optuna.samplers.TPESampler(seed=seed)
     study = optuna.create_study(direction="minimize", sampler=sampler)
@@ -271,7 +315,7 @@ def run_study(
     start_perf = time.perf_counter()
     study.optimize(
         lambda trial: _objective(
-            trial, prepared, family_name, tuning_folds, fold_n_jobs, fixed_params
+            trial, prepared, family_name, tuning_folds, fold_n_jobs, fixed_params, objective
         ),
         n_trials=n_trials,
         catch=(Exception,),
@@ -299,8 +343,13 @@ def run_study(
     return TuneResult(
         family=family_name,
         prep_id=prepared.prep_id,
-        inner_cv={"method": "GroupKFold", "n_splits": n_splits, "group_column": "shape_id"},
-        objective_metric="end_to_end.rmse_vol_todos_nodos",
+        study_id=study.study_name,
+        inner_cv={
+            "method": inner_protocol,
+            "n_splits": int(tuning_folds["fold_id"].nunique()),
+            "group_column": "shape_id",
+        },
+        objective_metric=objective,
         direction="minimize",
         n_trials=n_trials,
         seed=seed,
@@ -326,6 +375,7 @@ def save_tune_result(result: TuneResult, output_dir: Path | str) -> Path:
     payload = {
         "family": result.family,
         "prep_id": result.prep_id,
+        "study_id": result.study_id,
         "inner_cv": result.inner_cv,
         "objective_metric": result.objective_metric,
         "direction": result.direction,

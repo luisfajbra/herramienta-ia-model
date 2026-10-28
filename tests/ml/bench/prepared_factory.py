@@ -18,14 +18,27 @@ def make_prepared(rows: list[dict], protocols, *, threshold: float = 1.0) -> Pre
     ``inunda`` = ``vol >= threshold``. Las demás features valen 0.0.
     """
     frame = pd.DataFrame(rows).reset_index(drop=True)
-    pairs = sorted(set(zip(frame["shape_id"], frame["factor_mult"])))
-    scenario_id = {pair: index + 1 for index, pair in enumerate(pairs)}
-    ids = [scenario_id[(s, f)] for s, f in zip(frame["shape_id"], frame["factor_mult"])]
+    frame["network_id"] = frame.get("network_id", 1)
+    scenario_pairs = sorted(set(zip(frame["shape_id"], frame["factor_mult"])))
+    scenario_id = {pair: index + 1 for index, pair in enumerate(scenario_pairs)}
+    scenario_ids = [
+        scenario_id[(s, f)] for s, f in zip(frame["shape_id"], frame["factor_mult"])
+    ]
+    run_pairs = sorted(
+        set(zip(frame["network_id"], frame["shape_id"], frame["factor_mult"]))
+    )
+    run_id = {pair: index + 1 for index, pair in enumerate(run_pairs)}
+    run_ids = [
+        run_id[(network, shape, factor)]
+        for network, shape, factor in zip(
+            frame["network_id"], frame["shape_id"], frame["factor_mult"]
+        )
+    ]
     keys = pd.DataFrame(
         {
-            "run_id": ids,
-            "network_id": 1,
-            "scenario_id": ids,
+            "run_id": run_ids,
+            "network_id": frame["network_id"],
+            "scenario_id": scenario_ids,
             "scenario_key": [
                 f"{s}@{f}" for s, f in zip(frame["shape_id"], frame["factor_mult"])
             ],
@@ -54,7 +67,7 @@ def make_prepared(rows: list[dict], protocols, *, threshold: float = 1.0) -> Pre
             "contract_id": TABULAR_V3_17.contract_id,
             "feature_contract_sha256": TABULAR_V3_17.descriptor_sha256,
             "feature_columns": list(FEATURE_COLUMNS_V17),
-            "source_network_ids": [1],
+            "source_network_ids": sorted(frame["network_id"].unique().tolist()),
             "source_networks": [],
             "excluded_run_ids": [],
             "excluded_runs": [],

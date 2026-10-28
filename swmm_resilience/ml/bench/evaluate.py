@@ -13,10 +13,16 @@ predicciones para las familias tabulares del banco (Task 9).
 
 from __future__ import annotations
 
+import hashlib
+import json
+import math
 import os
 import sys
 from contextlib import contextmanager
-from typing import NamedTuple
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import NamedTuple, Sequence
 
 import numpy as np
 import pandas as pd
@@ -28,12 +34,106 @@ from .metrics import (
     end_to_end_pooled_metrics,
     fold_classifier_metrics,
     mean_metrics,
+    macro_network_rmse,
     pooled_classifier_metrics,
     pooled_regressor_metrics,
     shape_breakdown_entry,
     summarize_fold_metrics,
 )
 from .schemas import OOF_COLUMNS, PreparedDataset
+
+
+@dataclass(frozen=True)
+class _FoldTrainingView:
+    """Subset materializado que deja al tuning acceso solo al outer train."""
+
+    prep_id: str
+    keys: pd.DataFrame
+    X: pd.DataFrame
+    y_clf: pd.Series
+    y_reg: pd.Series
+    run_ids: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True)
+class NestedNetworkFold:
+    fold_id: int
+    held_out_network_id: object
+    outer_train_sample_idx: tuple[int, ...]
+    outer_test_sample_idx: tuple[int, ...]
+    outer_train_run_ids: tuple[tuple[str, str], ...]
+    outer_test_run_ids: tuple[tuple[str, str], ...]
+    inner_run_ids: tuple[tuple[str, str], ...]
+    inner_prep_id: str
+    optuna_study_id: str
+    selected_classifier_params: dict
+    selected_regressor_params: dict
+    objective: str
+    inner_best_value: float
+    seed: int
+    trials: tuple[dict, ...]
+    oof_row_keys: tuple[dict, ...]
+
+
+@dataclass(frozen=True)
+class NestedNetworkResult:
+    family: str
+    prep_id: str
+    objective: str
+    oof: pd.DataFrame
+    folds: tuple[NestedNetworkFold, ...]
+    metrics: dict
+
+
+def _json_safe(value):
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, np.generic):
+        return _json_safe(value.item())
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    return value
+
+
+def run_study(*args, **kwargs):
+    """Carga tardía el módulo de tuning para evitar el ciclo de imports."""
+    from .tune import run_study as _run_study
+
+    return _run_study(*args, **kwargs)
+
+
+def _network_run_ids(keys: pd.DataFrame) -> tuple[tuple[str, str], ...]:
+    pairs = {(str(row.network_id), str(row.run_id)) for row in keys.itertuples()}
+    return tuple(sorted(pairs))
+
+
+def _fold_training_view(prepared: PreparedDataset, train_idx):
+    keys = prepared.keys.iloc[train_idx].reset_index(drop=True).copy()
+    X = prepared.X.iloc[train_idx].reset_index(drop=True).copy()
+    y_clf = prepared.y_clf.iloc[train_idx].reset_index(drop=True).copy()
+    y_reg = prepared.y_reg.iloc[train_idx].reset_index(drop=True).copy()
+    fingerprint_payload = {
+        "contract_id": prepared.manifest.get("contract_id"),
+        "feature_contract_sha256": prepared.manifest.get("feature_contract_sha256"),
+        "flood_threshold_m3": prepared.manifest.get("flood_threshold_m3"),
+        "fingerprint_version": "outer_train_view_v1",
+    }
+    digest = hashlib.sha256(
+        json.dumps(fingerprint_payload, sort_keys=True, separators=(",", ":")).encode()
+    )
+    for frame in (keys, X, y_clf.to_frame(), y_reg.to_frame()):
+        digest.update(pd.util.hash_pandas_object(frame, index=False).to_numpy().tobytes())
+    prep_id = digest.hexdigest()[:16]
+    return _FoldTrainingView(
+        prep_id=prep_id,
+        keys=keys,
+        X=X,
+        y_clf=y_clf,
+        y_reg=y_reg,
+        run_ids=_network_run_ids(keys),
+    )
 
 
 class ProvenanceMismatchError(ValueError):
@@ -411,3 +511,194 @@ def evaluate_candidate(
         prepared, oof, {"prep_id": prepared.prep_id}, protocols=score_protocols
     )
     return oof, metrics
+
+
+def evaluate_nested_networks(
+    prepared: PreparedDataset,
+    family: str,
+    inner_protocols: Sequence[str],
+    objective: str,
+    *,
+    n_trials: int = 50,
+    n_splits: int = 5,
+    seed: int = 42,
+    fold_n_jobs: int = 1,
+    fixed_params: dict | None = None,
+) -> NestedNetworkResult:
+    """Ajusta hiperparámetros dentro de cada outer train y evalúa la red retenida.
+
+    Por ahora, la partición interna ``LeaveOneShapeOut`` deja exactamente una
+    forma de hidrograma fuera por fold dentro de la vista del outer train.
+    El argumento ``inner_protocols`` declara esa decisión en la procedencia.
+    ``run_study`` recibe una vista que no contiene filas, targets ni features
+    de la red externa.
+    """
+    from ...config import validate_tuning_objective
+
+    if tuple(inner_protocols) != ("LeaveOneShapeOut",):
+        raise ValueError(
+            "Nested network evaluation currently supports only "
+            "inner_protocols=('LeaveOneShapeOut',)."
+        )
+    validate_tuning_objective(("LeaveOneNetworkOut",), objective)
+    outer_folds = prepared.folds[
+        (prepared.folds["protocol"] == "LeaveOneNetworkOut")
+    ]
+    if outer_folds.empty:
+        raise ValueError("PreparedDataset has no LeaveOneNetworkOut folds.")
+
+    oof_parts: list[pd.DataFrame] = []
+    fold_results: list[NestedNetworkFold] = []
+    per_network_true: dict[str, list[np.ndarray]] = {}
+    per_network_pred: dict[str, list[np.ndarray]] = {}
+    for fold_id, chunk in outer_folds.groupby("fold_id", sort=True):
+        train_idx = np.sort(chunk.loc[chunk["split"] == "train", "sample_idx"].to_numpy())
+        test_idx = np.sort(chunk.loc[chunk["split"] == "test", "sample_idx"].to_numpy())
+        if train_idx.size == 0 or test_idx.size == 0:
+            raise ValueError(f"Outer fold {fold_id} must have train and test rows.")
+        train_networks = set(prepared.keys.iloc[train_idx]["network_id"])
+        test_networks = set(prepared.keys.iloc[test_idx]["network_id"])
+        if len(test_networks) != 1 or train_networks.intersection(test_networks):
+            raise ValueError(
+                f"Outer fold {fold_id} must hold out exactly one unseen network."
+            )
+
+        view = _fold_training_view(prepared, train_idx)
+        if not view.keys["network_id"].isin(train_networks).all():
+            raise RuntimeError("The inner training view contains a non-training network.")
+        inner_seed = int(seed) + int(fold_id)
+        tuned = run_study(
+            view,
+            family,
+            n_trials=n_trials,
+            n_splits=n_splits,
+            seed=inner_seed,
+            fold_n_jobs=fold_n_jobs,
+            fixed_params=fixed_params,
+            objective=objective,
+            inner_protocol=inner_protocols[0],
+        )
+        yc_pred, yc_prob, yr_pred = _fit_predict_fold(
+            prepared,
+            family,
+            tuned.best_classifier_params,
+            tuned.best_regressor_params,
+            train_idx,
+            test_idx,
+        )
+        oof_parts.append(
+            pd.DataFrame(
+                {
+                    "sample_idx": test_idx,
+                    "protocol": "LeaveOneNetworkOut",
+                    "fold_id": int(fold_id),
+                    "y_pred_clf": yc_pred.astype(int),
+                    "y_prob_clf": yc_prob.astype(float),
+                    "y_pred_reg": yr_pred.astype(float),
+                },
+                columns=list(OOF_COLUMNS),
+            )
+        )
+
+        for network_id in sorted(test_networks, key=str):
+            mask = prepared.keys.iloc[test_idx]["network_id"].to_numpy() == network_id
+            y_true = prepared.y_reg.iloc[test_idx].to_numpy(dtype=float)[mask]
+            y_routed = np.where(yc_pred[mask] == 1, yr_pred[mask], 0.0)
+            per_network_true.setdefault(str(network_id), []).append(y_true)
+            per_network_pred.setdefault(str(network_id), []).append(y_routed)
+        key_records = prepared.keys.iloc[test_idx]
+        row_keys = tuple(
+            {
+                "sample_idx": int(sample_idx),
+                "network_id": str(row.network_id),
+                "run_id": str(row.run_id),
+                "scenario_id": str(row.scenario_id),
+                "node_id": str(row.node_id),
+            }
+            for sample_idx, row in zip(test_idx, key_records.itertuples())
+        )
+        fold_results.append(
+            NestedNetworkFold(
+                fold_id=int(fold_id),
+                held_out_network_id=next(iter(test_networks)),
+                outer_train_sample_idx=tuple(int(value) for value in train_idx),
+                outer_test_sample_idx=tuple(int(value) for value in test_idx),
+                outer_train_run_ids=_network_run_ids(prepared.keys.iloc[train_idx]),
+                outer_test_run_ids=_network_run_ids(prepared.keys.iloc[test_idx]),
+                inner_run_ids=view.run_ids,
+                inner_prep_id=view.prep_id,
+                optuna_study_id=str(tuned.study_id),
+                selected_classifier_params=dict(tuned.best_classifier_params),
+                selected_regressor_params=dict(tuned.best_regressor_params),
+                objective=objective,
+                inner_best_value=float(tuned.best_value),
+                seed=inner_seed,
+                trials=tuple(tuned.trials),
+                oof_row_keys=row_keys,
+            )
+        )
+
+    oof = pd.concat(oof_parts, ignore_index=True).sort_values(
+        ["fold_id", "sample_idx"], kind="stable"
+    ).reset_index(drop=True)
+    benchmark_metrics = score_predictions(
+        prepared,
+        oof,
+        {"prep_id": prepared.prep_id},
+        protocols=("LeaveOneNetworkOut",),
+    )
+    true_by_network = {
+        key: np.concatenate(parts) for key, parts in per_network_true.items()
+    }
+    pred_by_network = {
+        key: np.concatenate(parts) for key, parts in per_network_pred.items()
+    }
+    pooled_true = np.concatenate(list(true_by_network.values()))
+    pooled_pred = np.concatenate(list(pred_by_network.values()))
+    per_network_rmse = {
+        key: float(np.sqrt(np.mean((true_by_network[key] - pred_by_network[key]) ** 2)))
+        for key in true_by_network
+    }
+    metrics = {
+        "objective": objective,
+        "macro_network_rmse": macro_network_rmse(true_by_network, pred_by_network),
+        "pooled_rmse": float(np.sqrt(np.mean((pooled_true - pooled_pred) ** 2))),
+        "per_network_rmse": per_network_rmse,
+        "benchmark": benchmark_metrics,
+    }
+    return NestedNetworkResult(
+        family=family,
+        prep_id=prepared.prep_id,
+        objective=objective,
+        oof=oof,
+        folds=tuple(fold_results),
+        metrics=metrics,
+    )
+
+
+def save_nested_network_result(
+    result: NestedNetworkResult, output_dir: Path | str
+) -> Path:
+    """Persists an immutable nested run under a timestamped experiment ID."""
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    experiment_id = f"{timestamp}-{result.prep_id[:12]}"
+    experiment_dir = Path(output_dir) / experiment_id
+    experiment_dir.mkdir(parents=True, exist_ok=False)
+    manifest = {
+        "experiment_id": experiment_id,
+        "created_at_utc": datetime.now(timezone.utc).isoformat(),
+        "family": result.family,
+        "source_prep_id": result.prep_id,
+        "outer_protocol": "LeaveOneNetworkOut",
+        "inner_protocols": ["LeaveOneShapeOut"],
+        "objective": result.objective,
+        "network_aggregation": "equal_weight_per_network",
+        "metrics": result.metrics,
+        "folds": [asdict(fold) for fold in result.folds],
+    }
+    (experiment_dir / "manifest.json").write_text(
+        json.dumps(_json_safe(manifest), indent=2, ensure_ascii=False, allow_nan=False),
+        encoding="utf-8",
+    )
+    result.oof.to_parquet(experiment_dir / "oof.parquet", index=False)
+    return experiment_dir

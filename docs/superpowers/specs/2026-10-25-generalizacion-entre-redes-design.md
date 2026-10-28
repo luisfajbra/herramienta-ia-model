@@ -71,6 +71,10 @@ Después, comparar modelos A, B y A+B en eventos reservados por identidad físic
 
 Los reportes mostrarán métricas por red y por evento y definirán los pesos agregados antes de comparar: RMSE/MAE de volumen en m³, sesgo del volumen total, recall, PR-AUC y falsos negativos por bandas de volumen, además de calibración/umbral del clasificador cuando corresponda. El RMSE pooled y la media de RMSE por red responderán a preguntas distintas; no se intercambiarán sin declararlo. Los artefactos de XGBoost y MLP incluirán el mismo `prep_id`, contrato y procedencia y solo se promoverán mediante el mecanismo existente, bajo una acción explícita separada de este plan.
 
+### Decisión registrada — 27 de octubre de 2026
+
+Para seleccionar hiperparámetros en evaluación multired se usará `macro_network_rmse`: calcular el RMSE de volumen en cada red y promediar esos RMSE con el mismo peso por red, sin ponderar por su número de nodos o corridas. La razón es que la pregunta principal es la transferencia entre redes y una red grande no debe dominar la selección. El `pooled_rmse` se conservará como resultado complementario para describir error por fila; no reemplazará el objetivo macro ni se usará para cambiar retrospectivamente la selección. Cada configuración, estudio Optuna y reporte registrará el objetivo explícito. La decisión fue confirmada por el usuario el 27 de octubre de 2026.
+
 ## Componentes esperados
 
 - `swmm_resilience/ml/contracts.py`: catálogo y validación de contratos, incluyendo la selección explícita de v4_21.

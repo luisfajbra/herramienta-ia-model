@@ -72,6 +72,32 @@ def end_to_end_metrics(y_true_vol, y_pred_vol, y_true_clf, y_pred_clf) -> dict:
     }
 
 
+def macro_network_rmse(
+    y_true_by_network: dict[str, np.ndarray],
+    y_pred_by_network: dict[str, np.ndarray],
+) -> float:
+    """RMSE por red, promediado con el mismo peso para cada red.
+
+    Cada red debe aportar al menos una observación y los vectores reales y
+    predichos deben tener la misma longitud. Esta definición evita que el
+    tamaño de una red domine la selección de hiperparámetros.
+    """
+    if set(y_true_by_network) != set(y_pred_by_network):
+        raise ValueError("The true and predicted network IDs must match.")
+    if not y_true_by_network:
+        raise ValueError("macro_network_rmse needs at least one network.")
+    rmses = []
+    for network_id in sorted(y_true_by_network):
+        y_true = np.asarray(y_true_by_network[network_id], dtype=float)
+        y_pred = np.asarray(y_pred_by_network[network_id], dtype=float)
+        if y_true.size == 0 or y_true.shape != y_pred.shape:
+            raise ValueError(
+                f"Network {network_id!r} needs matching non-empty target arrays."
+            )
+        rmses.append(float(np.sqrt(np.mean((y_true - y_pred) ** 2))))
+    return float(np.mean(rmses))
+
+
 def _average(entries: list, key: str) -> float:
     values = [
         entry[key] for entry in entries if not np.isnan(entry.get(key, float("nan")))
