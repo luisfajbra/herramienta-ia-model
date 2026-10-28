@@ -124,10 +124,10 @@ def _synthetic_swmm_qa(monkeypatch):
     def observables(_path, drain_down_hours, tail_window_hours):
         return {
             "n_report_steps": 2, "observed_window_hours": tail_window_hours, "has_link_data": True,
-            "node_total_inflow_lps": {"J1": [0.0, 0.0], "J2": [0.0, 0.0]},
-            "node_flooding_lps": {"J1": [0.0, 0.0], "J2": [0.0, 0.0]},
-            "node_volume_m3": {"J1": [0.0, 0.0], "J2": [0.0, 0.0]},
-            "link_flow_lps": {"C1": [0.0, 0.0]},
+            "node_total_inflow_lps": {node: [0.0, 0.0] for node in ("J1", "J2", "S1", "OUT1")},
+            "node_flooding_lps": {node: [0.0, 0.0] for node in ("J1", "J2", "S1", "OUT1")},
+            "node_volume_m3": {node: [0.0, 0.0] for node in ("J1", "J2", "S1", "OUT1")},
+            "link_flow_lps": {link: [0.0, 0.0] for link in ("C1", "C1_PAR", "C2", "C3", "P1")},
         }
 
     def drainage(_observables, **kwargs):
@@ -188,12 +188,28 @@ def test_frozen_b_staging_rejects_event_hash_change_and_incomplete_node_coverage
     assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
     conn.close()
 
+
     conn, root, manifest, anchor = _fixture(tmp_path / "coverage")
     (root / "event.csv").write_text("node_id,time,value_lps\nJ2,0:00,0\nJ2,1:00,1\n", encoding="utf-8")
     manifest["runs"][0]["artifacts"]["event_source"]["sha256"] = _sha(root / "event.csv")
     manifest["runs"][0]["artifacts"]["event_source"]["path"] = "event.csv"
     (root / "frozen_b_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     with pytest.raises(ValueError, match="node coverage|Incorrect nodes"):
+        stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+    conn.close()
+
+
+def test_effective_inp_must_preserve_all_source_node_and_link_ids(tmp_path):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+
+    conn, root, manifest, anchor = _fixture(tmp_path)
+    effective = root / "network.inp"
+    effective.write_text(effective.read_text(encoding="utf-8").replace("P1 S1 OUT1", "P2 S1 OUT1"), encoding="utf-8")
+    manifest["runs"][0]["artifacts"]["effective_inp"]["sha256"] = _sha(effective)
+    (root / "frozen_b_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="effective INP junction coverage differs"):
         stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
     assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
     conn.close()
@@ -212,6 +228,38 @@ def test_ineligible_run_is_staged_and_reported_without_features(tmp_path):
     assert conn.execute("SELECT status FROM runs WHERE run_id=1").fetchone()[0] == "COMPLETE"
     assert conn.execute("SELECT eligible FROM run_hydraulic_quality WHERE run_id=1").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM run_source_artifacts WHERE run_id=1").fetchone()[0] == 5
+    assert conn.execute("SELECT COUNT(*) FROM node_features_v4_21 WHERE run_id=1").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] == 0
+    conn.close()
+
+
+def test_out_missing_one_inp_link_is_ineligible_and_has_no_features(tmp_path, monkeypatch):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+    import swmm_resilience.database.label_free_b_staging as staging
+
+    conn, root, manifest, anchor = _fixture(tmp_path)
+    # The caller declares the expected result of full-link QA; the verified OUT
+    # will show an omitted link and must therefore be rejected as incomplete.
+    manifest["runs"][0]["hydraulic_quality"]["finite_coverage_ok"] = False
+    manifest["runs"][0]["hydraulic_quality"]["drainage_state"] = "unverified"
+    (root / "frozen_b_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    original = staging.read_tail_window_observables
+
+    def omit_link(*args, **kwargs):
+        result = original(*args, **kwargs)
+        result["link_flow_lps"].pop("C3")
+        return result
+
+    monkeypatch.setattr(staging, "read_tail_window_observables", omit_link)
+    staged = stage_frozen_b_label_free(
+        conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor,
+    )
+
+    assert staged["run_ids"] == [1]
+    assert staged["keys"].empty and staged["features"].empty
+    assert staged["manifest"]["run_order"][0]["eligible"] is False
+    assert "incomplete_link_coverage" in staged["manifest"]["run_order"][0]["drainage_diagnostics"]["failed_checks"]
+    assert conn.execute("SELECT eligible FROM run_hydraulic_quality WHERE run_id=1").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM node_features_v4_21 WHERE run_id=1").fetchone()[0] == 0
     assert conn.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] == 0
     conn.close()

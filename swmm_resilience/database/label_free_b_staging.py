@@ -26,7 +26,7 @@ from ..ml.bench.schemas import KEY_COLUMNS
 from ..simulation.swmm_api_io import load_inp
 from ..simulation.swmm_api_io import read_continuity_error
 from ..simulation.initial_conditions import build_initial_condition_manifest
-from ..extraction.labels import FloodingReportError, extract_labels, read_flooding_volumes_with_manifest
+from ..extraction.labels import FloodingReportError, read_flooding_volumes_with_manifest
 from ..validation.drainage_state import classify_drainage_state, read_tail_window_observables
 from ..validation.hydrograph_csv import load_scenario
 from .b_transfer_protocol import verify_b_transfer_protocol_anchor
@@ -163,9 +163,27 @@ def _make_features(inp_path: Path, event_path: Path, feature_contract_id: str) -
     }
 
 
+def _inp_object_ids(inp_path: Path | str) -> tuple[set[str], set[str]]:
+    """Return the complete hydraulic node/link identity sets from one parsed INP."""
+    inp = load_inp(inp_path)
+    node_ids = {
+        str(object_id)
+        for section in ("JUNCTIONS", "OUTFALLS", "STORAGE", "DIVIDERS")
+        if section in inp
+        for object_id in inp[section]
+    }
+    link_ids = {
+        str(object_id)
+        for section in ("CONDUITS", "PUMPS", "ORIFICES", "WEIRS", "OUTLETS")
+        if section in inp
+        for object_id in inp[section]
+    }
+    return node_ids, link_ids
+
+
 def _derive_hydraulic_quality(
     *, source_inp: Path, effective_inp: Path, rpt_path: Path, out_path: Path,
-    expected_node_ids: set[str], policy: dict,
+    expected_node_ids: set[str], expected_link_ids: set[str], policy: dict,
 ) -> dict:
     """Recalculate run QA from the verified hydraulic artifacts, never caller values."""
     try:
@@ -174,18 +192,12 @@ def _derive_hydraulic_quality(
         continuity = None
     try:
         volumes, report_manifest = read_flooding_volumes_with_manifest(rpt_path)
-        labels = extract_labels(rpt_path, sorted(expected_node_ids))
-        if labels.attrs.get("flooding_report_manifest") != report_manifest:
-            raise FloodingReportError("manifest_mismatch", "RPT parser provenance changed between reads")
         report_ids = set(volumes["node_id"].astype(str))
-        label_ids = labels["node_id"].astype(str).tolist()
-        finite_labels = (
-            len(label_ids) == len(expected_node_ids) and set(label_ids) == expected_node_ids
-            and not labels["node_id"].astype(str).duplicated().any()
-            and report_ids.issubset(expected_node_ids)
-        )
-        label_diagnostic = {"coverage": len(label_ids) == len(expected_node_ids) and set(label_ids) == expected_node_ids,
-                             "report_nodes_known": report_ids.issubset(expected_node_ids)}
+        # The shared parser validates the complete summary, row uniqueness,
+        # finite/non-negative values, and the explicit no-flood marker. Zero
+        # labels for absent nodes are implicit; no target vector is materialized.
+        finite_labels = report_ids.issubset(expected_node_ids)
+        label_diagnostic = {"reported_node_ids_known": finite_labels, "reported_row_count": len(volumes)}
     except (FloodingReportError, OSError, ValueError, TypeError, KeyError) as exc:
         try:
             report_hash = _hash_bytes(rpt_path.read_bytes())
@@ -218,12 +230,25 @@ def _derive_hydraulic_quality(
             and set(observables[name]) == expected_node_ids
             for name in required_nodes
         )
+        link_coverage = (
+            isinstance(observables.get("link_flow_lps"), dict)
+            and set(observables["link_flow_lps"]) == expected_link_ids
+            and bool(observables.get("has_link_data"))
+        )
         step_count = observables.get("n_report_steps")
-        finite_out = node_coverage and isinstance(step_count, int) and step_count >= policy["min_report_steps"]
+        finite_out = (node_coverage and link_coverage and isinstance(step_count, int)
+                      and step_count >= policy["min_report_steps"])
         out_diagnostic = {"node_coverage": node_coverage, "n_report_steps": step_count,
+                          "expected_node_count": len(expected_node_ids),
+                          "observed_node_ids": {name: sorted(observables[name]) if isinstance(observables.get(name), dict) else []
+                                                 for name in required_nodes},
+                          "link_coverage": link_coverage,
+                          "expected_link_ids": sorted(expected_link_ids),
+                          "observed_link_ids": sorted(observables["link_flow_lps"])
+                              if isinstance(observables.get("link_flow_lps"), dict) else [],
                           "has_link_data": observables.get("has_link_data")}
         if finite_out:
-            for name in required_nodes:
+            for name in (*required_nodes, "link_flow_lps"):
                 for series in observables[name].values():
                     try:
                         values = np.asarray(series, dtype=float)
@@ -234,6 +259,12 @@ def _derive_hydraulic_quality(
                         finite_out = False
                         break
         finite_coverage = bool(finite_labels and finite_out)
+        if not node_coverage or not link_coverage:
+            drainage_state = "unverified"
+            drainage_manifest = {**drainage_manifest, "state": "unverified",
+                                 "failed_checks": sorted(set(drainage_manifest.get("failed_checks", []))
+                                                          | ({"incomplete_node_coverage"} if not node_coverage else set())
+                                                          | ({"incomplete_link_coverage"} if not link_coverage else set()))}
     except Exception as exc:
         drainage_state = "unverified"
         drainage_manifest = {"policy_version": "tail_window_v1", "state": "unverified",
@@ -369,7 +400,10 @@ def stage_frozen_b_label_free(
     static_features = extract_static_features(network_rec["path"])
     if static_features.empty:
         raise ValueError("source network INP has no junctions")
-    network_node_ids = set(static_features["node_id"].astype(str))
+    network_junction_ids = set(static_features["node_id"].astype(str))
+    network_node_ids, network_link_ids = _inp_object_ids(network_rec["path"])
+    if not network_junction_ids.issubset(network_node_ids):
+        raise ValueError("source INP static junctions are inconsistent with hydraulic node inventory")
     for scenario_key in expected_keys:
         record = by_key[scenario_key]
         definition = definitions_by_key[scenario_key]
@@ -393,14 +427,16 @@ def stage_frozen_b_label_free(
                 or checked["source_network_inp"]["path"] != network_rec["path"]):
             raise ValueError("source_network_inp role differs from frozen network INP")
         effective_static = extract_static_features(checked["effective_inp"]["path"])
-        if set(effective_static["node_id"].astype(str)) != network_node_ids:
+        effective_node_ids, effective_link_ids = _inp_object_ids(checked["effective_inp"]["path"])
+        if (effective_node_ids != network_node_ids or effective_link_ids != network_link_ids
+                or set(effective_static["node_id"].astype(str)) != network_junction_ids):
             raise ValueError("effective INP junction coverage differs from the frozen source network")
         # Every QA evidence field is derived from the verified source artifacts;
         # caller-supplied values below are checked only as declarations.
         derived_qa = _derive_hydraulic_quality(
             source_inp=network_rec["path"], effective_inp=checked["effective_inp"]["path"],
             rpt_path=checked["swmm_rpt"]["path"], out_path=checked["swmm_out"]["path"],
-            expected_node_ids=network_node_ids, policy=policy,
+            expected_node_ids=network_node_ids, expected_link_ids=network_link_ids, policy=policy,
         )
         if (declared_qa["max_continuity_error_pct"] != policy["max_continuity_error_pct"]
                 or declared_qa["continuity_limit_rationale"] != policy["continuity_limit_rationale"]):
@@ -439,9 +475,9 @@ def stage_frozen_b_label_free(
         features, node_ids, extraction = _make_features(network_rec["path"], checked["event_source"]["path"], feature_contract_id)
         if abs(extraction["duration_h"] - duration) > 1e-6 or abs(extraction["peak_time_h"] - peak_time) > 1e-6:
             raise ValueError(f"scenario {scenario_key} frozen duration/peak time disagrees with event series")
-        if set(node_ids) != network_node_ids:
+        if set(node_ids) != network_junction_ids:
             raise ValueError("feature node coverage does not match junction coverage in the frozen network")
-        if not set(extraction["node_series"]).issubset(network_node_ids):
+        if not set(extraction["node_series"]).issubset(network_junction_ids):
             raise ValueError("event node coverage contains nodes outside the frozen network")
         prepared.append({
             "key": scenario_key, "record": record, "definition": definition, "artifacts": checked, "qa": qa,
@@ -463,7 +499,7 @@ def stage_frozen_b_label_free(
         ).lastrowid
         static_by_node = static_features.set_index(static_features["node_id"].astype(str))
         node_pk = {}
-        for node_id in sorted(network_node_ids):
+        for node_id in sorted(network_junction_ids):
             row = static_by_node.loc[node_id]
             node_pk[node_id] = conn.execute(
                 """INSERT INTO nodes (network_id,node_id,node_type,coord_x,coord_y,
@@ -568,7 +604,7 @@ def stage_frozen_b_label_free(
             planned_runs.append({"network_id": network_id, "run_id": run_id,
                 "event_series_sha256": event_series_sha256, "event_series_components": event_components,
                 "hydraulic_policy": json.loads(qa_row[1]), "hydraulic_policy_sha256": qa_row[2],
-                "expected_node_ids": sorted(network_node_ids)})
+                "expected_node_ids": sorted(network_junction_ids)})
             out_runs.append({"run_id": run_id, "scenario_key": item["key"], "source_manifest_sha256": linked["source_manifest_sha256"],
                 "scenario": {"scenario_kind": "frozen_transfer", "shape_id": definition["shape_id"],
                     "factor_mult": float(definition["factor_mult"]), "duracion_horas": float(definition["duracion_horas"]),
