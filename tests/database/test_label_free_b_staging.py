@@ -687,3 +687,84 @@ def test_staged_registration_reconstructs_plan_from_sqlite_then_predicts(tmp_pat
     assert planned[0]["hydraulic_policy_sha256"]
     assert calls["predict"] == (directory, conn, staged)
     conn.close()
+
+
+def test_verified_transfer_scoring_reads_labels_from_the_sealed_run_report(tmp_path, monkeypatch):
+    import pandas as pd
+    import swmm_resilience.database.label_free_b_staging as staging_module
+    import swmm_resilience.ml.bench.frozen_transfer as transfer
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+
+    conn, root, _, anchor = _fixture(tmp_path)
+    staged = stage_frozen_b_label_free(
+        conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor,
+    )
+    run = staged["manifest"]["run_order"][0]
+    role_items = run["artifacts"]
+    event_item = role_items["event_source"]
+    components = {"source_artifact": {
+        "path": event_item["path"], "sha256": event_item["sha256"],
+        "byte_size": event_item["byte_size"],
+    }}
+    event_hash = transfer._hash(components)
+    candidate = tmp_path / "candidate"
+    candidate.mkdir()
+    (candidate / "metadata.json").write_text("{}", encoding="utf-8")
+    (candidate / "classifier.joblib").write_bytes(b"classifier")
+    (candidate / "regressor.joblib").write_bytes(b"regressor")
+    transfer_dir = tmp_path / "transfer" / "A_to_B_frozen"
+    transfer_dir.mkdir(parents=True)
+    registration = {
+        "schema": "frozen_transfer_v1", "candidate_dir": str(candidate.resolve()),
+        "candidate_metadata_sha256": transfer._sha256(candidate / "metadata.json"),
+        "classifier_sha256": transfer._sha256(candidate / "classifier.joblib"),
+        "regressor_sha256": transfer._sha256(candidate / "regressor.joblib"),
+        "contract_id": "tabular_v4_21",
+        "b_inp_path": str(Path(root / role_items["source_network_inp"]["path"]).resolve()),
+        "b_inp_sha256": role_items["source_network_inp"]["sha256"],
+        "flood_threshold_m3": 1.0, "volume_bands_m3": [24.0, 108.0, 344.0],
+        "b_runs": [{
+            "network_id": staged["network_id"], "run_id": staged["run_ids"][0],
+            "event_series_sha256": event_hash, "event_series_components": components,
+            "hydraulic_policy": run["hydraulic_quality"]["policy"],
+            "hydraulic_policy_sha256": run["hydraulic_quality"]["policy_sha256"],
+            "expected_node_ids": sorted(staged["keys"]["node_id"].astype(str)),
+        }],
+    }
+    (transfer_dir / "registration.json").write_text(json.dumps(registration), encoding="utf-8")
+    (transfer_dir / "registration_seal.json").write_text(json.dumps({
+        "sha256": transfer._sha256(transfer_dir / "registration.json"),
+    }), encoding="utf-8")
+    keys = staged["keys"].copy()
+    predictions = keys.copy()
+    predictions["y_prob_clf"] = 0.75
+    predictions["y_pred_clf"] = 1
+    predictions["volume_conditional_m3"] = 30.0
+    predictions["volume_routed_m3"] = 30.0
+    inputs = pd.concat([keys, staged["features"]], axis=1)
+    inputs.to_csv(transfer_dir / "inputs.csv", index=False)
+    predictions.to_csv(transfer_dir / "predictions.csv", index=False)
+    seal = {
+        "predictions_sha256": transfer._sha256(transfer_dir / "predictions.csv"),
+        "inputs_sha256": transfer._sha256(transfer_dir / "inputs.csv"),
+        "registration_sha256": transfer._sha256(transfer_dir / "registration.json"),
+        "run_status": [{"run_id": staged["run_ids"][0], "eligible": True, "reason_codes": []}],
+        "rejections_sha256": None,
+    }
+    (transfer_dir / "prediction_seal.json").write_text(json.dumps(seal), encoding="utf-8")
+    def labels_after_seal(path, nodes, threshold_m3):
+        assert (transfer_dir / "prediction_seal.json").is_file()
+        assert transfer._sha256(transfer_dir / "predictions.csv") == seal["predictions_sha256"]
+        assert threshold_m3 == 1.0
+        return _fixture_labels(path, nodes)
+
+    monkeypatch.setattr("swmm_resilience.extraction.labels.extract_labels", labels_after_seal)
+
+    output = transfer.score_transfer(transfer_dir, conn=conn, staged=staged)
+
+    score = json.loads(Path(output).read_text(encoding="utf-8"))
+    assert score["usage"] == "verified_staged_sources"
+    assert score["overall"]["n_samples"] == len(keys)
+    assert score["label_sources"][0]["swmm_rpt_sha256"] == role_items["swmm_rpt"]["sha256"]
+    assert conn.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] == 0
+    conn.close()

@@ -234,9 +234,240 @@ def predict_transfer(directory, keys, features, b_runs):
         'rejections_sha256': _sha256(directory / 'rejections.json') if rejections else None})
 
 
-def score_transfer(directory, labels):
-    """Fail closed until verified source binding is implemented."""
-    raise NotImplementedError('Real scoring is blocked: verified B source binding is not implemented')
+def score_transfer(directory, labels=None, *, conn=None, staged=None):
+    """Score sealed B predictions using labels re-extracted from verified run RPTs.
+
+    Caller-provided label frames remain forbidden. The prediction/input seals,
+    frozen B manifest, SQLite artifact links, and each RPT hash are checked
+    before the first target is materialized in memory.
+    """
+    if labels is not None or conn is None or staged is None:
+        raise NotImplementedError(
+            "Scoring requires verified B source binding; caller-supplied labels are not accepted"
+        )
+    directory = Path(directory)
+    output_path = directory / "verified_scores.json"
+    if output_path.exists():
+        raise FileExistsError("Verified transfer score already exists")
+    reg = _registration(directory)
+    seal = _read(directory / "prediction_seal.json")
+    if (seal.get("registration_sha256") != _sha256(directory / "registration.json")
+            or seal.get("predictions_sha256") != _sha256(directory / "predictions.csv")
+            or seal.get("inputs_sha256") != _sha256(directory / "inputs.csv")):
+        raise ValueError("Prediction or input seal mismatch")
+    rejection_sha = seal.get("rejections_sha256")
+    if rejection_sha is not None:
+        if not (directory / "rejections.json").is_file() or rejection_sha != _sha256(directory / "rejections.json"):
+            raise ValueError("Rejection report seal mismatch")
+    candidate_dir = Path(reg["candidate_dir"]).resolve(strict=True)
+    candidate_hashes = {
+        "metadata": (candidate_dir / "metadata.json", reg["candidate_metadata_sha256"]),
+        "classifier": (candidate_dir / "classifier.joblib", reg["classifier_sha256"]),
+        "regressor": (candidate_dir / "regressor.joblib", reg["regressor_sha256"]),
+    }
+    for role, (path, expected_hash) in candidate_hashes.items():
+        if _sha256(path) != expected_hash:
+            raise ValueError(f"Candidate {role} changed after B predictions were sealed")
+
+    # Re-authenticate the complete B source package and require label-free SQLite.
+    from ...database.label_free_b_staging import _verify_staged_state
+    from ...database.run_source_artifacts import verify_run_source_artifacts
+    from ...extraction.labels import extract_labels
+
+    source_manifest = _verify_staged_state(conn, staged)
+    root = Path(staged["experiment_root"]).resolve(strict=True)
+    source_manifest_path = Path(staged["manifest_path"]).resolve(strict=True)
+    source_manifest_hash = _sha256(source_manifest_path)
+    if not _digest(source_manifest.get("manifest_sha256")):
+        raise ValueError("B source manifest has no canonical seal")
+    b_inp_record = source_manifest["run_order"][0]["artifacts"]["source_network_inp"]
+    b_inp_path = Path(b_inp_record["path"])
+    if not b_inp_path.is_absolute():
+        b_inp_path = root / b_inp_path
+    if (b_inp_path.resolve(strict=True) != Path(reg["b_inp_path"]).resolve(strict=True)
+            or b_inp_record["sha256"] != reg["b_inp_sha256"]
+            or _sha256(b_inp_path) != reg["b_inp_sha256"]):
+        raise ValueError("Registered B INP differs from the verified staged source")
+
+    ordered = source_manifest["run_order"]
+    registered = {int(run["run_id"]): run for run in reg.get("b_runs", [])}
+    if len(registered) != len(reg.get("b_runs", [])) or set(registered) != {int(item["run_id"]) for item in ordered}:
+        raise ValueError("Registered B run IDs differ from the verified staged manifest")
+    statuses = seal.get("run_status")
+    if not isinstance(statuses, list):
+        raise ValueError("Prediction seal has no per-run admission decisions")
+    status_by_id = {int(item["run_id"]): item for item in statuses if isinstance(item, dict) and "run_id" in item}
+    if len(status_by_id) != len(statuses) or set(status_by_id) != set(registered):
+        raise ValueError("Prediction admission records differ from registered B runs")
+    expected_rows = []
+    labels_rows = []
+    label_sources = []
+    eligible_run_ids = set()
+    excluded_runs = []
+    for entry in ordered:
+        run_id = int(entry["run_id"])
+        run_reg = registered[run_id]
+        status = status_by_id[run_id]
+        eligible = entry.get("eligible") is True
+        if (status.get("eligible") is not eligible
+                or status.get("reason_codes", []) != entry.get("reason_codes", [])):
+            raise ValueError(f"Prediction admission decision differs from staged QA for run {run_id}")
+        if not eligible:
+            excluded_runs.append({"run_id": run_id, "scenario_key": entry["scenario_key"],
+                                  "reason_codes": entry.get("reason_codes", [])})
+            continue
+        eligible_run_ids.add(run_id)
+        event = entry["artifacts"]["event_source"]
+        expected_components = {"source_artifact": {
+            "path": event["path"], "sha256": event["sha256"], "byte_size": event["byte_size"],
+        }}
+        if (run_reg.get("network_id") != staged["network_id"]
+                or run_reg.get("event_series_components") != expected_components
+                or run_reg.get("event_series_sha256") != _hash(expected_components)):
+            raise ValueError(f"Registered B event source differs from staged run {run_id}")
+        if not status.get("eligible"):
+            raise ValueError(f"Sealed prediction unexpectedly includes ineligible run {run_id}")
+        scenario = conn.execute(
+            """SELECT r.network_id,r.scenario_id,s.scenario_key,s.scenario_kind,s.shape_id,s.factor_mult
+               FROM runs r JOIN scenarios s ON s.scenario_id=r.scenario_id WHERE r.run_id=?""",
+            (run_id,),
+        ).fetchone()
+        if scenario is None:
+            raise ValueError(f"Verified B scenario is missing for run {run_id}")
+        nodes = [str(row[0]) for row in conn.execute(
+            "SELECT node_id FROM nodes WHERE network_id=? ORDER BY node_id", (staged["network_id"],)
+        )]
+        if nodes != run_reg.get("expected_node_ids"):
+            raise ValueError(f"Registered node inventory changed for B run {run_id}")
+        expected_rows.extend({
+            "run_id": run_id, "network_id": int(scenario[0]), "scenario_id": int(scenario[1]),
+            "scenario_key": str(scenario[2]), "scenario_kind": str(scenario[3]),
+            "node_id": node, "factor_mult": float(scenario[5]), "shape_id": str(scenario[4]),
+        } for node in nodes)
+
+        # This is the first target extraction in the score path. Every source
+        # file hash and the previously sealed, label-free predictions are
+        # already verified above.
+        linked = verify_run_source_artifacts(conn, run_id)["artifacts"]
+        rpt = linked["swmm_rpt"]
+        rpt_path = Path(rpt["resolved_path"]).resolve(strict=True)
+        if _sha256(rpt_path) != rpt["sha256"] or rpt["sha256"] != entry["artifacts"]["swmm_rpt"]["sha256"]:
+            raise ValueError(f"B RPT source hash changed for run {run_id}")
+        qa = entry.get("hydraulic_quality", {})
+        report_qa = qa.get("flooding_report", {})
+        if report_qa.get("report_sha256") != rpt["sha256"]:
+            raise ValueError(f"B QA flooding-report link differs from RPT for run {run_id}")
+        labels = extract_labels(rpt_path, nodes, threshold_m3=float(reg["flood_threshold_m3"]))
+        label_report = labels.attrs.get("flooding_report_manifest", {})
+        if label_report.get("report_sha256") != rpt["sha256"]:
+            raise ValueError(f"B labels did not come from the QA-validated RPT for run {run_id}")
+        labels = labels.copy()
+        labels["node_id"] = labels["node_id"].astype(str)
+        if (labels["node_id"].duplicated().any()
+                or set(labels["node_id"]) != set(nodes)):
+            raise ValueError(f"B RPT labels have incomplete or duplicate node coverage for run {run_id}")
+        labels["network_id"] = int(scenario[0])
+        labels["run_id"] = run_id
+        labels["shape_id"] = str(scenario[4])
+        labels["scenario_key"] = str(scenario[2])
+        labels_rows.append(labels[["network_id", "run_id", "node_id", "inunda", "vol_inundacion_m3"]])
+        label_sources.append({"run_id": run_id, "scenario_key": str(scenario[2]),
+                              "swmm_rpt_sha256": rpt["sha256"],
+                              "flooding_report_sha256": report_qa["report_sha256"],
+                              "label_rows": len(labels)})
+
+    if not eligible_run_ids:
+        raise ValueError("No B runs passed frozen hydraulic QA; there are no transfer scores")
+    preds = pd.read_csv(directory / "predictions.csv", dtype={"node_id": str, "scenario_key": str,
+                                                               "scenario_kind": str, "shape_id": str},
+                        keep_default_na=False)
+    inputs = pd.read_csv(directory / "inputs.csv", dtype={"node_id": str, "scenario_key": str,
+                                                           "scenario_kind": str, "shape_id": str})
+    required_prediction_columns = [*KEY_COLUMNS, "y_prob_clf", "y_pred_clf", "volume_conditional_m3", "volume_routed_m3"]
+    if preds.columns.tolist() != required_prediction_columns:
+        raise ValueError("Sealed prediction file has an unsupported schema")
+    expected_keys = pd.DataFrame(expected_rows, columns=list(KEY_COLUMNS))
+    contract = resolve_feature_contract(reg["contract_id"])
+    if inputs.columns.tolist() != [*KEY_COLUMNS, *contract.feature_names]:
+        raise ValueError("Sealed inference input file has an unsupported feature schema")
+    contract.validate_frame(inputs.loc[:, list(contract.feature_names)])
+    def key_records(frame):
+        normalized = frame.loc[:, list(KEY_COLUMNS)].copy()
+        normalized["run_id"] = normalized["run_id"].astype(int)
+        normalized["network_id"] = normalized["network_id"].astype(int)
+        normalized["scenario_id"] = normalized["scenario_id"].astype(int)
+        normalized["factor_mult"] = normalized["factor_mult"].astype(float)
+        for column in ("scenario_key", "scenario_kind", "node_id", "shape_id"):
+            normalized[column] = normalized[column].astype(str)
+        return normalized.sort_values(["run_id", "node_id"]).reset_index(drop=True)
+    if not key_records(preds).equals(key_records(expected_keys)):
+        raise ValueError("Sealed B prediction keys differ from the verified eligible run/node inventory")
+    if not key_records(inputs).equals(key_records(expected_keys)):
+        raise ValueError("Sealed inference keys differ from the verified eligible run/node inventory")
+    feature_table = "node_features" if contract.contract_id == "tabular_v3_17" else "node_features_v4_21"
+    selected = ",".join(f"f.{column}" for column in contract.feature_names)
+    for run_id in sorted(eligible_run_ids):
+        rows = conn.execute(
+            f"""SELECT n.node_id,{selected} FROM {feature_table} f
+                JOIN nodes n ON n.node_pk=f.node_pk WHERE f.run_id=? ORDER BY n.node_id""",
+            (run_id,),
+        ).fetchall()
+        stored = pd.DataFrame(rows, columns=["node_id", *contract.feature_names])
+        actual = inputs.loc[inputs["run_id"].astype(int) == run_id].sort_values("node_id").reset_index(drop=True)
+        stored["node_id"] = stored["node_id"].astype(str)
+        if len(stored) != len(actual) or stored["node_id"].tolist() != actual["node_id"].tolist():
+            raise ValueError(f"Sealed inference feature rows differ from SQLite for B run {run_id}")
+        stored_values = stored.loc[:, list(contract.feature_names)].to_numpy(dtype=float)
+        actual_values = actual.loc[:, list(contract.feature_names)].to_numpy(dtype=float)
+        if not np.allclose(stored_values, actual_values, rtol=1e-12, atol=1e-12, equal_nan=True):
+            raise ValueError(f"Sealed inference feature values differ from SQLite for B run {run_id}")
+    predictions_sha = seal["predictions_sha256"]
+    truth = pd.concat(labels_rows, ignore_index=True)
+    keys = ["network_id", "run_id", "node_id"]
+    if truth.duplicated(keys).any():
+        raise ValueError("Re-extracted B labels have duplicate run/node keys")
+    joined = preds.merge(truth, on=keys, how="outer", validate="one_to_one", indicator=True)
+    if not (joined["_merge"] == "both").all():
+        raise ValueError("Verified B labels do not cover the sealed prediction keys exactly")
+    joined = joined.drop(columns=["_merge"])
+    volumes = joined["vol_inundacion_m3"].to_numpy(dtype=float)
+    classes = joined["inunda"].to_numpy(dtype=float)
+    if (not np.isfinite(volumes).all() or (volumes < 0).any()
+            or not np.isin(classes, [0, 1]).all()
+            or not np.array_equal(classes, (volumes >= float(reg["flood_threshold_m3"])).astype(int))):
+        raise ValueError("B labels are invalid or disagree with the registered flood threshold")
+    metric = lambda frame: _nested_reporting_entry(
+        frame["inunda"], frame["y_pred_clf"], frame["y_prob_clf"],
+        frame["vol_inundacion_m3"], frame["volume_routed_m3"],
+        reg["volume_bands_m3"], reg["flood_threshold_m3"],
+    )
+    output = {
+        "schema_version": "verified_frozen_transfer_score_v1",
+        "usage": "verified_staged_sources",
+        "registration_sha256": _sha256(directory / "registration.json"),
+        "prediction_sha256": predictions_sha,
+        "input_sha256": seal["inputs_sha256"],
+        "b_source_manifest_path": source_manifest_path.name,
+        "b_source_manifest_sha256": source_manifest_hash,
+        "b_inp_sha256": reg["b_inp_sha256"],
+        "flood_threshold_m3": float(reg["flood_threshold_m3"]),
+        "volume_bands_m3": list(reg["volume_bands_m3"]),
+        "eligible_run_ids": sorted(eligible_run_ids),
+        "excluded_runs": excluded_runs,
+        "label_sources": label_sources,
+        "labels_sha256": _hash(truth.sort_values(keys).to_dict(orient="records")),
+        "overall": metric(joined),
+        "by_event": [
+            {"shape_id": str(shape), **metric(group)}
+            for shape, group in joined.groupby("shape_id", sort=True)
+        ],
+        "by_scenario": [
+            {"scenario_key": str(scenario_key), **metric(group)}
+            for scenario_key, group in joined.groupby("scenario_key", sort=True)
+        ],
+    }
+    _write(output_path, output)
+    return output_path
 
 
 def _score_synthetic_transfer(directory, labels):
