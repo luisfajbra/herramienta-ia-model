@@ -158,3 +158,9 @@ Se resolverán al inspeccionar el INP B y la necesidad científica, antes de inc
 - Si los límites de falsos negativos por volumen alto tienen un valor de aceptación definido por el uso previsto.
 
 Si alguna decisión implica ampliar de forma sustancial el contrato de features o la pregunta científica, se actualizará este diseño antes de implementar esa ampliación.
+
+### Protocolo A→B congelado: implementación sintética y límites
+
+Se implementan APIs separadas para preregistrar, predecir y evaluar: el primer paso recibe políticas y eventos planeados, la inferencia no recibe etiquetas y el scoring exige una predicción sellada. El registro identifica par, contrato, estudio y hash, redes/corridas, objetivo, semillas, umbrales y criterios de reporte. Se vuelve a aplicar la política de admisión de dominio y la política de calidad de las corridas; las corridas no elegibles se excluyen y documentan en un informe separado; sin corridas elegibles o con rechazo de dominio no se produce un score.
+
+La procedencia del estudio y su pertenencia exclusiva a A debe generarse y auditarse desde el pipeline real; una declaración manual coherente no demuestra ausencia de fuga. Aún se debe vincular los hashes de eventos con los archivos efectivamente usados en SWMM y las tablas de features/etiquetas con los reportes y datasets de la corrida. Estas limitaciones impiden declarar listo el experimento real. El detalle y los campos requeridos están en `docs/experimentos/plantilla-transferencia-A-a-B.md`. Este trabajo usa solamente fixtures sintéticas.

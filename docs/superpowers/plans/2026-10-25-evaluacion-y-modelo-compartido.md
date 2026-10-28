@@ -121,11 +121,13 @@ with pytest.raises(ModelProvenanceError, match="prep_id"):
 **Interfaces:** The runner consumes Plan 1/2 experiment manifests, an A-only prepared artifact/model pair, and B input/runs. It emits a separate immutable report with B labels excluded from model selection and a record of whether each B run passed hydraulic admission.
 
 - [ ] Add a test around a spy predictor and B labels: model training/tuning inputs must contain A IDs only; labels are joined only after `predict` has written immutable B predictions. Changing B labels must not change A candidate hash or selection.
-- [ ] Run `python -m pytest tests/ml/bench/test_frozen_transfer_experiment.py -q`; confirm no current command records this sequence end to end.
-- [ ] Specify the pre-registration fields in the runbook: A-only training run IDs, contract hash, selection objective, threshold, selected params, seeds, B run/event hashes, hydraulic policy, and report metrics. Lock these before simulation/prediction.
-- [ ] Implement the smallest runner that loads the verified A model pair and contract, validates B domain/quality, predicts B once, and only then joins B targets for scoring. Failed domain or hydraulic QA yields a separate rejected/ineligible report, not a fallback score.
+- [x] Run `python -m pytest tests/ml/bench/test_frozen_transfer_experiment.py -q`; confirm no current command records this sequence end to end.
+- [x] Specify the pre-registration fields in the runbook: A-only training run IDs, contract hash, selection objective, threshold, selected params, seeds, B run/event hashes, hydraulic policy, and report metrics. Lock these before simulation/prediction.
+- [x] Implement the smallest runner that loads the verified A model pair and contract, validates B domain/quality, predicts B once, and only then joins B targets for scoring. Failed domain or hydraulic QA yields a separate rejected/ineligible report, not a fallback score.
 - [ ] Run focused tests on synthetic manifests. Then, when the owner supplies B and approves the hydraulic policy, create the experiment ID with `datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + source_prep_id[:12]`, and write the frozen predictions under `experiment_dir / "A_to_B_frozen"`. Seal its hashes.
 - [ ] Commit code, test and runbook with `feat: record frozen network transfer experiment`.
+
+**Synthetic implementation status:** The API uses a real-format `study.json`, verifies its hash and A-only trial network scores, and seals predictions before labels. It excludes and reports ineligible runs. A synthetic actual-estimator test confirms changed B labels leave candidate and predictions unchanged; real-source bindings remain subject to independent review; do not mark real execution complete. The test uses trained synthetic estimators, not real B. Event files, feature/target sources and automatic study-to-preparation linkage require verification before real use. See `docs/experimentos/plantilla-transferencia-A-a-B.md`.
 
 ### Task 6: Train and compare A, B and A+B on reserved events
 
