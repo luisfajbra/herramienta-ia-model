@@ -16,6 +16,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 from typing import Callable
 
 from ..config import load_config
@@ -31,6 +32,17 @@ FACTOR_GRID = tuple(round(0.2 * i, 1) for i in range(1, 26))
 
 def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _replace_checkpoint(source: Path, target: Path, *, retry_delays=(0.1, 0.25, 0.5, 1.0, 2.0)) -> None:
+    """Atomically publish a checkpoint, retrying transient Windows file locks."""
+    for delay in retry_delays:
+        try:
+            os.replace(source, target)
+            return
+        except PermissionError:
+            time.sleep(delay)
+    os.replace(source, target)
 
 
 def _json(path: Path, payload: dict) -> None:
@@ -303,7 +315,7 @@ def run_frozen_experiment(
                           "attempt_history": attempt_history}
         temp = progress_path.with_suffix(".json.tmp")
         temp.write_text(json.dumps(_json_progress, sort_keys=True, indent=2, ensure_ascii=False, allow_nan=False) + "\n", encoding="utf-8")
-        os.replace(temp, progress_path)
+        _replace_checkpoint(temp, progress_path)
 
     save_progress("running")
     positive_nodes = set(source_context["positive_peak_event_nodes"])

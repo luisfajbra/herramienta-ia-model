@@ -99,6 +99,32 @@ from swmm_resilience.simulation.frozen_pair_runner import (
 )
 
 
+def test_checkpoint_replace_retries_transient_windows_permission_error(tmp_path, monkeypatch):
+    from swmm_resilience.simulation import frozen_pair_runner as runner
+
+    source = tmp_path / "checkpoint.tmp"
+    target = tmp_path / "checkpoint.json"
+    source.write_text("latest", encoding="utf-8")
+    target.write_text("previous", encoding="utf-8")
+    real_replace = runner.os.replace
+    attempts = 0
+
+    def transient_replace_error(src, dst):
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise PermissionError(5, "temporary sharing violation")
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(runner.os, "replace", transient_replace_error)
+
+    runner._replace_checkpoint(source, target, retry_delays=(0, 0))
+
+    assert attempts == 3
+    assert target.read_text(encoding="utf-8") == "latest"
+    assert not source.exists()
+
+
 def test_mocked_frozen_execution_records_retries_without_calling_swmm(monkeypatch):
     from swmm_resilience.simulation import frozen_pair_runner as runner
     from swmm_resilience.simulation import timeseries_scenario
