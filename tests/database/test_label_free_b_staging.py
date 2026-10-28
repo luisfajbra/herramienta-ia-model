@@ -11,7 +11,9 @@ def _sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _fixture(tmp_path, *, event_nodes=("J1",), continuity=0.5, two_scenarios=False):
+def _fixture(tmp_path, *, event_nodes=("J1",), continuity=0.5, two_scenarios=False,
+             add_unmodified_series=False, add_non_event_flow=False,
+             add_shared_event_series=False, add_shared_event_consumer=False):
     from tests.validation.test_network_admission import _FIXTURE
 
     root = tmp_path / "frozen-b"
@@ -19,8 +21,32 @@ def _fixture(tmp_path, *, event_nodes=("J1",), continuity=0.5, two_scenarios=Fal
     inp = root / "network.inp"
     source_inp = tmp_path / "data" / "networks" / "network.inp"
     source_inp.parent.mkdir(parents=True)
-    inp.write_text(_FIXTURE, encoding="utf-8")
-    source_inp.write_text(_FIXTURE, encoding="utf-8")
+    source_content = _FIXTURE
+    if add_unmodified_series:
+        source_content = source_content.replace(
+            "EVENT_J1 0:15 0.0",
+            "EVENT_J1 0:15 0.0\nUNUSED_TS 0:00 3.0\nUNUSED_TS 0:10 4.0",
+        )
+    if add_non_event_flow:
+        source_content = source_content.replace(
+            "J1 FLOW EVENT_J1 FLOW 1.0 1.0 2.5",
+            "J1 FLOW EVENT_J1 FLOW 1.0 1.0 2.5\nJ2 FLOW BACKGROUND_TS FLOW 1.0 1.0 0.0",
+        ).replace(
+            "EVENT_J1 0:15 0.0",
+            "EVENT_J1 0:15 0.0\nBACKGROUND_TS 0:00 0.0\nBACKGROUND_TS 0:10 0.0",
+        )
+    if add_shared_event_series:
+        source_content = source_content.replace(
+            "J1 FLOW EVENT_J1 FLOW 1.0 1.0 2.5",
+            "J1 FLOW EVENT_J1 FLOW 1.0 1.0 2.5\nJ2 FLOW EVENT_J1 FLOW 1.0 0.0 0.0",
+        )
+    if add_shared_event_consumer:
+        source_content = source_content.replace(
+            "[TIMESERIES]",
+            "[RAINGAGES]\nRG_EVENT INTENSITY 0:05 1.0 TIMESERIES EVENT_J1\n\n[TIMESERIES]",
+        )
+    inp.write_text(source_content, encoding="utf-8")
+    source_inp.write_text(source_content, encoding="utf-8")
     # The event file contains the complete declared inflow-node set and actual
     # L/s values; its identity and hash are frozen in the manifest below.
     event = root / "event.csv"
@@ -29,6 +55,14 @@ def _fixture(tmp_path, *, event_nodes=("J1",), continuity=0.5, two_scenarios=Fal
             f"{node},0:00,0\n{node},1:00,1\n" for node in event_nodes
         ), encoding="utf-8",
     )
+    # Make the synthetic effective INP using the same writer as production so
+    # the fixture represents the frozen CSV plus its declared drain-down.
+    from swmm_resilience.simulation.timeseries_scenario import write_scenario_inp
+    from swmm_resilience.validation.hydrograph_csv import load_scenario
+    generated = write_scenario_inp(
+        source_inp, load_scenario(event, expected_nodes=set(event_nodes)), root / "generated", drain_down_hours=6.0,
+    )
+    inp.write_bytes(generated.read_bytes())
     records = []
     for index, role in enumerate(("effective_inp", "event_source", "swmm_rpt", "swmm_out")):
         source = {"effective_inp": inp, "event_source": event}.get(role)
@@ -62,7 +96,7 @@ def _fixture(tmp_path, *, event_nodes=("J1",), continuity=0.5, two_scenarios=Fal
     second_definition = {**first_definition, "scenario_key": "pulse__f1.5", "factor_mult": 1.5}
     definitions = [second_definition, first_definition] if two_scenarios else [first_definition]
     protocol = {
-        "schema_version": "b_transfer_protocol_v1", "status": "frozen_before_run",
+        "schema_version": "b_transfer_protocol_v2", "status": "frozen_before_run",
         # A descriptive network name is permitted alongside the source INP
         # path/hash; it must not be mistaken for a third artifact field.
         "network": {"name": "synthetic external network", "path": str(source_inp), "sha256": _sha(source_inp)},
@@ -70,7 +104,8 @@ def _fixture(tmp_path, *, event_nodes=("J1",), continuity=0.5, two_scenarios=Fal
         "scenarios": definitions,
         "hydraulic_policy": {
             "max_continuity_error_pct": 5.0, "continuity_limit_rationale": "provisional synthetic fixture",
-            "drain_down_hours": 6.0, "tail_window_hours": 1.0, "min_report_steps": 2,
+            "drain_down_hours": 6.0, "drain_down_extension_hours": 2.0, "max_drain_retries": 2,
+            "tail_window_hours": 1.0, "min_report_steps": 2,
             "inflow_tolerance_lps": 0.01, "flooding_tolerance_lps": 0.01,
             "storage_change_tolerance_m3": 0.01, "residual_flow_tolerance_lps": 0.01,
         },
@@ -245,22 +280,19 @@ def test_effective_inp_static_physics_must_match_source_except_base_inflow(
     conn.close()
 
 
-def test_hydraulic_descriptor_allows_only_explicit_event_and_end_time_changes(tmp_path):
+def test_hydraulic_descriptor_allows_exact_scenario_writer_output(tmp_path):
     from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+    from swmm_resilience.simulation.timeseries_scenario import write_scenario_inp
+    from swmm_resilience.validation.hydrograph_csv import load_scenario
 
     conn, root, manifest, anchor = _fixture(tmp_path)
-    effective = root / "network.inp"
-    content = effective.read_text(encoding="utf-8")
-    for old, new in (
-        ("END_DATE 01/01/2025", "END_DATE 01/02/2025"),
-        ("END_TIME 00:15:00", "END_TIME 00:20:00"),
-        ("J1 FLOW EVENT_J1 FLOW 1.0 1.0 2.5", "J1 FLOW EVENT_J1 FLOW 1.0 1.0 4.5"),
-        ("EVENT_J1 0:05 2.0", "EVENT_J1 0:05 3.0"),
-    ):
-        assert old in content
-        content = content.replace(old, new, 1)
-    effective.write_text(content, encoding="utf-8")
-    manifest["runs"][0]["artifacts"]["effective_inp"]["sha256"] = _sha(effective)
+    event = root / "event.csv"
+    scenario = load_scenario(event, expected_nodes={"J1"})
+    # A single 2 h retry is explicitly allowed by the frozen policy.
+    effective = write_scenario_inp(root / "network.inp", scenario, root / "generated", drain_down_hours=8.0)
+    manifest["runs"][0]["artifacts"]["effective_inp"] = {
+        "path": effective.relative_to(root).as_posix(), "sha256": _sha(effective),
+    }
     (root / "frozen_b_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
 
     staged = stage_frozen_b_label_free(
@@ -269,6 +301,110 @@ def test_hydraulic_descriptor_allows_only_explicit_event_and_end_time_changes(tm
     assert staged["manifest"]["run_order"][0]["eligible"] is True
     assert len(staged["features"]) == len(staged["keys"]) > 0
     assert conn.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] == 0
+    conn.close()
+
+
+def test_effective_inp_rejects_drain_down_outside_frozen_retry_grid(tmp_path):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+    from swmm_resilience.simulation.timeseries_scenario import write_scenario_inp
+    from swmm_resilience.validation.hydrograph_csv import load_scenario
+
+    conn, root, manifest, anchor = _fixture(tmp_path)
+    scenario = load_scenario(root / "event.csv", expected_nodes={"J1"})
+    # 12 h exceeds base=6 + two retries of 2 h each.
+    effective = write_scenario_inp(root / "network.inp", scenario, root / "generated", drain_down_hours=12.0)
+    manifest["runs"][0]["artifacts"]["effective_inp"] = {
+        "path": effective.relative_to(root).as_posix(), "sha256": _sha(effective),
+    }
+    (root / "frozen_b_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="outside the frozen base/retry policy"):
+        stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+    conn.close()
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "reason"),
+    [
+        ("J1 FLOW EVENT_J1 FLOW 1 1 0", "J1 FLOW EVENT_J1 FLOW 1 2 0", "scale"),
+        ("J1 FLOW EVENT_J1 FLOW 1 1 0", "J1 FLOW EVENT_J1 FLOW 1 1 0.25", "base"),
+        ("EVENT_J1 01:00 1", "EVENT_J1 01:00 3", "CSV-mismatched event series"),
+        ("J1 FLOW EVENT_J1 FLOW 1 1 0", "J1 FLOW OTHER_SERIES FLOW 1 1 0", "remapped source reference"),
+    ],
+)
+def test_effective_inp_rejects_unapproved_inflow_or_event_series_changes(
+    tmp_path, before, after, reason,
+):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+
+    conn, root, manifest, anchor = _fixture(tmp_path)
+    effective = root / "network.inp"
+    content = effective.read_text(encoding="utf-8")
+    assert before in content, f"synthetic fixture lacks {reason} marker"
+    effective.write_text(content.replace(before, after, 1), encoding="utf-8")
+    manifest["runs"][0]["artifacts"]["effective_inp"]["sha256"] = _sha(effective)
+    (root / "frozen_b_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="effective INP|event series|inflow"):
+        stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] == 0
+    conn.close()
+
+
+def test_effective_inp_rejects_changes_to_non_event_inflow_attributes(tmp_path):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+
+    conn, root, manifest, anchor = _fixture(tmp_path, add_non_event_flow=True)
+    effective = root / "network.inp"
+    content = effective.read_text(encoding="utf-8")
+    before = "J2 FLOW BACKGROUND_TS FLOW 1 1 0"
+    assert before in content
+    effective.write_text(content.replace(before, "J2 FLOW BACKGROUND_TS FLOW 1 1 0.25", 1), encoding="utf-8")
+    manifest["runs"][0]["artifacts"]["effective_inp"]["sha256"] = _sha(effective)
+    (root / "frozen_b_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="inflow attributes differ"):
+        stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+    conn.close()
+
+
+def test_effective_inp_preserves_unmodified_timeseries_semantics(tmp_path):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+
+    conn, root, manifest, anchor = _fixture(tmp_path, add_unmodified_series=True)
+    effective = root / "network.inp"
+    content = effective.read_text(encoding="utf-8")
+    assert "UNUSED_TS 00:10 4.0" in content
+    effective.write_text(content.replace("UNUSED_TS 00:10 4.0", "UNUSED_TS 00:10 4.5", 1), encoding="utf-8")
+    manifest["runs"][0]["artifacts"]["effective_inp"]["sha256"] = _sha(effective)
+    (root / "frozen_b_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="non-event timeseries changed"):
+        stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+    conn.close()
+
+
+def test_effective_inp_rejects_event_series_shared_with_non_event_flow_node(tmp_path):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+
+    conn, root, _, anchor = _fixture(tmp_path, add_shared_event_series=True)
+    with pytest.raises(ValueError, match="also referenced by non-event inflow"):
+        stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+    conn.close()
+
+
+def test_effective_inp_rejects_event_series_consumed_by_raingage(tmp_path):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+
+    conn, root, _, anchor = _fixture(tmp_path, add_shared_event_consumer=True)
+    with pytest.raises(ValueError, match="consumed by source raingage"):
+        stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
     conn.close()
 
 

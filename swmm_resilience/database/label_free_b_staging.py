@@ -11,7 +11,7 @@ import json
 import math
 from pathlib import Path
 import sqlite3
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 from enum import Enum
 
 import numpy as np
@@ -25,7 +25,7 @@ from ..extraction.static_features import extract_static_features
 from ..extraction.topology import build_network_graph, compute_topology_features
 from ..ml.contracts import FEATURE_COLUMNS_V17, FEATURE_COLUMNS_V21, resolve_feature_contract
 from ..ml.bench.schemas import KEY_COLUMNS
-from ..simulation.swmm_api_io import load_inp
+from ..simulation.swmm_api_io import get_node_timeseries_map, load_inp
 from ..simulation.swmm_api_io import read_continuity_error
 from ..simulation.initial_conditions import build_initial_condition_manifest
 from ..extraction.labels import FloodingReportError, read_flooding_volumes_with_manifest
@@ -300,9 +300,161 @@ def _assert_hydraulic_inp_descriptor_matches(source_inp: Path | str, effective_i
         raise ValueError(f"effective INP parsed hydraulic descriptor differs from source INP at {difference}")
 
 
+def _object_attributes(value: object) -> dict:
+    attributes = vars(value)
+    return {str(key): _normalize_inp_descriptor_value(item) for key, item in attributes.items()}
+
+
+def _assert_scenario_inp_changes_match_source(
+    source_inp: Path | str, effective_inp: Path | str, event_path: Path | str,
+    *, hydraulic_policy: dict,
+) -> float:
+    """Enforce the exact inflow/timeseries edits made by write_scenario_inp.
+
+    Only event-node FLOW inflows may change ``scale_factor``, ``base_value``,
+    and ``pattern`` (to 1, 0, and NaN respectively). Their source references,
+    every other inflow attribute, and all non-event series remain unchanged.
+    Event series must equal the frozen CSV plus its explicit zero drain point.
+    """
+    source = load_inp(source_inp)
+    effective = load_inp(effective_inp)
+    source_static = extract_static_features(Path(source_inp))
+    event_nodes = set(
+        source_static.loc[source_static["base_inflow_lps"].astype(float) > 0.0, "node_id"].astype(str)
+    )
+    scenario = load_scenario(event_path, expected_nodes=event_nodes)
+    source_flow_map = get_node_timeseries_map(source)
+    effective_flow_map = get_node_timeseries_map(effective)
+
+    source_inflows = source["INFLOWS"] if "INFLOWS" in source else {}
+    effective_inflows = effective["INFLOWS"] if "INFLOWS" in effective else {}
+    if set(source_inflows) != set(effective_inflows):
+        raise ValueError("effective INP inflow identities differ from source INP")
+    source_flow_nodes = {str(node) for (node, constituent) in source_inflows
+                         if str(constituent).upper() == "FLOW"}
+    if not event_nodes.issubset(source_flow_nodes):
+        raise ValueError(
+            "event-source nodes differ from source INP positive effective FLOW inflow nodes: "
+            f"event={sorted(event_nodes)}, source={sorted(source_flow_nodes)}"
+        )
+    if source_flow_map != effective_flow_map:
+        raise ValueError("effective INP FLOW node-to-timeseries references differ from source INP")
+    event_series_names = []
+    for node in sorted(event_nodes):
+        series_name = source_flow_map.get(node)
+        if not series_name:
+            raise ValueError(f"event node {node} has no source FLOW timeseries reference")
+        event_series_names.append(series_name)
+    if len(set(event_series_names)) != len(event_series_names):
+        raise ValueError("event nodes must have one-to-one source FLOW timeseries references")
+    event_series_set = set(event_series_names)
+    for key, row in source_inflows.items():
+        if (str(key[0]) not in event_nodes or str(key[1]).upper() != "FLOW"):
+            referenced_series = str(getattr(row, "time_series", "")).strip().strip('"').strip("'")
+            if referenced_series in event_series_set:
+                raise ValueError(
+                    f"event timeseries {referenced_series} is also referenced by non-event inflow {key}"
+                )
+    source_raingages = source["RAINGAGES"] if "RAINGAGES" in source else {}
+    for gage_id, gage in source_raingages.items():
+        if (str(getattr(gage, "source", "")).upper() == "TIMESERIES"
+                and str(getattr(gage, "timeseries", "")).strip() in event_series_set):
+            raise ValueError(
+                f"event timeseries is also consumed by source raingage {gage_id}"
+            )
+    source_outfalls = source["OUTFALLS"] if "OUTFALLS" in source else {}
+    for outfall_id, outfall in source_outfalls.items():
+        if (str(getattr(outfall, "kind", "")).upper() == "TIMESERIES"
+                and str(getattr(outfall, "data", "")).strip() in event_series_set):
+            raise ValueError(f"event timeseries is also consumed by source outfall {outfall_id}")
+    for section_name in ("EVAPORATION", "TEMPERATURE"):
+        if section_name not in source:
+            continue
+        section = source[section_name]
+        for name, value in section.items():
+            if str(name).upper() == "TIMESERIES" and str(value).strip() in event_series_set:
+                raise ValueError(f"event timeseries is also consumed by source [{section_name}]")
+
+    options = effective["OPTIONS"] if "OPTIONS" in effective else {}
+    try:
+        start = datetime.combine(options["START_DATE"], options["START_TIME"])
+        end = datetime.combine(options["END_DATE"], options["END_TIME"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("effective INP start/end date-time is invalid") from exc
+    drain_down_hours = (end - start).total_seconds() / 3600.0 - scenario.last_time_hours
+    base_drain = float(hydraulic_policy["drain_down_hours"])
+    extension = float(hydraulic_policy["drain_down_extension_hours"])
+    max_retries = int(hydraulic_policy["max_drain_retries"])
+    allowed_drains = [base_drain + attempt * extension for attempt in range(max_retries + 1)]
+    if drain_down_hours <= 0 or not any(
+        math.isclose(drain_down_hours, allowed, rel_tol=0.0, abs_tol=1e-6)
+        for allowed in allowed_drains
+    ):
+        raise ValueError(
+            "effective INP drain-down duration is outside the frozen base/retry policy: "
+            f"observed={drain_down_hours}, allowed={allowed_drains}"
+        )
+
+    allowed_inflow_fields = {"scale_factor", "base_value", "pattern"}
+    for key in source_inflows:
+        source_row = _object_attributes(source_inflows[key])
+        effective_row = _object_attributes(effective_inflows[key])
+        node, constituent = str(key[0]), str(key[1]).upper()
+        if constituent == "FLOW" and node in event_nodes:
+            for field, expected in (("scale_factor", 1.0), ("base_value", 0.0)):
+                actual = effective_row.get(field)
+                if not isinstance(actual, (int, float)) or not math.isfinite(float(actual)) or float(actual) != expected:
+                    raise ValueError(f"effective INP event FLOW {node} must set {field}={expected:g}")
+            pattern = effective_row.get("pattern")
+            if pattern != {"$float": "NaN"}:
+                raise ValueError(f"effective INP event FLOW {node} must set pattern=NaN")
+            for field in allowed_inflow_fields:
+                source_row.pop(field, None)
+                effective_row.pop(field, None)
+        if source_row != effective_row:
+            raise ValueError(f"effective INP inflow attributes differ from source INP for {key}")
+
+    source_series = source["TIMESERIES"] if "TIMESERIES" in source else {}
+    effective_series = effective["TIMESERIES"] if "TIMESERIES" in effective else {}
+    if set(source_series) != set(effective_series):
+        raise ValueError("effective INP timeseries identities differ from source INP")
+    for series_name in source_series:
+        source_attrs = _object_attributes(source_series[series_name])
+        effective_attrs = _object_attributes(effective_series[series_name])
+        if series_name not in event_series_names:
+            if source_attrs != effective_attrs:
+                raise ValueError(f"effective INP non-event timeseries changed: {series_name}")
+            continue
+        source_attrs.pop("data", None)
+        effective_data = effective_attrs.pop("data", None)
+        if source_attrs != effective_attrs:
+            raise ValueError(f"effective INP event timeseries attributes changed: {series_name}")
+        # Compare all parsed CSV points exactly within float serialization
+        # precision, then require the writer's single zero-flow drain point.
+        node = next(node for node, ref in source_flow_map.items() if ref == series_name)
+        expected_data = [(float(hour), float(value)) for hour, value in scenario.node_series[node]]
+        if drain_down_hours > 0:
+            expected_data.append((scenario.last_time_hours + drain_down_hours, 0.0))
+        if not isinstance(effective_data, list) or len(effective_data) != len(expected_data):
+            raise ValueError(f"effective INP event timeseries does not match CSV plus drain point: {series_name}")
+        for actual, expected in zip(effective_data, expected_data):
+            if (not isinstance(actual, list) or len(actual) != 2
+                    or any(not isinstance(value, (int, float)) or not math.isfinite(float(value))
+                           for value in actual)
+                    or any(not math.isclose(float(got), float(want), rel_tol=0.0, abs_tol=1e-9)
+                           for got, want in zip(actual, expected))):
+                raise ValueError(f"effective INP event timeseries does not match CSV plus drain point: {series_name}")
+
+    expected_end = start + timedelta(hours=scenario.last_time_hours + drain_down_hours)
+    if end != expected_end:
+        raise ValueError("effective INP END_DATE/END_TIME must equal CSV duration plus drain-down")
+    return drain_down_hours
+
+
 def _derive_hydraulic_quality(
     *, source_inp: Path, effective_inp: Path, rpt_path: Path, out_path: Path,
     expected_node_ids: set[str], expected_link_ids: set[str], policy: dict,
+    drain_down_hours: float,
 ) -> dict:
     """Recalculate run QA from the verified hydraulic artifacts, never caller values."""
     try:
@@ -331,7 +483,7 @@ def _derive_hydraulic_quality(
         label_diagnostic = {"parse_failed": getattr(exc, "code", type(exc).__name__)}
     try:
         observables = read_tail_window_observables(
-            out_path, drain_down_hours=policy["drain_down_hours"],
+            out_path, drain_down_hours=drain_down_hours,
             tail_window_hours=policy["tail_window_hours"],
         )
         drainage_state, drainage_manifest = classify_drainage_state(
@@ -340,7 +492,7 @@ def _derive_hydraulic_quality(
             flooding_tolerance_lps=policy["flooding_tolerance_lps"],
             storage_change_tolerance_m3=policy["storage_change_tolerance_m3"],
             residual_flow_tolerance_lps=policy["residual_flow_tolerance_lps"],
-            window_hours=min(policy["tail_window_hours"], policy["drain_down_hours"]),
+            window_hours=min(policy["tail_window_hours"], drain_down_hours),
             min_report_steps=policy["min_report_steps"],
         )
         required_nodes = ("node_total_inflow_lps", "node_flooding_lps", "node_volume_m3")
@@ -466,7 +618,7 @@ def stage_frozen_b_label_free(
     )
     if anchor_receipt["protocol_sha256"] != manifest["protocol_sha256"]:
         raise ValueError("batch protocol hash differs from its pre-run external anchor")
-    if not isinstance(protocol, dict) or protocol.get("schema_version") != "b_transfer_protocol_v1" or protocol.get("status") != "frozen_before_run":
+    if not isinstance(protocol, dict) or protocol.get("schema_version") != "b_transfer_protocol_v2" or protocol.get("status") != "frozen_before_run":
         raise ValueError("unsupported or non-frozen B protocol")
     if set(protocol) != {"schema_version", "status", "network", "expected_scenario_keys", "scenarios",
                          "hydraulic_policy", "initial_condition"}:
@@ -552,12 +704,17 @@ def stage_frozen_b_label_free(
             raise ValueError("effective INP junction coverage differs from the frozen source network")
         _assert_static_features_match(static_features, effective_static)
         _assert_hydraulic_inp_descriptor_matches(network_rec["path"], checked["effective_inp"]["path"])
+        effective_drain_down_hours = _assert_scenario_inp_changes_match_source(
+            network_rec["path"], checked["effective_inp"]["path"], checked["event_source"]["path"],
+            hydraulic_policy=policy,
+        )
         # Every QA evidence field is derived from the verified source artifacts;
         # caller-supplied values below are checked only as declarations.
         derived_qa = _derive_hydraulic_quality(
             source_inp=network_rec["path"], effective_inp=checked["effective_inp"]["path"],
             rpt_path=checked["swmm_rpt"]["path"], out_path=checked["swmm_out"]["path"],
             expected_node_ids=network_node_ids, expected_link_ids=network_link_ids, policy=policy,
+            drain_down_hours=effective_drain_down_hours,
         )
         if (declared_qa["max_continuity_error_pct"] != policy["max_continuity_error_pct"]
                 or declared_qa["continuity_limit_rationale"] != policy["continuity_limit_rationale"]):

@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 from pathlib import Path
 import re
 import sqlite3
@@ -13,6 +14,7 @@ from ..simulation.initial_conditions import build_initial_condition_manifest
 
 _POLICY_FIELDS = frozenset({
     "max_continuity_error_pct", "continuity_limit_rationale", "drain_down_hours",
+    "drain_down_extension_hours", "max_drain_retries",
     "tail_window_hours", "min_report_steps", "inflow_tolerance_lps",
     "flooding_tolerance_lps", "storage_change_tolerance_m3", "residual_flow_tolerance_lps",
 })
@@ -40,9 +42,14 @@ def _check_policy(policy: object) -> dict:
         value = policy[name]
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"hydraulic_policy.{name} must be numeric")
+        if not math.isfinite(float(value)):
+            raise ValueError(f"hydraulic_policy.{name} must be finite")
         if name == "min_report_steps":
             if int(value) != value or value < 2:
                 raise ValueError("hydraulic_policy.min_report_steps must be an integer >= 2")
+        elif name == "max_drain_retries":
+            if int(value) != value or value < 0:
+                raise ValueError("hydraulic_policy.max_drain_retries must be an integer >= 0")
         elif value < 0 or (name in {"drain_down_hours", "tail_window_hours"} and value <= 0):
             raise ValueError(f"hydraulic_policy.{name} is outside its valid range")
     if not isinstance(policy["continuity_limit_rationale"], str) or not policy["continuity_limit_rationale"].strip():
@@ -123,8 +130,8 @@ def freeze_b_transfer_protocol(
         "schema_version", "status", "network", "expected_scenario_keys", "scenarios", "hydraulic_policy",
     }:
         raise ValueError("protocol input has missing or unsupported fields")
-    if protocol["schema_version"] != "b_transfer_protocol_v1" or protocol["status"] != "frozen_before_run":
-        raise ValueError("protocol must use b_transfer_protocol_v1/frozen_before_run")
+    if protocol["schema_version"] != "b_transfer_protocol_v2" or protocol["status"] != "frozen_before_run":
+        raise ValueError("protocol must use b_transfer_protocol_v2/frozen_before_run")
     policy = _check_policy(protocol["hydraulic_policy"])
     keys = protocol["expected_scenario_keys"]
     definitions = protocol["scenarios"]
