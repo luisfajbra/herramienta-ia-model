@@ -31,3 +31,33 @@ The warnings are existing Matplotlib/Pyparsing deprecations. The first run also 
 ## Commit
 
 Feature commit: `c3790ab324b415fe9eee5827eb8ee32fb708dbd1` (`feat: persist immutable run source artifact links`).
+
+## Independent review round 1
+
+### RED
+
+Extended the tests before the fix and ran:
+
+```text
+venv/Scripts/python.exe -m pytest tests/database/test_migration_010_run_source_artifacts.py tests/database/test_run_source_artifacts.py --basetemp=.pytest-task5a-review-red -q
+16 failed
+```
+
+The failures reproduced the old four-role schema/API, caller-supplied digest parameter, absent identity snapshots, and absent source-network INP checks.
+
+### GREEN
+
+After adding migration 011 and the revised API, ran:
+
+```text
+venv/Scripts/python.exe -m pytest tests/database/test_migration_010_run_source_artifacts.py tests/database/test_run_source_artifacts.py tests/database/test_migration_009_hydraulic_quality.py tests/database/test_migration_005_full_catalog.py --basetemp=.pytest-task5a-review-green6 -q
+25 passed, 13 warnings
+```
+
+The tests cover SQL guards and post-guard verification for scenario/config/status changes, digest recomputation and tampering, and source-network INP consistency with both stored hash and database bytes. Legacy four-role rows are preserved under a legacy table and are not treated as verified.
+
+### Review and commit
+
+`git diff --check` passed. The fix changes only the source-artifact registry/API, focused migration/API tests, and Task 5a documentation/report. `predict_transfer` and `score_transfer`, project data/output databases, simulations, and model fitting remain untouched.
+
+Review-fix commit: pending.

@@ -4,11 +4,11 @@ from swmm_resilience.database.migrations import apply_migrations
 
 def test_005_applies_cleanly_from_a_fresh_database(tmp_path):
     conn = connect_database(tmp_path / "db.sqlite3")
-    apply_migrations(conn)  # packaged catalog: 001..010
+    apply_migrations(conn)  # packaged catalog: 001..011
     applied = [row[0] for row in conn.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()]
-    assert applied == list(range(1, 11))
+    assert applied == list(range(1, 12))
 
 
 def test_005_is_idempotent(tmp_path):
@@ -18,4 +18,4 @@ def test_005_is_idempotent(tmp_path):
     applied = [row[0] for row in conn.execute(
         "SELECT version FROM schema_migrations ORDER BY version"
     ).fetchall()]
-    assert applied == list(range(1, 11))
+    assert applied == list(range(1, 12))

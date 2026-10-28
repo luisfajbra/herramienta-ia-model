@@ -162,17 +162,18 @@ The sealed A→B report uses an A-only pair and records B hydraulic eligibility 
 
 #### Task 5a: Persist immutable source artifact links
 
-**Files:** Add migration `swmm_resilience/database/sql/010_run_source_artifacts.sql`; add file registration and verification helpers in `swmm_resilience/database/run_source_artifacts.py`; extend migration and database tests.
+**Files:** Add migration `swmm_resilience/database/sql/010_run_source_artifacts.sql` and identity hardening migration `011_run_source_artifact_identity.sql`; add file registration and verification helpers in `swmm_resilience/database/run_source_artifacts.py`; extend migration and database tests.
 
-**Interface:** `register_run_source_artifacts(conn, run_id, artifacts, source_manifest_sha256)` accepts one complete, named set of resolved artifact paths for a completed run with immutable hydraulic QA. Required roles are the effective INP, event source, SWMM `.rpt` and `.out`; the source network INP is identified by the network row and verified through its stored hash. `verify_run_source_artifacts(conn, run_id)` re-hashes every linked file and checks the `.rpt` hash against that run's hydraulic QA manifest. Rows are append-only and keyed by `(run_id, artifact_role)`. Registration is atomic; partial role sets, non-files, empty files, changed hashes, malformed hashes, duplicate roles or a QA/report mismatch fail without inserting rows.
+**Interface:** `register_run_source_artifacts(conn, run_id, artifacts)` accepts one complete set of linked paths for a completed run with immutable hydraulic QA. Required roles are the source-network INP, effective INP, event source, SWMM `.rpt` and `.out`; the source INP hash must match both `networks.network_sha256` and `sha256(networks.inp_bytes)`. `verify_run_source_artifacts(conn, run_id)` re-hashes every linked file, checks run identity snapshots and the `.rpt`/QA link, and recomputes a canonical manifest digest from run identity and all role/path/hash/size records. The API returns that canonical manifest and digest; callers cannot supply the digest. Rows are append-only and keyed by `(run_id, artifact_role)`. A run's `run_id`, `network_id`, `scenario_id`, `config_sha256` and status cannot change after links exist. Registration is atomic; mismatches fail without inserting rows.
 
 - [x] Add failing SQLite tests for successful complete registration; missing role; changed file after registration; `.rpt` hash/QA mismatch; duplicate registration; and update/delete rejection.
 - [x] Add migration 010 with role/path/hash/size/manifest-hash columns, strict checks, FK to `runs`, and immutable insert/update/delete guards.
-- [x] Implement the helper to resolve paths, hash bytes and size, validate completed run plus QA, compare report hash, and insert the full role set in one transaction.
-- [x] Run `tests/database/test_migration_010_run_source_artifacts.py` and `tests/database/test_run_source_artifacts.py`; confirm all negative cases fail closed.
-- [x] Commit with `feat: persist immutable run source artifact links`.
+- [x] Add migration 011 with source-network-INP role, run identity snapshots, run identity/config/status guard, and canonical digest verification.
+- [x] Implement the helper to resolve and hash all five linked files, validate run and QA identity, verify source INP against network bytes/hash, compute canonical digest, and atomically insert the role set.
+- [x] Run the amended migration/API tests plus existing migration 009 and catalog tests; confirm all negative cases fail closed.
+- [x] Commit the review fix.
 
-**Task 5a outcome:** registration and verification now check persistent four-file links, exact content hashes and sizes, and the `.rpt`/hydraulic-QA binding. The experiment source manifest is not yet consumed by `predict_transfer`; feature/target derivation and label-free B preparation remain outstanding, and `score_transfer` remains unconditionally blocked.
+**Task 5a outcome:** the initial four-file foundation is extended by the review fix to bind five persistent file links to immutable run identity and a recomputed canonical source manifest. Older four-role rows are preserved in a legacy table and remain unverified under the new contract. The experiment source manifest is not yet consumed by `predict_transfer`; feature/target derivation and label-free B preparation remain outstanding, and `score_transfer` remains unconditionally blocked.
 
 #### Task 5b: Register the historical A/B source manifests
 
