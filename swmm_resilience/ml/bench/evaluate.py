@@ -19,7 +19,7 @@ import math
 import os
 import sys
 from contextlib import contextmanager
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import NamedTuple, Sequence
@@ -74,6 +74,7 @@ class NestedNetworkFold:
     seed: int
     trials: tuple[dict, ...]
     oof_row_keys: tuple[dict, ...]
+    model_seeds: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -85,6 +86,7 @@ class NestedNetworkResult:
     oof: pd.DataFrame
     folds: tuple[NestedNetworkFold, ...]
     metrics: dict
+    seed_oof: dict[int, pd.DataFrame] = field(default_factory=dict)
 
 
 def _json_safe(value):
@@ -723,6 +725,10 @@ def evaluate_nested_networks(
     El argumento ``inner_protocols`` declara esa decisión en la procedencia.
     ``run_study`` recibe una vista que no contiene filas, targets ni features
     de la red externa.
+
+    MLP evaluates the mean of five predeclared model seeds after each fold's
+    inner study selects its parameters. The study seed remains separate from
+    these model seeds; all members fit only the same outer training partition.
     """
     from ...config import validate_tuning_objective
     from ...config import validate_volume_band_edges
@@ -743,6 +749,7 @@ def evaluate_nested_networks(
         raise ValueError("PreparedDataset has no LeaveOneNetworkOut folds.")
 
     oof_parts: list[pd.DataFrame] = []
+    seed_oof_parts: dict[int, list[pd.DataFrame]] = {}
     fold_results: list[NestedNetworkFold] = []
     per_network_true: dict[str, list[np.ndarray]] = {}
     per_network_pred: dict[str, list[np.ndarray]] = {}
@@ -773,14 +780,41 @@ def evaluate_nested_networks(
             objective=objective,
             inner_protocol=inner_protocols[0],
         )
-        yc_pred, yc_prob, yr_pred = _fit_predict_fold(
-            prepared,
-            family,
-            tuned.best_classifier_params,
-            tuned.best_regressor_params,
-            train_idx,
-            test_idx,
-        )
+        model_seeds = ()
+        if family == "mlp":
+            from .train import MLP_SEEDS
+
+            model_seeds = MLP_SEEDS
+            member_predictions = []
+            for model_seed in model_seeds:
+                prediction = _fit_predict_fold(
+                    prepared, family,
+                    {**tuned.best_classifier_params, "random_state": model_seed},
+                    {**tuned.best_regressor_params, "random_state": model_seed},
+                    train_idx, test_idx,
+                )
+                member_predictions.append(prediction)
+                member_clf, member_prob, member_reg = prediction
+                seed_oof_parts.setdefault(model_seed, []).append(pd.DataFrame({
+                    "sample_idx": test_idx,
+                    "protocol": "LeaveOneNetworkOut",
+                    "fold_id": int(fold_id),
+                    "y_pred_clf": member_clf.astype(int),
+                    "y_prob_clf": member_prob.astype(float),
+                    "y_pred_reg": member_reg.astype(float),
+                }, columns=list(OOF_COLUMNS)))
+            yc_prob = np.mean([prediction[1] for prediction in member_predictions], axis=0)
+            yc_pred = (yc_prob >= 0.5).astype(int)
+            yr_pred = np.mean([prediction[2] for prediction in member_predictions], axis=0)
+        else:
+            yc_pred, yc_prob, yr_pred = _fit_predict_fold(
+                prepared,
+                family,
+                tuned.best_classifier_params,
+                tuned.best_regressor_params,
+                train_idx,
+                test_idx,
+            )
         oof_parts.append(
             pd.DataFrame(
                 {
@@ -830,6 +864,7 @@ def evaluate_nested_networks(
                 seed=inner_seed,
                 trials=tuple(tuned.trials),
                 oof_row_keys=row_keys,
+                model_seeds=model_seeds,
             )
         )
 
@@ -864,6 +899,37 @@ def evaluate_nested_networks(
             prepared, oof, volume_band_edges_m3=volume_band_edges_m3
         ),
     }
+    seed_oof = {
+        model_seed: pd.concat(parts, ignore_index=True).sort_values(
+            ["fold_id", "sample_idx"], kind="stable"
+        ).reset_index(drop=True)
+        for model_seed, parts in seed_oof_parts.items()
+    }
+    if seed_oof:
+        from .reports import summarize_seeds
+
+        seed_metrics = {}
+        for model_seed, predictions in seed_oof.items():
+            aligned = predictions.set_index("sample_idx").sort_index()
+            routed = np.where(aligned.y_pred_clf == 1, aligned.y_pred_reg, 0.0)
+            true_by_network = {}
+            pred_by_network = {}
+            for network_id, rows in prepared.keys.groupby("network_id", sort=True):
+                indices = rows.index.to_numpy()
+                true_by_network[str(network_id)] = prepared.y_reg.iloc[indices].to_numpy(dtype=float)
+                pred_by_network[str(network_id)] = routed[indices]
+            seed_metrics[model_seed] = {
+                "macro_network_rmse": macro_network_rmse(true_by_network, pred_by_network),
+                "pooled_rmse": float(np.sqrt(np.mean((prepared.y_reg.to_numpy() - routed) ** 2))),
+                "benchmark": score_predictions(
+                    prepared, predictions, {"prep_id": prepared.prep_id},
+                    protocols=("LeaveOneNetworkOut",),
+                ),
+                "network_and_event": nested_network_event_metrics(
+                    prepared, predictions, volume_band_edges_m3=volume_band_edges_m3,
+                ),
+            }
+        metrics["seed_summary"] = summarize_seeds(seed_metrics)
     return NestedNetworkResult(
         family=family,
         prep_id=prepared.prep_id,
@@ -872,6 +938,7 @@ def evaluate_nested_networks(
         oof=oof,
         folds=tuple(fold_results),
         metrics=metrics,
+        seed_oof=seed_oof,
     )
 
 
@@ -946,6 +1013,18 @@ def save_nested_network_result(
         "metrics": result.metrics,
         "folds": [asdict(fold) for fold in result.folds],
     }
+    if result.seed_oof:
+        manifest["model_seeds"] = sorted(result.seed_oof)
+        manifest["seed_selection"] = "all_predeclared_seeds; no_outer_test_seed_selection"
+        manifest["ensemble"] = {
+            "probability": "arithmetic_mean", "classification_threshold": 0.5,
+            "conditional_volume": "mean_after_expm1_and_nonnegative_clip_m3",
+            "dry_routed_volume_m3": 0.0,
+        }
+        for model_seed, predictions in result.seed_oof.items():
+            seed_dir = experiment_dir / f"seed-{model_seed}"
+            seed_dir.mkdir()
+            predictions.to_parquet(seed_dir / "oof.parquet", index=False)
     (experiment_dir / "manifest.json").write_text(
         json.dumps(_json_safe(manifest), indent=2, ensure_ascii=False, allow_nan=False),
         encoding="utf-8",

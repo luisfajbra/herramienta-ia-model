@@ -108,6 +108,20 @@ presenta los artefactos finales como modelos de un fold externo. Esta tarea se
 valida únicamente con fixtures sintéticas, sin simulaciones ni ajuste de redes
 reales. Las entradas nuevas son APIs del banco; no añaden comandos CLI.
 
+La evaluación nested MLP aplica las cinco semillas después de seleccionar los
+hiperparámetros dentro del train de cada fold externo. Las cinco parejas usan
+esos mismos parámetros seleccionados y solo las filas del train externo. Se
+conservan el OOF de cada semilla, la media/desviación estándar muestral de sus
+métricas y las métricas del ensemble como resultado principal. La semilla del
+estudio interno se registra separada de las cinco semillas de los modelos.
+
+La API y el CLI anteriores para ajustar una sola pareja conservan su ruta
+`candidates/<familia>/` y permiten repetir el ajuste. Los directorios inmutables
+por semilla pertenecen a las APIs explícitas de experimentos multisemilla.
+Un ajuste con parámetros configurados, sin selección, registra `objective: null`
+y `selection: configured_parameters`; solo una selección efectivamente realizada
+se describe con su objetivo y evidencia de tuning.
+
 ## Componentes esperados
 
 - `swmm_resilience/ml/contracts.py`: catálogo y validación de contratos, incluyendo la selección explícita de v4_21.

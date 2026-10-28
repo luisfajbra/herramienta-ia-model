@@ -38,7 +38,7 @@ def test_seed_report_includes_each_seed_mean_and_sample_standard_deviation():
     assert report["sample_std"]["rmse"] == pytest.approx(np.sqrt(2.0))
 
 
-def test_seeded_oof_ensemble_uses_identical_rows_and_reports_every_seed(tmp_path):
+def test_seeded_oof_ensemble_uses_identical_rows_and_reports_every_seed(tmp_path, monkeypatch):
     from tests.ml.bench.prepared_factory import make_prepared
     from swmm_resilience.ml.bench.evaluate import evaluate_mlp_seeds
     prepared = make_prepared([
@@ -61,6 +61,17 @@ def test_seeded_oof_ensemble_uses_identical_rows_and_reports_every_seed(tmp_path
         pd.testing.assert_frame_equal(saved, per_seed[seed])
     with pytest.raises(FileExistsError):
         save_mlp_seed_evaluation(prepared, oof, metrics, per_seed, report, tmp_path / "run")
+    from swmm_resilience.ml.bench import evaluate
+
+    def reordered_candidate(prepared, family, classifier_params, regressor_params, **kwargs):
+        seed = classifier_params["random_state"]
+        return per_seed[seed].sample(frac=1, random_state=seed).reset_index(drop=True), {}
+
+    monkeypatch.setattr(evaluate, "evaluate_candidate", reordered_candidate)
+    reordered, _, aligned, _ = evaluate.evaluate_mlp_seeds(prepared, params, params)
+    pd.testing.assert_frame_equal(reordered, oof)
+    for seed in per_seed:
+        pd.testing.assert_frame_equal(aligned[seed], per_seed[seed])
 
 
 def test_ensemble_preserves_nonnegative_conditional_volume_policy():

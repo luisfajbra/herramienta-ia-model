@@ -149,11 +149,17 @@ def train_candidate(
     *,
     random_seed: int | None = None,
     random_seeds: tuple[int, ...] | None = None,
-    objective: str = "macro_network_rmse",
+    objective: str | None = None,
     inner_protocols: tuple[str, ...] = (),
     trial_metadata: dict | None = None,
+    immutable: bool = False,
 ) -> CandidateArtifacts:
-    """Ajusta la cascada sobre todo el dataset y persiste los artefactos."""
+    """Fit one full-data pair at the repeatable legacy family path.
+
+    ``objective=None`` records configured parameters without claiming model
+    selection. Callers with actual tuning provenance may pass its objective
+    and trial metadata. The explicit multi-seed API opts into immutable paths.
+    """
     family = get_family(family_name)
     feature_contract = validate_feature_contract_manifest(
         prepared.manifest,
@@ -166,9 +172,9 @@ def train_candidate(
         classifier_params = {**classifier_params, "random_state": actual_seed}
         regressor_params = {**regressor_params, "random_state": actual_seed}
     directory = Path(output_dir) / family_name
-    if family_name == "mlp":
+    if immutable and family_name == "mlp":
         directory = directory / f"seed-{actual_seed}"
-    directory.mkdir(parents=True, exist_ok=False)
+    directory.mkdir(parents=True, exist_ok=not immutable)
 
     X = prepared.X
     y_clf = prepared.y_clf.to_numpy()
@@ -252,7 +258,7 @@ def train_seed_candidates(prepared, family_name, classifier_params, regressor_pa
         if directory.exists():
             raise FileExistsError(f"Candidate is immutable: {directory}")
     return tuple(train_candidate(prepared, family_name, classifier_params, regressor_params,
-                                 output_dir, random_seed=seed, random_seeds=seeds, **kwargs)
+                                 output_dir, random_seed=seed, random_seeds=seeds, immutable=True, **kwargs)
                  for seed in seeds)
 
 

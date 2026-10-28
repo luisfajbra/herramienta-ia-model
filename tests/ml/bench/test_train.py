@@ -63,7 +63,8 @@ def test_complete_manifest_binds_sources_splits_seeds_and_models(prepared, tmp_p
     artifacts = train_candidate(prepared, "xgboost", TINY, TINY, tmp_path)
     metadata = artifacts.metadata
     assert metadata["source_manifest"] == prepared.manifest
-    assert metadata["objective"] == "macro_network_rmse"
+    assert metadata["objective"] is None
+    assert metadata["trial_metadata"]["selection"] == "configured_parameters"
     assert metadata["target_threshold_m3"] == prepared.manifest["flood_threshold_m3"]
     assert metadata["quality_policy"]["version"]
     assert "swmm_version" in metadata
@@ -87,6 +88,16 @@ def test_preparation_records_run_config_swmm_and_qa_from_snapshot(prepared):
             assert run["hydraulic_quality"]["policy_version"]
             assert len(run["hydraulic_quality"]["policy_sha256"]) == 64
             assert run["hydraulic_quality"]["manifest"]
+
+
+def test_candidate_can_record_actual_selection_objective_and_evidence(prepared, tmp_path):
+    evidence = {"selection": "inner_tuning", "study_id": "synthetic-study", "trials": [{"number": 0}]}
+    candidate = train_candidate(prepared, "xgboost", TINY, TINY, tmp_path,
+                                objective="macro_network_rmse", trial_metadata=evidence,
+                                inner_protocols=("LeaveOneShapeOut",))
+    assert candidate.metadata["objective"] == "macro_network_rmse"
+    assert candidate.metadata["trial_metadata"] == evidence
+    assert candidate.metadata["split_protocol"]["inner"] == ["LeaveOneShapeOut"]
 
 
 def test_saved_ensemble_matches_members_and_keeps_their_hashes(prepared, tmp_path):

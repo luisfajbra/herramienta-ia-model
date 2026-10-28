@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import numpy as np
 import pytest
 
 from swmm_resilience.config import (
@@ -70,6 +71,37 @@ def _make_args(**overrides):
     )
     base.update(overrides)
     return argparse.Namespace(**base)
+
+
+@pytest.mark.parametrize("family", ["xgboost", "mlp"])
+def test_cli_single_candidate_can_be_retrained_and_explicitly_promoted(
+    sql_training_db, tmp_path, monkeypatch, family
+):
+    import main
+    import joblib
+    from swmm_resilience.ml.bench.train import load_candidate
+
+    inp = tmp_path / "synthetic.inp"
+    inp.write_text("synthetic network", encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    prepared = prepare_dataset(sql_training_db, protocols=("LOSO",), flood_threshold_m3=1.,
+                               output_dir=tmp_path / "outputs/bench/prepared")
+    config = _make_config(inp_path=inp, db_path=sql_training_db, families=[family], promote=family)
+    if family == "mlp":
+        config.bench.families[family].classifier = {"hidden_sizes": (4,), "epochs": 1}
+        config.bench.families[family].regressor = {"hidden_sizes": (4,), "epochs": 1}
+    args = _make_args(bench_train=True, prep_id=prepared.prep_id)
+    main._run_bench(args, config)
+    directory = tmp_path / "outputs/bench/candidates" / family
+    first = load_candidate(directory)
+    probabilities = joblib.load(first.classifier_path).predict_proba(prepared.X)
+    assert first.metadata["objective"] is None
+    assert first.metadata["trial_metadata"]["selection"] == "configured_parameters"
+    main._run_bench(args, config)
+    second = load_candidate(directory)
+    np.testing.assert_array_equal(joblib.load(second.classifier_path).predict_proba(prepared.X), probabilities)
+    main._run_bench(_make_args(bench_promote=True), config)
+    assert (tmp_path / "outputs/models/promotion.json").is_file()
 
 
 @pytest.fixture

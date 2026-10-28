@@ -109,6 +109,91 @@ def test_nested_evaluation_tunes_only_outer_training_networks(monkeypatch):
         assert fold.optuna_study_id
 
 
+def test_nested_mlp_fits_five_fold_selected_members_and_scores_their_ensemble(monkeypatch, tmp_path):
+    import swmm_resilience.ml.bench.evaluate as evaluate
+    from swmm_resilience.ml.bench.models import mlp_family
+    from sklearn.pipeline import Pipeline
+
+    prepared = _two_network_prepared()
+    tuned_views, classifiers, regressors, fits = [], [], [], []
+    build_classifier = mlp_family.build_classifier
+    build_regressor = mlp_family.build_regressor
+    fit = Pipeline.fit
+
+    def tune(view, family, **kwargs):
+        assert family == "mlp"
+        tuned_views.append(view)
+        params = {"hidden_sizes": (len(tuned_views) + 2,), "epochs": 1, "dropout": 0.0}
+        return SimpleNamespace(study_id=f"study-{len(tuned_views)}", best_classifier_params=params,
+                               best_regressor_params=params, best_value=1., trials=[{"number": 0}])
+
+    def classifier(params, weight):
+        model = build_classifier(params, weight)
+        classifiers.append((dict(params), model))
+        return model
+
+    def regressor(params):
+        model = build_regressor(params)
+        regressors.append((dict(params), model))
+        return model
+
+    def record_fit(self, X, y, **kwargs):
+        fits.append((X.index.to_numpy(), np.asarray(y)))
+        return fit(self, X, y, **kwargs)
+
+    monkeypatch.setattr(evaluate, "run_study", tune)
+    monkeypatch.setattr(mlp_family, "build_classifier", classifier)
+    monkeypatch.setattr(mlp_family, "build_regressor", regressor)
+    monkeypatch.setattr(Pipeline, "fit", record_fit)
+    result = evaluate.evaluate_nested_networks(
+        prepared, "mlp", ("LeaveOneShapeOut",), objective="macro_network_rmse",
+        volume_band_edges_m3=(1., 2.), n_trials=1, n_splits=2, seed=19)
+
+    assert len(tuned_views) == 2
+    assert len(classifiers) == len(regressors) == 10
+    assert set(result.seed_oof) == {42, 43, 44, 45, 46}
+    assert set(result.metrics["seed_summary"]["per_seed"]) == {"42", "43", "44", "45", "46"}
+    for index, fold in enumerate(result.folds):
+        assert fold.model_seeds == (42, 43, 44, 45, 46)
+        train = np.asarray(fold.outer_train_sample_idx)
+        test = np.asarray(fold.outer_test_sample_idx)
+        view = tuned_views[index]
+        assert set(view.keys.network_id) == set(prepared.keys.iloc[train].network_id)
+        np.testing.assert_array_equal(view.y_reg, prepared.y_reg.iloc[train])
+        for member in range(5):
+            clf_params, clf = classifiers[index * 5 + member]
+            reg_params, reg = regressors[index * 5 + member]
+            assert clf_params == {**fold.selected_classifier_params, "random_state": 42 + member}
+            assert reg_params == {**fold.selected_regressor_params, "random_state": 42 + member}
+            clf_indices, clf_y = fits[index * 10 + member * 2]
+            reg_indices, reg_y = fits[index * 10 + member * 2 + 1]
+            np.testing.assert_array_equal(clf_indices, train)
+            np.testing.assert_array_equal(clf_y, prepared.y_clf.iloc[train])
+            flooded = train[prepared.y_clf.iloc[train].to_numpy() == 1]
+            np.testing.assert_array_equal(reg_indices, flooded)
+            np.testing.assert_allclose(reg_y, np.log1p(prepared.y_reg.iloc[flooded]))
+        X_test = prepared.X.iloc[test]
+        probability = np.mean([model.predict_proba(X_test)[:, 1]
+                               for _, model in classifiers[index * 5:(index + 1) * 5]], axis=0)
+        conditional = np.mean([np.maximum(0., np.expm1(model.predict(X_test)))
+                               for _, model in regressors[index * 5:(index + 1) * 5]], axis=0)
+        oof = result.oof[result.oof.fold_id == fold.fold_id]
+        np.testing.assert_allclose(oof.y_prob_clf, probability)
+        np.testing.assert_array_equal(oof.y_pred_clf, (probability >= .5).astype(int))
+        np.testing.assert_allclose(oof.y_pred_reg, conditional)
+    sorted_oof = result.oof.sort_values("sample_idx")
+    routed = np.where(sorted_oof.y_pred_clf == 1, sorted_oof.y_pred_reg, 0.)
+    expected_rmse = np.mean([
+        np.sqrt(np.mean((prepared.y_reg[prepared.keys.network_id == network] - routed[prepared.keys.network_id == network]) ** 2))
+        for network in ("A", "B")])
+    assert result.metrics["macro_network_rmse"] == pytest.approx(expected_rmse)
+    output = evaluate.save_nested_network_result(result, tmp_path)
+    manifest = json.loads((output / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["model_seeds"] == [42, 43, 44, 45, 46]
+    for seed, expected in result.seed_oof.items():
+        pd.testing.assert_frame_equal(pd.read_parquet(output / f"seed-{seed}/oof.parquet"), expected)
+
+
 def test_nested_config_entry_point_passes_configured_objective_and_budget(monkeypatch):
     import swmm_resilience.ml.bench.evaluate as evaluate_module
 
