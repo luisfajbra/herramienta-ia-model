@@ -206,3 +206,7 @@ B tiene 944/975 corridas registradas y 163 exclusiones QA; el lote continúa. ML
 El lote B terminó con 975/975 escenarios registrados. El registro del lote reporta 188 escenarios únicos QA-ineligibles y 787 elegibles. La cobertura finita está completa en 975; 900 reportan estado drenado y 75 no drenado; 859 tienen continuidad de hasta 5%. Las causas registradas son 116 excedencias de continuidad y 75 casos sin drenaje; tres escenarios tienen ambas causas, por eso las causas suman 191 y los excluidos únicos son 188. La regla de continuidad del 5% sigue siendo provisional y requiere justificación hidráulica.
 
 Verifiqué SHA-256 y existencia para los 3.901 archivos únicos enlazados desde las corridas B (INP efectivos, eventos, RPT y OUT): cero faltantes y cero discrepancias. No se consultaron targets de B. El scoring A→B permanece cerrado hasta que estén listos y congelados los candidatos de A. En este corte MLP lleva 35/50 trials y el trial 36 continúa ejecutándose; el mejor sigue siendo el trial 6 (`macro_network_rmse=96.6671`).
+
+## Corte operacional posterior (2026-10-29 17:56 UTC)
+
+B permanece completo: 975 escenarios, 188 exclusiones QA únicas y 787 elegibles; los 3.901 archivos únicos mantienen hashes verificados. MLP completó 38/50 trials A-only. El trial 38 obtuvo `macro_network_rmse=153.5249`; el trial 6 continúa como mejor con `96.6671`. El trial 39 está en ejecución. El scoring de B sigue cerrado y no se han consultado sus targets.
