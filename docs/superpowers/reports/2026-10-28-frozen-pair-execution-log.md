@@ -86,3 +86,7 @@ Se confirma la convenci?n aprobada: redondear al minuto m?s cercano; el desplaza
 ## Corte operacional posterior (2026-10-29 04:20 UTC)
 
 B tiene 398/975 corridas registradas y 117 exclusiones QA, y sigue en ejecuci?n. MLP complet? 12/50 trials A-only: el trial 11 obtuvo `macro_network_rmse=135.6435`; el mejor permanece en el trial 6 con `96.6671`. El trial 12 ya est? en ejecuci?n. Optuna emiti? las advertencias conocidas de codificaci?n de hiperpar?metros categ?ricos con tuplas de capas; el estudio en memoria sigui? y el trial termin? normalmente. No se han consultado targets de B.
+
+## Corte de tuning y simulaci?n (2026-10-29 04:43 UTC)
+
+B tiene 413/975 corridas registradas y 118 exclusiones QA; sigue ejecut?ndose. MLP complet? 13/50 trials A-only. El trial 12 obtuvo `macro_network_rmse=1635.6768`; el mejor sigue siendo el trial 6 con `96.6671`, por lo que el valor del trial 12 solo queda como observaci?n interna de b?squeda. El trial 13 est? en ejecuci?n. Las advertencias de Optuna sobre opciones categ?ricas de tipo tupla volvieron a aparecer; no impidieron guardar el resultado del trial. No se han consultado targets de B.
