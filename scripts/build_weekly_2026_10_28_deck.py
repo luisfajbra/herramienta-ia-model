@@ -6,6 +6,7 @@ import io
 import hashlib
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import joblib
@@ -187,7 +188,7 @@ def draw_topology(inp_path: Path, out_path: Path):
     xs = [xy[0] for xy in coords.values()]
     ys = [xy[1] for xy in coords.values()]
     ax.scatter(xs, ys, s=8, color="#8BC5FA", edgecolors="#0E2A47", linewidths=0.2, zorder=2)
-    ax.set_title("Red B · Chico Norte 93% · topología del INP", color="#0E2A47", fontsize=12, weight="bold")
+    ax.set_title("Chico Norte · topología del INP", color="#0E2A47", fontsize=12, weight="bold")
     ax.set_aspect("equal")
     ax.axis("off")
     ax.text(0.02, 0.02, f"{len(coords)} nodos con coordenadas · {len(conduits)} conducciones",
@@ -386,13 +387,13 @@ def main():
             shape.text = "Modelo de aprendizaje autom\u00e1tico para predecir fallas hidr\u00e1ulicas\nen redes de alcantarillado pluvial"
 
     # 45. Executive summary: three clear takeaways.
-    s = add_slide(prs, "Avance semanal: datos A listos; transferencia en curso",
+    s = add_slide(prs, "Avance semanal: Chico Sur lista; transferencia en curso",
                   "Corte al 29 de octubre de 2026 · distinguir selecci\u00f3n interna de evaluaci\u00f3n externa.", 45)
-    add_card(s, 0.52, 1.36, 2.76, 1.58, "Datos de A", "138.560 filas",
+    add_card(s, 0.52, 1.36, 2.76, 1.58, "Datos de Chico Sur", "138.560 filas",
              "866 de 1.000 simulaciones pasaron QA.", fill=PALE_BLUE, accent=BLUE, value_size=18)
     add_card(s, 3.62, 1.36, 2.76, 1.58, "XGBoost", "73,78 m\u00b3",
-             "Mejor RMSE interno tras 50 ensayos Optuna en A.", fill=PALE_BLUE, accent=BLUE, value_size=22)
-    add_card(s, 6.72, 1.36, 2.76, 1.58, "Prueba externa B", "En curso",
+             "Mejor RMSE interno tras 50 ensayos Optuna en Chico Sur.", fill=PALE_BLUE, accent=BLUE, value_size=22)
+    add_card(s, 6.72, 1.36, 2.76, 1.58, "Prueba externa: Chico Norte", "En curso",
              "A\u00fan no hay m\u00e9tricas de transferencia.", fill=PALE_GOLD, accent=NAVY, value_size=21)
     add_box(s, 0.52, 3.30, 8.96, 0.88, PALE_GRAY)
     add_text(s, 0.76, 3.43, 1.35, 0.34, "MLP", size=16, color=BLUE, bold=True)
@@ -400,11 +401,11 @@ def main():
              "B\u00fasqueda de 50 ensayos activa; despu\u00e9s se ajustar\u00e1 el ensemble final de cinco semillas.",
              size=11.2, color=BLACK)
     add_text(s, 0.62, 4.48, 8.85, 0.42,
-             "Conclusi\u00f3n de hoy: A es trazable y XGBoost tiene candidato reproducible; la transferencia a B todav\u00eda debe medirse.",
+             "Conclusi\u00f3n de hoy: Chico Sur es trazable y XGBoost tiene candidato reproducible; la transferencia a Chico Norte todav\u00eda debe medirse.",
              size=10.6, color=NAVY, bold=True)
 
-    # 46. Dataset A and QA.
-    s = add_slide(prs, "Conjunto A: simulaciones filtradas con QA hidr\u00e1ulico",
+    # 46. Chico Sur dataset and QA.
+    s = add_slide(prs, "Chico Sur: simulaciones filtradas con QA hidr\u00e1ulico",
                   "Criterios aplicados provisionalmente: continuidad, drenaje y cobertura completa de resultados.", 46)
     eligible = int(quality["n_runs"])
     excluded = 1000 - eligible
@@ -438,12 +439,12 @@ def main():
              size=9.2, color=GRAY)
 
     # 47. Validation boundary.
-    s = add_slide(prs, "Dise\u00f1o de evaluaci\u00f3n: B permanece aislada",
-                  "La selecci\u00f3n usa A; la red B se reserva para una prueba externa.", 47)
+    s = add_slide(prs, "Dise\u00f1o de evaluaci\u00f3n: Chico Norte permanece aislada",
+                  "La selecci\u00f3n usa Chico Sur; Chico Norte se reserva para una prueba externa.", 47)
     for x, label, value, detail, fill, accent in [
-        (0.52, "Entrenamiento", "Red A · Chico Sur", "866 corridas aptas\nPreparaci\u00f3n congelada", PALE_BLUE, BLUE),
-        (3.62, "Selecci\u00f3n interna", "GroupKFold(5)", "Separaci\u00f3n por forma\nOptuna solo ve A", PALE_BLUE, BLUE),
-        (6.72, "Prueba externa", "Red B · Chico Norte", "Etiquetas cerradas\nUna red no representa todas", PALE_GOLD, NAVY),
+        (0.52, "Entrenamiento", "Chico Sur", "866 corridas aptas\nPreparaci\u00f3n congelada", PALE_BLUE, BLUE),
+        (3.62, "Selecci\u00f3n interna", "GroupKFold(5)", "Separaci\u00f3n por forma\nOptuna solo ve Chico Sur", PALE_BLUE, BLUE),
+        (6.72, "Prueba externa", "Chico Norte", "Etiquetas cerradas\nUna red no representa todas", PALE_GOLD, NAVY),
     ]:
         add_card(s, x, 1.35, 2.76, 1.55, label, value, detail, fill=fill, accent=accent, value_size=15)
     add_text(s, 3.19, 1.85, 0.35, 0.42, "→", size=23, color=LIGHT_BLUE, bold=True, align=PP_ALIGN.CENTER)
@@ -451,14 +452,14 @@ def main():
     add_box(s, 0.52, 3.20, 8.96, 1.10, PALE_GRAY)
     add_text(s, 0.76, 3.31, 8.4, 0.31, "Control contra fuga de informaci\u00f3n", size=12.5, color=NAVY, bold=True)
     add_text(s, 0.76, 3.68, 8.35, 0.49,
-             "Se verifican manifiestos, archivos por corrida, claves y variables. Las predicciones se sellan y reproducen antes de abrir los RPT de B.",
+             "Se verifican manifiestos, archivos por corrida, claves y variables. Las predicciones se sellan y reproducen antes de abrir los RPT de Chico Norte.",
              size=10, color=BLACK)
     add_text(s, 0.62, 4.58, 8.9, 0.30,
              "Alcance: transferencia a una red externa; no prueba generalizaci\u00f3n a una poblaci\u00f3n de redes.",
              size=9.4, color=GRAY)
 
-    # 48. Show B geometry without implying that its hydraulics have been scored.
-    s = add_slide(prs, "Red B · Chico Norte: topolog\u00eda del INP", 
+    # 48. Show Chico Norte geometry without implying that its hydraulics have been scored.
+    s = add_slide(prs, "Chico Norte: topolog\u00eda del INP",
                   "Vista de nodos y conducciones; este mapa no contiene resultados de simulaci\u00f3n ni predicciones.", 48)
     s.shapes.add_picture(str(visuals["network"]), Inches(0.35), Inches(1.05), width=Inches(5.00))
     add_card(s, 6.20, 1.40, 3.10, 1.30, "Nodos con coordenadas", fmt_int(visuals["b_nodes"]),
@@ -470,8 +471,8 @@ def main():
              "Topolog\u00eda solamente · sin caudales ni inundaci\u00f3n",
              size=8.4, color=NAVY, bold=True, align=PP_ALIGN.CENTER)
 
-    # 49. Show a representative synthetic B inflow and the planned scenario grid.
-    s = add_slide(prs, "Red B · hidrograma sintético y campaña SWMM",
+    # 49. Show a representative synthetic Chico Norte inflow and the planned scenario grid.
+    s = add_slide(prs, "Chico Norte: hidrograma sintético y campaña SWMM",
                   "Ejemplo de entrada nodal para Chico Norte; los caudales provienen del INP y de formas sintéticas.", 49)
     s.shapes.add_picture(str(visuals["b_hydrograph"]), Inches(0.35), Inches(1.18), width=Inches(5.70))
     hydro = visuals["b_hydrograph_stats"]
@@ -489,8 +490,8 @@ def main():
 
     # 50-51. Pair each eligible SWMM flood map with the previous promoted model.
     for page, case, case_label in [
-        (50, visuals["a_maps"][0], "A · escenario inundado mediano"),
-        (51, visuals["a_maps"][1], "A · escenario de mayor volumen total"),
+        (50, visuals["a_maps"][0], "Chico Sur · escenario inundado mediano"),
+        (51, visuals["a_maps"][1], "Chico Sur · escenario de mayor volumen total"),
     ]:
         stats = case["stats"]
         s = add_slide(prs, case_label,
@@ -510,57 +511,68 @@ def main():
 
     # 52. XGBoost results.
     s = add_slide(prs, "XGBoost: 73,78 m\u00b3 de RMSE interno",
-                  "50 ensayos Optuna · GroupKFold(5) por forma · semilla 42 · selecci\u00f3n solo con A", 52)
+                  "50 ensayos Optuna · GroupKFold(5) por forma · semilla 42 · selecci\u00f3n solo con Chico Sur", 52)
     s.shapes.add_picture(chart_bytes(study), Inches(0.34), Inches(1.10), width=Inches(6.10))
     add_card(s, 6.72, 1.24, 2.95, 1.18, "Mejor ensayo", "#13",
              "ID Optuna; numeraci\u00f3n desde cero.", fill=PALE_BLUE, accent=BLUE, value_size=23)
     add_card(s, 6.72, 2.64, 2.95, 1.18, "Criterio", "73,782 m\u00b3",
-             "macro_network_rmse; en A equivale al RMSE de una red.", fill=PALE_BLUE, accent=BLUE, value_size=18)
+             "macro_network_rmse; en Chico Sur equivale al RMSE de una red.", fill=PALE_BLUE, accent=BLUE, value_size=18)
     add_box(s, 6.72, 4.05, 2.95, 0.76, PALE_GOLD)
     add_text(s, 6.88, 4.13, 2.62, 0.60,
-             "Candidato ajustado con A; a\u00fan no es el resultado de B.",
+             "Candidato ajustado con Chico Sur; a\u00fan no es el resultado de Chico Norte.",
              size=10, color=NAVY, bold=True)
     add_text(s, 0.48, 4.80, 5.96, 0.21,
              "La l\u00ednea oscura muestra el mejor RMSE acumulado; es una estimaci\u00f3n de selecci\u00f3n interna.",
              size=8.5, color=GRAY)
 
-    # 53. Model and B operational status.
-    s = add_slide(prs, "Estado de modelos y simulaciones de la red B",
-                  "Los conteos de B son operativos; todav\u00eda no son m\u00e9tricas de desempe\u00f1o.", 53)
-    n_ok = len(b_progress.get("results", []))
-    n_excluded = len(b_progress.get("failures", []))
+    # 53. Model and Chico Norte operational status.
+    b_cut = datetime.fromtimestamp(B_PROGRESS_PATH.stat().st_mtime).strftime("%H:%M")
+    s = add_slide(prs, "Estado de modelos y simulaciones de Chico Norte",
+                  f"Corte de Chico Norte: {b_cut}; MLP: \u00faltimo estado confirmado 07:01. Conteos operativos, no m\u00e9tricas de desempe\u00f1o.", 53)
+    completed_keys = {
+        row["scenario_key"] for row in b_progress.get("results", [])
+        if isinstance(row, dict) and row.get("scenario_key")
+    }
+    qa_excluded_keys = {
+        row["scenario_key"] for row in b_progress.get("failures", [])
+        if isinstance(row, dict)
+        and row.get("kind") == "hydraulic_qa_ineligible"
+        and row.get("scenario_key")
+    }
+    n_excluded = len(completed_keys & qa_excluded_keys)
+    n_ok = len(completed_keys) - n_excluded
     total = 39 * 25
-    pending = max(total - n_ok - n_excluded, 0)
+    pending = max(total - len(completed_keys), 0)
     add_box(s, 0.52, 1.25, 4.30, 2.78, PALE_BLUE)
     add_text(s, 0.76, 1.43, 3.82, 0.32, "XGBOOST · COMPLETADO", size=10.3, color=BLUE, bold=True)
     add_text(s, 0.76, 1.90, 3.80, 0.52, "50 / 50 ensayos", size=20, color=NAVY, bold=True)
     add_text(s, 0.76, 2.52, 3.78, 1.12,
-             "Candidato ajustado con A. Se verificaron la recarga de los modelos y la procedencia de sus archivos.",
+             "Candidato ajustado con Chico Sur. Se verificaron la recarga de los modelos y la procedencia de sus archivos.",
              size=10.2, color=BLACK, valign=MSO_ANCHOR.TOP)
     add_box(s, 5.18, 1.25, 4.30, 2.78, PALE_GOLD)
     add_text(s, 5.42, 1.43, 3.82, 0.32, "MLP · B\u00daSQUEDA ACTIVA", size=10.3, color=NAVY, bold=True)
     add_text(s, 5.42, 1.90, 3.80, 0.52, "26 / 50 ensayos", size=20, color=NAVY, bold=True)
     add_text(s, 5.42, 2.52, 3.78, 1.12,
-             "Corte 07:01: 26 terminados; trial 27 en curso. Mejor interno: #6, 96,667 m³. Luego se ajusta el ensemble de cinco semillas (42–46).",
+             "\u00daltimo reporte confirmado 07:01: 26/50 terminados; trial 27 en curso. Mejor interno: #6, 96,667 m\u00b3. Luego se ajusta el ensemble de cinco semillas (42\u201346).",
              size=10.2, color=BLACK, valign=MSO_ANCHOR.TOP)
-    add_text(s, 0.56, 4.23, 1.78, 0.32, "RED B · CORTE", size=9.8, color=BLUE, bold=True)
+    add_text(s, 0.56, 4.23, 1.78, 0.32, "CHICO NORTE · CORTE", size=9.8, color=BLUE, bold=True)
     add_text(s, 2.32, 4.20, 7.13, 0.39,
              f"{fmt_int(n_ok)} aptas · {fmt_int(n_excluded)} excluidas · {fmt_int(pending)} pendientes de {fmt_int(total)}",
              size=10.1, color=NAVY, bold=True)
     add_box(s, 0.58, 4.70, 8.88, 0.19, PALE_GRAY, square=True)
-    progress = (n_ok + n_excluded) / total
+    progress = len(completed_keys) / total
     bar = s.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(0.58), Inches(4.70), Inches(8.88 * min(progress, 1)), Inches(0.19))
     bar.fill.solid(); bar.fill.fore_color.rgb = MID_BLUE; bar.line.color.rgb = MID_BLUE
     add_text(s, 0.58, 4.91, 8.88, 0.22,
-             "Etiquetas de B a\u00fan cerradas para el scoring.", size=8.8, color=GRAY)
+             "Etiquetas de Chico Norte a\u00fan cerradas para la evaluaci\u00f3n.", size=8.8, color=GRAY)
 
     # 54. Readiness of parity maps.
     s = add_slide(prs, "Mapas y gr\u00e1ficos de paridad: siguiente hito",
-                  "La comparación con XGBoost previo es solo ilustrativa; la validación externa A→B sigue pendiente.", 54)
+                  "La comparación con XGBoost previo es solo ilustrativa; la transferencia de Chico Sur a Chico Norte sigue pendiente.", 54)
     steps = [
         (0.50, "1", "Terminar MLP", "Cerrar b\u00fasqueda y ajustar cinco semillas.", PALE_GOLD, NAVY),
         (2.82, "2", "Sellar", "Congelar modelos, variables y hashes de predicci\u00f3n.", PALE_BLUE, BLUE),
-        (5.14, "3", "Evaluar B", "Verificar RPT, QA y cobertura; calcular m\u00e9tricas.", PALE_BLUE, BLUE),
+        (5.14, "3", "Evaluar Chico Norte", "Verificar RPT, QA y cobertura; calcular m\u00e9tricas.", PALE_BLUE, BLUE),
         (7.46, "4", "Graficar", "Paridad por nodo/escenario y mapas espaciales.", PALE_GOLD, NAVY),
     ]
     for x, n, title, detail, fill, accent in steps:
@@ -569,10 +581,10 @@ def main():
         add_text(s, x + 0.48, 1.59, 1.46, 0.38, title, size=10.4, color=NAVY, bold=True)
         add_text(s, x + 0.15, 2.04, 1.78, 0.91, detail, size=8.9, color=BLACK, valign=MSO_ANCHOR.TOP)
     add_text(s, 0.76, 3.53, 8.48, 0.72,
-             "La comparación con el modelo previo es retrospectiva; no reemplaza la paridad OOF ni la evaluación externa de B.",
+             "La comparación con el modelo previo es retrospectiva; no reemplaza la paridad OOF ni la evaluación externa de Chico Norte.",
              size=12, color=NAVY, bold=True, align=PP_ALIGN.CENTER)
     add_text(s, 0.80, 4.47, 8.72, 0.32,
-             "Aún no reportamos % de confiabilidad: se calculará con predicciones selladas y etiquetas verificadas de B.",
+             "Aún no reportamos % de confiabilidad: se calculará con predicciones selladas y etiquetas verificadas de Chico Norte.",
              size=9.6, color=GRAY, align=PP_ALIGN.CENTER)
 
     # 55. Findings and limitations.
@@ -580,12 +592,12 @@ def main():
                   "La auditor\u00eda convirti\u00f3 una tabla hist\u00f3rica en un experimento trazable con etiquetas protegidas.", 55)
     for x, heading, bullets, fill, accent in [
         (0.48, "Evidencia disponible", [
-            "Dataset A reconstruido y filtrado, con manifiestos y hashes.",
+            "Chico Sur reconstruida y filtrada, con manifiestos y hashes.",
             "XGBoost seleccionado entre 50 ensayos; candidato verificado.",
-            "Nueva red B en simulaci\u00f3n, con exclusiones reportadas."], PALE_BLUE, BLUE),
+            "Chico Norte en simulaci\u00f3n, con exclusiones reportadas."], PALE_BLUE, BLUE),
         (5.12, "Evidencia pendiente", [
             "Terminar MLP y ajustar el ensemble de cinco semillas.",
-            "Sellar predicciones; evaluar B y generar mapas/paridad nuevos.",
+            "Sellar predicciones; evaluar Chico Norte y generar mapas/paridad nuevos.",
             "Probar otra red antes de afirmar generalizaci\u00f3n amplia."], PALE_GOLD, NAVY),
     ]:
         add_box(s, x, 1.25, 4.39, 2.64, fill)
@@ -605,11 +617,11 @@ def main():
     s = add_slide(prs, "Trazabilidad y decisiones congeladas",
                   "Cada resultado queda asociado a una preparaci\u00f3n, un protocolo y artefactos verificables.", 56)
     rows = [
-        ("ID de preparaci\u00f3n A", PREP_ID, "138.560 filas · 866 corridas · tabular_v4_21"),
-        ("Manifiesto de A", "4bf0c50f61b2287…", "Fuentes, archivos por corrida y QA"),
+        ("ID de preparaci\u00f3n Chico Sur", PREP_ID, "138.560 filas · 866 corridas · tabular_v4_21"),
+        ("Manifiesto de Chico Sur", "4bf0c50f61b2287…", "Fuentes, archivos por corrida y QA"),
         ("Prerregistro", "6d5b729e33bd1162…", "Sellado antes de las b\u00fasquedas"),
         ("Estudio XGBoost", "5b3ace9ece0223b8…", "50 ensayos · semilla 42 · GroupKFold(5)"),
-        ("Protocolo B", str(b_progress.get("protocol_sha256", ""))[:16] + "…", "39 × 25 escenarios · staging sin etiquetas"),
+        ("Protocolo Chico Norte", str(b_progress.get("protocol_sha256", ""))[:16] + "…", "39 × 25 escenarios · staging sin etiquetas"),
     ]
     y = 1.24
     for i, (label, value, detail) in enumerate(rows):
@@ -619,14 +631,14 @@ def main():
         add_text(s, 5.50, y + 0.08, 3.82, 0.40, detail, size=8.9, color=BLACK)
         y += 0.68
     add_text(s, 0.60, 4.80, 8.95, 0.22,
-             "Rutas y hashes completos en los manifiestos y la bit\u00e1cora; las etiquetas de B no se guardan en SQLite.",
+             "Rutas y hashes completos en los manifiestos y la bit\u00e1cora; las etiquetas de Chico Norte no se guardan en SQLite.",
              size=8.6, color=GRAY)
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(OUTPUT))
     print(OUTPUT)
-    print(f"slides={len(prs.slides)} | B aptas={n_ok} | B excluidas={n_excluded} | B pendientes={pending}")
-    print(f"A aptas={quality['n_runs']} | filas={quality['n_rows']} | mejor XGBoost={study['best_value']:.6f} m3")
+    print(f"slides={len(prs.slides)} | Chico Norte aptas={n_ok} | excluidas={n_excluded} | pendientes={pending}")
+    print(f"Chico Sur aptas={quality['n_runs']} | filas={quality['n_rows']} | mejor XGBoost={study['best_value']:.6f} m3")
     print(f"prerregistro_sha={prereg.get('sha256', 'ver execution log')}")
 
 

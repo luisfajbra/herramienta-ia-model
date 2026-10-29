@@ -155,3 +155,8 @@ Al regenerar la presentaci?n, B ten?a 805/975 resultados registrados, 159 exclus
 ## Corte operacional posterior (2026-10-29 13:16 UTC)
 
 B tiene 842/975 corridas registradas y 161 exclusiones QA; el lote sigue en ejecución. MLP completó 29/50 trials A-only. El trial 29 obtuvo `macro_network_rmse=127.5997`; el trial 6 continúa como mejor con `96.6671`. El trial 30 acaba de iniciar. Siguen apareciendo las advertencias de Optuna sobre opciones categóricas de tipo tupla; no han impedido completar los trials observados. No se han consultado targets de B. Se mantiene el redondeo aprobado al minuto más cercano (desplazamiento máximo de 30 s).
+
+
+## Presentaci?n: nombres de las redes y corte actualizado (2026-10-29 14:00 UTC / 09:00 Bogot?)
+
+A petici?n del usuario, en los materiales de exposici?n se nombran las redes como Chico Sur (entrenamiento) y Chico Norte (evaluaci?n externa); A/B se conservan solo cuando forman parte de rutas o identificadores t?cnicos internos. El corte de `batch_progress.json` registra 871 escenarios con resultado, 709 elegibles, 162 excluidos por QA y 104 pendientes de 975. Las filas `hydraulic_qa_ineligible` tambi?n aparecen en `results`; por eso el conteo no debe sumar resultados y fallas como categor?as independientes. Se corrigi? el generador para deduplicar por `scenario_key` y contar QA sobre la intersecci?n de claves. El ?ltimo contador persistido de MLP sigue en 26/50 a las 07:01 (trial 27 en curso); el proceso permanece activo, pero no se ha confirmado un contador actualizado. La ETA anterior de 10?22 horas qued? retirada por estar basada en un corte vencido. Presentaci?n y guion reflejan estos nombres y las limitaciones de estado.
