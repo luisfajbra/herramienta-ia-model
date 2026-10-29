@@ -251,3 +251,7 @@ B sigue completo, con 975 escenarios, 188 exclusiones QA únicas, 787 elegibles 
 ## Corte operacional posterior (2026-10-29 22:45 UTC)
 
 B permanece verificado con los mismos 975 escenarios, 188 exclusiones QA únicas, 787 elegibles y 3.901 artefactos enlazados sin faltantes ni discrepancias SHA-256. MLP completó 47/50 trials A-only: el trial 47 obtuvo `macro_network_rmse=118.8860`; el trial 6 sigue primero con `96.6671`. El trial 48 está en ejecución. Optuna volvió a advertir que algunas opciones categóricas son tuplas, sin que el ensayo fallara. Los targets de B siguen sin consultarse y el scoring externo continúa sellado.
+
+## Corte operacional posterior (2026-10-29 23:18 UTC)
+
+B continúa completo y verificado (975 escenarios, 188 exclusiones QA únicas, 787 elegibles, 3.901 artefactos verificados). MLP completó 48/50 trials A-only. El trial 48 obtuvo `macro_network_rmse=86.4202`, nuevo mejor valor interno, por debajo del trial 6 (`96.6671`); el trial 49 está en ejecución. Esta selección usa solo los folds agrupados de Chico Sur y aún no representa desempeño externo. No se han consultado targets de B; la evaluación A→B sigue sellada.
