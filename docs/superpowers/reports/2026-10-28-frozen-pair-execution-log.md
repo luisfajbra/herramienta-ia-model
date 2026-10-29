@@ -82,3 +82,7 @@ La versi?n final qued? en 13 diapositivas. `python-pptx` pudo recargarla, el ZIP
 ## Corte operacional de la ejecuci?n (2026-10-29 04:14 UTC)
 
 Se confirma la convenci?n aprobada: redondear al minuto m?s cercano; el desplazamiento de cada punto queda limitado a 30 s. En este corte, B tiene 393/975 corridas registradas, con 117 exclusiones QA, y contin?a en ejecuci?n. El estudio MLP lleva 11/50 trials A-only completados; el mejor sigue siendo el trial 6 (`macro_network_rmse=96.6671`). El trial 11 contin?a ejecut?ndose desde hace m?s tiempo que el rango previo de 22–40 minutos. Su proceso sigue activo y consume CPU, por lo que a?n no se declara fallido ni se interrumpe. No se han consultado targets de B.
+
+## Corte operacional posterior (2026-10-29 04:20 UTC)
+
+B tiene 398/975 corridas registradas y 117 exclusiones QA, y sigue en ejecuci?n. MLP complet? 12/50 trials A-only: el trial 11 obtuvo `macro_network_rmse=135.6435`; el mejor permanece en el trial 6 con `96.6671`. El trial 12 ya est? en ejecuci?n. Optuna emiti? las advertencias conocidas de codificaci?n de hiperpar?metros categ?ricos con tuplas de capas; el estudio en memoria sigui? y el trial termin? normalmente. No se han consultado targets de B.
