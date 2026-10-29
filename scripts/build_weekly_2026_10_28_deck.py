@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 import sys
 from pathlib import Path
 
+import joblib
 import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 from pptx import Presentation
 from pptx.dml.color import RGBColor
@@ -22,6 +25,8 @@ from pptx.util import Inches, Pt
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from swmm_resilience.visualization._inp_parser import parse_conduits, parse_coordinates
+from swmm_resilience.simulation.hydrograph_shapes import load_shape
+from swmm_resilience.simulation.swmm_api_io import get_node_inflow_profiles, load_inp
 
 TEMPLATE = ROOT / ".claude/worktrees/optuna-tuning-familia-ganadora/Presentacion_MLSMFP_20-10_avances_auditoria_svm.pptx"
 EXPERIMENT = ROOT / "outputs/experiments/frozen_pair_rerun_20261028/20261028T194035Z"
@@ -33,8 +38,9 @@ B_PROGRESS_PATH = EXPERIMENT / "B/batch_progress.json"
 PREPARED_A = EXPERIMENT / f"A/prepared_a_transfer_v1/{PREP_ID}"
 A_INP = ROOT / "data/networks/chico_hydro-qx1/SWMM - Chico (PVC) Prueba 1 - Qx1.00.inp"
 B_INP = ROOT / "data/networks/chico_norte_93_qx1/SWMM - Chico Norte 93% - Qx1.00.inp"
-VISUALS = EXPERIMENT / "presentation_visuals"
-OUTPUT = ROOT / "Presentacion_MLSMFP_28-10_avances_auditoria_transferencia_con_mapas.pptx"
+VISUALS = EXPERIMENT / "presentation_visuals_modelo_hidrograma"
+PROMOTED_MODELS = ROOT / "outputs/models"
+OUTPUT = ROOT / "Presentacion_MLSMFP_28-10_avances_auditoria_transferencia_comparacion_modelo_hidrograma.pptx"
 
 # Palette sampled from the 20-10 presentation: navy, layered blues and gold.
 NAVY = RGBColor(14, 42, 71)          # 0E2A47
@@ -125,6 +131,10 @@ def fmt_int(n):
     return f"{int(n):,}".replace(",", ".")
 
 
+def fmt_decimal(n, digits=1):
+    return f"{float(n):.{digits}f}".replace(".", ",")
+
+
 def chart_bytes(study):
     values = [t.get("value") for t in study["trials"]]
     best_so_far = []
@@ -189,7 +199,8 @@ def draw_topology(inp_path: Path, out_path: Path):
     return out_path, len(coords), len(conduits)
 
 
-def draw_flood_map(inp_path: Path, rows: pd.DataFrame, title: str, out_path: Path):
+def draw_flood_map(inp_path: Path, rows: pd.DataFrame, title: str, out_path: Path,
+                   *, vmax: float | None = None):
     coords = parse_coordinates(inp_path)
     conduits = parse_conduits(inp_path)
     df = rows.copy()
@@ -198,7 +209,7 @@ def draw_flood_map(inp_path: Path, rows: pd.DataFrame, title: str, out_path: Pat
     df = df[df["node_id"].isin(coords)].drop_duplicates("node_id")
     df["x"] = df["node_id"].map(lambda node: coords[node][0])
     df["y"] = df["node_id"].map(lambda node: coords[node][1])
-    vmax = max(float(df["vol_inundacion_m3"].max()), 1.0)
+    vmax = max(float(vmax or df["vol_inundacion_m3"].max()), 1.0)
     fig, ax = plt.subplots(figsize=(7.0, 5.2), dpi=180)
     fig.patch.set_facecolor("white")
     ax.set_facecolor("white")
@@ -236,10 +247,53 @@ def draw_flood_map(inp_path: Path, rows: pd.DataFrame, title: str, out_path: Pat
     return out_path
 
 
+def draw_b_hydrograph(inp_path: Path, out_path: Path):
+    inp = load_inp(inp_path)
+    profiles = get_node_inflow_profiles(inp)
+    peaks = {
+        node: max((flow for _, flow in profile["points"]), default=0.0)
+        for node, profile in profiles.items()
+    }
+    node = max(peaks, key=peaks.get)
+    base_peak = peaks[node]
+    factor = 2.8
+    shape_name = "shape_five_pulse_8h5"
+    points = load_shape(ROOT / "data/hydrograph_shapes" / f"{shape_name}.csv")
+    times = np.asarray([round(t * 60) / 60 for t, _ in points])
+    normalized = np.asarray([q for _, q in points])
+    flow = normalized * base_peak * factor
+    fig, ax = plt.subplots(figsize=(7.8, 3.7), dpi=180)
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
+    ax.plot(times, flow, color="#355A84", linewidth=2.6, marker="o", markersize=3.6)
+    ax.fill_between(times, flow, color="#8BC5FA", alpha=0.24)
+    ax.set_title(f"Hidrograma sintético de entrada · nodo {node}",
+                 color="#0E2A47", fontsize=12, weight="bold")
+    ax.set_xlabel("Tiempo desde el inicio del evento (h)", fontsize=9)
+    ax.set_ylabel("Caudal de entrada (L/s)", fontsize=9)
+    ax.grid(True, color="#E5EAF0", linewidth=0.8)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.text(0.99, 0.96,
+            f"{shape_name} · {fmt_decimal(points[-1][0], 1)} h · factor {fmt_decimal(factor, 1)}\n"
+            f"pico INP {fmt_decimal(base_peak, 2)} → aplicado {fmt_decimal(flow.max(), 1)} L/s",
+            transform=ax.transAxes, ha="right", va="top", fontsize=8.0,
+            color="#0E2A47", bbox={"boxstyle": "round,pad=0.35", "fc": "white", "ec": "#D7E0E8"})
+    fig.tight_layout()
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+    return out_path, {"node": node, "base_peak_lps": base_peak,
+                      "scenario_peak_lps": float(flow.max()), "factor": factor,
+                      "shape": shape_name, "duration_h": float(points[-1][0]),
+                      "inflow_nodes": len(profiles), "positive_inflow_nodes": sum(p > 0 for p in peaks.values())}
+
+
 def make_visuals():
     VISUALS.mkdir(parents=True, exist_ok=True)
     network_path, n_nodes_b, n_links_b = draw_topology(B_INP, VISUALS / "red_b_chico_norte_topologia.png")
+    hydrograph_path, hydrograph_stats = draw_b_hydrograph(B_INP, VISUALS / "red_b_hidrograma_sintetico.png")
     keys = pd.read_parquet(PREPARED_A / "keys.parquet")
+    features = pd.read_parquet(PREPARED_A / "features.parquet")
     targets = pd.read_parquet(PREPARED_A / "targets.parquet")
     joined = keys[["run_id", "scenario_key", "shape_id", "factor_mult", "node_id"]].copy()
     joined["vol_inundacion_m3"] = targets["vol_inundacion_m3"].to_numpy()
@@ -248,14 +302,51 @@ def make_visuals():
         total_m3=("vol_inundacion_m3", "sum"), n_flooded=("inunda", "sum"))
     flooded = summary[summary["n_flooded"] > 0].sort_values(["total_m3", "scenario_key"])
     picks = [flooded.iloc[len(flooded) // 2], flooded.iloc[-1]]
+    promotion = read_json(PROMOTED_MODELS / "promotion.json")
+    if promotion.get("feature_contract_id") != "tabular_v4_21":
+        raise ValueError("Previous promoted model is not compatible with tabular_v4_21")
+    model_paths = {"classifier": PROMOTED_MODELS / "classifier.joblib",
+                   "regressor": PROMOTED_MODELS / "regressor.joblib"}
+    for key, model_path in model_paths.items():
+        expected = promotion[f"{key}_sha256"]
+        actual = hashlib.sha256(model_path.read_bytes()).hexdigest()
+        if actual != expected:
+            raise ValueError(f"Promoted {key} hash does not match promotion.json")
+    classifier = joblib.load(model_paths["classifier"])
+    regressor = joblib.load(model_paths["regressor"])
+    if list(features.columns) != promotion["ordered_features"]:
+        raise ValueError("Prepared A feature columns differ from the previous model contract")
     maps = []
     for label, pick in zip(("mediana", "mayor_volumen"), picks):
         run_id = int(pick["run_id"])
-        scenario_rows = joined[joined["run_id"] == run_id]
-        title = f"A · SWMM · {pick['shape_id']} · factor {pick['factor_mult']:.1f}"
-        out = draw_flood_map(A_INP, scenario_rows, title, VISUALS / f"red_a_{label}_swmm.png")
-        maps.append((out, pick.to_dict()))
-    return {"network": network_path, "b_nodes": n_nodes_b, "b_links": n_links_b, "a_maps": maps}
+        row_index = keys.index[keys["run_id"].eq(run_id)]
+        scenario_rows = joined.loc[row_index].copy()
+        scenario_features = features.loc[row_index]
+        probability = classifier.predict_proba(scenario_features)[:, 1]
+        conditional = np.maximum(np.expm1(regressor.predict(scenario_features)), 0.0)
+        predicted_volume = np.where(probability >= 0.5, conditional, 0.0)
+        scenario_rows["predicted_volume_m3"] = predicted_volume
+        model_rows = scenario_rows.drop(columns=["vol_inundacion_m3", "predicted_volume_m3"]).copy()
+        model_rows["vol_inundacion_m3"] = predicted_volume
+        total_true = float(scenario_rows["vol_inundacion_m3"].sum())
+        total_model = float(predicted_volume.sum())
+        common_vmax = max(float(scenario_rows["vol_inundacion_m3"].max()), float(predicted_volume.max()), 1.0)
+        scenario_title = f"{pick['shape_id']} · factor {fmt_decimal(pick['factor_mult'], 1)}"
+        out_swmm = draw_flood_map(
+            A_INP, scenario_rows, f"SWMM · {scenario_title}",
+            VISUALS / f"red_a_{label}_swmm.png", vmax=common_vmax)
+        out_model = draw_flood_map(
+            A_INP, model_rows,
+            f"XGBoost previo · {scenario_title}",
+            VISUALS / f"red_a_{label}_xgboost_previo.png", vmax=common_vmax)
+        stats = pick.to_dict()
+        stats["model_total_m3"] = total_model
+        stats["total_delta_m3"] = total_model - total_true
+        stats["model_flooded_nodes"] = int((predicted_volume >= 1.0).sum())
+        maps.append({"swmm": out_swmm, "model": out_model, "stats": stats})
+    return {"network": network_path, "b_nodes": n_nodes_b, "b_links": n_links_b,
+            "b_hydrograph": hydrograph_path, "b_hydrograph_stats": hydrograph_stats,
+            "a_maps": maps, "previous_model_promoted_utc": promotion["promoted_at_utc"]}
 
 
 def keep_cover_only(prs):
@@ -270,7 +361,10 @@ def keep_cover_only(prs):
 
 def main():
     for path in (TEMPLATE, STUDY_PATH, QUALITY_PATH, PREREG_PATH, B_PROGRESS_PATH,
-                 A_INP, B_INP, PREPARED_A / "keys.parquet", PREPARED_A / "targets.parquet"):
+                 A_INP, B_INP, PREPARED_A / "keys.parquet", PREPARED_A / "features.parquet",
+                 PREPARED_A / "targets.parquet", PROMOTED_MODELS / "promotion.json",
+                 PROMOTED_MODELS / "classifier.joblib", PROMOTED_MODELS / "regressor.joblib",
+                 ROOT / "data/hydrograph_shapes/shape_five_pulse_8h5.csv"):
         if not path.exists():
             raise FileNotFoundError(path)
     study = read_json(STUDY_PATH)
@@ -376,26 +470,47 @@ def main():
              "Topolog\u00eda solamente · sin caudales ni inundaci\u00f3n",
              size=8.4, color=NAVY, bold=True, align=PP_ALIGN.CENTER)
 
-    # 49. Actual SWMM flood maps from eligible training-network A scenarios.
-    s = add_slide(prs, "Red A · mapas SWMM de escenarios admitidos por QA",
-                  "Muestran vol\u00famenes de referencia hidr\u00e1ulica del conjunto de entrenamiento; no son predicciones ML.", 49)
-    map_left, map_left_stats = visuals["a_maps"][0]
-    map_right, map_right_stats = visuals["a_maps"][1]
-    s.shapes.add_picture(str(map_left), Inches(0.30), Inches(1.04), width=Inches(4.58))
-    s.shapes.add_picture(str(map_right), Inches(5.10), Inches(1.04), width=Inches(4.58))
-    add_text(s, 0.50, 4.50, 4.18, 0.32,
-             f"Mediana de escenarios inundados · {fmt_int(map_left_stats['total_m3'])} m\u00b3 · {int(map_left_stats['n_flooded'])} nodos",
-             size=8.7, color=NAVY, bold=True, align=PP_ALIGN.CENTER)
-    add_text(s, 5.30, 4.50, 4.18, 0.32,
-             f"Mayor volumen total · {fmt_int(map_right_stats['total_m3'])} m\u00b3 · {int(map_right_stats['n_flooded'])} nodos",
-             size=8.7, color=NAVY, bold=True, align=PP_ALIGN.CENTER)
-    add_text(s, 0.53, 4.91, 8.95, 0.21,
-             "Selecci\u00f3n determinista entre las 711 corridas inundadas de A tras QA: mediana y m\u00e1ximo del volumen total SWMM.",
-             size=8.4, color=GRAY)
+    # 49. Show a representative synthetic B inflow and the planned scenario grid.
+    s = add_slide(prs, "Red B · hidrograma sintético y campaña SWMM",
+                  "Ejemplo de entrada nodal para Chico Norte; los caudales provienen del INP y de formas sintéticas.", 49)
+    s.shapes.add_picture(str(visuals["b_hydrograph"]), Inches(0.35), Inches(1.18), width=Inches(5.70))
+    hydro = visuals["b_hydrograph_stats"]
+    add_card(s, 6.28, 1.38, 3.18, 1.25, "Escenarios planificados", "975",
+             "39 formas de hidrograma × 25 factores de intensidad.", fill=PALE_BLUE, accent=BLUE, value_size=23)
+    add_card(s, 6.28, 2.88, 3.18, 1.25, "Grilla de factores", "0,2–5,0",
+             "Paso de 0,2; se conserva el pico nodal de referencia y se escala por factor.",
+             fill=PALE_BLUE, accent=BLUE, value_size=19)
+    add_text(s, 0.60, 4.35, 8.85, 0.38,
+             f"Ejemplo: nodo {hydro['node']} · pico base {fmt_decimal(hydro['base_peak_lps'], 2)} L/s · pico con factor {fmt_decimal(hydro['factor'], 1)}: {fmt_decimal(hydro['scenario_peak_lps'], 1)} L/s.",
+             size=9.0, color=NAVY, bold=True, align=PP_ALIGN.CENTER)
+    add_text(s, 0.58, 4.77, 8.88, 0.36,
+             "Entrada sintética por nodo (no lluvia ni transformación lluvia–escorrentía). La campaña usa 521 nodos con caudal base positivo.",
+             size=8.5, color=GRAY, align=PP_ALIGN.CENTER)
 
-    # 50. XGBoost results.
+    # 50-51. Pair each eligible SWMM flood map with the previous promoted model.
+    for page, case, case_label in [
+        (50, visuals["a_maps"][0], "A · escenario inundado mediano"),
+        (51, visuals["a_maps"][1], "A · escenario de mayor volumen total"),
+    ]:
+        stats = case["stats"]
+        s = add_slide(prs, case_label,
+                      f"{stats['shape_id']} · factor {fmt_decimal(stats['factor_mult'], 1)} · misma escala espacial en ambos mapas.", page)
+        s.shapes.add_picture(str(case["swmm"]), Inches(0.30), Inches(1.04), width=Inches(4.58))
+        s.shapes.add_picture(str(case["model"]), Inches(5.10), Inches(1.04), width=Inches(4.58))
+        add_text(s, 0.48, 4.50, 4.22, 0.30,
+                 f"SWMM · {fmt_int(stats['total_m3'])} m³ · {int(stats['n_flooded'])} nodos",
+                 size=8.7, color=NAVY, bold=True, align=PP_ALIGN.CENTER)
+        add_text(s, 5.28, 4.50, 4.22, 0.30,
+                 f"XGBoost previo · {fmt_int(round(stats['model_total_m3']))} m³ · {stats['model_flooded_nodes']} nodos",
+                 size=8.7, color=NAVY, bold=True, align=PP_ALIGN.CENTER)
+        delta = stats["total_delta_m3"]
+        add_text(s, 0.53, 4.88, 8.95, 0.27,
+                 f"Diferencia del volumen total en este ejemplo: {delta:+,.0f} m³. Modelo promovido el 06-oct; comparación retrospectiva ilustrativa, no prueba independiente ni de transferencia.",
+                 size=7.8, color=GRAY, align=PP_ALIGN.CENTER)
+
+    # 52. XGBoost results.
     s = add_slide(prs, "XGBoost: 73,78 m\u00b3 de RMSE interno",
-                  "50 ensayos Optuna · GroupKFold(5) por forma · semilla 42 · selecci\u00f3n solo con A", 50)
+                  "50 ensayos Optuna · GroupKFold(5) por forma · semilla 42 · selecci\u00f3n solo con A", 52)
     s.shapes.add_picture(chart_bytes(study), Inches(0.34), Inches(1.10), width=Inches(6.10))
     add_card(s, 6.72, 1.24, 2.95, 1.18, "Mejor ensayo", "#13",
              "ID Optuna; numeraci\u00f3n desde cero.", fill=PALE_BLUE, accent=BLUE, value_size=23)
@@ -409,9 +524,9 @@ def main():
              "La l\u00ednea oscura muestra el mejor RMSE acumulado; es una estimaci\u00f3n de selecci\u00f3n interna.",
              size=8.5, color=GRAY)
 
-    # 51. Model and B operational status.
+    # 53. Model and B operational status.
     s = add_slide(prs, "Estado de modelos y simulaciones de la red B",
-                  "Los conteos de B son operativos; todav\u00eda no son m\u00e9tricas de desempe\u00f1o.", 51)
+                  "Los conteos de B son operativos; todav\u00eda no son m\u00e9tricas de desempe\u00f1o.", 53)
     n_ok = len(b_progress.get("results", []))
     n_excluded = len(b_progress.get("failures", []))
     total = 39 * 25
@@ -439,9 +554,9 @@ def main():
     add_text(s, 0.58, 4.91, 8.88, 0.22,
              "Etiquetas de B a\u00fan cerradas para el scoring.", size=8.8, color=GRAY)
 
-    # 52. Readiness of parity maps.
+    # 54. Readiness of parity maps.
     s = add_slide(prs, "Mapas y gr\u00e1ficos de paridad: siguiente hito",
-                  "Las figuras previas corresponden a otros modelos y otro protocolo; no se mezclan con esta evaluaci\u00f3n.", 52)
+                  "La comparación con XGBoost previo es solo ilustrativa; la validación externa A→B sigue pendiente.", 54)
     steps = [
         (0.50, "1", "Terminar MLP", "Cerrar b\u00fasqueda y ajustar cinco semillas.", PALE_GOLD, NAVY),
         (2.82, "2", "Sellar", "Congelar modelos, variables y hashes de predicci\u00f3n.", PALE_BLUE, BLUE),
@@ -454,15 +569,15 @@ def main():
         add_text(s, x + 0.48, 1.59, 1.46, 0.38, title, size=10.4, color=NAVY, bold=True)
         add_text(s, x + 0.15, 2.04, 1.78, 0.91, detail, size=8.9, color=BLACK, valign=MSO_ANCHOR.TOP)
     add_text(s, 0.76, 3.53, 8.48, 0.72,
-             "No reutilizamos figuras antiguas: mezclarlas con los nuevos candidatos exagerar\u00eda la evidencia de transferencia.",
+             "La comparación con el modelo previo es retrospectiva; no reemplaza la paridad OOF ni la evaluación externa de B.",
              size=12, color=NAVY, bold=True, align=PP_ALIGN.CENTER)
     add_text(s, 0.80, 4.47, 8.72, 0.32,
-             "Visual actual v\u00e1lido de modelos: convergencia de los 50 ensayos internos de XGBoost (diapositiva 50).",
+             "Aún no reportamos % de confiabilidad: se calculará con predicciones selladas y etiquetas verificadas de B.",
              size=9.6, color=GRAY, align=PP_ALIGN.CENTER)
 
-    # 53. Findings and limitations.
+    # 55. Findings and limitations.
     s = add_slide(prs, "Qu\u00e9 podemos afirmar hoy y qu\u00e9 falta comprobar",
-                  "La auditor\u00eda convirti\u00f3 una tabla hist\u00f3rica en un experimento trazable con etiquetas protegidas.", 53)
+                  "La auditor\u00eda convirti\u00f3 una tabla hist\u00f3rica en un experimento trazable con etiquetas protegidas.", 55)
     for x, heading, bullets, fill, accent in [
         (0.48, "Evidencia disponible", [
             "Dataset A reconstruido y filtrado, con manifiestos y hashes.",
@@ -486,9 +601,9 @@ def main():
              "Alcance: hidrogramas sint\u00e9ticos de caudal por nodo; lluvia–escorrent\u00eda sigue fuera del proyecto actual.",
              size=9.2, color=GRAY)
 
-    # 54. Reproducibility anchors.
+    # 56. Reproducibility anchors.
     s = add_slide(prs, "Trazabilidad y decisiones congeladas",
-                  "Cada resultado queda asociado a una preparaci\u00f3n, un protocolo y artefactos verificables.", 54)
+                  "Cada resultado queda asociado a una preparaci\u00f3n, un protocolo y artefactos verificables.", 56)
     rows = [
         ("ID de preparaci\u00f3n A", PREP_ID, "138.560 filas · 866 corridas · tabular_v4_21"),
         ("Manifiesto de A", "4bf0c50f61b2287…", "Fuentes, archivos por corrida y QA"),
