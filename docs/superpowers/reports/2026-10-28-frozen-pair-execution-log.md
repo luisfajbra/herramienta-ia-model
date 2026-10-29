@@ -210,3 +210,12 @@ Verifiqué SHA-256 y existencia para los 3.901 archivos únicos enlazados desde 
 ## Corte operacional posterior (2026-10-29 17:56 UTC)
 
 B permanece completo: 975 escenarios, 188 exclusiones QA únicas y 787 elegibles; los 3.901 archivos únicos mantienen hashes verificados. MLP completó 38/50 trials A-only. El trial 38 obtuvo `macro_network_rmse=153.5249`; el trial 6 continúa como mejor con `96.6671`. El trial 39 está en ejecución. El scoring de B sigue cerrado y no se han consultado sus targets.
+
+
+## Cierre de simulaciones de Chico Norte (2026-10-29 16:48 UTC / 11:48 Bogot?)
+
+El `batch_progress.json` de Chico Norte fue actualizado a las 16:48:39 UTC y marca `complete`: las 975 de 975 simulaciones tienen resultado y no quedan escenarios pendientes. El QA provisional acepta 787 escenarios. Excluye 188: 116 superan el umbral provisional de continuidad del 5%, 75 no alcanzan drenaje aceptable y 3 presentan ambos motivos. No hay casos con cobertura no finita. Los 6 escenarios que faltaban en el corte anterior se completaron y quedaron excluidos por continuidad; por eso no aument? el conjunto elegible. Estos conteos son escenarios ?nicos.
+
+XGBoost conserva el estudio 50/50 y el candidato Chico Sur ya sellado, con mejor objetivo interno de 73.7821 m? en trial 13; a?n no se ha calculado su evaluaci?n externa en Chico Norte. Se observan procesos Python activos correspondientes al trabajo del modelo, pero no hay un checkpoint MLP m?s nuevo que el de 31/50 trials al 14:22 UTC; el contador actual no est? confirmado.
+
+El siguiente paso es completar la verificaci?n/staging de Chico Norte con los enlaces e hashes de sus artefactos, y preparar el scoring externo del candidato XGBoost sin recalibrarlo con etiquetas de Chico Norte. En paralelo, completar y persistir los 50 trials y el ensemble MLP; despu?s evaluar ese candidato con el mismo conjunto elegible congelado. Mantener separados los resultados externos por modelo y no usar los objetivos de Chico Norte para seleccionar hiperpar?metros.
