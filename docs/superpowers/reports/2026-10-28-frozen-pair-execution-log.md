@@ -247,3 +247,7 @@ B continúa completo y verificado, con 975 escenarios registrados, 188 exclusion
 ## Corte operacional posterior (2026-10-29 22:12 UTC)
 
 B sigue completo, con 975 escenarios, 188 exclusiones QA únicas, 787 elegibles y 3.901 artefactos verificados por SHA-256. MLP completó 46/50 trials A-only: el trial 45 obtuvo `macro_network_rmse=115.3338` y el trial 46 obtuvo `110.1191`. El trial 6 conserva el mejor resultado con `96.6671`; el trial 47 está en ejecución. El scoring externo A→B permanece cerrado y no se han consultado targets de B.
+
+## Corte operacional posterior (2026-10-29 22:45 UTC)
+
+B permanece verificado con los mismos 975 escenarios, 188 exclusiones QA únicas, 787 elegibles y 3.901 artefactos enlazados sin faltantes ni discrepancias SHA-256. MLP completó 47/50 trials A-only: el trial 47 obtuvo `macro_network_rmse=118.8860`; el trial 6 sigue primero con `96.6671`. El trial 48 está en ejecución. Optuna volvió a advertir que algunas opciones categóricas son tuplas, sin que el ensayo fallara. Los targets de B siguen sin consultarse y el scoring externo continúa sellado.
