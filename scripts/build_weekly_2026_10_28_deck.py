@@ -1,4 +1,4 @@
-"""Build the Spanish 2026-10-28 weekly update in the 2026-10-20 deck style."""
+"""Build the Spanish 2026-10-29 weekly update in the 2026-10-20 deck style."""
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ A_INP = ROOT / "data/networks/chico_hydro-qx1/SWMM - Chico (PVC) Prueba 1 - Qx1.
 B_INP = ROOT / "data/networks/chico_norte_93_qx1/SWMM - Chico Norte 93% - Qx1.00.inp"
 VISUALS = EXPERIMENT / "presentation_visuals_modelo_hidrograma"
 PROMOTED_MODELS = ROOT / "outputs/models"
-OUTPUT = ROOT / "Presentacion_MLSMFP_28-10_avances_auditoria_transferencia_comparacion_modelo_hidrograma.pptx"
+OUTPUT = ROOT / "Presentacion_MLSMFP_29-10_avances_auditoria_transferencia.pptx"
 
 # Palette sampled from the 20-10 presentation: navy, layered blues and gold.
 NAVY = RGBColor(14, 42, 71)          # 0E2A47
@@ -115,7 +115,7 @@ def add_header(slide, title, subtitle, page):
     add_text(slide, 0.47, 0.67, 9.05, 0.35, subtitle,
              size=9.7, color=GRAY)
     add_text(slide, 0.34, 5.32, 8.6, 0.17,
-             "MLSMFP | Avance: auditoría, ajuste y transferencia entre redes | 28-10-2026",
+             "MLSMFP | Avance: auditoría, ajuste y transferencia entre redes | 29-10-2026",
              size=7.4, color=GRAY)
     add_text(slide, 9.1, 5.25, 0.55, 0.25, str(page), size=11,
              color=GRAY, align=PP_ALIGN.CENTER)
@@ -381,13 +381,13 @@ def main():
             continue
         text = shape.text.strip()
         if text == "2026-10-20":
-            shape.text = "28 de octubre de 2026"
+            shape.text = "29 de octubre de 2026"
         elif text == "Machine Learning Model for Hydraulic Failure Prediction in Stormwater Systems":
             shape.text = "Modelo de aprendizaje autom\u00e1tico para predecir fallas hidr\u00e1ulicas\nen redes de alcantarillado pluvial"
 
     # 45. Executive summary: three clear takeaways.
     s = add_slide(prs, "Avance semanal: datos A listos; transferencia en curso",
-                  "Corte al 28 de octubre de 2026 · distinguir selecci\u00f3n interna de evaluaci\u00f3n externa.", 45)
+                  "Corte al 29 de octubre de 2026 · distinguir selecci\u00f3n interna de evaluaci\u00f3n externa.", 45)
     add_card(s, 0.52, 1.36, 2.76, 1.58, "Datos de A", "138.560 filas",
              "866 de 1.000 simulaciones pasaron QA.", fill=PALE_BLUE, accent=BLUE, value_size=18)
     add_card(s, 3.62, 1.36, 2.76, 1.58, "XGBoost", "73,78 m\u00b3",
@@ -539,9 +539,9 @@ def main():
              size=10.2, color=BLACK, valign=MSO_ANCHOR.TOP)
     add_box(s, 5.18, 1.25, 4.30, 2.78, PALE_GOLD)
     add_text(s, 5.42, 1.43, 3.82, 0.32, "MLP · B\u00daSQUEDA ACTIVA", size=10.3, color=NAVY, bold=True)
-    add_text(s, 5.42, 1.90, 3.80, 0.52, "50 ensayos previstos", size=20, color=NAVY, bold=True)
+    add_text(s, 5.42, 1.90, 3.80, 0.52, "26 / 50 ensayos", size=20, color=NAVY, bold=True)
     add_text(s, 5.42, 2.52, 3.78, 1.12,
-             "GroupKFold(5), 200 \u00e9pocas por fold. Falta ajustar el ensemble final de cinco semillas (42–46).",
+             "Corte 07:01: 26 terminados; trial 27 en curso. Mejor interno: #6, 96,667 m³. Luego se ajusta el ensemble de cinco semillas (42–46).",
              size=10.2, color=BLACK, valign=MSO_ANCHOR.TOP)
     add_text(s, 0.56, 4.23, 1.78, 0.32, "RED B · CORTE", size=9.8, color=BLUE, bold=True)
     add_text(s, 2.32, 4.20, 7.13, 0.39,
