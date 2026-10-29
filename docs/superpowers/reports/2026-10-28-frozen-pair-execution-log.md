@@ -122,3 +122,7 @@ B tiene 587/975 corridas registradas y 136 exclusiones QA; sigue ejecut?ndose. M
 ## Corte operacional posterior (2026-10-29 08:42 UTC)
 
 B tiene 625/975 corridas registradas y 146 exclusiones QA; sigue en ejecuci?n. MLP complet? 21/50 trials A-only. El trial 20 obtuvo `macro_network_rmse=123.9830`; el mejor permanece en el trial 6 con `96.6671`. El trial 21 est? en ejecuci?n. Las advertencias de Optuna sobre opciones categ?ricas de tipo tupla persisten sin impedir la finalizaci?n de los trials. No se han consultado targets de B.
+
+## Corte operacional posterior (2026-10-29 09:12 UTC)
+
+B tiene 654/975 corridas registradas y 148 exclusiones QA; sigue en ejecuci?n. MLP complet? 22/50 trials A-only. El trial 21 obtuvo `macro_network_rmse=129.5188`; el mejor permanece en el trial 6 con `96.6671`. El trial 22 est? en ejecuci?n. Contin?an las advertencias de Optuna sobre codificaci?n de opciones categ?ricas con tuplas; los trials se completan y registran con normalidad. No se han consultado targets de B.
