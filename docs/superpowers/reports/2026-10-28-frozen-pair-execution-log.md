@@ -239,3 +239,7 @@ B permanece completo y verificado: 975 escenarios, 188 exclusiones QA únicas, 7
 ## Corte operacional posterior (2026-10-29 21:09 UTC)
 
 B sigue completo y verificado: 975 escenarios, 188 exclusiones QA únicas, 787 elegibles y 3.901 artefactos únicos con hashes coincidentes. MLP completó 44/50 trials A-only. El trial 44 obtuvo `macro_network_rmse=123.6570`; el trial 6 conserva el mejor valor con `96.6671`. El trial 45 está en curso. El scoring A→B permanece sellado y no se han consultado targets de B.
+
+## Corte operacional posterior (2026-10-29 21:39 UTC)
+
+B continúa completo y verificado, con 975 escenarios registrados, 188 exclusiones QA únicas, 787 elegibles y 3.901 artefactos con hashes verificados. El ensayo MLP 45 sigue ejecutándose; el proceso conserva uso activo de CPU y memoria. Desde el corte de las 21:09 UTC no se ha recibido resultado nuevo, por lo que el contador confirmado permanece en 44/50 y el mejor trial confirmado es el 6 (`macro_network_rmse=96.6671`). No se reinició la búsqueda ni se consultaron los targets de B; el scoring A→B permanece sellado.
