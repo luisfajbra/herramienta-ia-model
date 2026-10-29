@@ -151,3 +151,7 @@ B tiene 802/975 corridas registradas y 159 exclusiones QA; continúa en ejecuci�
 ## Corte para la presentaci?n semanal (2026-10-29 12:09 UTC)
 
 Al regenerar la presentaci?n, B ten?a 805/975 resultados registrados, 159 exclusiones QA y 11 escenarios pendientes. El ?ltimo corte documentado de MLP sigue siendo 12:01 UTC: 26/50 ensayos terminados, trial 27 en ejecuci?n y mejor resultado interno en trial 6 (`macro_network_rmse=96.6671`). El conjunto B contin?a sellado para el scoring externo. La presentaci?n y el guion estiman 10?22 horas desde las 07:09 de Bogot? hasta completar el scoring, con reserva de hasta 24 horas; es un rango de planificaci?n basado en la duraci?n observada, no una promesa. Se crearon `Presentacion_MLSMFP_29-10_avances_auditoria_transferencia.pptx`, `Guion_presentador_MLSMFP_29-10-2026.docx` y su fuente editable `Guion_presentador_MLSMFP_29-10-2026.md`.
+
+## Corte operacional posterior (2026-10-29 13:16 UTC)
+
+B tiene 842/975 corridas registradas y 161 exclusiones QA; el lote sigue en ejecución. MLP completó 29/50 trials A-only. El trial 29 obtuvo `macro_network_rmse=127.5997`; el trial 6 continúa como mejor con `96.6671`. El trial 30 acaba de iniciar. Siguen apareciendo las advertencias de Optuna sobre opciones categóricas de tipo tupla; no han impedido completar los trials observados. No se han consultado targets de B. Se mantiene el redondeo aprobado al minuto más cercano (desplazamiento máximo de 30 s).
