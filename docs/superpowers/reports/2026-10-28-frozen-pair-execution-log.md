@@ -219,3 +219,7 @@ El `batch_progress.json` de Chico Norte fue actualizado a las 16:48:39 UTC y mar
 XGBoost conserva el estudio 50/50 y el candidato Chico Sur ya sellado, con mejor objetivo interno de 73.7821 m? en trial 13; a?n no se ha calculado su evaluaci?n externa en Chico Norte. Se observan procesos Python activos correspondientes al trabajo del modelo, pero no hay un checkpoint MLP m?s nuevo que el de 31/50 trials al 14:22 UTC; el contador actual no est? confirmado.
 
 El siguiente paso es completar la verificaci?n/staging de Chico Norte con los enlaces e hashes de sus artefactos, y preparar el scoring externo del candidato XGBoost sin recalibrarlo con etiquetas de Chico Norte. En paralelo, completar y persistir los 50 trials y el ensemble MLP; despu?s evaluar ese candidato con el mismo conjunto elegible congelado. Mantener separados los resultados externos por modelo y no usar los objetivos de Chico Norte para seleccionar hiperpar?metros.
+
+## Corte operacional posterior (2026-10-29 19:01 UTC)
+
+B permanece completo y verificado: 975 escenarios, 188 exclusiones QA únicas, 787 elegibles y 3.901 artefactos únicos sin faltantes ni discrepancias SHA-256. MLP completó 40/50 trials A-only. El trial 40 obtuvo `macro_network_rmse=123.1903`; el trial 6 mantiene el mejor valor con `96.6671`. El trial 41 está en curso. El scoring A→B sigue sellado; no se han consultado targets de B.
