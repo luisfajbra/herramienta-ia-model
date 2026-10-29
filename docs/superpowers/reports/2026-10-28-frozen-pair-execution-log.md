@@ -164,3 +164,16 @@ A petici?n del usuario, en los materiales de exposici?n se nombran las redes com
 ## Corte operacional posterior (2026-10-29 14:22 UTC)
 
 B tiene 882/975 corridas registradas y 162 exclusiones QA; el lote continúa. MLP completó 31/50 trials A-only. El trial 31 obtuvo `macro_network_rmse=116.4868`; el trial 6 sigue primero con `96.6671`. El trial 32 acaba de iniciar. Las advertencias de Optuna sobre opciones categóricas tipo tupla siguen presentes, sin impedir que los trials terminen. No se han consultado targets de B. Se mantiene la convención aprobada de redondeo al minuto más cercano, con desplazamiento máximo de 30 s.
+
+
+## Corte operacional y registro para la tesis (2026-10-29 14:24 UTC / 09:24 Bogotá)
+
+**Chico Norte:** `batch_progress.json` fue escrito a las 09:22:42 Bogotá y mantiene estado `running`. Hay 883 claves de escenario con resultado de 975: 721 elegibles, 162 excluidas por QA y 92 pendientes. El conteo usa `scenario_key` único; las filas `hydraulic_qa_ineligible` se solapan con `results` y no se suman como corridas adicionales. El último artefacto SWMM observado se actualizó alrededor de las 09:22. Entre los cortes 13:16 y 14:24 UTC, el registro pasó de 842 a 883 resultados (+41 en 68 min; aproximadamente 36 escenarios/h). Si el ritmo se mantiene, los 92 restantes tomarían cerca de 2 h 33 min; reservar 3-4 h por variabilidad, extensiones de drenaje y reintentos. Es una extrapolación de planificación, no un compromiso.
+
+**Desglose QA de Chico Norte:** 90 exclusiones registran continuidad superior al 5% y 75 estado de drenaje no aceptable; tres escenarios tienen ambos motivos. El total de escenarios excluidos únicos es 162.
+
+**MLP:** el último corte persistido disponible es 14:22 UTC: 31/50 trials terminados, trial 32 iniciado; trial 31 marcó `macro_network_rmse=116.4868` y el mejor sigue siendo trial 6 (`96.6671`). El proceso permanece activo. Estos trials usan Chico Sur para seleccionar hiperparámetros; cada evaluación sigue el protocolo registrado de cinco folds.
+
+**Secuencia acordada:** terminar y calificar las simulaciones de Chico Norte; terminar MLP y fijar el ensemble; sellar modelos, variables y predicciones; luego hacer una sola evaluación externa en Chico Norte y reportar métricas, paridad y mapas. No entrenar ni seleccionar con Chico Norte antes de ese scoring, porque dejaría de ser una prueba independiente. Después de registrar el resultado externo, se puede ajustar una versión final con Chico Sur + Chico Norte; para medir transferencia de esa versión hace falta una tercera red no usada durante el entrenamiento. Los umbrales hidráulicos siguen siendo provisionales y deben presentarse como tales.
+
+**Trazabilidad para la tesis:** cada corte se añade al final de esta bitácora (sin sobrescribir cortes anteriores) e incluye hora UTC/Bogotá, fuente del estado, escenarios únicos completados/elegibles/excluidos/pendientes, motivos QA, progreso persistido de Optuna, cálculo y límites de cualquier ETA, decisiones de entrenamiento/evaluación y artefactos/manifiestos aplicables. El staging valida estructura e integridad de los RPT/OUT y registra sus hashes; no usa objetivos de Chico Norte para seleccionar ni entrenar modelos antes de la evaluación externa.
