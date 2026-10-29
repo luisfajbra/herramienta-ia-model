@@ -200,3 +200,9 @@ B tiene 944/975 corridas registradas y 163 exclusiones QA; el lote continúa. ML
 **MLP:** el ?ltimo contador de ensayos que qued? documentado es 31/50 a las 14:22 UTC, con el trial 32 iniciado. Hay procesos Python activos, pero no se encontr? un checkpoint persistido m?s reciente que permita afirmar el contador actual. Por ello, este corte no infiere cu?ntos ensayos MLP han terminado desde entonces.
 
 **Siguiente paso:** terminar y recalificar las 6 simulaciones pendientes; completar y guardar el estudio/ensemble MLP; despu?s sellar modelos y predicciones y realizar una sola evaluaci?n externa en los escenarios elegibles de Chico Norte. No incorporar objetivos de Chico Norte al entrenamiento ni a la selecci?n antes de esa evaluaci?n. Los umbrales hidr?ulicos, incluido el 5% de continuidad, siguen siendo provisionales.
+
+## Cierre de regeneración B y verificación de artefactos (2026-10-29 16:55 UTC)
+
+El lote B terminó con 975/975 escenarios registrados. El registro del lote reporta 188 escenarios únicos QA-ineligibles y 787 elegibles. La cobertura finita está completa en 975; 900 reportan estado drenado y 75 no drenado; 859 tienen continuidad de hasta 5%. Las causas registradas son 116 excedencias de continuidad y 75 casos sin drenaje; tres escenarios tienen ambas causas, por eso las causas suman 191 y los excluidos únicos son 188. La regla de continuidad del 5% sigue siendo provisional y requiere justificación hidráulica.
+
+Verifiqué SHA-256 y existencia para los 3.901 archivos únicos enlazados desde las corridas B (INP efectivos, eventos, RPT y OUT): cero faltantes y cero discrepancias. No se consultaron targets de B. El scoring A→B permanece cerrado hasta que estén listos y congelados los candidatos de A. En este corte MLP lleva 35/50 trials y el trial 36 continúa ejecutándose; el mejor sigue siendo el trial 6 (`macro_network_rmse=96.6671`).
