@@ -235,3 +235,7 @@ B permanece completo y verificado: 975 escenarios, 188 exclusiones QA únicas, 7
 ## Corte operacional posterior (2026-10-29 20:36 UTC)
 
 B permanece completo y verificado: 975 escenarios, 188 exclusiones QA únicas, 787 elegibles y 3.901 artefactos únicos sin faltantes ni discrepancias SHA-256. MLP completó 43/50 trials A-only. El trial 43 obtuvo `macro_network_rmse=106.0186`; el trial 6 sigue primero con `96.6671` y el trial 42 sigue segundo con `101.3328`. El trial 44 está en curso. No se han consultado targets de B y el scoring sigue cerrado.
+
+## Corte operacional posterior (2026-10-29 21:09 UTC)
+
+B sigue completo y verificado: 975 escenarios, 188 exclusiones QA únicas, 787 elegibles y 3.901 artefactos únicos con hashes coincidentes. MLP completó 44/50 trials A-only. El trial 44 obtuvo `macro_network_rmse=123.6570`; el trial 6 conserva el mejor valor con `96.6671`. El trial 45 está en curso. El scoring A→B permanece sellado y no se han consultado targets de B.
