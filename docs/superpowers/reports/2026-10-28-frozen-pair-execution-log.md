@@ -255,3 +255,7 @@ B permanece verificado con los mismos 975 escenarios, 188 exclusiones QA únicas
 ## Corte operacional posterior (2026-10-29 23:18 UTC)
 
 B continúa completo y verificado (975 escenarios, 188 exclusiones QA únicas, 787 elegibles, 3.901 artefactos verificados). MLP completó 48/50 trials A-only. El trial 48 obtuvo `macro_network_rmse=86.4202`, nuevo mejor valor interno, por debajo del trial 6 (`96.6671`); el trial 49 está en ejecución. Esta selección usa solo los folds agrupados de Chico Sur y aún no representa desempeño externo. No se han consultado targets de B; la evaluación A→B sigue sellada.
+
+## Corte operacional posterior (2026-10-29 23:47 UTC)
+
+MLP completó 49/50 trials A-only. El trial 49 obtuvo `macro_network_rmse=103.3384`; el trial 48 mantiene el mejor valor interno con `86.4202`. El trial 50 queda pendiente. B continúa con 975 escenarios completos, 188 exclusiones QA únicas, 787 elegibles y 3.901 artefactos verificados por SHA-256. Los targets B no se han consultado y el scoring A→B sigue sellado.
