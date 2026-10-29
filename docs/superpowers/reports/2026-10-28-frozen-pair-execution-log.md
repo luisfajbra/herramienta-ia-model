@@ -189,3 +189,14 @@ B tiene 934/975 corridas registradas y 163 exclusiones QA; el lote continúa en 
 ## Corte operacional posterior (2026-10-29 16:27 UTC)
 
 B tiene 944/975 corridas registradas y 163 exclusiones QA; el lote continúa. MLP completó 35/50 trials A-only. El trial 35 obtuvo `macro_network_rmse=125.7343`; el trial 6 conserva el mejor valor con `96.6671`. El trial 36 acaba de iniciar. Se mantienen las advertencias de Optuna sobre opciones categóricas tipo tupla, sin error de trial observado. No se han consultado targets de B. Se mantiene la convención aprobada de redondeo al minuto más cercano, con desplazamiento máximo de 30 s.
+
+
+## Corte de estado de modelos y Chico Norte (2026-10-29 16:45 UTC / 11:45 Bogot?)
+
+**Chico Norte:** el ?ltimo `batch_progress.json` se escribi? a las 16:45:48 UTC y conserva estado `running`. Registra 969 de 975 escenarios ?nicos; quedan 6 pendientes. Bajo el filtro congelado hay 787 elegibles y 182 excluidos: 110 exceden el 5% de continuidad, 75 no alcanzan drenaje aceptable y 3 aparecen en ambos grupos. No hay escenarios con cobertura no finita. La cuenta de exclusiones es la uni?n de motivos, no su suma simple.
+
+**XGBoost:** el estudio A-only termin? sus 50/50 ensayos; el trial 13 obtuvo el menor `macro_network_rmse` interno registrado (73.7821 m?). El candidato XGBoost ya qued? ajustado y sellado con datos elegibles de Chico Sur. Este n?mero es de selecci?n interna por cinco folds de formas; a?n no es el resultado externo de Chico Norte.
+
+**MLP:** el ?ltimo contador de ensayos que qued? documentado es 31/50 a las 14:22 UTC, con el trial 32 iniciado. Hay procesos Python activos, pero no se encontr? un checkpoint persistido m?s reciente que permita afirmar el contador actual. Por ello, este corte no infiere cu?ntos ensayos MLP han terminado desde entonces.
+
+**Siguiente paso:** terminar y recalificar las 6 simulaciones pendientes; completar y guardar el estudio/ensemble MLP; despu?s sellar modelos y predicciones y realizar una sola evaluaci?n externa en los escenarios elegibles de Chico Norte. No incorporar objetivos de Chico Norte al entrenamiento ni a la selecci?n antes de esa evaluaci?n. Los umbrales hidr?ulicos, incluido el 5% de continuidad, siguen siendo provisionales.
