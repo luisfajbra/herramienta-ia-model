@@ -259,3 +259,9 @@ B continúa completo y verificado (975 escenarios, 188 exclusiones QA únicas, 7
 ## Corte operacional posterior (2026-10-29 23:47 UTC)
 
 MLP completó 49/50 trials A-only. El trial 49 obtuvo `macro_network_rmse=103.3384`; el trial 48 mantiene el mejor valor interno con `86.4202`. El trial 50 queda pendiente. B continúa con 975 escenarios completos, 188 exclusiones QA únicas, 787 elegibles y 3.901 artefactos verificados por SHA-256. Los targets B no se han consultado y el scoring A→B sigue sellado.
+
+## Cierre del estudio MLP y preflight del ensemble (2026-10-29 23:50 UTC)
+
+La búsqueda MLP cerró 50/50 trials `COMPLETE`. El trial 48 (índice Optuna) quedó seleccionado con `macro_network_rmse=86.42015485381366`; el trial 49 obtuvo `103.33842083978888`. El estudio está marcado `estimacion_exploratoria_condicionada`: es una selección interna agrupada por forma, sin holdout de formas separado, y no debe presentarse como confirmación externa. Study ID `813323e3ef75b752_20261029T234711Z`; SHA-256 `2644ac54d45df36e6b77f74c29806fa68e0ae0af3adddc9ce8ecade470826fbe`.
+
+Preflight independiente pasó antes de ajustar el ensemble: `prep_id=813323e3ef75b752`, 138.560 filas elegibles, contrato `tabular_v4_21`, un único origen de entrenamiento A, hash del manifiesto y snapshot fuente iguales a los registrados en el preregistro, 50 resultados completos y parámetros óptimos iguales entre el estudio y el trial 48. La evaluación interna usa `GroupKFold` con cinco folds por `shape_id`; el `PreparedDataset` conserva además su protocolo de folds por `factor_mult`, con grupos train/test disjuntos y cada fila en test una vez. Los cinco seeds aprobados son 42–46; se mantiene la agregación congelada de probabilidad media, volumen condicional medio tras `expm1`, umbral 0,5 y volumen cero para nodos clasificados secos. No se leyeron objetivos de B. El ensemble se ajustará en el directorio inmutable `A/candidates/mlp/`.
