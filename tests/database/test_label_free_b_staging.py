@@ -689,7 +689,11 @@ def test_staged_registration_reconstructs_plan_from_sqlite_then_predicts(tmp_pat
     conn.close()
 
 
-def test_verified_transfer_scoring_reads_labels_from_the_sealed_run_report(tmp_path, monkeypatch):
+@pytest.mark.parametrize("tamper", [
+    "none", "source_network_inp", "effective_inp", "event_source", "swmm_rpt", "swmm_out",
+    "source_manifest", "source_manifest_missing", "inputs", "stored_features", "incomplete_label_coverage",
+])
+def test_verified_transfer_scoring_reads_labels_from_the_sealed_run_report(tmp_path, monkeypatch, tamper):
     import pandas as pd
     import swmm_resilience.database.label_free_b_staging as staging_module
     import swmm_resilience.ml.bench.frozen_transfer as transfer
@@ -771,13 +775,52 @@ def test_verified_transfer_scoring_reads_labels_from_the_sealed_run_report(tmp_p
         assert threshold_m3 == 1.0
         return _fixture_labels(path, nodes)
 
-    monkeypatch.setattr("swmm_resilience.extraction.labels.extract_labels", labels_after_seal)
+    if tamper in {"source_network_inp", "effective_inp", "event_source", "swmm_rpt", "swmm_out"}:
+        role_path = Path(role_items[tamper]["path"])
+        if not role_path.is_absolute():
+            role_path = root / role_path
+        role_path.write_bytes(role_path.read_bytes() + b"\nTAMPERED")
+    elif tamper == "source_manifest":
+        manifest_path = Path(staged["manifest_path"])
+        manifest_path.write_text(manifest_path.read_text(encoding="utf-8") + "\nTAMPERED", encoding="utf-8")
+    elif tamper == "source_manifest_missing":
+        Path(staged["manifest_path"]).unlink()
+    elif tamper == "inputs":
+        with (transfer_dir / "inputs.csv").open("a", encoding="utf-8") as handle:
+            handle.write("tampered\n")
+    elif tamper == "stored_features":
+        feature_column = staged["feature_columns"][0]
+        conn.execute(
+            f"UPDATE node_features_v4_21 SET {feature_column}=COALESCE({feature_column},0.0)+1.0 WHERE run_id=?",
+            (staged["run_ids"][0],),
+        )
 
-    output = transfer.score_transfer(transfer_dir, conn=conn, staged=staged)
-
-    score = json.loads(Path(output).read_text(encoding="utf-8"))
-    assert score["usage"] == "verified_staged_sources"
-    assert score["overall"]["n_samples"] == len(keys)
-    assert score["label_sources"][0]["swmm_rpt_sha256"] == role_items["swmm_rpt"]["sha256"]
+    if tamper == "none":
+        monkeypatch.setattr("swmm_resilience.extraction.labels.extract_labels", labels_after_seal)
+        output = transfer.score_transfer(transfer_dir, conn=conn, staged=staged)
+        score = json.loads(Path(output).read_text(encoding="utf-8"))
+        assert score["usage"] == "verified_staged_sources"
+        assert score["overall"]["n_samples"] == len(keys)
+        assert score["label_sources"][0]["swmm_rpt_sha256"] == role_items["swmm_rpt"]["sha256"]
+    elif tamper == "incomplete_label_coverage":
+        extracted = []
+        def incomplete_labels(path, nodes, threshold_m3):
+            extracted.append(True)
+            return _fixture_labels(path, nodes).iloc[:-1].reset_index(drop=True)
+        monkeypatch.setattr("swmm_resilience.extraction.labels.extract_labels", incomplete_labels)
+        with pytest.raises(ValueError, match="coverage"):
+            transfer.score_transfer(transfer_dir, conn=conn, staged=staged)
+        assert extracted == [True]
+        assert not (transfer_dir / "verified_scores.json").exists()
+    else:
+        extracted = []
+        monkeypatch.setattr(
+            "swmm_resilience.extraction.labels.extract_labels",
+            lambda *args, **kwargs: extracted.append(True),
+        )
+        with pytest.raises((ValueError, FileNotFoundError)):
+            transfer.score_transfer(transfer_dir, conn=conn, staged=staged)
+        assert extracted == []
+        assert not (transfer_dir / "verified_scores.json").exists()
     assert conn.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] == 0
     conn.close()

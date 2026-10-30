@@ -90,8 +90,8 @@ def register_transfer(candidate_dir, inp_path, domain_policy, b_runs, volume_ban
     if not b_runs or len({r['run_id'] for r in b_runs}) != len(b_runs):
         raise ValueError('B run IDs must be nonempty and unique')
     b_networks = {r['network_id'] for r in b_runs}
-    if len(b_networks) != 1 or next(iter(b_networks)) == networks[0]['network_id']:
-        raise ValueError('B must be a distinct single network')
+    if len(b_networks) != 1:
+        raise ValueError('B must be a single network')
     if any(not isinstance(r.get('event_series_components'), dict) or not _digest(r.get('event_series_sha256')) or _hash(r['event_series_components']) != r['event_series_sha256'] for r in b_runs):
         raise ValueError('Every B event must have a SHA-256 hash')
     contract = resolve_feature_contract(meta['feature_contract_id'])
@@ -102,7 +102,15 @@ def register_transfer(candidate_dir, inp_path, domain_policy, b_runs, volume_ban
     if bands[0] < threshold:
         raise ValueError('Volume bands must start at or above flood threshold')
     inp_path = Path(inp_path).resolve()
+    a_network_sha256 = networks[0].get('network_sha256')
+    if not _digest(a_network_sha256):
+        raise ValueError('Candidate source network must have a verified INP SHA-256')
+    b_inp_sha256 = _sha256(inp_path)
+    if b_inp_sha256 == a_network_sha256:
+        raise ValueError('B INP must identify a different source network from A')
     profile = inspect_network_inp(inp_path)
+    if profile['source']['sha256'] != b_inp_sha256:
+        raise ValueError('B INP changed while its network profile was being registered')
     issues = validate_network_profile(profile, domain_policy)
     # QA decisions are outputs; only their agreed policy is preregistered.
     records = []

@@ -140,6 +140,48 @@ def test_can_preregister_policy_before_hydraulic_outputs_exist(experiment, tmp_p
     assert (directory/'registration_seal.json').exists()
 
 
+def test_local_network_id_collision_is_allowed_for_distinct_inp(experiment, tmp_path):
+    from swmm_resilience.ml.bench.frozen_transfer import register_transfer
+
+    candidate, inp, policy, _keys, _x, decision = experiment
+    source = candidate.metadata['source_networks'][0]
+    source_network_id = source['network_id']
+    source_network_sha256 = source['network_sha256']
+    if hashlib.sha256(inp.read_bytes()).hexdigest() == source_network_sha256:
+        inp.write_bytes(inp.read_bytes() + b"\n;; distinct external INP identity\n")
+    assert hashlib.sha256(inp.read_bytes()).hexdigest() != source_network_sha256
+
+    run = {'network_id':source_network_id, 'run_id':9999,
+           'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
+    directory = register_transfer(candidate.classifier_path.parent, inp, policy,
+                                  [plan(run)], [24,108,344], tmp_path/'outputs')
+
+    registration = json.loads((directory/'registration.json').read_text())
+    assert registration['b_runs'][0]['network_id'] == source_network_id
+    assert registration['b_inp_sha256'] == hashlib.sha256(inp.read_bytes()).hexdigest()
+    assert registration['b_inp_sha256'] != source_network_sha256
+
+
+def test_matching_source_inp_is_rejected_even_when_database_ids_differ(experiment, tmp_path, monkeypatch):
+    import joblib
+    from swmm_resilience.ml.bench import frozen_transfer
+
+    candidate, inp, policy, _keys, _x, decision = experiment
+    same_network_metadata = deepcopy(candidate.metadata)
+    same_network_metadata['source_networks'][0]['network_sha256'] = hashlib.sha256(inp.read_bytes()).hexdigest()
+    classifier = joblib.load(candidate.classifier_path)
+    regressor = joblib.load(candidate.regressor_path)
+    monkeypatch.setattr(frozen_transfer, 'load_candidate_pair',
+                        lambda *_args: (classifier, regressor, same_network_metadata))
+
+    source_network_id = same_network_metadata['source_networks'][0]['network_id']
+    run = {'network_id':source_network_id + 100, 'run_id':9999,
+           'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
+    with pytest.raises(ValueError, match='different source network'):
+        frozen_transfer.register_transfer(candidate.classifier_path.parent, inp, policy,
+                                           [plan(run)], [24,108,344], tmp_path/'outputs')
+
+
 def test_event_digest_must_match_event_manifest(experiment, tmp_path):
     from swmm_resilience.ml.bench.frozen_transfer import register_transfer
     candidate, inp, policy, keys, x, decision = experiment

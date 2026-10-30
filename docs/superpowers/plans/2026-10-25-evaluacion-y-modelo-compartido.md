@@ -210,6 +210,8 @@ The descriptor binds parsed semantics, not source bytes. Its verification is lim
 #### Task 5d: Open real scoring only after end-to-end source verification
 
 - [ ] Add a failing test proving `score_transfer` rejects a missing run-source manifest, altered INP/event/RPT/OUT, altered features, or an incomplete source-to-label join.
-- [ ] Enable `score_transfer` only for sealed predictions whose A candidate/preparation/study and B source manifests all verify; compute labels by parsing the verified `.rpt` after prediction seal, never from caller-supplied labels.
-- [ ] Produce a real report only after the source links and hydraulic admission pass. Until then, preserve the unconditional scoring block and synthetic-only status.
+- [x] Enable `score_transfer` only for sealed predictions whose A candidate/preparation/study and B source manifests all verify; compute labels by parsing the verified `.rpt` after prediction seal, never from caller-supplied labels.
+- [ ] Produce a real report only after the source links, frozen domain policy and hydraulic admission pass. Until those gates pass, do not create real B predictions or scores; synthetic fixtures remain test evidence only.
 - [ ] Run the complete relevant suite plus independent review. Commit with `feat: score only source-bound frozen transfer predictions`.
+
+**Task 5d audit update (2026-10-30):** the public source-bound scorer is implemented; it revalidates staged source links, QA, input/prediction seals, candidate hashes, feature rows, model-reproduced predictions, RPT/QA hash binding and exact run/node coverage before writing aggregate metrics. Post-seal tests confirm altered RPT and inference-input files are rejected before `extract_labels` runs; the valid path extracts only from the sealed run RPT and keeps SQLite `node_results` empty. The relevant source-binding and frozen-transfer regression suite passed (90 tests). The broader tampering matrix and independent review remain open. No real B target has been scored in this execution. A→B prediction also awaits an explicit frozen domain-compatibility policy; none is inferred from a test fixture.
