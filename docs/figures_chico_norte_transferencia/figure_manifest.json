@@ -1,0 +1,412 @@
+{
+  "schema_version": "chico_norte_transfer_figures_v1",
+  "generated_at_utc": "2026-10-30T12:23:08.261702+00:00",
+  "source_manifest_sha256": "68bed0e283ddafbfada42743ae49f28d4611aa1585069a8d2f6b19815313e37b",
+  "frozen_batch_manifest_sha256": "cb37a33e58b2b88072151f90637fe7d118f4ad3f2478e5a70bec9fab9a8ff32e",
+  "network_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+  "labels_sha256": "e52cd199f1a0de11e98461007ed3313e80bb895a851c7ed6b9863b0a0489529f",
+  "flood_threshold_m3": 1.0,
+  "eligible_runs": 787,
+  "excluded_runs": 188,
+  "run_node_rows": 410814,
+  "label_persistence": "transient_from_hash_verified_rpt; no_node_level_target_file_written",
+  "scenario_selection": {
+    "population": "eligible_runs_with_total_swmm_flooding_ge_1_m3",
+    "quantile_method": "linear",
+    "selection": "nearest_total_to_p10_p50_p90; distinct_runs; ties_by_scenario_key_ascending",
+    "cases": [
+      {
+        "label": "bajo",
+        "run_id": 612,
+        "scenario_key": "B:shape_micro_burst_45min:f2.400",
+        "quantile": 0.1,
+        "quantile_target_m3": 1886.3,
+        "total_swmm_m3": 1886.0,
+        "n_swmm_flooded": 163,
+        "models": {
+          "xgboost": {
+            "n": 522,
+            "n_actual_flooded": 163,
+            "n_predicted_flooded": 85,
+            "confusion_matrix": {
+              "tn": 344,
+              "fp": 15,
+              "fn": 93,
+              "tp": 70
+            },
+            "rmse_m3": 9.635863531424365,
+            "mae_m3": 3.0147634641601613,
+            "precision": 0.8235294117647058,
+            "recall": 0.4294478527607362,
+            "total_swmm_m3": 1886.0,
+            "total_predicted_m3": 852.1272111524902,
+            "volume_bias_m3": -1033.8727888475098,
+            "false_positives": 15,
+            "false_negatives": 93,
+            "relative_total_volume_bias_pct": -54.81828148714262
+          },
+          "mlp": {
+            "n": 522,
+            "n_actual_flooded": 163,
+            "n_predicted_flooded": 214,
+            "confusion_matrix": {
+              "tn": 279,
+              "fp": 80,
+              "fn": 29,
+              "tp": 134
+            },
+            "rmse_m3": 9.44624696790741,
+            "mae_m3": 3.926074997347997,
+            "precision": 0.6261682242990654,
+            "recall": 0.8220858895705522,
+            "total_swmm_m3": 1886.0,
+            "total_predicted_m3": 1787.299052928872,
+            "volume_bias_m3": -98.70094707112798,
+            "false_positives": 80,
+            "false_negatives": 29,
+            "relative_total_volume_bias_pct": -5.233348201014209
+          }
+        }
+      },
+      {
+        "label": "mediano",
+        "run_id": 96,
+        "scenario_key": "B:new_hydrograph:f4.200",
+        "quantile": 0.5,
+        "quantile_target_m3": 31130.0,
+        "total_swmm_m3": 31263.0,
+        "n_swmm_flooded": 310,
+        "models": {
+          "xgboost": {
+            "n": 522,
+            "n_actual_flooded": 310,
+            "n_predicted_flooded": 181,
+            "confusion_matrix": {
+              "tn": 198,
+              "fp": 14,
+              "fn": 143,
+              "tp": 167
+            },
+            "rmse_m3": 98.70587875212405,
+            "mae_m3": 39.07691294028917,
+            "precision": 0.9226519337016574,
+            "recall": 0.5387096774193548,
+            "total_swmm_m3": 31263.0,
+            "total_predicted_m3": 13435.088799428366,
+            "volume_bias_m3": -17827.911200571634,
+            "false_positives": 14,
+            "false_negatives": 143,
+            "relative_total_volume_bias_pct": -57.02559319506009
+          },
+          "mlp": {
+            "n": 522,
+            "n_actual_flooded": 310,
+            "n_predicted_flooded": 345,
+            "confusion_matrix": {
+              "tn": 135,
+              "fp": 77,
+              "fn": 42,
+              "tp": 268
+            },
+            "rmse_m3": 106.3456537244945,
+            "mae_m3": 45.18670832163726,
+            "precision": 0.7768115942028986,
+            "recall": 0.864516129032258,
+            "total_swmm_m3": 31263.0,
+            "total_predicted_m3": 31583.36586382368,
+            "volume_bias_m3": 320.36586382368114,
+            "false_positives": 77,
+            "false_negatives": 42,
+            "relative_total_volume_bias_pct": 1.0247444705360367
+          }
+        }
+      },
+      {
+        "label": "alto",
+        "run_id": 322,
+        "scenario_key": "B:shape_double_peak_equal_separated:f4.400",
+        "quantile": 0.9,
+        "quantile_target_m3": 134346.29999999996,
+        "total_swmm_m3": 134462.0,
+        "n_swmm_flooded": 273,
+        "models": {
+          "xgboost": {
+            "n": 522,
+            "n_actual_flooded": 273,
+            "n_predicted_flooded": 183,
+            "confusion_matrix": {
+              "tn": 229,
+              "fp": 20,
+              "fn": 110,
+              "tp": 163
+            },
+            "rmse_m3": 402.4582571540751,
+            "mae_m3": 172.34062382380728,
+            "precision": 0.8907103825136612,
+            "recall": 0.5970695970695971,
+            "total_swmm_m3": 134462.0,
+            "total_predicted_m3": 68300.53989540349,
+            "volume_bias_m3": -66161.46010459651,
+            "false_positives": 20,
+            "false_negatives": 110,
+            "relative_total_volume_bias_pct": -49.20457832294367
+          },
+          "mlp": {
+            "n": 522,
+            "n_actual_flooded": 273,
+            "n_predicted_flooded": 354,
+            "confusion_matrix": {
+              "tn": 146,
+              "fp": 103,
+              "fn": 22,
+              "tp": 251
+            },
+            "rmse_m3": 445.98595655172903,
+            "mae_m3": 197.20451467751008,
+            "precision": 0.7090395480225988,
+            "recall": 0.9194139194139194,
+            "total_swmm_m3": 134462.0,
+            "total_predicted_m3": 148705.83990894558,
+            "volume_bias_m3": 14243.839908945578,
+            "false_positives": 103,
+            "false_negatives": 22,
+            "relative_total_volume_bias_pct": 10.593208422413454
+          }
+        }
+      }
+    ]
+  },
+  "parity": {
+    "figure": "paridad_volumen_chico_norte.png",
+    "x_and_y_transform": "log10(1 + volume_m3)",
+    "density": "hexbin_log_count",
+    "metrics": {
+      "xgboost_all": {
+        "n": 410814,
+        "n_actual_flooded": 131502,
+        "n_predicted_flooded": 83427,
+        "confusion_matrix": {
+          "tn": 266336,
+          "fp": 12976,
+          "fn": 61051,
+          "tp": 70451
+        },
+        "rmse_m3": 270.8638308029521,
+        "mae_m3": 64.32306995457945,
+        "precision": 0.8444628237860644,
+        "recall": 0.535740901279068,
+        "total_swmm_m3": 37362475.0,
+        "total_predicted_m3": 16772939.748875309,
+        "volume_bias_m3": -20589535.25112469
+      },
+      "mlp_all": {
+        "n": 410814,
+        "n_actual_flooded": 131502,
+        "n_predicted_flooded": 174896,
+        "confusion_matrix": {
+          "tn": 219433,
+          "fp": 59879,
+          "fn": 16485,
+          "tp": 115017
+        },
+        "rmse_m3": 435.9284011522473,
+        "mae_m3": 74.9549924849202,
+        "precision": 0.6576308206019578,
+        "recall": 0.8746406898754392,
+        "total_swmm_m3": 37362475.0,
+        "total_predicted_m3": 41495340.992716745,
+        "volume_bias_m3": 4132865.9927167445
+      },
+      "xgboost_swmm_flooded": {
+        "n": 131502,
+        "n_actual_flooded": 131502,
+        "n_predicted_flooded": 70451,
+        "confusion_matrix": {
+          "tn": 0,
+          "fp": 0,
+          "fn": 61051,
+          "tp": 70451
+        },
+        "rmse_m3": 477.9379874519935,
+        "mae_m3": 197.6290217668234,
+        "precision": 1.0,
+        "recall": 0.535740901279068,
+        "total_swmm_m3": 37362475.0,
+        "total_predicted_m3": 16336733.70893552,
+        "volume_bias_m3": -21025741.29106448
+      },
+      "mlp_swmm_flooded": {
+        "n": 131502,
+        "n_actual_flooded": 131502,
+        "n_predicted_flooded": 115017,
+        "confusion_matrix": {
+          "tn": 0,
+          "fp": 0,
+          "fn": 16485,
+          "tp": 115017
+        },
+        "rmse_m3": 748.0737477899781,
+        "mae_m3": 204.2246060494611,
+        "precision": 1.0,
+        "recall": 0.8746406898754392,
+        "total_swmm_m3": 37362475.0,
+        "total_predicted_m3": 37558724.85473297,
+        "volume_bias_m3": 196249.8547329679
+      }
+    }
+  },
+  "score_provenance": {
+    "xgboost": {
+      "registration_sha256": "68187aac5ff23e9c4a45a1066230d7da4e2dc5f93657f881fd3e51e6d151b12a",
+      "prediction_sha256": "105df19f6e1fd178a0215fe9d1120471f3db5bade5d9b01ca4aa5b7a8ac85cdc",
+      "input_sha256": "4087e16ccc682430bf0d805af718df4b7453a8fcd6ce16cc67f1b3d2d472d363",
+      "score_sha256": "dee42fed39c8eec4f6dd4c5faa5908f7be9f7d9eb6eb861fb386d06d1363f683",
+      "overall": {
+        "n_samples": 410814,
+        "n_actual_flooded": 131502,
+        "confusion_matrix": {
+          "tn": 266336,
+          "fp": 12976,
+          "fn": 61051,
+          "tp": 70451
+        },
+        "precision": 0.8444628237860644,
+        "recall": 0.535740901279068,
+        "f1": 0.6555746316225358,
+        "pr_auc": 0.8140131149137712,
+        "rmse_m3": 270.8638308029521,
+        "mae_m3": 64.32306995457945,
+        "volume_bias_m3": -20589535.25112469,
+        "volume_bias_pct": -55.107524999681345,
+        "false_negatives_by_volume_band": [
+          {
+            "band_m3": "[1, 24]",
+            "lower_m3_inclusive": 1.0,
+            "upper_m3_inclusive": 24.0,
+            "n_samples": 35110,
+            "n_actual_flooded": 35110,
+            "false_negatives": 20954,
+            "recall": 0.4031899743662774
+          },
+          {
+            "band_m3": "(24, 108]",
+            "lower_m3_inclusive": 24.0,
+            "upper_m3_inclusive": 108.0,
+            "n_samples": 32297,
+            "n_actual_flooded": 32297,
+            "false_negatives": 15077,
+            "recall": 0.5331764560175868
+          },
+          {
+            "band_m3": "(108, 344]",
+            "lower_m3_inclusive": 108.0,
+            "upper_m3_inclusive": 344.0,
+            "n_samples": 33151,
+            "n_actual_flooded": 33151,
+            "false_negatives": 13567,
+            "recall": 0.5907514102138699
+          },
+          {
+            "band_m3": "> 344",
+            "lower_m3_exclusive": 344.0,
+            "upper_m3_inclusive": null,
+            "n_samples": 30944,
+            "n_actual_flooded": 30944,
+            "false_negatives": 11453,
+            "recall": 0.6298797828335057
+          }
+        ]
+      }
+    },
+    "mlp": {
+      "registration_sha256": "0ea2b84112ae74017535117d9591571c15d9d9337518e7274c18f9434ad05537",
+      "prediction_sha256": "2e98e5f687587bfef0baab7ed5d3b939f294429416353242575790e3a08e9a0c",
+      "input_sha256": "4087e16ccc682430bf0d805af718df4b7453a8fcd6ce16cc67f1b3d2d472d363",
+      "score_sha256": "ead28ebd5bb396af65cbaf21c476023874d139cc95a486bfce7fa09c789a0555",
+      "overall": {
+        "n_samples": 410814,
+        "n_actual_flooded": 131502,
+        "confusion_matrix": {
+          "tn": 219433,
+          "fp": 59879,
+          "fn": 16485,
+          "tp": 115017
+        },
+        "precision": 0.6576308206019578,
+        "recall": 0.8746406898754392,
+        "f1": 0.7507686081501838,
+        "pr_auc": 0.8184285361917272,
+        "rmse_m3": 435.9284011522473,
+        "mae_m3": 74.9549924849202,
+        "volume_bias_m3": 4132865.9927167445,
+        "volume_bias_pct": 11.0615423435325,
+        "false_negatives_by_volume_band": [
+          {
+            "band_m3": "[1, 24]",
+            "lower_m3_inclusive": 1.0,
+            "upper_m3_inclusive": 24.0,
+            "n_samples": 35110,
+            "n_actual_flooded": 35110,
+            "false_negatives": 8245,
+            "recall": 0.7651666191968101
+          },
+          {
+            "band_m3": "(24, 108]",
+            "lower_m3_inclusive": 24.0,
+            "upper_m3_inclusive": 108.0,
+            "n_samples": 32297,
+            "n_actual_flooded": 32297,
+            "false_negatives": 3894,
+            "recall": 0.8794315261479394
+          },
+          {
+            "band_m3": "(108, 344]",
+            "lower_m3_inclusive": 108.0,
+            "upper_m3_inclusive": 344.0,
+            "n_samples": 33151,
+            "n_actual_flooded": 33151,
+            "false_negatives": 2528,
+            "recall": 0.9237428735181442
+          },
+          {
+            "band_m3": "> 344",
+            "lower_m3_exclusive": 344.0,
+            "upper_m3_inclusive": null,
+            "n_samples": 30944,
+            "n_actual_flooded": 30944,
+            "false_negatives": 1818,
+            "recall": 0.9412487073422957
+          }
+        ]
+      }
+    }
+  },
+  "plot_software": {
+    "matplotlib": "3.10.0",
+    "numpy": "2.3.5",
+    "pandas": "2.3.3",
+    "swmm-api": "0.4.73"
+  },
+  "artifacts": [
+    {
+      "path": "paridad_volumen_chico_norte.png",
+      "sha256": "eb0b01dc2e05e74122ba444aa4fa9e88139b19df306616607f56cbc49992873d",
+      "byte_size": 1439695
+    },
+    {
+      "path": "mapa_inundacion_bajo_chico_norte.png",
+      "sha256": "ddb4f82a8b3aa9ef655fb3b347d0831f344bfe4de3125ccb0029c8d7f798cc7f",
+      "byte_size": 820922
+    },
+    {
+      "path": "mapa_inundacion_mediano_chico_norte.png",
+      "sha256": "402f9e50e669f80c49d43c466b4cd4765bffdaab72605cc62455795ad2c7aca0",
+      "byte_size": 963412
+    },
+    {
+      "path": "mapa_inundacion_alto_chico_norte.png",
+      "sha256": "518c9b80f6a102d290bfb592664104bd63669bbd4641c9e0ce1985d83fe94e2f",
+      "byte_size": 993670
+    }
+  ]
+}

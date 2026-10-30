@@ -72,6 +72,7 @@ ml_outputs/
 !data/hydrograph_validation/*.csv
 *.xlsx
 *.png
+!docs/figures_chico_norte_transferencia/*.png
 
 # SWMM outputs generados
 data/networks/**/*.ini
