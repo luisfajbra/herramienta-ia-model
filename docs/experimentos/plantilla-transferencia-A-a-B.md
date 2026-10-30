@@ -1,6 +1,6 @@
 # Plantilla: transferencia congelada A → B
 
-**Estado: Task 5d tiene un scorer real condicionado por sellos y procedencia, probado con fixtures sintéticas.** No se ha emitido un score real A→B en esta ejecución. Antes de predecir se debe congelar la política de compatibilidad del dominio; las etiquetas de B solo se extraen después de sellar las predicciones. Tras usar las etiquetas de B para decisiones, B deja de ser un test externo para esas decisiones.
+**Estado: Task 5d y la transferencia real Chico Sur → Chico Norte se completaron el 2026-10-30.** XGBoost y el ensemble MLP de cinco semillas se preregistraron y predijeron sin etiquetas; ambos sellos se verificaron antes de extraer targets de los RPT ligados. Se generaron reportes `verified_scores.json` para los dos modelos. El resultado detallado, hashes, exclusiones QA e interpretación está en [el informe de transferencia a Chico Norte](../superpowers/reports/2026-10-30-transferencia-verificada-chico-norte.md). Esta evidencia corresponde a una sola red de prueba y no demuestra generalización a una población de redes.
 
 ## Antes de simular o predecir
 
@@ -14,9 +14,9 @@ La metadata del par debe contener `trial_metadata` con `selection=inner_tuning`,
 2. `predict_transfer(directory, keys, features, runs)` recibe claves, features ordenadas y calidad por corrida. Comprueba política, INP, par y registro; excluye y reporta corridas no elegibles. Exige exactamente los nodos esperados declarados y un `shape_id` no vacío y consistente para cada corrida elegible. Si existe un rechazo de dominio o ninguna corrida elegible, no predice. Si pasa, escribe y sella `inputs.csv`, `predictions.csv` y el informe de exclusiones cuando exista. No recibe etiquetas.
 3. `score_transfer(directory, conn=conn, staged=staged)` rechaza etiquetas suministradas por el caller. Revalida el staging y sus archivos, sellos, candidato, features y reproducción de predicciones; extrae etiquetas de los RPT verificados solo después de esas barreras y exige cobertura exacta run/nodo. Escribe métricas agregadas, sin persistir filas objetivo en SQLite. El helper `_score_synthetic_transfer` sigue reservado para pruebas; sus resultados no son evidencia de transferencia real. La forma del hidrograma es un estrato descriptivo y no un holdout de familia física.
 
-## Barrera antes de una evaluación real
+## Barrera para redes futuras
 
-El staging label-free y el scorer verifican un manifiesto sellado que vincula INP, evento, corrida, reporte SWMM, OUT, QA, claves y cobertura nodal; también comprueban las features almacenadas y las reproducen desde las fuentes verificadas. El score real sigue cerrado operacionalmente hasta registrar cada candidato, crear y verificar sus predicciones selladas y pasar la política de dominio. Las copias de archivo y hash en una misma carpeta no constituyen una firma independiente.
+El staging label-free y el scorer verifican un manifiesto sellado que vincula INP, evento, corrida, reporte SWMM, OUT, QA, claves y cobertura nodal; también comprueban las features almacenadas y las reproducen desde las fuentes verificadas. Esa barrera ya se ejecutó para los candidatos y la red congelada del informe anterior. Para una red futura hay que crear un staging nuevo, revisar su INP y declarar una política de dominio explícita derivada de sus características; no se hereda automáticamente la política específica Chico Sur–Chico Norte. Las copias de archivo y hash en una misma carpeta detectan cambios accidentales, pero no constituyen una firma independiente.
 
 Las políticas de continuidad y drenaje son provisionales. Dos redes no estiman el desempeño sobre una población de redes futuras. Este flujo no entrena ni promueve modelos y no selecciona modelos usando B.
 

@@ -692,6 +692,7 @@ def test_staged_registration_reconstructs_plan_from_sqlite_then_predicts(tmp_pat
 @pytest.mark.parametrize("tamper", [
     "none", "source_network_inp", "effective_inp", "event_source", "swmm_rpt", "swmm_out",
     "source_manifest", "source_manifest_missing", "inputs", "stored_features", "incomplete_label_coverage",
+    "float32_probability_csv_rounding",
 ])
 def test_verified_transfer_scoring_reads_labels_from_the_sealed_run_report(tmp_path, monkeypatch, tamper):
     import pandas as pd
@@ -742,7 +743,9 @@ def test_verified_transfer_scoring_reads_labels_from_the_sealed_run_report(tmp_p
     }), encoding="utf-8")
     keys = staged["keys"].copy()
     predictions = keys.copy()
-    predictions["y_prob_clf"] = 0.75
+    import numpy as np
+    probability_value = np.float32(0.522864580154419) if tamper == "float32_probability_csv_rounding" else np.float32(0.75)
+    predictions["y_prob_clf"] = np.full(len(keys), probability_value, dtype=np.float32)
     predictions["y_pred_clf"] = 1
     predictions["volume_conditional_m3"] = 30.0
     predictions["volume_routed_m3"] = 30.0
@@ -759,7 +762,10 @@ def test_verified_transfer_scoring_reads_labels_from_the_sealed_run_report(tmp_p
     (transfer_dir / "prediction_seal.json").write_text(json.dumps(seal), encoding="utf-8")
     class FakeClassifier:
         def predict_proba(self, features):
-            return pd.DataFrame({"dry": [0.25] * len(features), "flood": [0.75] * len(features)}).to_numpy()
+            return np.column_stack((
+                np.full(len(features), 1.0 - probability_value, dtype=np.float32),
+                np.full(len(features), probability_value, dtype=np.float32),
+            ))
 
     class FakeRegressor:
         def predict(self, features):
@@ -795,7 +801,7 @@ def test_verified_transfer_scoring_reads_labels_from_the_sealed_run_report(tmp_p
             (staged["run_ids"][0],),
         )
 
-    if tamper == "none":
+    if tamper in {"none", "float32_probability_csv_rounding"}:
         monkeypatch.setattr("swmm_resilience.extraction.labels.extract_labels", labels_after_seal)
         output = transfer.score_transfer(transfer_dir, conn=conn, staged=staged)
         score = json.loads(Path(output).read_text(encoding="utf-8"))

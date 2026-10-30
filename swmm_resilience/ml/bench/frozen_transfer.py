@@ -236,7 +236,7 @@ def predict_transfer(directory, keys, features, b_runs):
     out['volume_conditional_m3'] = conditional
     out['volume_routed_m3'] = np.where(predicted == 1, conditional, 0.)
     with (directory / 'predictions.csv').open('x', encoding='utf-8', newline='') as handle:
-        out.to_csv(handle, index=False)
+        out.to_csv(handle, index=False, float_format='%.17g')
     _write(directory / 'prediction_seal.json', {'predictions_sha256':_sha256(directory / 'predictions.csv'), 'inputs_sha256':_sha256(directory / 'inputs.csv'),
         'registration_sha256':_sha256(directory / 'registration.json'), 'run_status':statuses,
         'rejections_sha256': _sha256(directory / 'rejections.json') if rejections else None})
@@ -418,7 +418,15 @@ def score_transfer(directory, labels=None, *, conn=None, staged=None):
     expected_conditional = np.maximum(
         np.expm1(np.asarray(regressor.predict(inputs.loc[:, list(contract.feature_names)]), dtype=float)), 0.0
     )
-    if (not np.allclose(probability, expected_probability, rtol=1e-9, atol=1e-9)
+    probability_dtype = expected_probability.dtype
+    probability_precision = (
+        np.finfo(probability_dtype).eps
+        if np.issubdtype(probability_dtype, np.floating)
+        else 0.0
+    )
+    probability_tolerance = max(1e-9, float(probability_precision))
+    if (not np.allclose(probability, expected_probability,
+                        rtol=probability_tolerance, atol=probability_tolerance)
             or not np.allclose(conditional_volume, expected_conditional, rtol=1e-9, atol=1e-9)):
         raise ValueError("Sealed B predictions do not reproduce from the registered candidate and verified features")
 
