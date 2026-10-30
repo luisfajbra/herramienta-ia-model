@@ -71,7 +71,14 @@ Las dos incidencias se corrigieron antes de usar targets. El intento fallido no 
 
 ## Archivos y trazabilidad
 
-Los artefactos operacionales están bajo `outputs/` (directorios ignorados por Git); los reportes enlazados son los resultados fuente:
+Los reportes JSON de métricas se preservaron dentro de este repositorio para que la rama de respaldo contenga los resultados cuantitativos auditables. Sus SHA-256 coinciden con los archivos fuente de `outputs/`:
+
+- [Reporte verificado de XGBoost](artifacts/2026-10-30-chico-norte/xgboost-verified_scores.json) — `dee42fed39c8eec4f6dd4c5faa5908f7be9f7d9eb6eb861fb386d06d1363f683`
+- [Reporte verificado del ensemble MLP](artifacts/2026-10-30-chico-norte/mlp-verified_scores.json) — `ead28ebd5bb396af65cbaf21c476023874d139cc95a486bfce7fa09c789a0555`
+
+Los artefactos operacionales grandes siguen en `outputs/` (ignorado por Git): archivos de candidatos/modelos, predicciones e inputs sellados, SQLite de staging, manifiestos y fuentes SWMM `.inp/.rpt/.out`. Los resultados y su trazabilidad están documentados abajo, pero esos binarios no quedan respaldados por el push de esta rama; conserva una copia local o respáldalos por separado.
+
+Rutas de los artefactos fuente:
 
 - XGBoost: `outputs/bench/multinetwork/20261030T005341Z-813323e3ef75/A_to_B_frozen/verified_scores.json`
 - MLP: `outputs/bench/multinetwork/20261030T011406Z-813323e3ef75/A_to_B_frozen/verified_scores.json`
@@ -88,7 +95,7 @@ SHA-256 de los artefactos de inferencia y score:
 | Regresor | `045526a91a4a99a89bde1f473bfc4e67eefa950c5baacf835dcc595c5ecc1b7f` | `a450253d23daba66d032daf3e1723b8fbecd9281f30d3cca06efa01dadba45bb` |
 | Predicciones selladas | `105df19f6e1fd178a0215fe9d1120471f3db5bade5d9b01ca4aa5b7a8ac85cdc` | `2e98e5f687587bfef0baab7ed5d3b939f294429416353242575790e3a08e9a0c` |
 | Entradas selladas | `4087e16ccc682430bf0d805af718df4b7453a8fcd6ce16cc67f1b3d2d472d363` | igual |
-| Reporte de score | `dee28ebd39c8eec4f6dd4c5faa5908f7be9f7d9eb6eb861fb386d06d1363f683` | `ead28ebd5bb396af65cbaf21c476023874d139cc95a486bfce7fa09c789a0555` |
+| Reporte de score | `dee42fed39c8eec4f6dd4c5faa5908f7be9f7d9eb6eb861fb386d06d1363f683` | `ead28ebd5bb396af65cbaf21c476023874d139cc95a486bfce7fa09c789a0555` |
 
 Los estudios de selección también permanecen sellados: XGBoost `5b3ace9ece0223b86c538c63e56ccaff60f6ff37de8e0221021adca57764cd93` y MLP `2644ac54d45df36e6b77f74c29806fa68e0ae0af3adddc9ce8ecade470826fbe`.
 
