@@ -1,0 +1,21 @@
+{
+  "schema_version": "chico_norte_event_selection_v1",
+  "network_inp": {
+    "path": "../../networks/chico_norte_93_qx1/SWMM - Chico Norte 93% - Qx1.00.inp",
+    "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+  },
+  "hydrographs": [
+    {
+      "id": "novel_20261102_cascade_peaks",
+      "path": "novel_20261102_cascade_peaks.csv",
+      "sha256": "6b282c24d986be95685b61941a12028376ee7c96d59546e28d2dcf9756256727"
+    },
+    {
+      "id": "novel_20261102_sustained_late_surge",
+      "path": "novel_20261102_sustained_late_surge.csv",
+      "sha256": "afea1f70456033b9aa8d70d9f95563acfc0dc6d882d1ec20b7bab4b04870738e"
+    }
+  ],
+  "factors": [0.7, 1.3, 2.7, 3.9, 4.3],
+  "input_rule": "nodal_peaks_from_inp"
+}

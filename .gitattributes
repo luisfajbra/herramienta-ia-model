@@ -1,0 +1,6 @@
+# Estos archivos son fuentes de experimentos identificadas por SHA-256.
+# Evitar conversiones de finales de línea para reproducir sus bytes exactos.
+data/hydrograph_shapes/*.csv -text -diff
+data/hydrograph_validation/chico_norte_nuevos_2026_11_02/*.csv -text -diff
+data/networks/chico_hydro-qx1/*.inp -text -diff
+data/networks/chico_norte_93_qx1/*.inp -text -diff

@@ -88,6 +88,26 @@ def _extract_labels_for_quality(rpt_path: Path, node_ids, threshold_m3: float) -
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Hydraulic prediction pipeline — Chico Sur")
+    parser.add_argument("--evaluate-frozen-chico-norte", action="store_true",
+                        help="Inspect or run the documented frozen Chico Norte evaluation (no training)")
+    parser.add_argument("--execute-evaluation", action="store_true",
+                        help="Execute the frozen evaluation; otherwise only inspect its inputs")
+    parser.add_argument("--evaluation-output", type=Path, metavar="NEW_DIR",
+                        help="New output directory for the frozen evaluation")
+    parser.add_argument("--inspect-event-plan", type=Path, metavar="JSON",
+                        help="Validate an explicit Chico Norte event selection without simulations")
+    parser.add_argument("--prepare-event-plan", type=Path, metavar="JSON",
+                        help="Prepare selected Chico Norte nodal hydrographs without simulations")
+    parser.add_argument("--freeze-event-plan", type=Path, metavar="JSON",
+                        help="Prepare and freeze a Chico Norte simulation protocol without running it")
+    parser.add_argument("--run-frozen-event-plan", type=Path, metavar="DIR",
+                        help="Run SWMM and QA for a previously frozen Chico Norte selection")
+    parser.add_argument("--score-frozen-event-plan", type=Path, metavar="DIR",
+                        help="Evaluate frozen MLP and XGBoost against a completed selected SWMM batch")
+    parser.add_argument("--figures-frozen-event-plan", type=Path, metavar="DIR",
+                        help="Generate approved figures from verified selected-event scores")
+    parser.add_argument("--event-plan-output", type=Path, metavar="NEW_DIR",
+                        help="New output directory for prepared event inputs")
     parser.add_argument("--skip-extraction", action="store_true",
                         help="Skip extraction (read the existing CSV)")
     parser.add_argument("--skip-simulation", action="store_true",
@@ -451,6 +471,90 @@ def main():
     _make_stdout_unicode_safe()
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.figures_frozen_event_plan:
+        allowed = {"help", "figures_frozen_event_plan"}
+        incompatible = [action.dest for action in parser._actions
+                        if action.dest not in allowed and getattr(args, action.dest) != action.default]
+        if incompatible:
+            parser.error("--figures-frozen-event-plan must be run by itself")
+        from swmm_resilience.evaluation.event_selection import render_selected_figures
+        print(json.dumps(render_selected_figures(args.figures_frozen_event_plan), ensure_ascii=False, indent=2))
+        return
+
+    if args.score_frozen_event_plan:
+        allowed = {"help", "score_frozen_event_plan"}
+        incompatible = [action.dest for action in parser._actions
+                        if action.dest not in allowed and getattr(args, action.dest) != action.default]
+        if incompatible:
+            parser.error("--score-frozen-event-plan must be run by itself")
+        from swmm_resilience.evaluation.event_selection import score_frozen_plan
+        print(json.dumps(score_frozen_plan(args.score_frozen_event_plan), ensure_ascii=False, indent=2))
+        return
+
+    if args.run_frozen_event_plan:
+        allowed = {"help", "run_frozen_event_plan"}
+        incompatible = [action.dest for action in parser._actions
+                        if action.dest not in allowed and getattr(args, action.dest) != action.default]
+        if incompatible:
+            parser.error("--run-frozen-event-plan must be run by itself")
+        from swmm_resilience.evaluation.event_selection import run_frozen_plan
+        result = run_frozen_plan(args.run_frozen_event_plan)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        if result["status"] != "complete":
+            raise SystemExit(1)
+        return
+
+    if args.event_plan_output and not (args.prepare_event_plan or args.freeze_event_plan):
+        parser.error("--event-plan-output requires --prepare-event-plan or --freeze-event-plan")
+    if args.freeze_event_plan:
+        allowed = {"help", "freeze_event_plan", "event_plan_output"}
+        incompatible = [action.dest for action in parser._actions
+                        if action.dest not in allowed and getattr(args, action.dest) != action.default]
+        if incompatible:
+            parser.error("--freeze-event-plan must be run by itself")
+        if args.event_plan_output is None:
+            parser.error("--freeze-event-plan requires --event-plan-output NEW_DIR")
+        from swmm_resilience.evaluation.event_selection import freeze_plan
+        print(json.dumps(freeze_plan(args.freeze_event_plan, args.event_plan_output), ensure_ascii=False, indent=2))
+        return
+    if args.prepare_event_plan:
+        allowed = {"help", "prepare_event_plan", "event_plan_output"}
+        incompatible = [action.dest for action in parser._actions
+                        if action.dest not in allowed and getattr(args, action.dest) != action.default]
+        if incompatible:
+            parser.error("--prepare-event-plan must be run by itself")
+        if args.event_plan_output is None:
+            parser.error("--prepare-event-plan requires --event-plan-output NEW_DIR")
+        from swmm_resilience.evaluation.event_selection import prepare_plan
+        result = prepare_plan(args.prepare_event_plan, args.event_plan_output)
+        print(json.dumps({"status": result["status"], "scenario_count": len(result["scenarios"]),
+                          "manifest": str(args.event_plan_output / "prepared_events.json")}, ensure_ascii=False, indent=2))
+        return
+
+    if args.inspect_event_plan:
+        allowed = {"help", "inspect_event_plan"}
+        incompatible = [action.dest for action in parser._actions
+                        if action.dest not in allowed and getattr(args, action.dest) != action.default]
+        if incompatible:
+            parser.error("--inspect-event-plan must be run by itself")
+        from swmm_resilience.evaluation.event_selection import inspect_plan
+        print(json.dumps(inspect_plan(args.inspect_event_plan), ensure_ascii=False, indent=2))
+        return
+
+    if not args.evaluate_frozen_chico_norte and (args.execute_evaluation or args.evaluation_output):
+        parser.error("--execute-evaluation and --evaluation-output require --evaluate-frozen-chico-norte")
+    if args.evaluate_frozen_chico_norte:
+        allowed = {"help", "evaluate_frozen_chico_norte", "execute_evaluation", "evaluation_output"}
+        incompatible = [action.dest for action in parser._actions
+                        if action.dest not in allowed and getattr(args, action.dest) != action.default]
+        if incompatible:
+            parser.error("--evaluate-frozen-chico-norte must be run by itself")
+        if args.execute_evaluation and args.evaluation_output is None:
+            parser.error("--execute-evaluation requires --evaluation-output NEW_DIR")
+        from swmm_resilience.evaluation.frozen_workflow import run
+        run(execute=args.execute_evaluation, output=args.evaluation_output)
+        return
 
     if args.skip_simulation and not (args.skip_extraction or args.only_ml):
         parser.error("--skip-simulation requires --skip-extraction or --only-ml in this version; the pipeline does not yet index persistent .rpt files")

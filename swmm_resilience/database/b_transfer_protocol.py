@@ -1,6 +1,7 @@
 """Freeze a B simulation protocol and anchor it in a separate append-only DB."""
 from __future__ import annotations
 
+from contextlib import closing
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -175,7 +176,7 @@ def freeze_b_transfer_protocol(
     anchor_path.parent.mkdir(parents=True, exist_ok=True)
     created_protocol = False
     try:
-        with sqlite3.connect(anchor_path) as conn:
+        with closing(sqlite3.connect(anchor_path)) as conn, conn:
             _initialize_anchor_db(conn)
             conn.commit()
             rows = _verify_anchor_chain(conn)
@@ -184,7 +185,7 @@ def freeze_b_transfer_protocol(
         with protocol_path.open("xb") as stream:
             stream.write(protocol_bytes)
         created_protocol = True
-        with sqlite3.connect(anchor_path) as conn:
+        with closing(sqlite3.connect(anchor_path)) as conn, conn:
             conn.execute("BEGIN IMMEDIATE")
             _initialize_anchor_db(conn)
             rows = _verify_anchor_chain(conn)
@@ -226,7 +227,7 @@ def verify_b_transfer_protocol_anchor(
         raise ValueError("protocol anchor receipt has missing or unsupported fields")
     path = Path(protocol_path).resolve(strict=True)
     protocol_sha = _sha_bytes(path.read_bytes())
-    with sqlite3.connect(f"file:{Path(anchor_db_path).resolve()}?mode=ro", uri=True) as conn:
+    with closing(sqlite3.connect(f"file:{Path(anchor_db_path).resolve()}?mode=ro", uri=True)) as conn:
         rows = _verify_anchor_chain(conn)
     matches = [row for row in rows if Path(row[1]).resolve() == path]
     if len(matches) != 1:

@@ -8,6 +8,17 @@ from swmm_resilience.database.connection import connect_managed_database
 from swmm_resilience.database.migrations import apply_migrations
 
 
+def test_transfer_csv_parser_preserves_decimal_factor_round_trip():
+    import io
+    import swmm_resilience.ml.bench.frozen_transfer as transfer
+
+    frame = transfer._read_csv_round_trip(
+        io.StringIO("factor_mult\n0.69999999999999996\n"),
+    )
+
+    assert frame.loc[0, "factor_mult"].hex() == float(0.7).hex()
+
+
 def _sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -446,6 +457,321 @@ def test_effective_inp_rejects_event_series_consumed_by_raingage(tmp_path):
     with pytest.raises(ValueError, match="consumed by source raingage"):
         stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
     assert conn.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 0
+    conn.close()
+
+
+def test_joint_preflight_revalidates_label_free_sources_and_rejects_tampering(tmp_path):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+    from swmm_resilience.database.joint_preflight import verify_label_free_source
+
+    conn, root, _, anchor = _fixture(tmp_path)
+    staged = stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    conn.close()
+    before = _sha(tmp_path / "b.sqlite3")
+    result = verify_label_free_source(tmp_path / "b.sqlite3", root / "experiment_source_manifest.json")
+    assert result["run_count"] == 1
+    assert result["eligible_count"] == 1
+    assert result["excluded_count"] == 0
+    assert result["network_sha256"] == staged["manifest"]["network_sha256"]
+    assert _sha(tmp_path / "b.sqlite3") == before
+    (root / "run-1.rpt").write_text("CONTINUITY=9.0", encoding="utf-8")
+    with pytest.raises(ValueError, match="hash|changed|mismatch"):
+        verify_label_free_source(tmp_path / "b.sqlite3", root / "experiment_source_manifest.json")
+
+
+@pytest.mark.parametrize("changed", ["network", "contract", "descriptor", "empty"])
+def test_joint_pair_rejects_duplicate_networks_incompatible_contracts_and_empty_sources(monkeypatch, changed):
+    import swmm_resilience.database.joint_preflight as preflight
+    descriptor = preflight.resolve_feature_contract("tabular_v4_21").descriptor_sha256
+    a = {"network_sha256": "a" * 64, "feature_contract_id": "tabular_v4_21", "feature_contract_sha256": descriptor, "eligible_count": 1}
+    b = {"network_sha256": "b" * 64, "feature_contract_id": "tabular_v4_21", "feature_contract_sha256": descriptor, "eligible_count": 1}
+    if changed == "network":
+        b["network_sha256"] = a["network_sha256"]
+    elif changed == "contract":
+        b["feature_contract_id"] = "tabular_v3_17"
+    elif changed == "descriptor":
+        b["feature_contract_sha256"] = "f" * 64
+    else:
+        b["eligible_count"] = 0
+    monkeypatch.setattr(preflight, "verify_supervised_source", lambda *_: a)
+    monkeypatch.setattr(preflight, "verify_label_free_source", lambda *_: b)
+    with pytest.raises(ValueError):
+        preflight.verify_source_pair("a.db", "a.json", "b.db", "b.json")
+
+
+def test_joint_pair_accepts_distinct_eligible_compatible_verified_sources(monkeypatch):
+    import swmm_resilience.database.joint_preflight as preflight
+    descriptor = preflight.resolve_feature_contract("tabular_v4_21").descriptor_sha256
+    a = {"network_sha256": "a" * 64, "feature_contract_id": "tabular_v4_21", "feature_contract_sha256": descriptor, "eligible_count": 2}
+    b = {"network_sha256": "b" * 64, "feature_contract_id": "tabular_v4_21", "feature_contract_sha256": descriptor, "eligible_count": 3}
+    monkeypatch.setattr(preflight, "verify_supervised_source", lambda *_: a)
+    monkeypatch.setattr(preflight, "verify_label_free_source", lambda *_: b)
+    pair = preflight.verify_source_pair("a.db", "a.json", "b.db", "b.json")
+    assert pair["chico_sur"] == a and pair["chico_norte"] == b
+    assert "no joint dataset" in pair["scope"]
+
+
+def test_joint_identity_mapping_distinguishes_reused_local_keys():
+    import sqlite3
+    from swmm_resilience.database.joint_preflight import plan_joint_identities
+    def source(digest):
+        conn = sqlite3.connect(":memory:")
+        conn.executescript("""
+            CREATE TABLE networks(network_id INTEGER, network_sha256 TEXT);
+            CREATE TABLE nodes(node_pk INTEGER, network_id INTEGER, node_id TEXT);
+            CREATE TABLE scenarios(scenario_id INTEGER, network_id INTEGER, scenario_key TEXT);
+            CREATE TABLE runs(run_id INTEGER, network_id INTEGER, scenario_id INTEGER);
+        """)
+        conn.execute("INSERT INTO networks VALUES(1,?)", (digest,))
+        conn.execute("INSERT INTO nodes VALUES(1,1,'shared-node')")
+        conn.execute("INSERT INTO scenarios VALUES(1,1,'shared-scenario')")
+        conn.execute("INSERT INTO runs VALUES(1,1,1)")
+        return conn
+    with source("a" * 64) as a, source("b" * 64) as b:
+        planned = plan_joint_identities(a, b)
+        assert planned["chico_sur"]["network_id"] != planned["chico_norte"]["network_id"]
+        for table in ("nodes", "scenarios", "runs"):
+            assert planned["chico_sur"][table][1] != planned["chico_norte"][table][1]
+
+
+def test_label_free_verifier_still_rejects_persisted_targets_by_default(tmp_path):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free, _verify_staged_state
+    conn, root, _, anchor = _fixture(tmp_path)
+    staged = stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    run_id, network_id, node_pk = conn.execute(
+        "SELECT run_id, network_id, node_pk FROM node_features_v4_21 LIMIT 1").fetchone()
+    conn.execute("INSERT INTO node_results (run_id,network_id,node_pk,inunda,vol_inundacion_m3) VALUES (?,?,?,?,?)",
+                 (run_id, network_id, node_pk, 0, 0.0))
+    with pytest.raises(ValueError, match="labels appeared"):
+        _verify_staged_state(conn, staged)
+    conn.close()
+
+
+def test_joint_preflight_detects_changed_feature(tmp_path):
+    import sqlite3
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+    from swmm_resilience.database.joint_preflight import verify_label_free_features
+
+    conn, root, _, anchor = _fixture(tmp_path)
+    staged = stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    conn.close()
+    db = tmp_path / "b.sqlite3"
+    manifest = root / "experiment_source_manifest.json"
+    result = verify_label_free_features(db, manifest)
+    assert result["feature_rows_verified"] == len(staged["keys"])
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE node_features_v4_21 SET elev_fondo=elev_fondo+1")
+    conn.commit()
+    conn.close()
+    with pytest.raises(ValueError, match="feature"):
+        verify_label_free_features(db, manifest)
+
+
+def test_joint_preflight_rejects_orphan_feature_rows(tmp_path):
+    import sqlite3
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+    from swmm_resilience.database.joint_preflight import verify_label_free_features
+    conn, root, _, anchor = _fixture(tmp_path)
+    stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    conn.close()
+    db = tmp_path / "b.sqlite3"
+    with sqlite3.connect(db) as conn:
+        conn.execute("PRAGMA foreign_keys=OFF")
+        cols = [r[1] for r in conn.execute("PRAGMA table_info(node_features_v4_21)")]
+        expressions = ["999" if col in {"run_id", "node_pk"} else col for col in cols]
+        conn.execute(f"INSERT INTO node_features_v4_21 ({','.join(cols)}) SELECT {','.join(expressions)} FROM node_features_v4_21 LIMIT 1")
+    with pytest.raises(ValueError, match="feature|foreign key"):
+        verify_label_free_features(db, root / "experiment_source_manifest.json")
+
+
+def test_joint_preflight_rejects_feature_row_with_incorrect_contract(tmp_path):
+    import sqlite3
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+    from swmm_resilience.database.joint_preflight import verify_label_free_features
+    conn, root, _, anchor = _fixture(tmp_path)
+    stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    conn.close()
+    db = tmp_path / "b.sqlite3"
+    with sqlite3.connect(db) as conn:
+        conn.execute("PRAGMA ignore_check_constraints=ON")
+        conn.execute("UPDATE node_features_v4_21 SET feature_contract_id='tabular_v3_17'")
+    with pytest.raises(ValueError, match="contract"):
+        verify_label_free_features(db, root / "experiment_source_manifest.json")
+
+
+def test_joint_preflight_detects_changed_supervised_target(tmp_path, monkeypatch):
+    from tests.database.test_a_supervised_manifest_staging import _prepare_a
+    from swmm_resilience.database.a_supervised_manifest_staging import stage_frozen_a_supervised
+    from swmm_resilience.database.joint_preflight import verify_supervised_source
+
+    conn, root, _, anchor, config = _prepare_a(tmp_path, monkeypatch)
+    stage_frozen_a_supervised(conn, root, protocol_anchor_db_path=anchor, config_path=config)
+    conn.close()
+    db = tmp_path / "b.sqlite3"
+    result = verify_supervised_source(db, root / "a_training_source_manifest.json")
+    assert result["eligible_count"] == 1 and result["excluded_count"] == 1
+    assert result["target_rows_verified"] == 2
+    import sqlite3
+    conn = sqlite3.connect(db)
+    conn.execute("UPDATE node_results SET vol_inundacion_m3=vol_inundacion_m3+1 WHERE inunda=1")
+    conn.commit()
+    conn.close()
+    with pytest.raises(ValueError, match="label|target|volume"):
+        verify_supervised_source(db, root / "a_training_source_manifest.json")
+
+
+def test_joint_preflight_detects_changed_supervised_feature(tmp_path, monkeypatch):
+    import sqlite3
+    from tests.database.test_a_supervised_manifest_staging import _prepare_a
+    from swmm_resilience.database.a_supervised_manifest_staging import stage_frozen_a_supervised
+    from swmm_resilience.database.joint_preflight import verify_supervised_features
+    conn, root, _, anchor, config = _prepare_a(tmp_path, monkeypatch)
+    stage_frozen_a_supervised(conn, root, protocol_anchor_db_path=anchor, config_path=config)
+    conn.close()
+    db = tmp_path / "b.sqlite3"
+    final = root / "a_training_source_manifest.json"
+    assert verify_supervised_features(db, final)["feature_rows_verified"] == 2
+    with sqlite3.connect(db) as conn:
+        conn.execute("UPDATE node_features_v4_21 SET elev_fondo=elev_fondo+1")
+    with pytest.raises(ValueError, match="feature"):
+        verify_supervised_features(db, final)
+
+
+def test_joint_label_extraction_keeps_ineligible_run_out_and_does_not_write(tmp_path, monkeypatch):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+    from swmm_resilience.database.joint_preflight import extract_label_free_targets
+    conn, root, batch, anchor = _fixture(tmp_path, two_scenarios=True)
+    bad = batch["runs"][1]
+    rpt = root / bad["artifacts"]["swmm_rpt"]["path"]
+    rpt.write_text("CONTINUITY=8.0", encoding="utf-8")
+    bad["artifacts"]["swmm_rpt"]["sha256"] = _sha(rpt)
+    bad["hydraulic_quality"]["continuity_error_pct"] = 8.0
+    bad["hydraulic_quality"]["flooding_report"]["report_sha256"] = _sha(rpt)
+    (root / "frozen_b_manifest.json").write_text(json.dumps(batch), encoding="utf-8")
+    staged = stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    conn.close()
+    reports = []
+    def labels(path, node_ids, threshold_m3):
+        reports.append(Path(path).resolve())
+        assert threshold_m3 == 1.0
+        return _fixture_labels(path, node_ids)
+    monkeypatch.setattr("swmm_resilience.extraction.labels.extract_labels", labels)
+    db = tmp_path / "b.sqlite3"
+    before = _sha(db)
+    result = extract_label_free_targets(db, root / "experiment_source_manifest.json", flood_threshold_m3=1.0)
+    good = next(e for e in staged["manifest"]["run_order"] if e["eligible"])
+    assert set(result["labels"]["run_id"]) == {good["run_id"]}
+    assert reports == [(root / good["artifacts"]["swmm_rpt"]["path"]).resolve()]
+    assert len(result["excluded_runs"]) == 1
+    assert "continuity_limit_exceeded" in result["excluded_runs"][0]["reason_codes"]
+    assert len(result["labels_sha256"]) == 64
+    assert _sha(db) == before
+
+
+def test_joint_label_extraction_rejects_batch_with_no_eligible_runs(tmp_path, monkeypatch):
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+    from swmm_resilience.database.joint_preflight import extract_label_free_targets
+    conn, root, _, anchor = _fixture(tmp_path, continuity=8.0)
+    stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    conn.close()
+    calls = []
+    monkeypatch.setattr("swmm_resilience.extraction.labels.extract_labels", lambda *args, **kwargs: calls.append(True))
+    with pytest.raises(ValueError, match="no eligible"):
+        extract_label_free_targets(tmp_path / "b.sqlite3", root / "experiment_source_manifest.json", flood_threshold_m3=1.0)
+    assert calls == []
+
+
+def test_mixed_qa_stages_and_scores_only_eligible_run(tmp_path, monkeypatch):
+    """Exercise real staging and scoring with synthetic reports, not SWMM runs."""
+    import numpy as np
+    import pandas as pd
+    import swmm_resilience.ml.bench.frozen_transfer as transfer
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+
+    conn, root, batch, anchor = _fixture(tmp_path, two_scenarios=True)
+    bad = batch["runs"][1]
+    rpt = root / bad["artifacts"]["swmm_rpt"]["path"]
+    rpt.write_text("CONTINUITY=8.0", encoding="utf-8")
+    bad["artifacts"]["swmm_rpt"]["sha256"] = _sha(rpt)
+    bad["hydraulic_quality"]["continuity_error_pct"] = 8.0
+    bad["hydraulic_quality"]["flooding_report"]["report_sha256"] = _sha(rpt)
+    (root / "frozen_b_manifest.json").write_text(json.dumps(batch), encoding="utf-8")
+    staged = stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    runs = staged["manifest"]["run_order"]
+    good = next(x for x in runs if x["eligible"])
+    bad = next(x for x in runs if not x["eligible"])
+    assert "continuity_limit_exceeded" in bad["reason_codes"]
+    assert set(staged["keys"]["run_id"]) == {good["run_id"]}
+    assert conn.execute("SELECT COUNT(*) FROM node_features_v4_21 WHERE run_id=?", (bad["run_id"],)).fetchone()[0] == 0
+
+    candidate = tmp_path / "mixed-candidate"
+    candidate.mkdir()
+    for name in ("metadata.json", "classifier.joblib", "regressor.joblib"):
+        (candidate / name).write_bytes(b"fixture")
+    directory = tmp_path / "mixed-transfer" / "A_to_B_frozen"
+    directory.mkdir(parents=True)
+    registrations = []
+    for run in runs:
+        event = run["artifacts"]["event_source"]
+        components = {"source_artifact": {k: event[k] for k in ("path", "sha256", "byte_size")}}
+        registrations.append({"network_id": staged["network_id"], "run_id": run["run_id"],
+            "event_series_sha256": transfer._hash(components), "event_series_components": components,
+            "hydraulic_policy": run["hydraulic_quality"]["policy"],
+            "hydraulic_policy_sha256": run["hydraulic_quality"]["policy_sha256"],
+            "expected_node_ids": sorted(staged["keys"]["node_id"].astype(str))})
+    network = good["artifacts"]["source_network_inp"]
+    registration = {"schema": "frozen_transfer_v1", "candidate_dir": str(candidate.resolve()),
+        "candidate_metadata_sha256": _sha(candidate / "metadata.json"),
+        "classifier_sha256": _sha(candidate / "classifier.joblib"),
+        "regressor_sha256": _sha(candidate / "regressor.joblib"), "contract_id": "tabular_v4_21",
+        "b_inp_path": str(Path(root / network["path"]).resolve()), "b_inp_sha256": network["sha256"],
+        "flood_threshold_m3": 1.0, "classification_threshold": 0.5,
+        "volume_bands_m3": [24.0, 108.0, 344.0], "b_runs": registrations}
+    (directory / "registration.json").write_text(json.dumps(registration), encoding="utf-8")
+    (directory / "registration_seal.json").write_text(json.dumps({"sha256": _sha(directory / "registration.json")}), encoding="utf-8")
+    keys = staged["keys"].copy()
+    predictions = keys.copy()
+    predictions["y_prob_clf"] = 0.75
+    predictions["y_pred_clf"] = 1
+    predictions["volume_conditional_m3"] = 30.0
+    predictions["volume_routed_m3"] = 30.0
+    predictions.to_csv(directory / "predictions.csv", index=False)
+    pd.concat([keys, staged["features"]], axis=1).to_csv(directory / "inputs.csv", index=False)
+    seal = {"predictions_sha256": _sha(directory / "predictions.csv"), "inputs_sha256": _sha(directory / "inputs.csv"),
+        "registration_sha256": _sha(directory / "registration.json"),
+        "run_status": [{"run_id": run["run_id"], "eligible": run["eligible"], "reason_codes": run["reason_codes"]} for run in runs],
+        "rejections_sha256": None}
+    (directory / "prediction_seal.json").write_text(json.dumps(seal), encoding="utf-8")
+    class Classifier:
+        def predict_proba(self, features):
+            return np.tile([0.25, 0.75], (len(features), 1))
+    class Regressor:
+        def predict(self, features):
+            return np.full(len(features), np.log1p(30.0))
+    monkeypatch.setattr(transfer, "load_candidate_pair", lambda *_: (Classifier(), Regressor(), {}))
+    read_reports = []
+    def labels_after_seal(path, nodes, threshold_m3):
+        assert (directory / "prediction_seal.json").is_file()
+        read_reports.append(Path(path).resolve())
+        return _fixture_labels(path, nodes)
+    monkeypatch.setattr("swmm_resilience.extraction.labels.extract_labels", labels_after_seal)
+    score = json.loads(Path(transfer.score_transfer(directory, conn=conn, staged=staged)).read_text(encoding="utf-8"))
+    assert score["eligible_run_ids"] == [good["run_id"]]
+    assert score["excluded_runs"] == [{"run_id": bad["run_id"], "scenario_key": bad["scenario_key"], "reason_codes": bad["reason_codes"]}]
+    assert score["overall"]["n_samples"] == len(keys)
+    assert read_reports == [(root / good["artifacts"]["swmm_rpt"]["path"]).resolve()]
+    # The figure-data join must keep the same admission decision, too.
+    from scripts import run_chico_norte_novel_hydrograph_eval as figure_backend
+    monkeypatch.setattr(figure_backend, "extract_static_features", lambda _: pd.DataFrame({"node_id": sorted(keys["node_id"].astype(str))}))
+    monkeypatch.setattr(figure_backend, "extract_labels", labels_after_seal)
+    joined, metadata = figure_backend._load_scored_observations(
+        root, {"manifest_path": staged["manifest_path"], "conn": conn},
+        {"xgboost": directory, "mlp": directory}, {"xgboost": score, "mlp": score})
+    assert set(joined["run_id"]) == {good["run_id"]}
+    assert metadata[bad["run_id"]]["eligible"] is False
+    assert metadata[bad["run_id"]]["reason_codes"] == bad["reason_codes"]
+    assert read_reports == [(root / good["artifacts"]["swmm_rpt"]["path"]).resolve()] * 2
+    assert conn.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] == 0
     conn.close()
 
 

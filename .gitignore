@@ -70,14 +70,39 @@ ml_outputs/
 !data/hydrographs/*.csv
 !data/hydrograph_shapes/*.csv
 !data/hydrograph_validation/*.csv
+!data/hydrograph_validation/chico_norte_nuevos_2026_11_02/*.csv
 *.xlsx
 *.png
 !docs/figures_chico_norte_transferencia/*.png
+!docs/figures_chico_norte_novel_eval_2026_11_02/*.png
 
 # SWMM outputs generados
 data/networks/**/*.ini
 *.rpt
 *.out
+
+# Evidencia acotada y documentada de la revisión hidráulica de Chico Norte.
+!docs/resultados/evidencia_revision_hidraulica_2026_11_03/*.csv
+!docs/resultados/evidencia_revision_hidraulica_2026_11_03/sensibilidad/*.csv
+!docs/resultados/evidencia_revision_hidraulica_2026_11_03/sensibilidad/artefactos_sensibilidad/*.csv
+!docs/resultados/evidencia_revision_hidraulica_2026_11_03/sensibilidad/artefactos_sensibilidad/*.rpt
+!docs/resultados/evidencia_revision_hidraulica_2026_11_03/sensibilidad/graficas_sensibilidad/*.png
+!docs/resultados/evidencia_revision_hidraulica_2026_11_03/factor_bajo/*.csv
+!docs/resultados/evidencia_revision_hidraulica_2026_11_03/factor_bajo/artefactos_sensibilidad/*.csv
+!docs/resultados/evidencia_revision_hidraulica_2026_11_03/factor_bajo/artefactos_sensibilidad/*.rpt
+!docs/resultados/evidencia_revision_hidraulica_2026_11_03/factor_bajo/graficas_sensibilidad/*.png
+!docs/resultados/evidencia_revision_hidraulica_2026_11_03/pasos_nativos/*.csv
+!docs/resultados/evidencia_revision_hidraulica_2026_11_03/pasos_nativos/datos/*.rpt
+!docs/resultados/evidencia_revision_hidraulica_2026_11_03/pasos_nativos/graficas/*.png
+
+# Evidencia de la ampliación; OUT completos permanecen en outputs/.
+!docs/resultados/sensibilidad_ampliada_2026_11_03/*.csv
+!docs/resultados/sensibilidad_ampliada_2026_11_03/*.png
+!docs/resultados/sensibilidad_ampliada_2026_11_03/variantes/*.csv
+!docs/resultados/sensibilidad_ampliada_2026_11_03/variantes/artefactos_sensibilidad/*.csv
+!docs/resultados/sensibilidad_ampliada_2026_11_03/variantes/artefactos_sensibilidad/*.rpt
+!docs/resultados/sensibilidad_ampliada_2026_11_03/variantes/graficas_sensibilidad/*.png
+!docs/resultados/sensibilidad_ampliada_2026_11_03/qa/sensibilidad/*.csv
 
 .superpowers/obsidian/
 

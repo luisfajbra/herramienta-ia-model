@@ -37,6 +37,11 @@ def _read(path):
     return json.loads(path.read_text(encoding='utf-8'))
 
 
+def _read_csv_round_trip(source, **kwargs):
+    """Read sealed decimal fields without losing their written float value."""
+    return pd.read_csv(source, float_precision="round_trip", **kwargs)
+
+
 def _digest(value):
     return isinstance(value, str) and len(value) == 64 and all(c in '0123456789abcdef' for c in value)
 
@@ -357,11 +362,13 @@ def score_transfer(directory, labels=None, *, conn=None, staged=None):
 
     if not eligible_run_ids:
         raise ValueError("No B runs passed frozen hydraulic QA; there are no transfer scores")
-    preds = pd.read_csv(directory / "predictions.csv", dtype={"node_id": str, "scenario_key": str,
-                                                               "scenario_kind": str, "shape_id": str},
-                        keep_default_na=False)
-    inputs = pd.read_csv(directory / "inputs.csv", dtype={"node_id": str, "scenario_key": str,
-                                                           "scenario_kind": str, "shape_id": str})
+    preds = _read_csv_round_trip(directory / "predictions.csv",
+                                 dtype={"node_id": str, "scenario_key": str,
+                                        "scenario_kind": str, "shape_id": str},
+                                 keep_default_na=False)
+    inputs = _read_csv_round_trip(directory / "inputs.csv",
+                                  dtype={"node_id": str, "scenario_key": str,
+                                         "scenario_kind": str, "shape_id": str})
     required_prediction_columns = [*KEY_COLUMNS, "y_prob_clf", "y_pred_clf", "volume_conditional_m3", "volume_routed_m3"]
     if preds.columns.tolist() != required_prediction_columns:
         raise ValueError("Sealed prediction file has an unsupported schema")

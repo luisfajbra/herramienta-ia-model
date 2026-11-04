@@ -992,7 +992,7 @@ def _manifest_path(path: Path, root: Path) -> str:
         return str(path.resolve())
 
 
-def _verify_staged_state(conn: sqlite3.Connection, staged: dict) -> dict:
+def _verify_staged_state(conn: sqlite3.Connection, staged: dict, *, allow_supervised: bool = False) -> dict:
     manifest_path = Path(staged["manifest_path"]).resolve(strict=True)
     persisted_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest_digest = persisted_manifest.get("manifest_sha256")
@@ -1077,7 +1077,7 @@ def _verify_staged_state(conn: sqlite3.Connection, staged: dict) -> dict:
                 or quality_manifest.get("eligible") is not entry["eligible"]
                 or quality_manifest.get("reason_codes") != entry["reason_codes"]):
             raise ValueError(f"derived hydraulic QA differs from the sealed report for B run {run_id}")
-    if conn.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] != 0:
+    if not allow_supervised and conn.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] != 0:
         raise ValueError("B labels appeared before prediction; refusing label-free inference")
     return persisted_manifest
 

@@ -6,6 +6,73 @@ inferencia rapida sin volver a correr SWMM.
 
 El flujo principal se configura desde `config.yaml`.
 
+## Evaluación congelada de Chico Norte
+
+Para inspeccionar, sin simulaciones, los insumos del experimento documentado de
+los dos hidrogramas sintéticos de Chico Norte:
+
+```powershell
+.\venv\Scripts\python.exe main.py --evaluate-frozen-chico-norte
+```
+
+Para ejecutar desde la raíz del repositorio las diez simulaciones, la evaluación
+con los candidatos congelados de XGBoost y MLP y las figuras individuales:
+
+```powershell
+.\venv\Scripts\python.exe main.py --evaluate-frozen-chico-norte --execute-evaluation --evaluation-output outputs/experiments/MI_EVALUACION_NUEVA
+```
+
+La carpeta de salida no debe existir. La ejecución verifica los artefactos,
+mantiene sus resultados y una base temporal dentro de esa carpeta, y registra
+su estado. No entrena, promueve modelos ni escribe en la base canónica. Produce
+una carpeta `figuras` con mapas separados por SWMM, MLP y XGBoost, paridades
+globales individuales e hidrogramas, además de la carpeta `evaluation` con
+manifiestos y métricas. Las salidas completas en `outputs/` no se respaldan en
+Git automáticamente.
+
+Esta opción reproduce **solo el estudio documentado de Chico Norte**, con sus
+dos formas y cinco factores. No permite todavía escoger cualquier red o eventos;
+esa ampliación requiere un protocolo y validación de dominio. Los modelos se
+entrenaron con Chico Sur: esta es una evaluación externa, no entrenamiento
+conjunto. Véanse el [informe](docs/superpowers/reports/2026-11-02-evaluacion-hidrogramas-nuevos-chico-norte.md)
+y el [plan de integración](docs/superpowers/plans/2026-11-03-integracion-evaluacion-congelada.md).
+
+Para **inspeccionar** una selección explícita de formas y factores de Chico
+Norte, sin ejecutar simulaciones ni guardar datos:
+
+```powershell
+.\venv\Scripts\python.exe main.py --inspect-event-plan data/hydrograph_validation/chico_norte_nuevos_2026_11_02/seleccion_ejemplo.json
+```
+
+El JSON de ejemplo reproduce la selección conocida e identifica las fuentes
+con SHA-256. La inspección exige la red aprobada, formas normalizadas con
+extremos cero y factores dentro del rango 0,2–5,0. Cada forma se transformaría
+en caudales por nodo usando el pico del INP y el factor indicado; no representa
+una medición. Para generar las series por nodo sin simular ni evaluar, usa
+una carpeta nueva:
+
+```powershell
+.\venv\Scripts\python.exe main.py --prepare-event-plan data/hydrograph_validation/chico_norte_nuevos_2026_11_02/seleccion_ejemplo.json --event-plan-output outputs/experiments/EVENTOS_NUEVOS
+```
+
+El manifiesto `prepared_events.json` registra fuentes y hashes. La preparación
+por sí sola no congela ni ejecuta la selección. Para congelar y ejecutar una
+selección en un directorio nuevo, usa estas etapas separadas:
+
+```powershell
+.\venv\Scripts\python.exe main.py --freeze-event-plan data/hydrograph_validation/chico_norte_nuevos_2026_11_02/seleccion_ejemplo.json --event-plan-output outputs/experiments/MI_SELECCION
+.\venv\Scripts\python.exe main.py --run-frozen-event-plan outputs/experiments/MI_SELECCION
+.\venv\Scripts\python.exe main.py --score-frozen-event-plan outputs/experiments/MI_SELECCION
+.\venv\Scripts\python.exe main.py --figures-frozen-event-plan outputs/experiments/MI_SELECCION
+```
+
+El primer comando crea la carpeta y un ancla SQLite adyacente: conserva ambos.
+El scoring usa los modelos congelados y una base temporal; no reentrena. Las
+figuras incluyen escenarios elegibles según QA y se registran las exclusiones.
+Los pilotos y sus límites están en el [informe](docs/superpowers/reports/2026-11-03-evaluacion-eventos-seleccionados.md).
+Véanse el [diseño](docs/superpowers/specs/2026-11-03-seleccion-eventos-chico-norte-design.md)
+y el [plan](docs/superpowers/plans/2026-11-03-seleccion-eventos-chico-norte.md).
+
 ## Pipeline Spec V4
 
 Inventario y verificación estructural de una red SWMM (solo lectura; no ejecuta

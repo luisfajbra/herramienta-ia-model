@@ -113,6 +113,13 @@ def event_stats(node_series: dict[str, list[tuple[float, float]]]) -> tuple[floa
     return duration, peak_time
 
 
+def validate_frozen_event_endpoint(scenario: HydrographScenario, tolerance_lps: float) -> None:
+    """Require frozen event CSVs to stop inflow before the drain-down tail."""
+    from .inflow_closure import enforce_strict_zero_endpoint
+
+    enforce_strict_zero_endpoint(scenario, tolerance_lps)
+
+
 def write_event_csv(
     scenario_key: str, node_series: dict[str, list[tuple[float, float]]], out_dir: Path,
     *, time_policy: str,
@@ -335,6 +342,7 @@ def run_frozen_experiment(
                 raise ValueError(f"materialized event CSV changed after protocol freeze: {key}")
             expected_nodes = base_nodes if shape_id == "base" else positive_nodes
             parsed = load_scenario(event_path, expected_nodes)
+            validate_frozen_event_endpoint(parsed, float(policy["inflow_tolerance_lps"]))
             duration, peak_time = event_stats(parsed.node_series)
             if (abs(duration - definition["duracion_horas"]) > 1e-6
                     or abs(peak_time - definition["tiempo_al_pico_h"]) > 1e-6):

@@ -84,6 +84,18 @@ def test_invalid_time_policy_fails_before_creating_any_output_root():
 def test_frozen_drainage_schedule_keeps_base_plus_two_retries():
     assert drain_down_schedule({"drain_down_hours": 6, "drain_down_extension_hours": 2,
                                 "max_drain_retries": 2}) == (6.0, 8.0, 10.0)
+
+
+def test_frozen_runner_rejects_event_source_without_explicit_zero_endpoint():
+    from swmm_resilience.simulation.frozen_pair_runner import validate_frozen_event_endpoint
+    from swmm_resilience.validation.hydrograph_csv import HydrographScenario
+
+    scenario = HydrographScenario(
+        "unfinished", {"N1": [(0.0, 0.0), (1.0, 2.0)]}, [0.0, 1.0], 1.0
+    )
+
+    with pytest.raises(ValueError, match="non-zero final flow"):
+        validate_frozen_event_endpoint(scenario, tolerance_lps=0.01)
 from pathlib import Path
 import hashlib
 import json
