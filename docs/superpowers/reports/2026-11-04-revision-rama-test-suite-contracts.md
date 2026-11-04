@@ -2,8 +2,8 @@
 
 Documento para el siguiente agente que trabaje en esta rama. Recoge lo que se
 revisó, qué problemas aparecieron, por qué ocurrían, qué se corrigió y qué queda
-pendiente. Las correcciones están en el árbol de trabajo **sin commit** (el
-usuario no pidió commit).
+pendiente. Las correcciones están en los commits `ea3a7a56` (tests de migraciones),
+`813614ba` (etiqueta `usage`) y el de este documento. No se ha hecho push.
 
 ## 1. Alcance de la revisión
 
@@ -218,7 +218,7 @@ Si un revisor pregunta, basta con explicarlo; no hace falta regenerar nada.
 
 ## 5. Estado final
 
-- Archivos modificados (sin commit):
+- Archivos modificados (commits `ea3a7a56` y `813614ba`, sin push):
   - `swmm_resilience/ml/bench/frozen_transfer.py`
   - `swmm_resilience/database/label_free_b_staging.py`
   - Los 6 archivos de tests de la sección 2.1
