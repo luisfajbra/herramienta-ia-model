@@ -989,8 +989,9 @@ def test_staged_registration_reconstructs_plan_from_sqlite_then_predicts(tmp_pat
         "swmm_resilience.ml.bench.train.load_candidate_pair",
         lambda *args: (None, None, {"feature_contract_id": "tabular_v4_21"}),
     )
-    def fake_register(*args):
+    def fake_register(*args, **kwargs):
         calls["register"] = args
+        calls["register_kwargs"] = kwargs
         return tmp_path / "registered"
     monkeypatch.setattr(frozen_transfer, "register_transfer", fake_register)
     # The wrapper must pass the exact registered directory to its inference boundary.
@@ -1004,6 +1005,9 @@ def test_staged_registration_reconstructs_plan_from_sqlite_then_predicts(tmp_pat
     )
 
     assert directory == tmp_path / "registered"
+    # The staged path has verified the B sources, so its preregistration must
+    # not carry the default synthetic label.
+    assert calls["register_kwargs"] == {"usage": "verified_staged_sources"}
     planned = calls["register"][3]
     assert set(planned[0]) == {
         "network_id", "run_id", "event_series_sha256", "event_series_components",

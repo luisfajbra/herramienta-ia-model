@@ -46,12 +46,23 @@ def _digest(value):
     return isinstance(value, str) and len(value) == 64 and all(c in '0123456789abcdef' for c in value)
 
 
-def register_transfer(candidate_dir, inp_path, domain_policy, b_runs, volume_bands_m3, output_root):
+REGISTRATION_USAGES = ('synthetic_only_unbound_sources', 'verified_staged_sources')
+
+
+def register_transfer(candidate_dir, inp_path, domain_policy, b_runs, volume_bands_m3, output_root,
+                      *, usage='synthetic_only_unbound_sources'):
     """Lock candidate, test-network source and criteria before prediction.
 
     Run records must contain network_id, run_id, event_series_sha256 and a
     declared hydraulic policy. No B labels or fitted estimator is accepted.
+
+    ``usage`` records where the B sources came from. The default stays
+    'synthetic_only_unbound_sources' so a direct call is never presented as
+    verified; only the staged path (label_free_b_staging), which has already
+    verified the B source package, passes 'verified_staged_sources'.
     """
+    if usage not in REGISTRATION_USAGES:
+        raise ValueError(f'Unknown registration usage: {usage!r}')
     candidate_dir = Path(candidate_dir).resolve()
     classifier, regressor, meta = load_candidate_pair(candidate_dir, candidate_dir)
     if meta.get('family') == 'mlp':
@@ -135,7 +146,7 @@ def register_transfer(candidate_dir, inp_path, domain_policy, b_runs, volume_ban
     identifier = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + meta['prep_id'][:12]
     directory = Path(output_root) / identifier / 'A_to_B_frozen'
     directory.mkdir(parents=True, exist_ok=False)
-    registration = {'usage': 'synthetic_only_unbound_sources', 'schema': 'frozen_transfer_v1', 'candidate_dir': str(candidate_dir),
+    registration = {'usage': usage, 'schema': 'frozen_transfer_v1', 'candidate_dir': str(candidate_dir),
         'candidate_metadata_sha256': _sha256(candidate_dir / 'metadata.json'),
         'classifier_sha256': meta['classifier_sha256'], 'regressor_sha256': meta['regressor_sha256'],
         'prep_id': meta['prep_id'], 'a_network_id': networks[0]['network_id'], 'a_run_ids': train_ids,

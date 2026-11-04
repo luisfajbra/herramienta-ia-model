@@ -54,6 +54,8 @@ def test_predictions_sealed_before_labels_and_immutable(experiment, tmp_path):
     directory = register_transfer(candidate.classifier_path.parent, inp, policy, [plan(run)],
                                   [24, 108, 344], tmp_path / 'outputs')
     assert not (directory / 'predictions.csv').exists()
+    # A direct call never claims verified sources unless the caller says so.
+    assert json.loads((directory / 'registration.json').read_text())['usage'] == 'synthetic_only_unbound_sources'
     predict_transfer(directory, keys, x, [run])
     seal = json.loads((directory / 'prediction_seal.json').read_text())
     before = (directory / 'predictions.csv').read_bytes()
@@ -374,3 +376,13 @@ def test_node_and_event_coverage_is_locked_in_registration(experiment, tmp_path)
     scores = json.loads((directory/'synthetic_scores.json').read_text())
     assert sum(row['n_samples'] for row in scores['by_event']) == scores['overall']['n_samples'] == 2
     assert scores['usage'] == 'synthetic_only_unbound_sources'
+
+
+def test_register_transfer_rejects_unknown_usage(experiment, tmp_path):
+    from swmm_resilience.ml.bench.frozen_transfer import register_transfer
+    candidate, inp, policy, keys, x, decision = experiment
+    run = {'network_id': 999, 'run_id': 9999, 'event_series_sha256':EVENT_HASH, 'hydraulic_quality':decision}
+    with pytest.raises(ValueError, match='Unknown registration usage'):
+        register_transfer(candidate.classifier_path.parent, inp, policy, [plan(run)],
+                          [24, 108, 344], tmp_path / 'outputs', usage='real')
+    assert not (tmp_path / 'outputs').exists()

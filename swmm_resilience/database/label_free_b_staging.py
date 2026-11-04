@@ -1136,7 +1136,8 @@ def register_and_predict_staged_transfer(
     if b_inp is None:
         raise ValueError("staged B has no run records")
     directory = frozen_transfer.register_transfer(
-        candidate_dir, b_inp, domain_policy, planned_runs, volume_bands_m3, output_root
+        candidate_dir, b_inp, domain_policy, planned_runs, volume_bands_m3, output_root,
+        usage="verified_staged_sources",
     )
     predict_staged_transfer(directory, conn, staged)
     return directory
