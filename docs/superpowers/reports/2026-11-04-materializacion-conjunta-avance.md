@@ -1,6 +1,6 @@
 # Avance de materialización conjunta
 
-**Fecha:** 4 de noviembre de 2026. Se desarrolla una base supervisada nueva para Chico Sur y Chico Norte según el [diseño aprobado](../specs/2026-11-03-base-conjunta-verificable-design.md). Todavía no se ha materializado la base real ni se han entrenado modelos.
+**Fecha:** 4 de noviembre de 2026. Se desarrolla una base supervisada nueva para Chico Sur y Chico Norte según el [diseño aprobado](../specs/2026-11-03-base-conjunta-verificable-design.md). La base real fue materializada y verificada; aún no se han entrenado modelos con ella.
 
 ## Pruebas controladas
 
@@ -10,9 +10,21 @@ Se verificó con fuentes sintéticas que la unión admite IDs locales coincident
 
 El 4 de noviembre se ejecutaron 172 pruebas de las fuentes supervisadas, la preparación, los esquemas, las restricciones de importación y las interfaces de línea de comandos: **172 pasaron**. Incluyen pruebas sintéticas y no sustituyen la verificación de la base real.
 
+El mismo día se compararon en lectura los 39 CSV de formas de la fuente anclada de Chico Norte con sus SHA-256: todos coincidieron. También se compararon las secuencias numéricas exactas `(time_h, q_norm)` de las 39 formas y no se encontraron duplicados exactos. Esto no descarta formas similares, relaciones físicas entre ellas ni equivalencias que resulten de redondear al minuto; esas posibilidades deben estudiarse antes de afirmar independencia de la partición.
+
+**Decisión del investigador, 4 de noviembre:** reservar siete de las 35 formas con escenarios elegibles en ambas redes (20 %). Se reservarán todos los factores de cada forma en Chico Sur y en Chico Norte. La evaluación describirá formas no usadas en el entrenamiento sobre estas redes conocidas; no medirá transferencia a una tercera red. No se ha entrenado con la base conjunta.
+
+El investigador aprobó seleccionar las siete al azar de manera reproducible, sin consultar errores ni resultados de los modelos. Antes del sorteo se fija el procedimiento: ordenar alfabéticamente los identificadores elegibles compartidos y usar `random.Random(42).sample(lista, 7)` de Python; registrar versión de Python, población, lista resultante y hashes de la fuente. La semilla 42 es convencional y no se selecciona por desempeño. El criterio agrupa la forma completa en ambas redes y todos sus factores, pero no resuelve posibles similitudes entre formas distintas.
+
+**Resultado del sorteo:** `common_storm`, `rare_extreme`, `shape_delayed_abrupt_peak`, `shape_flashy_long_tail_9h5`, `shape_front_loaded_broad`, `shape_quasi_uniform_block` y `shape_twin_plateau_15h`. Reúnen 168 corridas elegibles de Chico Sur y 153 de Chico Norte. La población, el orden sorteado, las cuentas y la versión Python 3.12.10 están en `outputs/experiments/reserva_formas_chico_sur_norte_20261104.json`; el SHA-256 del manifiesto de la base fuente es `5b8099df2680fef741e3082068b1c2442e5e5ee9eb4f15f18d1d604250bb1ad5`. Todas sus corridas quedan fuera del ajuste y la selección de hiperparámetros del modelo conjunto. Es una reserva nueva para ese protocolo; no debe describirse como un conjunto completamente virgen a la investigación anterior, que ya utilizó o examinó estos lotes.
+
+El procedimiento ejecutado se conserva en `scripts/sorteo_formas_conjunto_20261104.py`; usa creación exclusiva de la salida para evitar sobrescribir el sorteo registrado.
+
 ## Falta para entrenamiento
 
-El constructor no equivale todavía a un pipeline listo para entrenar: se está probando la integración del nuevo manifiesto con el preparador multirred sin fabricar procedencia; también faltan la evaluación integral, materializar las fuentes reales y acordar las particiones y el presupuesto. El recálculo real de variables de Chico Norte terminó el 4 de noviembre: **410.814 filas elegibles** coincidieron con las reconstruidas desde sus fuentes; el resultado persistente está en `outputs/experiments/preflight_chico_norte_features_20261104.json`. La evaluación anterior y los diez escenarios de presentación permanecen separados.
+El constructor no equivale todavía a un pipeline listo para entrenar: la integración del preparador se comprobó con fuentes sintéticas, pero aún hace falta aplicar y comprobar la reserva aprobada, ejecutar la preparación real y acordar presupuesto y criterios de aceptación. El recálculo real de variables de Chico Norte terminó el 4 de noviembre: **410.814 filas elegibles** coincidieron con las reconstruidas desde sus fuentes; el resultado persistente está en `outputs/experiments/preflight_chico_norte_features_20261104.json`. La evaluación anterior y los diez escenarios de presentación permanecen separados.
+
+**Materialización real y verificación:** el 4 de noviembre terminó el paquete `outputs/experiments/joint_chico_sur_norte_20261104_v1`, en estado `materialized_not_training_ready`. La comprobación independiente `verify_joint_materialization` confirmó integridad y enlaces de **1.975 corridas**, con **549.374 filas de variables** y **549.374 objetivos**. Chico Sur aporta 866 elegibles y 134 excluidas; Chico Norte 787 elegibles y 188 excluidas. La base SQLite tiene SHA-256 `c5e187718d634c68ced9708920c0211016259d4e0325b5457fbcd94ed2359e89`. La verificación es de integridad, no de validación hidráulica ni de aptitud para entrenar.
 
 Los avisos sobre escalas de color independientes y factores redondeados en títulos se anotaron en el [informe de figuras](2026-11-03-evaluacion-eventos-seleccionados.md); el investigador decidió no cambiar las figuras en esta etapa.
 
