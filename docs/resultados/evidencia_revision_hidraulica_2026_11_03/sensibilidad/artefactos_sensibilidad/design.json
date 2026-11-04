@@ -1,0 +1,72 @@
+{
+  "created_utc": "20261103T130312Z",
+  "sampling_seconds_target": 60,
+  "sampling_method": "first native SWMM routing step at or after each minute; no stride",
+  "source_cases": [
+    {
+      "name": "historico_no_convergencia",
+      "scenario_key": "B:shape_quasi_uniform_block:f1.400",
+      "eligible": true,
+      "manifest": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\frozen_pair_rerun_20261028\\20261028T194035Z\\B\\experiment_source_manifest.json",
+      "manifest_sha256": "68bed0e283ddafbfada42743ae49f28d4611aa1585069a8d2f6b19815313e37b",
+      "artifacts": {
+        "effective_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\frozen_pair_rerun_20261028\\20261028T194035Z\\B\\runs\\B_shape_quasi_uniform_block_f1.400\\attempt_02\\B_shape_quasi_uniform_block_f1.400.inp",
+          "sha256": "b564589b578a367413f75e1e8dda6cb12e7cda88d46b88047d0197e3ac48f0b4"
+        },
+        "event_source": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\frozen_pair_rerun_20261028\\20261028T194035Z\\B\\runs\\B_shape_quasi_uniform_block_f1.400\\source\\B_shape_quasi_uniform_block_f1.400.csv",
+          "sha256": "4c6c2028529fcfc298c2f7411f73d64aa64087cc5950eaaf54b948d8779ce6ff"
+        },
+        "swmm_rpt": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\frozen_pair_rerun_20261028\\20261028T194035Z\\B\\runs\\B_shape_quasi_uniform_block_f1.400\\attempt_02\\B_shape_quasi_uniform_block_f1.400.rpt",
+          "sha256": "ce8159703dbec40547d612dda46a899ea8bce105965ca41ca5c716492ce02ead"
+        },
+        "swmm_out": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\frozen_pair_rerun_20261028\\20261028T194035Z\\B\\runs\\B_shape_quasi_uniform_block_f1.400\\attempt_02\\B_shape_quasi_uniform_block_f1.400.out",
+          "sha256": "5dd1473a908cacf2754f1ee640dc91e62337ec22940d8e1f918cb92d4f523961"
+        }
+      }
+    },
+    {
+      "name": "meseta_nueva_factor_4_3",
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f4.300",
+      "eligible": true,
+      "manifest": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\experiment_source_manifest.json",
+      "manifest_sha256": "54a09455f6754eb9907cf832db0c8dfd714a39c51faceeabca9bba188cd41190",
+      "artifacts": {
+        "effective_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f4.300\\attempt_01\\B_novel_20261102_sustained_late_surge_f4.300.inp",
+          "sha256": "405f34ce9cec4468e39bc2eb19bf68bebaf4add30a7a758b60f08315d93df7ce"
+        },
+        "event_source": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\events\\B_novel_20261102_sustained_late_surge_f4.300.csv",
+          "sha256": "9f11bdf1aacda751a66206ede722cc2a8ed4848c1783a224b8a6a887b084ddae"
+        },
+        "swmm_rpt": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f4.300\\attempt_01\\B_novel_20261102_sustained_late_surge_f4.300.rpt",
+          "sha256": "cd9837615f9fff8b0e77f0b0917f93e239da699359eb6971aff5a1450ad62ece"
+        },
+        "swmm_out": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f4.300\\attempt_01\\B_novel_20261102_sustained_late_surge_f4.300.out",
+          "sha256": "0aa43cde35a9ae876e9ee259e2182d8723c556a8de6a51689812a1cde3e66277"
+        }
+      }
+    }
+  ],
+  "variants": {
+    "reference_5s": {
+      "routing_max_s": 5,
+      "zero_initflow": false
+    },
+    "routing_1s": {
+      "routing_max_s": 1,
+      "zero_initflow": false
+    },
+    "zero_initflow_5s": {
+      "routing_max_s": 5,
+      "zero_initflow": true
+    }
+  },
+  "warning": "Exploratory synthetic hydraulic sensitivity, not model training or network admission."
+}

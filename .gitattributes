@@ -4,3 +4,7 @@ data/hydrograph_shapes/*.csv -text -diff
 data/hydrograph_validation/chico_norte_nuevos_2026_11_02/*.csv -text -diff
 data/networks/chico_hydro-qx1/*.inp -text -diff
 data/networks/chico_norte_93_qx1/*.inp -text -diff
+
+# Evidencias conservadas junto con sus hashes: mantener bytes originales.
+docs/resultados/evidencia_revision_hidraulica_2026_11_03/** -text -diff
+docs/resultados/sensibilidad_ampliada_2026_11_03/** -text -diff

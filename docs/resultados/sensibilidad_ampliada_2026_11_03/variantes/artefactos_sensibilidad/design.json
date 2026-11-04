@@ -1,0 +1,222 @@
+{
+  "created_utc": "20261103T134733Z",
+  "sampling_seconds_target": 60,
+  "sampling_method": "first native SWMM routing step at or after each minute; no stride",
+  "source_cases": [
+    {
+      "name": "pulsos_factor_1_3",
+      "scenario_key": "B:novel_20261102_cascade_peaks:f1.300",
+      "eligible": true,
+      "manifest": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\experiment_source_manifest.json",
+      "manifest_sha256": "54a09455f6754eb9907cf832db0c8dfd714a39c51faceeabca9bba188cd41190",
+      "artifacts": {
+        "effective_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f1.300\\attempt_01\\B_novel_20261102_cascade_peaks_f1.300.inp",
+          "sha256": "44aee2edef3bfd1a6299e0ab57adda94c12403f251b4a4792915034c9ebfea48"
+        },
+        "event_source": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\events\\B_novel_20261102_cascade_peaks_f1.300.csv",
+          "sha256": "1ed8703e9f6378d735b2589369649d8a5e5f83000841ac471f6cbb01f50a6c64"
+        },
+        "swmm_rpt": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f1.300\\attempt_01\\B_novel_20261102_cascade_peaks_f1.300.rpt",
+          "sha256": "1035fb5eda8e95f7fc32646e0e749966ebe4216fbe8dd3f712fb28f7525ad521"
+        },
+        "swmm_out": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f1.300\\attempt_01\\B_novel_20261102_cascade_peaks_f1.300.out",
+          "sha256": "cc061bca02ce31b97447956426c437c79c3ac3bb1e3af90c45b6bcb03c2ec7ce"
+        }
+      }
+    },
+    {
+      "name": "pulsos_factor_2_7",
+      "scenario_key": "B:novel_20261102_cascade_peaks:f2.700",
+      "eligible": true,
+      "manifest": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\experiment_source_manifest.json",
+      "manifest_sha256": "54a09455f6754eb9907cf832db0c8dfd714a39c51faceeabca9bba188cd41190",
+      "artifacts": {
+        "effective_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f2.700\\attempt_01\\B_novel_20261102_cascade_peaks_f2.700.inp",
+          "sha256": "7d31476e51476292430d61c8ce3305715927be4704ee5753ea44c531359d4bc2"
+        },
+        "event_source": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\events\\B_novel_20261102_cascade_peaks_f2.700.csv",
+          "sha256": "5d768c4074191b687be46991e68dd9075ac7642585861cf831fc381fb53e71c4"
+        },
+        "swmm_rpt": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f2.700\\attempt_01\\B_novel_20261102_cascade_peaks_f2.700.rpt",
+          "sha256": "8b54d875ece456e34d111c8fb67f7e5f7613c8695ac048f4017a3c2db0958dd4"
+        },
+        "swmm_out": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f2.700\\attempt_01\\B_novel_20261102_cascade_peaks_f2.700.out",
+          "sha256": "6bb35009dfccf371e417d3edf722ee7909ca0649240e793e6ccf715867ed49c5"
+        }
+      }
+    },
+    {
+      "name": "pulsos_factor_3_9",
+      "scenario_key": "B:novel_20261102_cascade_peaks:f3.900",
+      "eligible": true,
+      "manifest": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\experiment_source_manifest.json",
+      "manifest_sha256": "54a09455f6754eb9907cf832db0c8dfd714a39c51faceeabca9bba188cd41190",
+      "artifacts": {
+        "effective_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f3.900\\attempt_02\\B_novel_20261102_cascade_peaks_f3.900.inp",
+          "sha256": "d45c3d3a101075b0f9e18c9f875fd6f55adb59d980e6e0748c193656888439ec"
+        },
+        "event_source": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\events\\B_novel_20261102_cascade_peaks_f3.900.csv",
+          "sha256": "e39c6e8b9d4ac5a16754a13d22d38a2ea2ccb67e22e97182b46ee8945c49d650"
+        },
+        "swmm_rpt": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f3.900\\attempt_02\\B_novel_20261102_cascade_peaks_f3.900.rpt",
+          "sha256": "edbc2b5b62cd5ab1f47ec02ee4bd8203d0ca7fbff2cd5835bc5754c9d38b4b88"
+        },
+        "swmm_out": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f3.900\\attempt_02\\B_novel_20261102_cascade_peaks_f3.900.out",
+          "sha256": "b926ab5b2f0002d971d738a42e65357493c0529216752353e3166d9304a0d30b"
+        }
+      }
+    },
+    {
+      "name": "pulsos_factor_4_3",
+      "scenario_key": "B:novel_20261102_cascade_peaks:f4.300",
+      "eligible": true,
+      "manifest": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\experiment_source_manifest.json",
+      "manifest_sha256": "54a09455f6754eb9907cf832db0c8dfd714a39c51faceeabca9bba188cd41190",
+      "artifacts": {
+        "effective_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f4.300\\attempt_02\\B_novel_20261102_cascade_peaks_f4.300.inp",
+          "sha256": "37c622e9498b92b7291a4ffd482e3b10435d9db1a5cd73e44bd4dcbbb03ee517"
+        },
+        "event_source": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\events\\B_novel_20261102_cascade_peaks_f4.300.csv",
+          "sha256": "69b92333109c52c513006cfa051d85e626e14ebc1da909ec4b23b781b7746f25"
+        },
+        "swmm_rpt": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f4.300\\attempt_02\\B_novel_20261102_cascade_peaks_f4.300.rpt",
+          "sha256": "fbeebc71fb0be5ba6bccafd59c5c2a5c3df2ca9448daca09b935d633b6000bfd"
+        },
+        "swmm_out": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f4.300\\attempt_02\\B_novel_20261102_cascade_peaks_f4.300.out",
+          "sha256": "c6629caeba81f704d20c5eaf7c29b095077377d6b02d37cdecc11aa14d4fdc1f"
+        }
+      }
+    },
+    {
+      "name": "meseta_factor_0_7",
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f0.700",
+      "eligible": true,
+      "manifest": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\experiment_source_manifest.json",
+      "manifest_sha256": "54a09455f6754eb9907cf832db0c8dfd714a39c51faceeabca9bba188cd41190",
+      "artifacts": {
+        "effective_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f0.700\\attempt_01\\B_novel_20261102_sustained_late_surge_f0.700.inp",
+          "sha256": "0697e8ca019de3abcf74a2c93f2ab2381716f5413ea0bf5c3cc7483b3d7103f0"
+        },
+        "event_source": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\events\\B_novel_20261102_sustained_late_surge_f0.700.csv",
+          "sha256": "4a20a410eb5acd0bbf0ef002aa9a513b2b7706e552b4a02f573b14f31c85b08c"
+        },
+        "swmm_rpt": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f0.700\\attempt_01\\B_novel_20261102_sustained_late_surge_f0.700.rpt",
+          "sha256": "601c7bdeee3013f6d3d93da098cb8e6cf328fe42575f69d6cc5d996662f836e7"
+        },
+        "swmm_out": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f0.700\\attempt_01\\B_novel_20261102_sustained_late_surge_f0.700.out",
+          "sha256": "f19da145ce3d5041888495b000348f9c721690a0546ab20858886d667e0731ae"
+        }
+      }
+    },
+    {
+      "name": "meseta_factor_1_3",
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f1.300",
+      "eligible": true,
+      "manifest": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\experiment_source_manifest.json",
+      "manifest_sha256": "54a09455f6754eb9907cf832db0c8dfd714a39c51faceeabca9bba188cd41190",
+      "artifacts": {
+        "effective_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f1.300\\attempt_01\\B_novel_20261102_sustained_late_surge_f1.300.inp",
+          "sha256": "61ecd6b37b7e937554504750a68bd8b778adad3aa88910d632d89fdd7a4d203c"
+        },
+        "event_source": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\events\\B_novel_20261102_sustained_late_surge_f1.300.csv",
+          "sha256": "2961a0be53870783337849efd61ba5c5942409c4a831db96b78ce687871637c3"
+        },
+        "swmm_rpt": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f1.300\\attempt_01\\B_novel_20261102_sustained_late_surge_f1.300.rpt",
+          "sha256": "c41bdc49ef85f0840127c22bc6077595b8c4098b5db990f87b3f0e17cf560502"
+        },
+        "swmm_out": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f1.300\\attempt_01\\B_novel_20261102_sustained_late_surge_f1.300.out",
+          "sha256": "b89367fbd7d987719d7a6789cd66e210dc49bffd4d203592dcab5692f1ef5c36"
+        }
+      }
+    },
+    {
+      "name": "meseta_factor_2_7",
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f2.700",
+      "eligible": true,
+      "manifest": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\experiment_source_manifest.json",
+      "manifest_sha256": "54a09455f6754eb9907cf832db0c8dfd714a39c51faceeabca9bba188cd41190",
+      "artifacts": {
+        "effective_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f2.700\\attempt_01\\B_novel_20261102_sustained_late_surge_f2.700.inp",
+          "sha256": "177204dd1d9bdda4f3005cc9f16eff3d38860ed9e237d9201792140e9b1a6a03"
+        },
+        "event_source": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\events\\B_novel_20261102_sustained_late_surge_f2.700.csv",
+          "sha256": "72e9727f55ea13a7d363a7230405ed96453d1e9bbefa3fec39212bddfdc4f0b7"
+        },
+        "swmm_rpt": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f2.700\\attempt_01\\B_novel_20261102_sustained_late_surge_f2.700.rpt",
+          "sha256": "e9c3f50201dcf74760db46781147d42b5456037380514339a172923b43816cbc"
+        },
+        "swmm_out": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f2.700\\attempt_01\\B_novel_20261102_sustained_late_surge_f2.700.out",
+          "sha256": "a29299cf6dd514babb68ea2eea23f4252e8a48509240c72f318fb7984fe699d4"
+        }
+      }
+    },
+    {
+      "name": "meseta_factor_3_9",
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f3.900",
+      "eligible": true,
+      "manifest": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\experiment_source_manifest.json",
+      "manifest_sha256": "54a09455f6754eb9907cf832db0c8dfd714a39c51faceeabca9bba188cd41190",
+      "artifacts": {
+        "effective_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f3.900\\attempt_01\\B_novel_20261102_sustained_late_surge_f3.900.inp",
+          "sha256": "44ecafb9eaa6158ec6d4353067f6fcd55ca9ec56d3a4ac35bcb12edd4ca7a711"
+        },
+        "event_source": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\events\\B_novel_20261102_sustained_late_surge_f3.900.csv",
+          "sha256": "5ec59e182acc2242ac58a59b453609238f75fd0ab6e645ad8687445fff2a8968"
+        },
+        "swmm_rpt": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f3.900\\attempt_01\\B_novel_20261102_sustained_late_surge_f3.900.rpt",
+          "sha256": "04e233dfb6f3f6696898d05577aece3beee61860b43973da5ce73f1e3c51cfe6"
+        },
+        "swmm_out": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_sustained_late_surge_f3.900\\attempt_01\\B_novel_20261102_sustained_late_surge_f3.900.out",
+          "sha256": "cea58dbfaf54ab6a57baf7bbaa21ccd089f89ece5df413163000578a95f52d8f"
+        }
+      }
+    }
+  ],
+  "variants": {
+    "reference_5s": {
+      "routing_max_s": 5,
+      "zero_initflow": false
+    },
+    "routing_1s": {
+      "routing_max_s": 1,
+      "zero_initflow": false
+    },
+    "zero_initflow_5s": {
+      "routing_max_s": 5,
+      "zero_initflow": true
+    }
+  },
+  "warning": "Exploratory synthetic hydraulic sensitivity, not model training or network admission."
+}

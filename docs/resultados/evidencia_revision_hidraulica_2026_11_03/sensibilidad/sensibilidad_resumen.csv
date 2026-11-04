@@ -1,0 +1,7 @@
+caso,variante,continuidad_pct,pasos_sin_convergencia_pct,fii_max,fii_conducto,volumen_total_m3,nodos_inundados_ge_1m3,diferencia_volumen_total_m3,nodos_con_volumen_distinto,max_diferencia_nodo_m3,rmse_diferencia_nodal_m3
+historico_no_convergencia,reference_5s,0.328,72.09,112,T463,18046.0,64,0.0,0,0.0,0.0
+historico_no_convergencia,routing_1s,0.328,56.26,87,T463,18046.0,64,0.0,0,0.0,0.0
+historico_no_convergencia,zero_initflow_5s,-0.034,72.89,113,T463,18053.0,64,7.0,5,3.0,0.15781069215799978
+meseta_nueva_factor_4_3,reference_5s,0.191,49.5,80,T463,116608.0,253,0.0,0,0.0,0.0
+meseta_nueva_factor_4_3,routing_1s,0.203,42.29,74,T463,116583.0,253,-25.0,21,6.0,0.3739608847125848
+meseta_nueva_factor_4_3,zero_initflow_5s,-0.02,50.44,82,T463,116613.0,253,5.0,13,1.0,0.15781069215799978

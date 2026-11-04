@@ -1,0 +1,36 @@
+{
+  "experiment": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T132030Z",
+  "source_checks": [
+    {
+      "case": "pulsos_nuevos_factor_0_7",
+      "node_volumes_match": true,
+      "key_diagnostics_match": true
+    }
+  ],
+  "sampling": "SWMM OUT at exact one-minute reporting intervals, with no time-stride forcing",
+  "rpt_volume_resolution_m3": 1,
+  "files_sha256": {
+    "artefactos_sensibilidad/design.json": "167750effc86639b012f41e20dd6762ec17bd4992bca93acde583a0f90ed08e5",
+    "artefactos_sensibilidad/pulsos_nuevos_factor_0_7_reference_5s.inp": "2a3c9cc8fb4109ced67b48d5cedf0c208f71507bc4ce9abfd7dcc660b22278fc",
+    "artefactos_sensibilidad/pulsos_nuevos_factor_0_7_reference_5s.rpt": "3f216654b94b87411762d8bd7d392e974e6ab80d62154d2d3643719ac249d5e9",
+    "artefactos_sensibilidad/pulsos_nuevos_factor_0_7_reference_5s_series_1min.csv": "1179647193e97ba7ae5a57d6950889a4d518d5163a81654e0209e4ac9cd465dd",
+    "artefactos_sensibilidad/pulsos_nuevos_factor_0_7_reference_5s_volumen_nodos.csv": "4f07eff38eda15f7c18ef7062538ac504d9ec1fc4c9a061c40051ab98a731194",
+    "artefactos_sensibilidad/pulsos_nuevos_factor_0_7_routing_1s.inp": "f744c773f25bb7b96b9f617e7095fafdb57726ed32dd3dd564fbd970ca40d124",
+    "artefactos_sensibilidad/pulsos_nuevos_factor_0_7_routing_1s.rpt": "c7f791cd01c82cec1975a06ee6d872bb4ba4e1e8e33d820de8da7c175d785137",
+    "artefactos_sensibilidad/pulsos_nuevos_factor_0_7_routing_1s_series_1min.csv": "2f18ce21439bea17ecb023a22d3b160852e7bf2b024b5581d3be462359f4956e",
+    "artefactos_sensibilidad/pulsos_nuevos_factor_0_7_routing_1s_volumen_nodos.csv": "4f07eff38eda15f7c18ef7062538ac504d9ec1fc4c9a061c40051ab98a731194",
+    "artefactos_sensibilidad/pulsos_nuevos_factor_0_7_zero_initflow_5s.inp": "8dfec3fe5b6b7738b07db693ee8e79422a2a8944cf13c30acfdc8d7924ef305b",
+    "artefactos_sensibilidad/pulsos_nuevos_factor_0_7_zero_initflow_5s.rpt": "3a56720fb5d0505fdfa97f36ca60a1a7dc43685717729cd84fb9a787259a8e5b",
+    "artefactos_sensibilidad/pulsos_nuevos_factor_0_7_zero_initflow_5s_series_1min.csv": "97890684f685dcbe1a7766ef58a26d1181aac8deaa948cc934424fabc0eb1fcf",
+    "artefactos_sensibilidad/pulsos_nuevos_factor_0_7_zero_initflow_5s_volumen_nodos.csv": "4f07eff38eda15f7c18ef7062538ac504d9ec1fc4c9a061c40051ab98a731194",
+    "artefactos_sensibilidad/results.json": "aeaed0b7772a5faa9d1ececf4db6fe1c503c9e191f59e868c93784ffc1416aba",
+    "graficas_sensibilidad/pulsos_nuevos_factor_0_7_396I_depth.png": "411dbc541b07b0689f0d9e4532bd05e357746ef9ade7b0ba19a523869d7dcdb8",
+    "graficas_sensibilidad/pulsos_nuevos_factor_0_7_523C_depth.png": "62ce96447bcca240b52bc245bfbadc61a6e7e513f752dd1f21295f55d8f5f45a",
+    "graficas_sensibilidad/pulsos_nuevos_factor_0_7_T463_flow.png": "51630a217eadf3bdb56608f9bc73616b9626ecf2d1c4eb6b170015cb73c9831e",
+    "graficas_sensibilidad/pulsos_nuevos_factor_0_7_T507_flow.png": "f4695a1c087f8019935c8e99348322dfd33470b1e09f192ffcc947a9b059a01e",
+    "graficas_sensibilidad/pulsos_nuevos_factor_0_7_T508_flow.png": "5f04ee644a6c07cc0ca7adcd66fa9b90d8ff5e3da5f14083680325630678fc4a",
+    "graficas_sensibilidad/pulsos_nuevos_factor_0_7_T92_flow.png": "ba59e0d9742da85e1c5ef22c6ed1b3a22a8fc8f1a27d1eda8cf1e39ab430b2a7",
+    "sensibilidad_resumen.csv": "5db359d969625a82c6ee10ad3778529edb1c91220cd9cc0a3b3efcc75afb0d09",
+    "sensibilidad_series_resumen.csv": "9c79712cea3b8517c742c624e16fa8e9912f6127d4fadedade0e27f840c31379"
+  }
+}

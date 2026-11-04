@@ -1,0 +1,47 @@
+{
+  "created_utc": "20261103T132030Z",
+  "sampling_seconds_target": 60,
+  "sampling_method": "first native SWMM routing step at or after each minute; no stride",
+  "source_cases": [
+    {
+      "name": "pulsos_nuevos_factor_0_7",
+      "scenario_key": "B:novel_20261102_cascade_peaks:f0.700",
+      "eligible": true,
+      "manifest": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\experiment_source_manifest.json",
+      "manifest_sha256": "54a09455f6754eb9907cf832db0c8dfd714a39c51faceeabca9bba188cd41190",
+      "artifacts": {
+        "effective_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f0.700\\attempt_01\\B_novel_20261102_cascade_peaks_f0.700.inp",
+          "sha256": "2458f0cd2cb4c2681054e754f3327a381c0e975ca74b1ba00e36558f7e2128c5"
+        },
+        "event_source": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\events\\B_novel_20261102_cascade_peaks_f0.700.csv",
+          "sha256": "cc61c972ee98f9fa52f8dae73d6fac3b42e47612c5fd2536e9475752fd861b6b"
+        },
+        "swmm_rpt": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f0.700\\attempt_01\\B_novel_20261102_cascade_peaks_f0.700.rpt",
+          "sha256": "8ed80f10f28c28d54548ce1a73736b868031c817e1c76a186a6e9c3d32057e54"
+        },
+        "swmm_out": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z\\runs\\B_novel_20261102_cascade_peaks_f0.700\\attempt_01\\B_novel_20261102_cascade_peaks_f0.700.out",
+          "sha256": "b17e2dd66f4a29f0ae4dad91eefd36011461424e6c852c0bd7626815477a6aeb"
+        }
+      }
+    }
+  ],
+  "variants": {
+    "reference_5s": {
+      "routing_max_s": 5,
+      "zero_initflow": false
+    },
+    "routing_1s": {
+      "routing_max_s": 1,
+      "zero_initflow": false
+    },
+    "zero_initflow_5s": {
+      "routing_max_s": 5,
+      "zero_initflow": true
+    }
+  },
+  "warning": "Exploratory synthetic hydraulic sensitivity, not model training or network admission."
+}

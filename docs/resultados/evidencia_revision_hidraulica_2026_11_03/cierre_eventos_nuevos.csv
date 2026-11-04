@@ -1,0 +1,11 @@
+scenario_key,nodes,nodes_final_nonzero,max_final_lps
+B:novel_20261102_cascade_peaks:f0.700,521,0,0.0
+B:novel_20261102_cascade_peaks:f1.300,521,0,0.0
+B:novel_20261102_cascade_peaks:f2.700,521,0,0.0
+B:novel_20261102_cascade_peaks:f3.900,521,0,0.0
+B:novel_20261102_cascade_peaks:f4.300,521,0,0.0
+B:novel_20261102_sustained_late_surge:f0.700,521,0,0.0
+B:novel_20261102_sustained_late_surge:f1.300,521,0,0.0
+B:novel_20261102_sustained_late_surge:f2.700,521,0,0.0
+B:novel_20261102_sustained_late_surge:f3.900,521,0,0.0
+B:novel_20261102_sustained_late_surge:f4.300,521,0,0.0

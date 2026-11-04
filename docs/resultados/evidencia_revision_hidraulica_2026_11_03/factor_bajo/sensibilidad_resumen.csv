@@ -1,0 +1,4 @@
+caso,variante,continuidad_pct,pasos_sin_convergencia_pct,fii_max,fii_conducto,volumen_total_m3,nodos_inundados_ge_1m3,diferencia_volumen_total_m3,nodos_con_volumen_distinto,max_diferencia_nodo_m3,rmse_diferencia_nodal_m3
+pulsos_nuevos_factor_0_7,reference_5s,3.007,0.0,8,T508,0.0,0,0.0,0,0.0,0.0
+pulsos_nuevos_factor_0_7,routing_1s,3.007,0.0,6,T508,0.0,0,0.0,0,0.0,0.0
+pulsos_nuevos_factor_0_7,zero_initflow_5s,0.001,0.0,8,T508,0.0,0,0.0,0,0.0,0.0

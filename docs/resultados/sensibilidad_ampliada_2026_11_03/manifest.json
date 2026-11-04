@@ -1,0 +1,27 @@
+{
+  "source_experiments": [
+    "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T130312Z",
+    "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T132030Z",
+    "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T134733Z"
+  ],
+  "source_design_and_results_sha256": {
+    "outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T130312Z\\design.json": "bfc8863c722438e7238b8110bf4a4c802e2518c30785d299646513d2dfaf9571",
+    "outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T130312Z\\results.json": "0ea3e561e9085d2345875b18b595a5f7b8c7925dbbada4495ac74837a1e5b944",
+    "outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T132030Z\\design.json": "167750effc86639b012f41e20dd6762ec17bd4992bca93acde583a0f90ed08e5",
+    "outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T132030Z\\results.json": "aeaed0b7772a5faa9d1ececf4db6fe1c503c9e191f59e868c93784ffc1416aba",
+    "outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T134733Z\\design.json": "746a2186ae16bc1a2530cada2470d1572cefb943d7e7a7a77c4285b65179733a",
+    "outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T134733Z\\results.json": "bb3e45715e8952b9822553c9a37311550e3b1baa058fc4d6d5620fa3656f512c"
+  },
+  "files_sha256": {
+    "cambios_clase_por_nodo.csv": "fff3694de95bd01f8c86fdf336b574d3a0fedbb38f088ab45c895ffdbc69046f",
+    "comparacion_diez_escenarios.csv": "12b5f809f569c150b3b4f9bc4eb15bf954168e3487753a25fc01c14a429b44f3",
+    "meseta_continuidad_pct.png": "53e135d458007d60421bc80f0a994f63be7423478bafcb3227749d99acf10d8f",
+    "meseta_pasos_sin_convergencia_pct.png": "e4c5b45522baec8ccc72f82ae5391b51846ef9b82d433e584f8dcf7a5227d4e6",
+    "meseta_volumen_total_m3.png": "2d45c5688a0ffcc4b6b42aa016ba90eb34c440d6e3ed7aa458244b58a2d4deaf",
+    "pulsos_continuidad_pct.png": "c6150e26a3420aebb755fbd2d5ef1e619a2fc2131acc463486925fe9fb308a0d",
+    "pulsos_pasos_sin_convergencia_pct.png": "64852f8050453138c82e1debc5b1fb3b4d962be5d4ecc48a0129d9d49ea9c1cb",
+    "pulsos_volumen_total_m3.png": "015717f9e397788661727d4e9e6c702b57d704e3f75a5ca4996870f3d929c321"
+  },
+  "baseline_volume_absolute_tolerance_m3": 1e-06,
+  "warning": "Exploratorio, no prueba ciega ni validación física."
+}

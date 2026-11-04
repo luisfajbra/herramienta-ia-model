@@ -1,0 +1,4 @@
+caso,variante,horas_drenaje,continuidad_pct,cobertura_finita,estado_drenaje,fallos_drenaje,max_residual_lps,max_flooding_lps,max_storage_change_m3
+pulsos_nuevos_factor_0_7,reference_5s,8.0,3.007,True,drained,,0.008291848003864288,0.0,0.0
+pulsos_nuevos_factor_0_7,routing_1s,8.0,3.007,True,drained,,0.00836271233856678,0.0,0.0
+pulsos_nuevos_factor_0_7,zero_initflow_5s,8.0,0.001,True,drained,,0.008274360559880733,0.0,0.0

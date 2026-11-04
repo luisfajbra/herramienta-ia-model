@@ -1,0 +1,25 @@
+caso,comparacion,cambios_verificados,cambios_no_autorizados
+pulsos_factor_1_3,reference_vs_original,"{""REPORT_STEP"": 1, ""ROUTING_STEP"": 1}",0
+pulsos_factor_1_3,routing_1s_vs_reference,"{""ROUTING_STEP"": 1}",0
+pulsos_factor_1_3,zero_initflow_vs_reference,"{""InitFlow"": 522}",0
+pulsos_factor_2_7,reference_vs_original,"{""REPORT_STEP"": 1, ""ROUTING_STEP"": 1}",0
+pulsos_factor_2_7,routing_1s_vs_reference,"{""ROUTING_STEP"": 1}",0
+pulsos_factor_2_7,zero_initflow_vs_reference,"{""InitFlow"": 522}",0
+pulsos_factor_3_9,reference_vs_original,"{""REPORT_STEP"": 1, ""ROUTING_STEP"": 1}",0
+pulsos_factor_3_9,routing_1s_vs_reference,"{""ROUTING_STEP"": 1}",0
+pulsos_factor_3_9,zero_initflow_vs_reference,"{""InitFlow"": 522}",0
+pulsos_factor_4_3,reference_vs_original,"{""REPORT_STEP"": 1, ""ROUTING_STEP"": 1}",0
+pulsos_factor_4_3,routing_1s_vs_reference,"{""ROUTING_STEP"": 1}",0
+pulsos_factor_4_3,zero_initflow_vs_reference,"{""InitFlow"": 522}",0
+meseta_factor_0_7,reference_vs_original,"{""REPORT_STEP"": 1, ""ROUTING_STEP"": 1}",0
+meseta_factor_0_7,routing_1s_vs_reference,"{""ROUTING_STEP"": 1}",0
+meseta_factor_0_7,zero_initflow_vs_reference,"{""InitFlow"": 522}",0
+meseta_factor_1_3,reference_vs_original,"{""REPORT_STEP"": 1, ""ROUTING_STEP"": 1}",0
+meseta_factor_1_3,routing_1s_vs_reference,"{""ROUTING_STEP"": 1}",0
+meseta_factor_1_3,zero_initflow_vs_reference,"{""InitFlow"": 522}",0
+meseta_factor_2_7,reference_vs_original,"{""REPORT_STEP"": 1, ""ROUTING_STEP"": 1}",0
+meseta_factor_2_7,routing_1s_vs_reference,"{""ROUTING_STEP"": 1}",0
+meseta_factor_2_7,zero_initflow_vs_reference,"{""InitFlow"": 522}",0
+meseta_factor_3_9,reference_vs_original,"{""REPORT_STEP"": 1, ""ROUTING_STEP"": 1}",0
+meseta_factor_3_9,routing_1s_vs_reference,"{""ROUTING_STEP"": 1}",0
+meseta_factor_3_9,zero_initflow_vs_reference,"{""InitFlow"": 522}",0

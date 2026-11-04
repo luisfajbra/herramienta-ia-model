@@ -1,0 +1,67 @@
+{
+  "created_utc": "20261103T132556Z",
+  "source_experiment": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T130312Z",
+  "source_design_sha256": "bfc8863c722438e7238b8110bf4a4c802e2518c30785d299646513d2dfaf9571",
+  "source_results_sha256": "0ea3e561e9085d2345875b18b595a5f7b8c7925dbbada4495ac74837a1e5b944",
+  "windows_seconds_since_simulation_start": [
+    [
+      0,
+      900
+    ],
+    [
+      40500,
+      45000
+    ]
+  ],
+  "method": "capture elapsed decimal days returned by native swmm_step, converted to seconds; no stride or input change",
+  "sources": [
+    {
+      "case": "historico_no_convergencia",
+      "variant": "reference_5s",
+      "inp": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T130312Z\\historico_no_convergencia\\reference_5s\\scenario.inp",
+      "inp_sha256": "e8e4bde414d7f7e8ce2795e77cc80ca86bb7ef0c2deee60a38eecd7d705c31b0",
+      "rpt_sha256": "55fc86469df6e531ac026c48c0d7e028a6d6ed8e933cd7acd5b693dffd19ab44",
+      "node_volumes_sha256": "fcaed73aeea42775cd3196f9c43009a344a05ec0f7a9d7082c2ce84fb9b08b21"
+    },
+    {
+      "case": "historico_no_convergencia",
+      "variant": "routing_1s",
+      "inp": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T130312Z\\historico_no_convergencia\\routing_1s\\scenario.inp",
+      "inp_sha256": "a84823c6170eb2c1484631d8d48b88978409123692a0028f728980ea61f19ff3",
+      "rpt_sha256": "6820d8dde5def9a2b616eeaf9b80abc7cfd610bfcd7bef027885af24bdd6a26d",
+      "node_volumes_sha256": "fcaed73aeea42775cd3196f9c43009a344a05ec0f7a9d7082c2ce84fb9b08b21"
+    },
+    {
+      "case": "historico_no_convergencia",
+      "variant": "zero_initflow_5s",
+      "inp": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T130312Z\\historico_no_convergencia\\zero_initflow_5s\\scenario.inp",
+      "inp_sha256": "3e426d0eb0ae9d326ee7ed184640ab212a1bf3c2d53773b47426f571469d2501",
+      "rpt_sha256": "336441bcf435d6c7ce6c8fbc3ddc8205b818fd981e1778040611848c9cc0c4ce",
+      "node_volumes_sha256": "69bd403bb7e0a2c042af33a77987c3206c91b493f893f8c3fe2186120fb2941f"
+    },
+    {
+      "case": "meseta_nueva_factor_4_3",
+      "variant": "reference_5s",
+      "inp": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T130312Z\\meseta_nueva_factor_4_3\\reference_5s\\scenario.inp",
+      "inp_sha256": "62f05fddd27a53b6dfc2d248a93630c3915c4e1f54666c790b73c9ec88e6ab8f",
+      "rpt_sha256": "1776d2a80575d54ae8b6bb1a70f4a5a69ad9e70133cb1bbaf4bf6d616d05aaf5",
+      "node_volumes_sha256": "a5e3d90d554ece0c4a1728074a262c830e84bea2bbb512cb59beabd1f0840a06"
+    },
+    {
+      "case": "meseta_nueva_factor_4_3",
+      "variant": "routing_1s",
+      "inp": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T130312Z\\meseta_nueva_factor_4_3\\routing_1s\\scenario.inp",
+      "inp_sha256": "927843cb318be0ab9e5f308991f7ef172d6033e88df83900b212957e5c402f10",
+      "rpt_sha256": "8ab80d827da75afe8ef59ec43f6714c02ce0c0b69e2e9a6608288a572c04a67c",
+      "node_volumes_sha256": "658bdfea9969e9d79840b84aaa829f530f4efdd59c239f53463beaa06587df7d"
+    },
+    {
+      "case": "meseta_nueva_factor_4_3",
+      "variant": "zero_initflow_5s",
+      "inp": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T130312Z\\meseta_nueva_factor_4_3\\zero_initflow_5s\\scenario.inp",
+      "inp_sha256": "f0223b1a49079d879f5525105d8d49bf8065445635219b3678d027abe859f470",
+      "rpt_sha256": "0dc04aa6bf64c2cf7b2c17cdb27d39dd37e2a04060a7057268605aba214ecedf",
+      "node_volumes_sha256": "01ef1eabcfe6920af7b2a66dbbb939072dd3e29b88352f16e7fb1cdf43832b0b"
+    }
+  ]
+}

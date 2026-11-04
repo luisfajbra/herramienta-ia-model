@@ -1,0 +1,4 @@
+caso,variante,aporte_externo_m3,salida_externa_m3,perdida_inundacion_m3,volumen_inicial_m3,volumen_final_m3
+pulsos_nuevos_factor_0_7,reference_5s,22318.0,25573.0,0.0,4048.0,0.0
+pulsos_nuevos_factor_0_7,routing_1s,22318.0,25573.0,0.0,4048.0,0.0
+pulsos_nuevos_factor_0_7,zero_initflow_5s,22317.0,22316.0,0.0,0.0,0.0

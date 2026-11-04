@@ -1,0 +1,7 @@
+caso,variante,horas_drenaje,continuidad_pct,cobertura_finita,estado_drenaje,fallos_drenaje,max_residual_lps,max_flooding_lps,max_storage_change_m3
+historico_no_convergencia,reference_5s,10.0,0.328,True,drained,,0.003640109207481146,0.0,0.0
+historico_no_convergencia,routing_1s,10.0,0.328,True,drained,,0.0036492738872766495,0.0,0.0
+historico_no_convergencia,zero_initflow_5s,10.0,-0.034,True,drained,,0.003640107112005353,0.0,0.0
+meseta_nueva_factor_4_3,reference_5s,8.0,0.191,True,drained,,0.00963347963988781,0.0,0.0
+meseta_nueva_factor_4_3,routing_1s,8.0,0.203,True,drained,,0.009621904231607914,0.0,0.0
+meseta_nueva_factor_4_3,zero_initflow_5s,8.0,-0.02,True,drained,,0.009642770513892174,0.0,0.0

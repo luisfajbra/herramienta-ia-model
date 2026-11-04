@@ -1,0 +1,59 @@
+{
+  "experiment": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_hydraulic_sensitivity_20261103T130312Z",
+  "source_checks": [
+    {
+      "case": "historico_no_convergencia",
+      "node_volumes_match": true,
+      "key_diagnostics_match": true
+    },
+    {
+      "case": "meseta_nueva_factor_4_3",
+      "node_volumes_match": true,
+      "key_diagnostics_match": true
+    }
+  ],
+  "sampling": "SWMM OUT at exact one-minute reporting intervals, with no time-stride forcing",
+  "rpt_volume_resolution_m3": 1,
+  "files_sha256": {
+    "artefactos_sensibilidad/design.json": "bfc8863c722438e7238b8110bf4a4c802e2518c30785d299646513d2dfaf9571",
+    "artefactos_sensibilidad/historico_no_convergencia_reference_5s.inp": "e8e4bde414d7f7e8ce2795e77cc80ca86bb7ef0c2deee60a38eecd7d705c31b0",
+    "artefactos_sensibilidad/historico_no_convergencia_reference_5s.rpt": "55fc86469df6e531ac026c48c0d7e028a6d6ed8e933cd7acd5b693dffd19ab44",
+    "artefactos_sensibilidad/historico_no_convergencia_reference_5s_series_1min.csv": "1748b774fb2d6f22ec95b9888586a3735029ec9b9649704cbc1a857a93dc7b40",
+    "artefactos_sensibilidad/historico_no_convergencia_reference_5s_volumen_nodos.csv": "fcaed73aeea42775cd3196f9c43009a344a05ec0f7a9d7082c2ce84fb9b08b21",
+    "artefactos_sensibilidad/historico_no_convergencia_routing_1s.inp": "a84823c6170eb2c1484631d8d48b88978409123692a0028f728980ea61f19ff3",
+    "artefactos_sensibilidad/historico_no_convergencia_routing_1s.rpt": "6820d8dde5def9a2b616eeaf9b80abc7cfd610bfcd7bef027885af24bdd6a26d",
+    "artefactos_sensibilidad/historico_no_convergencia_routing_1s_series_1min.csv": "757ece673eedef1495a2fc7213d9ad2f7d91e4baae19a9f998190165afe9fa8b",
+    "artefactos_sensibilidad/historico_no_convergencia_routing_1s_volumen_nodos.csv": "fcaed73aeea42775cd3196f9c43009a344a05ec0f7a9d7082c2ce84fb9b08b21",
+    "artefactos_sensibilidad/historico_no_convergencia_zero_initflow_5s.inp": "3e426d0eb0ae9d326ee7ed184640ab212a1bf3c2d53773b47426f571469d2501",
+    "artefactos_sensibilidad/historico_no_convergencia_zero_initflow_5s.rpt": "336441bcf435d6c7ce6c8fbc3ddc8205b818fd981e1778040611848c9cc0c4ce",
+    "artefactos_sensibilidad/historico_no_convergencia_zero_initflow_5s_series_1min.csv": "1d75620ddbc4b370f7f8fb2fb4b740586c690451be1bcaca97cc81050a523c4b",
+    "artefactos_sensibilidad/historico_no_convergencia_zero_initflow_5s_volumen_nodos.csv": "69bd403bb7e0a2c042af33a77987c3206c91b493f893f8c3fe2186120fb2941f",
+    "artefactos_sensibilidad/meseta_nueva_factor_4_3_reference_5s.inp": "62f05fddd27a53b6dfc2d248a93630c3915c4e1f54666c790b73c9ec88e6ab8f",
+    "artefactos_sensibilidad/meseta_nueva_factor_4_3_reference_5s.rpt": "1776d2a80575d54ae8b6bb1a70f4a5a69ad9e70133cb1bbaf4bf6d616d05aaf5",
+    "artefactos_sensibilidad/meseta_nueva_factor_4_3_reference_5s_series_1min.csv": "955f23dd2823116b6b04eee5f0dd86433d2785cd0491a2a4a76f6352c71e556d",
+    "artefactos_sensibilidad/meseta_nueva_factor_4_3_reference_5s_volumen_nodos.csv": "a5e3d90d554ece0c4a1728074a262c830e84bea2bbb512cb59beabd1f0840a06",
+    "artefactos_sensibilidad/meseta_nueva_factor_4_3_routing_1s.inp": "927843cb318be0ab9e5f308991f7ef172d6033e88df83900b212957e5c402f10",
+    "artefactos_sensibilidad/meseta_nueva_factor_4_3_routing_1s.rpt": "8ab80d827da75afe8ef59ec43f6714c02ce0c0b69e2e9a6608288a572c04a67c",
+    "artefactos_sensibilidad/meseta_nueva_factor_4_3_routing_1s_series_1min.csv": "28ed13563a44c1c1830fdf18a0e40f09e4d2ddb0b9cfd1e640782c51ae8b5e3b",
+    "artefactos_sensibilidad/meseta_nueva_factor_4_3_routing_1s_volumen_nodos.csv": "658bdfea9969e9d79840b84aaa829f530f4efdd59c239f53463beaa06587df7d",
+    "artefactos_sensibilidad/meseta_nueva_factor_4_3_zero_initflow_5s.inp": "f0223b1a49079d879f5525105d8d49bf8065445635219b3678d027abe859f470",
+    "artefactos_sensibilidad/meseta_nueva_factor_4_3_zero_initflow_5s.rpt": "0dc04aa6bf64c2cf7b2c17cdb27d39dd37e2a04060a7057268605aba214ecedf",
+    "artefactos_sensibilidad/meseta_nueva_factor_4_3_zero_initflow_5s_series_1min.csv": "e762d3a0c819296a5203ae2fb8b20242d3e473e6477ab615619e4aa9c2380e4a",
+    "artefactos_sensibilidad/meseta_nueva_factor_4_3_zero_initflow_5s_volumen_nodos.csv": "01ef1eabcfe6920af7b2a66dbbb939072dd3e29b88352f16e7fb1cdf43832b0b",
+    "artefactos_sensibilidad/results.json": "0ea3e561e9085d2345875b18b595a5f7b8c7925dbbada4495ac74837a1e5b944",
+    "graficas_sensibilidad/historico_no_convergencia_396I_depth.png": "c357f45594d3427c81a88f83b05f20924a7f4c00f53f44adbf30434f762860e3",
+    "graficas_sensibilidad/historico_no_convergencia_523C_depth.png": "55ad32e1de7152f26559105a1bd6c599c2bc03112b1bc50a9021fc72fb182024",
+    "graficas_sensibilidad/historico_no_convergencia_T463_flow.png": "1d9dc4aa04332ae9bf9f86ea333702d17998a7eba396a9c43e384a29d9302e66",
+    "graficas_sensibilidad/historico_no_convergencia_T507_flow.png": "893d8b987b2aa0388b7ff7fc607e44f215e0b4c2f049bce6b099b8fb149a88d6",
+    "graficas_sensibilidad/historico_no_convergencia_T508_flow.png": "8738837c9073d440a26ab338c263411ea3077ab8d636946ef22f6ca70b7cb616",
+    "graficas_sensibilidad/historico_no_convergencia_T92_flow.png": "9e79ff4d917cf56cf259baa8de9239826de4c2ad579d24d6d81bc67aa6380fa0",
+    "graficas_sensibilidad/meseta_nueva_factor_4_3_396I_depth.png": "fcf89eaf972c2982680f8449ba645107594aa817e28ffbda0397608b620bbb50",
+    "graficas_sensibilidad/meseta_nueva_factor_4_3_523C_depth.png": "66f9249d5c89dac99cae142664005781be9c157d171f8c3245695714fa7b792d",
+    "graficas_sensibilidad/meseta_nueva_factor_4_3_T463_flow.png": "994f328de7004fff1c13522c021810f06b3d43b5e4cc28aa9cd11da87abc46fd",
+    "graficas_sensibilidad/meseta_nueva_factor_4_3_T507_flow.png": "486ec403f21ebbadfe17919a8464f5a74ef2705a2a349987834999a385926c43",
+    "graficas_sensibilidad/meseta_nueva_factor_4_3_T508_flow.png": "ed8e58d929b65061a040d5dd56744a6cf0bae26a8e9743d770e79a9b14486c50",
+    "graficas_sensibilidad/meseta_nueva_factor_4_3_T92_flow.png": "3a8fdbc7693c912221b654d56208fbdee54040d556250120ca7ec683e9cf9a20",
+    "sensibilidad_resumen.csv": "21af5f41296f60b8b6fe7d58223967aabb4b8f26db32fdf1828d5050254c34bc",
+    "sensibilidad_series_resumen.csv": "b28fbb4dce86be30a5af7658db634a9080d86b3b63da4c9dfa7d86698b42434d"
+  }
+}

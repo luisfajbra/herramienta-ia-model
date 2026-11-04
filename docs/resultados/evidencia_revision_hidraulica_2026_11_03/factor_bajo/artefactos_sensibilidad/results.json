@@ -1,0 +1,80 @@
+[
+  {
+    "case": "pulsos_nuevos_factor_0_7",
+    "scenario_key": "B:novel_20261102_cascade_peaks:f0.700",
+    "variant": "reference_5s",
+    "elapsed_seconds": 21.11,
+    "changed_initial_flows": 0,
+    "continuity_error_pct": 3.007,
+    "steps_not_converging_pct": 0.0,
+    "routing_min_s": 0.5,
+    "routing_average_s": 1.18,
+    "routing_max_s": 5.0,
+    "top_fii_link": "T508",
+    "top_fii": 8,
+    "top_nonconverging_node": null,
+    "top_nonconverging_node_pct": null,
+    "flood_volume_m3_rpt": 0.0,
+    "flooded_nodes_ge_1m3": 0,
+    "samples": 899,
+    "artifacts": {
+      "scenario.inp": "2a3c9cc8fb4109ced67b48d5cedf0c208f71507bc4ce9abfd7dcc660b22278fc",
+      "scenario.rpt": "3f216654b94b87411762d8bd7d392e974e6ab80d62154d2d3643719ac249d5e9",
+      "scenario.out": "d34207407496cc8a7ea8f2fd329d22ceb865e6081ef7b727a7b7ea0a348d8b65",
+      "selected_timeseries.csv": "27e8cfa88a3860e7e7910b8e05cd471189ebacab237bebb016bb50010d977133",
+      "node_flood_volumes.csv": "4f07eff38eda15f7c18ef7062538ac504d9ec1fc4c9a061c40051ab98a731194"
+    }
+  },
+  {
+    "case": "pulsos_nuevos_factor_0_7",
+    "scenario_key": "B:novel_20261102_cascade_peaks:f0.700",
+    "variant": "routing_1s",
+    "elapsed_seconds": 28.02,
+    "changed_initial_flows": 0,
+    "continuity_error_pct": 3.007,
+    "steps_not_converging_pct": 0.0,
+    "routing_min_s": 0.5,
+    "routing_average_s": 0.82,
+    "routing_max_s": 1.0,
+    "top_fii_link": "T508",
+    "top_fii": 6,
+    "top_nonconverging_node": null,
+    "top_nonconverging_node_pct": null,
+    "flood_volume_m3_rpt": 0.0,
+    "flooded_nodes_ge_1m3": 0,
+    "samples": 899,
+    "artifacts": {
+      "scenario.inp": "f744c773f25bb7b96b9f617e7095fafdb57726ed32dd3dd564fbd970ca40d124",
+      "scenario.rpt": "c7f791cd01c82cec1975a06ee6d872bb4ba4e1e8e33d820de8da7c175d785137",
+      "scenario.out": "17a4a316179640de20f0cae6bab32e5bd5a9060dc7b2c40c7add6e5548796800",
+      "selected_timeseries.csv": "e7ace24b03b84862be0160d50100558caf5855ace6a6676b67d66ce9387a4c09",
+      "node_flood_volumes.csv": "4f07eff38eda15f7c18ef7062538ac504d9ec1fc4c9a061c40051ab98a731194"
+    }
+  },
+  {
+    "case": "pulsos_nuevos_factor_0_7",
+    "scenario_key": "B:novel_20261102_cascade_peaks:f0.700",
+    "variant": "zero_initflow_5s",
+    "elapsed_seconds": 20.11,
+    "changed_initial_flows": 522,
+    "continuity_error_pct": 0.001,
+    "steps_not_converging_pct": 0.0,
+    "routing_min_s": 0.5,
+    "routing_average_s": 1.24,
+    "routing_max_s": 5.0,
+    "top_fii_link": "T508",
+    "top_fii": 8,
+    "top_nonconverging_node": null,
+    "top_nonconverging_node_pct": null,
+    "flood_volume_m3_rpt": 0.0,
+    "flooded_nodes_ge_1m3": 0,
+    "samples": 899,
+    "artifacts": {
+      "scenario.inp": "8dfec3fe5b6b7738b07db693ee8e79422a2a8944cf13c30acfdc8d7924ef305b",
+      "scenario.rpt": "3a56720fb5d0505fdfa97f36ca60a1a7dc43685717729cd84fb9a787259a8e5b",
+      "scenario.out": "77822420c097d0eb59bc1752d2e90995f89aeb4aaba4b706e1f35773d53be450",
+      "selected_timeseries.csv": "a64cedd9715d21f6a4a7d3f21d12c1ea0984130a2ae0227c68eac0fe46ef7eaf",
+      "node_flood_volumes.csv": "4f07eff38eda15f7c18ef7062538ac504d9ec1fc4c9a061c40051ab98a731194"
+    }
+  }
+]

@@ -1,0 +1,10 @@
+hidrograma,factor,variante,node_id,volumen_referencia_m3,volumen_variante_m3
+pulsos,2.7,routing_1s,372I,0.0,1.0
+pulsos,2.7,zero_initflow_5s,84I,1.0,0.0
+pulsos,2.7,zero_initflow_5s,242C,0.0,1.0
+pulsos,2.7,zero_initflow_5s,244C,1.0,0.0
+pulsos,2.7,zero_initflow_5s,291C,1.0,0.0
+pulsos,3.9,routing_1s,396I,0.0,1.0
+pulsos,3.9,zero_initflow_5s,197C,1.0,0.0
+pulsos,3.9,zero_initflow_5s,314C,1.0,0.0
+pulsos,4.3,zero_initflow_5s,314C,1.0,0.0

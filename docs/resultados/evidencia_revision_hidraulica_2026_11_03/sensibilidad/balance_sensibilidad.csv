@@ -1,0 +1,7 @@
+caso,variante,aporte_externo_m3,salida_externa_m3,perdida_inundacion_m3,volumen_inicial_m3,volumen_final_m3
+historico_no_convergencia,reference_5s,218504.0,203770.0,18051.0,4048.0,0.0
+historico_no_convergencia,routing_1s,218504.0,203770.0,18051.0,4048.0,0.0
+historico_no_convergencia,zero_initflow_5s,218498.0,200516.0,18055.0,0.0,0.0
+meseta_nueva_factor_4_3,reference_5s,376760.0,263461.0,116620.0,4048.0,0.0
+meseta_nueva_factor_4_3,routing_1s,376759.0,263442.0,116591.0,4048.0,0.0
+meseta_nueva_factor_4_3,zero_initflow_5s,376758.0,260207.0,116624.0,0.0,0.0

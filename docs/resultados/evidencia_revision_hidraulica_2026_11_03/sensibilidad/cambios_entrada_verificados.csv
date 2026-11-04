@@ -1,0 +1,7 @@
+caso,comparacion,cambios_verificados,cambios_no_autorizados
+historico_no_convergencia,reference_vs_original,"{""REPORT_STEP"": 1, ""ROUTING_STEP"": 1}",0
+historico_no_convergencia,routing_1s_vs_reference,"{""ROUTING_STEP"": 1}",0
+historico_no_convergencia,zero_initflow_vs_reference,"{""InitFlow"": 522}",0
+meseta_nueva_factor_4_3,reference_vs_original,"{""REPORT_STEP"": 1, ""ROUTING_STEP"": 1}",0
+meseta_nueva_factor_4_3,routing_1s_vs_reference,"{""ROUTING_STEP"": 1}",0
+meseta_nueva_factor_4_3,zero_initflow_vs_reference,"{""InitFlow"": 522}",0
