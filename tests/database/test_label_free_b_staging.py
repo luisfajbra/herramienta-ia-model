@@ -681,6 +681,264 @@ def test_joint_label_extraction_rejects_batch_with_no_eligible_runs(tmp_path, mo
     assert calls == []
 
 
+def test_joint_copy_remaps_overlapping_ids_and_preserves_mixed_qa(tmp_path):
+    import pandas as pd
+    from swmm_resilience.database.joint_materialization import _copy_verified_source
+    from swmm_resilience.database.joint_preflight import plan_joint_identities
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+    from swmm_resilience.database.run_source_artifacts import verify_run_source_artifacts
+
+    sources = []
+    for name in ("sur", "norte"):
+        directory = tmp_path / name
+        directory.mkdir()
+        conn, root, batch, anchor = _fixture(directory, two_scenarios=True,
+                                              add_unmodified_series=(name == "norte"))
+        bad = batch["runs"][1]
+        rpt = root / bad["artifacts"]["swmm_rpt"]["path"]
+        rpt.write_text("CONTINUITY=8.0", encoding="utf-8")
+        bad["artifacts"]["swmm_rpt"]["sha256"] = _sha(rpt)
+        bad["hydraulic_quality"]["continuity_error_pct"] = 8.0
+        bad["hydraulic_quality"]["flooding_report"]["report_sha256"] = _sha(rpt)
+        (root / "frozen_b_manifest.json").write_text(json.dumps(batch), encoding="utf-8")
+        staged = stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+        keys = staged["keys"]
+        labels = pd.DataFrame({"run_id": keys["run_id"], "node_id": keys["node_id"],
+                               "inunda": [0] * len(keys), "vol_inundacion_m3": [0.0] * len(keys)})
+        if name == "sur":
+            for run_id, node_id in zip(keys["run_id"], keys["node_id"]):
+                node_pk = conn.execute("SELECT node_pk FROM nodes WHERE node_id=?", (node_id,)).fetchone()[0]
+                conn.execute("INSERT INTO node_results (run_id,network_id,node_pk,inunda,vol_inundacion_m3,peak_flooding_lps) VALUES (?,?,?,?,?,?)",
+                             (int(run_id), staged["network_id"], node_pk, 0, 0.0, 3.5))
+        sources.append((conn, staged, labels))
+    target = connect_managed_database(tmp_path / "joint.sqlite3")
+    apply_migrations(target)
+    mapping = plan_joint_identities(sources[0][0], sources[1][0])
+    reports = []
+    for (name, (conn, staged, labels)) in zip(("chico_sur", "chico_norte"), sources):
+        reports.append(_copy_verified_source(conn, target, mapping[name], staged["manifest"], labels))
+    assert target.execute("SELECT COUNT(*) FROM networks").fetchone()[0] == 2
+    assert target.execute("SELECT COUNT(*) FROM runs").fetchone()[0] == 4
+    assert target.execute("SELECT COUNT(*) FROM run_hydraulic_quality WHERE eligible=0").fetchone()[0] == 2
+    assert target.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] == 4
+    assert target.execute("SELECT COUNT(*) FROM node_features_v4_21").fetchone()[0] == 4
+    assert target.execute("SELECT COUNT(*) FROM node_results WHERE network_id=1 AND peak_flooding_lps=3.5").fetchone()[0] == 2
+    assert target.execute("PRAGMA foreign_key_check").fetchall() == []
+    for name, (conn, staged, _) in zip(("chico_sur", "chico_norte"), sources):
+        for entry in staged["manifest"]["run_order"]:
+            new_run = mapping[name]["runs"][entry["run_id"]]
+            before = verify_run_source_artifacts(conn, entry["run_id"])
+            after = verify_run_source_artifacts(target, new_run)
+            assert all(before["artifacts"][role]["sha256"] == after["artifacts"][role]["sha256"] for role in before["artifacts"])
+            assert after["network_id"] == mapping[name]["network_id"]
+    assert all(report["eligible_run_count"] == 1 and report["excluded_run_count"] == 1 for report in reports)
+    target.close()
+    for conn, _, _ in sources:
+        conn.close()
+
+
+def test_joint_copy_rolls_back_if_source_binding_fails(tmp_path, monkeypatch):
+    import pandas as pd
+    import swmm_resilience.database.joint_materialization as materialization
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+
+    conn, root, _, anchor = _fixture(tmp_path)
+    staged = stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    source_hash = _sha(tmp_path / "b.sqlite3")
+    keys = staged["keys"]
+    labels = pd.DataFrame({"run_id": keys["run_id"], "node_id": keys["node_id"],
+                           "inunda": [0] * len(keys), "vol_inundacion_m3": [0.0] * len(keys)})
+    identity = {"source_network_id": staged["network_id"], "network_id": 1,
+                "network_sha256": staged["manifest"]["network_sha256"],
+                "nodes": {row[0]: row[0] for row in conn.execute("SELECT node_pk FROM nodes")},
+                "scenarios": {row[0]: row[0] for row in conn.execute("SELECT scenario_id FROM scenarios")},
+                "runs": {run_id: run_id for run_id in staged["run_ids"]}}
+    target = connect_managed_database(tmp_path / "failed_joint.sqlite3")
+    apply_migrations(target)
+    def fail(*args, **kwargs):
+        raise ValueError("fixture source binding failure")
+    monkeypatch.setattr(materialization, "register_run_source_artifacts", fail)
+    with pytest.raises(ValueError, match="fixture source binding failure"):
+        materialization._copy_verified_source(conn, target, identity, staged["manifest"], labels)
+    for table in ("networks", "nodes", "scenarios", "runs", "run_hydraulic_quality", "node_features_v4_21", "node_results", "run_source_artifacts"):
+        assert target.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
+    assert _sha(tmp_path / "b.sqlite3") == source_hash
+    target.close()
+    conn.close()
+
+
+def test_joint_copy_rejects_unexpected_labels_before_writing(tmp_path):
+    import pandas as pd
+    from swmm_resilience.database.joint_materialization import _copy_verified_source
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+    conn, root, _, anchor = _fixture(tmp_path)
+    staged = stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    keys = staged["keys"]
+    labels = pd.DataFrame({"run_id": keys["run_id"], "node_id": keys["node_id"],
+                           "inunda": [0] * len(keys), "vol_inundacion_m3": [0.0] * len(keys)})
+    labels.loc[0, "node_id"] = "not-a-node"
+    identity = {"source_network_id": staged["network_id"], "network_id": 1,
+                "network_sha256": staged["manifest"]["network_sha256"],
+                "nodes": {row[0]: row[0] for row in conn.execute("SELECT node_pk FROM nodes")},
+                "scenarios": {row[0]: row[0] for row in conn.execute("SELECT scenario_id FROM scenarios")},
+                "runs": {run_id: run_id for run_id in staged["run_ids"]}}
+    target = connect_managed_database(tmp_path / "joint_wrong_targets.sqlite3")
+    apply_migrations(target)
+    with pytest.raises(ValueError, match="target labels do not cover"):
+        _copy_verified_source(conn, target, identity, staged["manifest"], labels)
+    assert target.execute("SELECT COUNT(*) FROM networks").fetchone()[0] == 0
+    assert target.execute("SELECT COUNT(*) FROM node_results").fetchone()[0] == 0
+    target.close()
+    conn.close()
+
+
+def test_joint_copy_rejects_manifest_qa_disagreement(tmp_path):
+    import pandas as pd
+    from swmm_resilience.database.joint_materialization import _copy_verified_source
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+    conn, root, _, anchor = _fixture(tmp_path)
+    staged = stage_frozen_b_label_free(conn, root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=anchor)
+    keys = staged["keys"]
+    labels = pd.DataFrame({"run_id": keys["run_id"], "node_id": keys["node_id"],
+                           "inunda": [0] * len(keys), "vol_inundacion_m3": [0.0] * len(keys)})
+    identity = {"source_network_id": staged["network_id"], "network_id": 1,
+                "network_sha256": staged["manifest"]["network_sha256"],
+                "nodes": {row[0]: row[0] for row in conn.execute("SELECT node_pk FROM nodes")},
+                "scenarios": {row[0]: row[0] for row in conn.execute("SELECT scenario_id FROM scenarios")},
+                "runs": {run_id: run_id for run_id in staged["run_ids"]}}
+    altered = json.loads(json.dumps(staged["manifest"]))
+    altered["run_order"][0]["reason_codes"] = ["wrong_reason"]
+    target = connect_managed_database(tmp_path / "joint_wrong_qa.sqlite3")
+    apply_migrations(target)
+    with pytest.raises(ValueError, match="QA|quality"):
+        _copy_verified_source(conn, target, identity, altered, labels)
+    assert target.execute("SELECT COUNT(*) FROM networks").fetchone()[0] == 0
+    target.close()
+    conn.close()
+
+
+@pytest.mark.parametrize("tamper_component", ["joint", "snapshot", "during_capture"])
+@pytest.mark.parametrize("wrong_label_hash", [False, True])
+def test_joint_builder_verifies_two_sources_and_publishes_new_dataset(tmp_path, monkeypatch, wrong_label_hash, tamper_component):
+    import pandas as pd
+    from tests.database.test_a_supervised_manifest_staging import _prepare_a
+    from swmm_resilience.database.a_supervised_manifest_staging import stage_frozen_a_supervised
+    from swmm_resilience.database.label_free_b_staging import stage_frozen_b_label_free
+    from swmm_resilience.database import label_free_b_staging as staging_module
+    from swmm_resilience.database.joint_materialization import materialize_joint_dataset, verify_joint_materialization
+    from swmm_resilience.extraction import labels as label_module
+    from swmm_resilience.ml.bench.frozen_transfer import _hash
+
+    original_make_features = staging_module._make_features
+    def connected_fixture_features(*args, **kwargs):
+        frame, node_ids, aux = original_make_features(*args, **kwargs)
+        frame["dist_outfall_m"] = 100.0
+        return frame, node_ids, aux
+    monkeypatch.setattr(staging_module, "_make_features", connected_fixture_features)
+
+    north = tmp_path / "north"
+    north.mkdir()
+    b_conn, b_root, _, b_anchor = _fixture(north, add_unmodified_series=True)
+    b_stage = stage_frozen_b_label_free(b_conn, b_root, feature_contract_id="tabular_v4_21", protocol_anchor_db_path=b_anchor)
+    b_conn.commit()
+    b_conn.close()
+    south = tmp_path / "south"
+    south.mkdir()
+    a_conn, a_root, _, a_anchor, config = _prepare_a(south, monkeypatch)
+    a_stage = stage_frozen_a_supervised(a_conn, a_root, protocol_anchor_db_path=a_anchor, config_path=config)
+    a_conn.close()
+    real_extract = label_module.extract_labels
+    def extract(path, nodes, threshold_m3):
+        return _fixture_labels(path, nodes) if Path(path).resolve().is_relative_to(b_root.resolve()) else real_extract(path, nodes, threshold_m3)
+    monkeypatch.setattr(label_module, "extract_labels", extract)
+    b_keys = b_stage["keys"]
+    truth = pd.DataFrame({"network_id": b_keys["network_id"], "run_id": b_keys["run_id"],
+                          "node_id": b_keys["node_id"], "inunda": [0] * len(b_keys),
+                          "vol_inundacion_m3": [0.0] * len(b_keys)})
+    expected_hash = _hash(truth.sort_values(["network_id", "run_id", "node_id"]).to_dict(orient="records"))
+    destination = tmp_path / "published"
+    if wrong_label_hash:
+        with pytest.raises(ValueError, match="label digest"):
+            materialize_joint_dataset(south / "b.sqlite3", a_root / "a_training_source_manifest.json",
+                                      north / "b.sqlite3", b_root / "experiment_source_manifest.json",
+                                      destination, expected_b_labels_sha256="0" * 64,
+                                      expected_network_sha256s=(a_stage["manifest"]["network_sha256"], b_stage["manifest"]["network_sha256"]))
+        assert not (destination / "joint_source_manifest.json").exists()
+        assert not (destination / "joint.sqlite3").exists()
+        assert json.loads((destination / "status.json").read_text(encoding="utf-8"))["status"] == "failed"
+        return
+    result = materialize_joint_dataset(south / "b.sqlite3", a_root / "a_training_source_manifest.json",
+                                       north / "b.sqlite3", b_root / "experiment_source_manifest.json",
+                                       destination, expected_b_labels_sha256=expected_hash,
+                                       expected_network_sha256s=(a_stage["manifest"]["network_sha256"], b_stage["manifest"]["network_sha256"]))
+    assert result["status"] == "materialized_not_training_ready"
+    assert result["sources"]["chico_sur"]["target_rows"] == 2
+    assert result["sources"]["chico_norte"]["target_rows"] == 2
+    assert len(result["implementation"]["files"]["swmm_resilience/database/joint_materialization.py"]) == 64
+    assert result["implementation"]["python_version"]
+    assert (destination / "joint_source_manifest.json").is_file()
+    assert json.loads((destination / "status.json").read_text(encoding="utf-8"))["status"] == "materialized_not_training_ready"
+    verified = verify_joint_materialization(destination)
+    assert verified["status"] == "materialized_not_training_ready"
+    assert verified["feature_rows"] == verified["target_rows"] == 4
+    from swmm_resilience.ml.bench.preprocess import prepare_joint_dataset
+    if tamper_component == "during_capture":
+        import swmm_resilience.ml.bench.preprocess as preprocess
+        import sqlite3
+        original_provenance = preprocess._joint_source_provenance
+        def mutate_during_capture(*args, **kwargs):
+            result = original_provenance(*args, **kwargs)
+            with sqlite3.connect(destination / "joint.sqlite3") as conn:
+                conn.execute("UPDATE node_results SET vol_inundacion_m3=vol_inundacion_m3+1 WHERE run_id=(SELECT MIN(run_id) FROM node_results)")
+            return result
+        monkeypatch.setattr(preprocess, "_joint_source_provenance", mutate_during_capture)
+        with pytest.raises(ValueError, match="joint (package|database).*(changed|WAL)"):
+            prepare_joint_dataset(destination, protocols=("LeaveOneNetworkOut",), flood_threshold_m3=1.0,
+                                  max_continuity_error_pct=5.0, output_dir=tmp_path / "changed_during_capture")
+        assert not (tmp_path / "changed_during_capture").exists()
+        return
+    prepared = prepare_joint_dataset(destination, protocols=("LeaveOneNetworkOut",),
+                                     flood_threshold_m3=1.0, max_continuity_error_pct=5.0,
+                                     output_dir=tmp_path / "joint_prepared")
+    assert len(prepared.keys) == 4
+    assert set(prepared.keys["network_id"]) == {1, 2}
+    assert prepared.manifest["source_capture_method"] == "sealed_joint_byte_snapshot_v1"
+    assert len(prepared.manifest["excluded_runs"]) == 1
+    assert prepared.manifest["excluded_runs"][0]["reason_codes"] == ["continuity_limit_exceeded"]
+    if tamper_component == "joint":
+        from swmm_resilience.ml.bench.train import train_candidate, load_candidate
+        configurations = {
+            "xgboost": {"n_estimators": 3, "max_depth": 2, "learning_rate": 0.3, "subsample": 1.0},
+            "mlp": {"hidden_sizes": (4,), "epochs": 2, "learning_rate": 0.01, "batch_size": 4, "dropout": 0.0},
+        }
+        for family, params in configurations.items():
+            artifact = train_candidate(prepared, family, params, params, tmp_path / "synthetic_candidates")
+            candidate = load_candidate(artifact.classifier_path.parent)
+            assert candidate.metadata["source_network_ids"] == [1, 2]
+            assert candidate.metadata["prep_id"] == prepared.prep_id
+    with pytest.raises(FileExistsError):
+        prepare_joint_dataset(destination, protocols=("LeaveOneNetworkOut",), flood_threshold_m3=1.0,
+                              max_continuity_error_pct=5.0, output_dir=tmp_path / "joint_prepared")
+    import sqlite3
+    altered = destination / ("joint.sqlite3" if tamper_component == "joint" else "source_chico_norte.sqlite3")
+    with sqlite3.connect(altered) as conn:
+        if tamper_component == "joint":
+            conn.execute("UPDATE node_results SET vol_inundacion_m3=vol_inundacion_m3+1 WHERE run_id=(SELECT MIN(run_id) FROM node_results)")
+        else:
+            conn.execute("UPDATE networks SET name=name || '-tampered'")
+    with pytest.raises(ValueError, match="(database|snapshot).*(hash|WAL)|hash.*(database|snapshot)"):
+        verify_joint_materialization(destination)
+    with pytest.raises(ValueError, match="(database|snapshot).*(hash|WAL)|hash.*(database|snapshot)"):
+        prepare_joint_dataset(destination, protocols=("LeaveOneNetworkOut",), flood_threshold_m3=1.0,
+                              max_continuity_error_pct=5.0, output_dir=tmp_path / "tampered_prepared")
+    assert not (tmp_path / "tampered_prepared").exists()
+    with pytest.raises(FileExistsError):
+        materialize_joint_dataset(south / "b.sqlite3", a_root / "a_training_source_manifest.json",
+                                  north / "b.sqlite3", b_root / "experiment_source_manifest.json",
+                                  destination, expected_b_labels_sha256=expected_hash,
+                                  expected_network_sha256s=(a_stage["manifest"]["network_sha256"], b_stage["manifest"]["network_sha256"]))
+
+
 def test_mixed_qa_stages_and_scores_only_eligible_run(tmp_path, monkeypatch):
     """Exercise real staging and scoring with synthetic reports, not SWMM runs."""
     import numpy as np

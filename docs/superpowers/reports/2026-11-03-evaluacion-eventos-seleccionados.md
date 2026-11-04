@@ -23,6 +23,15 @@ Para 1,3 SWMM identificó un nodo inundado y ambos modelos lo omitieron. MLP se�
 
 Las ejecuciones completas están en `outputs/experiments/piloto_seleccion_swmm_20261103` y `outputs/experiments/piloto_seleccion_inundado_20261103`; las figuras están en `selected_figures`. Mantener junto a cada carpeta su archivo adyacente `*_protocol_anchor.sqlite3`. Los manifiestos incluyen rutas absolutas originales: una restauración en otra ruta puede necesitar ajustes antes de repetir el flujo.
 
+## Pendientes de presentación registrados
+
+En la revisión posterior, el investigador decidió documentar estos puntos y continuar primero con el flujo de entrenamiento:
+
+1. **Escalas independientes en mapas:** los mapas individuales calculan sus propios máximos de color y tamaño de punto. Un color igual en SWMM, MLP y XGBoost puede representar volúmenes diferentes. Por ejemplo, en el piloto de factor 1,3 los máximos fueron 5,0, 25,738 y 86,394 m³, respectivamente. La escala correspondiente queda registrada en el manifiesto de cada figura. Para una futura comparación visual se propone una escala común por escenario; mientras tanto deben consultarse las barras de color.
+2. **Redondeo del factor en el título:** el protocolo admite factores con hasta tres decimales, pero el título del mapa presenta uno. Por ejemplo, factores 0,234 y 0,249 aparecerían como 0,2. Los archivos y el manifiesto conservan el factor con tres decimales. Ajustar el título queda pendiente antes de presentar escenarios con mayor precisión; esto no cambia el factor simulado ni las métricas.
+
+Ambos puntos afectan la interpretación o identificación visual; no se han modificado las figuras ni los resultados congelados.
+
 ## Alcance pendiente
 
 Antes de usar otra red se necesita su admisión hidráulica y un contrato de entradas y features probado. También faltan ampliar la prueba de QA parcial a inferencia y renderizado reales, una evaluación independiente adicional y el diseño de entrenamiento conjunto. No debe atribuirse el resultado de transferencia a entrenamiento con Chico Norte.

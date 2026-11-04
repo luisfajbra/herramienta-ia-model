@@ -18,6 +18,7 @@ import hashlib
 import json
 import math
 import platform
+import shutil
 import sqlite3
 import sys
 from contextlib import contextmanager
@@ -157,6 +158,112 @@ def _readonly_sqlite_snapshot(db_path: Path | str):
             if source_connection is not None:
                 source_connection.close()
         yield snapshot_path
+
+
+@contextmanager
+def _sealed_joint_snapshot(db_path: Path | str, package: Path | str):
+    """Copy exact sealed SQLite bytes after verifying the joint source package."""
+    from ...database.joint_materialization import verify_joint_materialization, _require_no_wal
+    root = Path(package).resolve(strict=True)
+    verified = verify_joint_materialization(root)
+    manifest_path = root / "joint_source_manifest.json"
+    manifest_bytes = manifest_path.read_bytes()
+    manifest = json.loads(manifest_bytes)
+    status = json.loads((root / "status.json").read_text(encoding="utf-8"))
+    manifest_hash = hashlib.sha256(manifest_bytes).hexdigest()
+    if status.get("manifest_sha256") != manifest_hash or status.get("status") != verified["status"]:
+        raise ValueError("joint package status or manifest changed before snapshot")
+    source = (root / manifest["joint_database"]["path"]).resolve(strict=True)
+    source.relative_to(root)
+    if source != Path(db_path).resolve(strict=True):
+        raise ValueError("joint package does not match requested database")
+    expected = manifest["joint_database"]["sha256"]
+    _require_no_wal(source, "joint database")
+    with TemporaryDirectory(prefix="joint-training-snapshot-") as temporary_dir:
+        snapshot = Path(temporary_dir) / "source.sqlite3"
+        with source.open("rb") as original, snapshot.open("xb") as target:
+            shutil.copyfileobj(original, target, length=1024 * 1024)
+        _require_no_wal(source, "joint database")
+        if _sha256_file(snapshot) != expected or _sha256_file(source) != expected:
+            raise ValueError("joint database changed while capturing sealed snapshot")
+        yield snapshot, manifest, str(manifest_path), manifest_hash
+        _require_no_wal(source, "joint database")
+        if (_sha256_file(snapshot) != expected or _sha256_file(source) != expected
+                or manifest_path.read_bytes() != manifest_bytes
+                or json.loads((root / "status.json").read_text(encoding="utf-8")) != status):
+            raise ValueError("joint package changed while preparing the dataset")
+
+
+def _joint_source_provenance(db_path: Path, manifest: dict, manifest_path: str, manifest_hash: str,
+                             included_run_ids: Sequence[int], run_ids, network_ids,
+                             max_continuity_error_pct) -> tuple[list[dict], list[dict]]:
+    """Describe verified joint runs without inventing legacy CSV manifests."""
+    from contextlib import closing
+    included = {int(value) for value in included_run_ids}
+    requested_runs = None if run_ids is None else {int(value) for value in run_ids}
+    requested_networks = None if network_ids is None else {int(value) for value in network_ids}
+    results, excluded, represented = [], [], set()
+    with closing(sqlite3.connect(db_path.resolve(strict=True).as_uri() + "?mode=ro", uri=True)) as conn:
+        conn.row_factory = sqlite3.Row
+        conn.execute("BEGIN")
+        for name in ("chico_sur", "chico_norte"):
+            source = manifest["sources"][name]
+            network_id = int(source["network_id"])
+            if requested_networks is not None and network_id not in requested_networks:
+                continue
+            network = conn.execute("SELECT name,network_sha256 FROM networks WHERE network_id=?", (network_id,)).fetchone()
+            if network is None or network["network_sha256"] != source["network_sha256"]:
+                raise ValueError(f"joint network identity mismatch for {name}")
+            inp = conn.execute("SELECT resolved_path,sha256 FROM run_source_artifacts WHERE registered_network_id=? AND artifact_role='source_network_inp' LIMIT 1", (network_id,)).fetchone()
+            if inp is None or inp["sha256"] != source["network_sha256"]:
+                raise ValueError(f"joint source INP is missing for {name}")
+            network_info = {"network_id": network_id, "name": network["name"],
+                            "network_sha256": network["network_sha256"], "inp_path": inp["resolved_path"],
+                            "joint_materialization_manifest": {"path": manifest_path, "sha256": manifest_hash}, "runs": []}
+            for item in source["runs"]:
+                run_id = int(item["run_id"])
+                if requested_runs is not None and run_id not in requested_runs:
+                    continue
+                row = conn.execute("SELECT r.scenario_id,r.swmm_version,r.continuity_error_pct,s.shape_id,s.factor_mult,"
+                                   "r.config_sha256 AS run_config_sha256,s.config_sha256 AS scenario_config_sha256,"
+                                   "q.policy_version,q.policy_sha256,q.policy_json,q.manifest_json "
+                                   "FROM runs r JOIN scenarios s ON s.scenario_id=r.scenario_id AND s.network_id=r.network_id "
+                                   "JOIN run_hydraulic_quality q ON q.run_id=r.run_id WHERE r.run_id=? AND r.network_id=?",
+                                   (run_id, network_id)).fetchone()
+                if row is None:
+                    raise ValueError(f"joint run is missing: {run_id}")
+                if row["run_config_sha256"] != row["scenario_config_sha256"]:
+                    raise ValueError(f"joint run configuration mismatch: {run_id}")
+                qa = json.loads(row["manifest_json"])
+                if qa.get("eligible") is not item["eligible"] or qa.get("reason_codes") != item["reason_codes"]:
+                    raise ValueError(f"joint QA mismatch: {run_id}")
+                event = conn.execute("SELECT sha256 FROM run_source_artifacts WHERE run_id=? AND artifact_role='event_source'", (run_id,)).fetchone()
+                if event is None:
+                    raise ValueError(f"joint event source is missing: {run_id}")
+                network_info["runs"].append({"run_id": run_id, "scenario_id": row["scenario_id"],
+                    "shape_id": row["shape_id"], "factor_mult": row["factor_mult"],
+                    "run_config_sha256": row["run_config_sha256"], "scenario_config_sha256": row["scenario_config_sha256"],
+                    "swmm_version": row["swmm_version"] or "unknown",
+                    "hydraulic_quality": {"policy_version": row["policy_version"], "policy_sha256": row["policy_sha256"],
+                                          "policy": json.loads(row["policy_json"]), "manifest": qa},
+                    "joint_source_run_id": item["source_run_id"], "joint_source_artifact_manifest_sha256": item["source_artifact_manifest_sha256"],
+                    "joint_destination_artifact_manifest_sha256": item["destination_artifact_manifest_sha256"],
+                    "event_source_sha256": event["sha256"]})
+                represented.add(run_id)
+                if run_id not in included:
+                    reason_codes = list(item["reason_codes"])
+                    if item["eligible"] and max_continuity_error_pct is not None and (
+                            row["continuity_error_pct"] is None or abs(float(row["continuity_error_pct"])) > max_continuity_error_pct):
+                        reason_codes = ["continuity_error_exceeds_requested_threshold"]
+                    excluded.append({"run_id": run_id, "network_id": network_id,
+                                     "continuity_error_pct": row["continuity_error_pct"],
+                                     "reason": reason_codes[0] if reason_codes else "not_in_training_frame",
+                                     "reason_codes": reason_codes})
+            if network_info["runs"]:
+                results.append(network_info)
+    if not included.issubset(represented):
+        raise ValueError("prepared rows are missing from joint source provenance")
+    return results, excluded
 
 
 def protocol_definitions(protocols: Sequence[str]) -> dict[str, dict[str, str]]:
@@ -394,6 +501,7 @@ def prepare_dataset(
     node_features_table: str = "node_features",
     run_ids: Sequence[int] | None = None,
     network_ids: Sequence[int] | None = None,
+    joint_package: Path | str | None = None,
 ) -> PreparedDataset:
     """Lee el frame de SQL y materializa un PreparedDataset en ``output_dir``.
 
@@ -409,7 +517,30 @@ def prepare_dataset(
     "node_features_v4_21" para entrenar sobre el contrato tributario nuevo.
     """
     protocols = tuple(protocols)
-    with _readonly_sqlite_snapshot(db_path) as snapshot_path:
+    @contextmanager
+    def capture():
+        if joint_package is None:
+            with _readonly_sqlite_snapshot(db_path) as captured:
+                yield captured, None
+        else:
+            with _sealed_joint_snapshot(db_path, joint_package) as captured:
+                yield captured[0], captured[1:]
+
+    if joint_package is not None and (feature_contract.contract_id != "tabular_v4_21"
+                                      or float(flood_threshold_m3) != 1.0):
+        raise ValueError("joint package requires tabular_v4_21 and the approved 1 m3 threshold")
+    if joint_package is not None:
+        joint_root = Path(joint_package).resolve(strict=True)
+        output_path = Path(output_dir).absolute()
+        if output_path.exists() or output_path.is_symlink():
+            raise FileExistsError(output_path)
+        try:
+            output_path.resolve().relative_to(joint_root)
+        except ValueError:
+            pass
+        else:
+            raise ValueError("prepared output must be outside the immutable joint package")
+    with capture() as (snapshot_path, joint):
         source_snapshot_sha256 = _sha256_file(snapshot_path)
         frame = load_training_frame(
             snapshot_path,
@@ -421,13 +552,15 @@ def prepare_dataset(
             run_ids=list(run_ids) if run_ids is not None else None,
             network_ids=list(network_ids) if network_ids is not None else None,
         )
-        source_networks, excluded_runs = _source_provenance(
-            snapshot_path,
-            included_run_ids=frame["run_id"].unique(),
-            run_ids=run_ids,
-            network_ids=network_ids,
-            max_continuity_error_pct=max_continuity_error_pct,
-        )
+        if joint is None:
+            source_networks, excluded_runs = _source_provenance(
+                snapshot_path, included_run_ids=frame["run_id"].unique(), run_ids=run_ids,
+                network_ids=network_ids, max_continuity_error_pct=max_continuity_error_pct)
+        else:
+            joint_manifest, joint_manifest_path, joint_manifest_hash = joint
+            source_networks, excluded_runs = _joint_source_provenance(
+                snapshot_path, joint_manifest, joint_manifest_path, joint_manifest_hash,
+                frame["run_id"].unique(), run_ids, network_ids, max_continuity_error_pct)
     frame = frame.sort_values(list(SORT_KEY)).reset_index(drop=True)
     training_frame_sha256 = _training_frame_sha256(frame)
 
@@ -464,7 +597,8 @@ def prepare_dataset(
         "sort_key": list(SORT_KEY),
         "protocols": list(protocols),
         "protocol_definitions": definitions,
-        "source_capture_method": "sqlite_backup_readonly_v1",
+        "source_capture_method": ("sqlite_backup_readonly_v1" if joint_package is None
+                                  else "sealed_joint_byte_snapshot_v1"),
         "training_frame_fingerprint_version": TRAINING_FRAME_FINGERPRINT_VERSION,
         "training_frame_sha256": training_frame_sha256,
     }
@@ -496,8 +630,26 @@ def prepare_dataset(
         manifest=manifest,
         quality=quality,
     )
+    if joint_package is not None:
+        Path(output_dir).mkdir(parents=True, exist_ok=False)
     prepared.save(output_dir)
     return prepared
+
+
+def prepare_joint_dataset(package: Path | str, *, protocols: Sequence[str], flood_threshold_m3: float,
+                          output_dir: Path | str, max_continuity_error_pct: float | None = None,
+                          run_ids: Sequence[int] | None = None, network_ids: Sequence[int] | None = None) -> PreparedDataset:
+    """Prepare a verified joint package explicitly; does not train a model."""
+    from ..contracts import FEATURE_COLUMNS_V21, TABULAR_V4_21
+    root = Path(package).resolve(strict=True)
+    if run_ids is None and network_ids is None:
+        declared = json.loads((root / "joint_source_manifest.json").read_text(encoding="utf-8"))
+        network_ids = [int(declared["sources"][name]["network_id"]) for name in ("chico_sur", "chico_norte")]
+    return prepare_dataset(root / "joint.sqlite3", protocols=protocols, flood_threshold_m3=flood_threshold_m3,
+                           output_dir=output_dir, max_continuity_error_pct=max_continuity_error_pct,
+                           feature_columns=FEATURE_COLUMNS_V21, feature_contract=TABULAR_V4_21,
+                           view_name="training_samples_v4_21", node_features_table="node_features_v4_21",
+                           run_ids=run_ids, network_ids=network_ids, joint_package=root)
 
 
 def _validate_requested_protocols(

@@ -132,11 +132,26 @@ def _prep_descriptor_from_manifest(manifest: dict) -> dict:
             f"{', '.join(missing)}. {_REGENERATE_MESSAGE}"
         )
     source_capture_method = manifest["source_capture_method"]
-    if source_capture_method != "sqlite_backup_readonly_v1":
+    if source_capture_method not in {"sqlite_backup_readonly_v1", "sealed_joint_byte_snapshot_v1"}:
         raise ValueError(
             "source_capture_method is not compatible with the current protocol. "
             f"{_REGENERATE_MESSAGE}"
         )
+    if source_capture_method == "sealed_joint_byte_snapshot_v1":
+        networks = manifest.get("source_networks")
+        if (manifest.get("contract_id") != "tabular_v4_21" or manifest.get("flood_threshold_m3") != 1.0
+                or not isinstance(networks, list) or not networks):
+            raise ValueError("joint source descriptor has invalid contract, threshold or networks")
+        references = []
+        for network in networks:
+            reference = network.get("joint_materialization_manifest") if isinstance(network, dict) else None
+            if (not isinstance(reference, dict) or not isinstance(reference.get("path"), str)
+                    or not reference["path"] or not isinstance(reference.get("sha256"), str)
+                    or _SHA256_PATTERN.fullmatch(reference["sha256"]) is None):
+                raise ValueError("joint source descriptor has no materialization manifest reference")
+            references.append((reference["path"], reference["sha256"]))
+        if len(set(references)) != 1:
+            raise ValueError("joint source networks refer to different materialization manifests")
     source_hash = manifest["training_frame_sha256"]
     if not isinstance(source_hash, str) or _SHA256_PATTERN.fullmatch(source_hash) is None:
         raise ValueError(
