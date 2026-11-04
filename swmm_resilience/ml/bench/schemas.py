@@ -57,6 +57,7 @@ OOF_COLUMNS = (
 PROTOCOLS = (
     "LOSO",
     "GroupKFold5",
+    "ShapeGroupKFold5",
     "LeaveOneShapeOut",
     "LeaveOneNetworkOut",
 )
@@ -66,6 +67,7 @@ TRAINING_FRAME_FINGERPRINT_VERSION = "training_frame_canonical_v1"
 PROTOCOL_GROUP_COLUMNS = {
     "LOSO": "factor_mult",
     "GroupKFold5": "factor_mult",
+    "ShapeGroupKFold5": "shape_id",
     "LeaveOneShapeOut": "shape_id",
     "LeaveOneNetworkOut": "network_id",
 }
@@ -79,6 +81,9 @@ PROTOCOL_INTERPRETATION = {
         "Interpolation between factors in 5 interleaved factor groups; no "
         "fold holds out two contiguous factors; all hydrograph shapes remain "
         "in training."
+    ),
+    "ShapeGroupKFold5": (
+        "Five grouped folds of complete hydrograph shapes across all networks and factors."
     ),
     "LeaveOneShapeOut": (
         "Generalization to unseen hydrograph shapes: one full shape is held out."
@@ -414,11 +419,11 @@ def _validate_fold_provenance(
                     f"{protocol} must have one fold per distinct group. "
                     f"{_REGENERATE_MESSAGE}"
                 )
-        elif protocol == "GroupKFold5" and fold_ids_by_protocol[protocol] != set(
+        elif protocol in ("GroupKFold5", "ShapeGroupKFold5") and fold_ids_by_protocol[protocol] != set(
             range(5)
         ):
             raise ValueError(
-                "GroupKFold5 must have exactly the fold_ids 0..4. "
+                f"{protocol} must have exactly the fold_ids 0..4. "
                 f"{_REGENERATE_MESSAGE}"
             )
 

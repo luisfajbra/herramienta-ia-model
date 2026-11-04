@@ -9,6 +9,27 @@ from swmm_resilience.ml.bench.folds import build_all_folds, build_folds, n_folds
 from swmm_resilience.ml.bench.schemas import FOLD_COLUMNS
 
 
+def test_shape_groupkfold5_keeps_shapes_together_across_networks_and_factors():
+    from swmm_resilience.ml.bench.tune import build_tuning_folds
+    keys = pd.DataFrame([
+        {"shape_id": str(shape), "network_id": network, "factor_mult": factor}
+        for shape in range(8) for network in (1, 2) for factor in (0.5, 1.0)
+    ])
+    folds = build_folds(keys["shape_id"], "ShapeGroupKFold5")
+    assert set(folds.fold_id) == set(range(5))
+    for _, part in folds.groupby("fold_id"):
+        train = keys.iloc[part.loc[part.split == "train", "sample_idx"]]
+        test = keys.iloc[part.loc[part.split == "test", "sample_idx"]]
+        assert set(train.shape_id).isdisjoint(set(test.shape_id))
+        assert set(test.network_id) == {1, 2}
+        assert set(test.factor_mult) == {0.5, 1.0}
+    assert n_folds_for(keys["shape_id"], "ShapeGroupKFold5") == 5
+    tuning = build_tuning_folds(keys)
+    actual = set(map(tuple, folds[["fold_id", "split", "sample_idx"]].to_numpy()))
+    expected = set(map(tuple, tuning[["fold_id", "split", "sample_idx"]].to_numpy()))
+    assert actual == expected
+
+
 @pytest.fixture
 def groups_25x7() -> pd.Series:
     """25 factores x 7 formas x 4 nodos, agrupado por factor."""

@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 from sklearn.model_selection import GroupKFold, LeaveOneGroupOut
 
+from ...config import ML_RANDOM_STATE
 from .schemas import FOLD_COLUMNS, PROTOCOLS, group_column_for
 
 _GROUPKFOLD_SPLITS = 5
@@ -52,7 +53,9 @@ def n_folds_for(groups: pd.Series, protocol: str) -> int:
     if protocol == "LeaveOneNetworkOut":
         _validate_leave_one_network_out_groups(groups)
         return int(groups.nunique())
-    if protocol == "GroupKFold5":
+    if protocol in ("GroupKFold5", "ShapeGroupKFold5"):
+        if protocol == "ShapeGroupKFold5" and groups.isna().any():
+            raise ValueError("ShapeGroupKFold5 does not allow null shape_id values")
         _validate_groupkfold5_groups(groups)
         return _GROUPKFOLD_SPLITS
     raise ValueError(f"Unknown protocol: {protocol!r}. Options: {PROTOCOLS}")
@@ -64,8 +67,12 @@ def _splitter(groups: pd.Series, protocol: str):
     if protocol == "LeaveOneNetworkOut":
         _validate_leave_one_network_out_groups(groups)
         return LeaveOneGroupOut()
-    if protocol == "GroupKFold5":
+    if protocol in ("GroupKFold5", "ShapeGroupKFold5"):
+        if protocol == "ShapeGroupKFold5" and groups.isna().any():
+            raise ValueError("ShapeGroupKFold5 does not allow null shape_id values")
         _validate_groupkfold5_groups(groups)
+        if protocol == "ShapeGroupKFold5":
+            return GroupKFold(n_splits=_GROUPKFOLD_SPLITS, shuffle=True, random_state=ML_RANDOM_STATE)
         return GroupKFold(n_splits=_GROUPKFOLD_SPLITS)
     raise ValueError(f"Unknown protocol: {protocol!r}. Options: {PROTOCOLS}")
 

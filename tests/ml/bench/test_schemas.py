@@ -147,6 +147,7 @@ def test_column_constants_match_the_contract():
     assert PROTOCOLS == (
         "LOSO",
         "GroupKFold5",
+        "ShapeGroupKFold5",
         "LeaveOneShapeOut",
         "LeaveOneNetworkOut",
     )
@@ -156,11 +157,13 @@ def test_protocols_select_their_required_group_column():
     assert PROTOCOL_GROUP_COLUMNS == {
         "LOSO": "factor_mult",
         "GroupKFold5": "factor_mult",
+        "ShapeGroupKFold5": "shape_id",
         "LeaveOneShapeOut": "shape_id",
         "LeaveOneNetworkOut": "network_id",
     }
     assert group_column_for("LOSO") == "factor_mult"
     assert group_column_for("GroupKFold5") == "factor_mult"
+    assert group_column_for("ShapeGroupKFold5") == "shape_id"
     assert group_column_for("LeaveOneShapeOut") == "shape_id"
     assert group_column_for("LeaveOneNetworkOut") == "network_id"
     assert DEFAULT_PROTOCOLS == ("LOSO", "GroupKFold5", "LeaveOneShapeOut")
