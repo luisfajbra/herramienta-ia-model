@@ -8,3 +8,5 @@ data/networks/chico_norte_93_qx1/*.inp -text -diff
 # Evidencias conservadas junto con sus hashes: mantener bytes originales.
 docs/resultados/evidencia_revision_hidraulica_2026_11_03/** -text -diff
 docs/resultados/sensibilidad_ampliada_2026_11_03/** -text -diff
+docs/resultados/evidencia_evaluacion_chico_norte_2026_11_02/** -text -diff
+docs/figures_chico_norte_novel_eval_2026_11_02_presentacion/** -text -diff

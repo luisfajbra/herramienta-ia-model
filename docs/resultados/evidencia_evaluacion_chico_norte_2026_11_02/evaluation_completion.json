@@ -1,0 +1,15 @@
+{
+  "eligible_scenario_count": 10,
+  "excluded_scenario_count": 0,
+  "figure_sha256": {
+    "hidrogramas_y_factores.png": "f9cded2661ee9904f0159ff2b44ddf377ce9d3de7900be5c58cdf0a8698ef11a",
+    "mapa_novel_20261102_cascade_peaks_f2.7.png": "7dcb648cb9170349f53d9e245117a47392331b3d36c0da94640b1f9257f2a793",
+    "mapa_novel_20261102_sustained_late_surge_f2.7.png": "42ab8135f994f498d30c4608c84cafaaa9f43c4768c472820caf21d92323db9a",
+    "paridad_global.png": "caa450c4bc464eb6ac2a04576c1ef129c7036c3e5d0b162088cde22500655ac5",
+    "volumen_total_por_factor.png": "3746598a9e361bdf7acdd299bb0108b136412c11972a7c12787a5dcd58a0dd69"
+  },
+  "results_sha256": "85b0e018d9ee8dc358f2382c892e19be21cc1570a53cb4cfd48e33cf19f07168",
+  "scenario_count": 10,
+  "sqlite_node_results_rows": 0,
+  "status": "complete"
+}

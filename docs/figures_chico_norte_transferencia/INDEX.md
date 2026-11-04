@@ -9,6 +9,7 @@ Estas figuras describen la evaluación externa congelada de XGBoost y el ensembl
 - [Mapa de volumen mediano, p50](mapa_inundacion_mediano_chico_norte.png)
 - [Mapa de volumen alto, p90](mapa_inundacion_alto_chico_norte.png)
 - [Manifiesto de generación y hashes](figure_manifest.json)
+- [Variante con el estilo de la corrida completa](estilo_corrida_completa/README.md), usada en la presentación actualizada.
 
 El manifiesto JSON contiene hashes de las fuentes y las imágenes, regla de selección, resúmenes agregados por modelo y versiones del software. No contiene etiquetas por nodo.
 
@@ -30,7 +31,7 @@ Se calcula el volumen SWMM total de cada escenario elegible. Se excluyen de esta
 
 ## Cómo leerlas
 
-La paridad conserva ceros usando el cambio de eje `log10(1 + volumen en m³)` y muestra densidad de pares en escala logarítmica. La diagonal roja es igualdad entre SWMM y el volumen predicho enrutado. Los paneles superiores incluyen todos los pares y reproducen el RMSE/MAE usados en el score: XGBoost 270,86/64,32 m³; MLP 435,93/74,95 m³. Los inferiores restringen el análisis a los 131.502 pares inundados por SWMM (umbral de 1 m³): RMSE 477,94 m³ para XGBoost y 748,07 m³ para MLP. Esta segunda vista es condicional y sus RMSE no reemplazan la métrica oficial agregada.
+La [versión final de la presentación](formato_20_10_paridad_global/README.md) usa una sola paridad global con puntos azul/naranja y el estilo oscuro del formato del 20 de octubre. Compara el volumen SWMM con el predicho para 410.814 pares corrida–nodo de 787 corridas elegibles; los ejes son `log10(1 + volumen)` y la diagonal `y = x` indica predicción igual a SWMM. RMSE: XGBoost 270,86 m³; MLP ensemble 435,93 m³. Se retiró la paridad condicional y la anotación «Ambos cero», que indicaba coincidencias de ceros pero distraía de la comparación global. La figura de densidad queda documentada como variante anterior.
 
 Los tres mapas muestran SWMM, XGBoost y MLP en paneles contiguos, con la misma geometría del INP y una escala de color común para los volúmenes. Los nodos secos aparecen en gris; los falsos positivos del modelo llevan un círculo morado y los falsos negativos una cruz roja. La clase real se define como volumen SWMM ≥1 m³ y la clase predicha se toma de `y_pred_clf` sellado. El color de los nodos usa una transformación raíz para que los volúmenes pequeños sigan siendo visibles; no es una escala lineal de color.
 

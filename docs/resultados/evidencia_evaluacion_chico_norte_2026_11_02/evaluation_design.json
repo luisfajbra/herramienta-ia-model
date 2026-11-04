@@ -1,0 +1,321 @@
+{
+  "created_at_utc": "2026-11-03T03:41:13Z",
+  "design_version": "chico_norte_novel_hydrograph_eval_v1",
+  "factor_selection": {
+    "algorithm": "Python random.Random(seed).sample without replacement from off-training tenths",
+    "draw_order": [
+      3.9,
+      0.7,
+      2.7,
+      4.3,
+      1.3
+    ],
+    "interpretation": "all factors are inside training support [0.2, 5.0], but absent from the 0.2-spaced training grid; this is interpolation in factor, not factor extrapolation",
+    "pool": [
+      0.3,
+      0.5,
+      0.7,
+      0.9,
+      1.1,
+      1.3,
+      1.5,
+      1.7,
+      1.9,
+      2.1,
+      2.3,
+      2.5,
+      2.7,
+      2.9,
+      3.1,
+      3.3,
+      3.5,
+      3.7,
+      3.9,
+      4.1,
+      4.3,
+      4.5,
+      4.7,
+      4.9
+    ],
+    "seed": 20261102,
+    "sorted_for_reporting": [
+      0.7,
+      1.3,
+      2.7,
+      3.9,
+      4.3
+    ]
+  },
+  "feature_contract": "tabular_v4_21",
+  "flood_threshold_m3": 1.0,
+  "hydrograph_files": {
+    "novel_20261102_cascade_peaks": {
+      "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\hydrograph_validation\\chico_norte_nuevos_2026_11_02\\novel_20261102_cascade_peaks.csv",
+      "sha256": "6b282c24d986be95685b61941a12028376ee7c96d59546e28d2dcf9756256727"
+    },
+    "novel_20261102_sustained_late_surge": {
+      "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\hydrograph_validation\\chico_norte_nuevos_2026_11_02\\novel_20261102_sustained_late_surge.csv",
+      "sha256": "afea1f70456033b9aa8d70d9f95563acfc0dc6d882d1ec20b7bab4b04870738e"
+    }
+  },
+  "hydrograph_labels": {
+    "novel_20261102_cascade_peaks": "Pulsos dobles separados",
+    "novel_20261102_sustained_late_surge": "Meseta sostenida y pico tardío"
+  },
+  "input_construction": {
+    "closure_policy": "linear_v1 applied before event CSV freeze; endpoints are zero",
+    "peak_policy": "preserve each Chico Norte INP node peak and multiply by the selected factor",
+    "scenario_count": 10,
+    "scenarios": [
+      {
+        "closure_policy": {
+          "changed_nodes": [],
+          "effective_last_time_hours": 7.0,
+          "original_last_time_hours": 7.0,
+          "policy_version": "linear_v1",
+          "source_scenario_id": "B:novel_20261102_cascade_peaks:f0.700",
+          "tolerance_lps": 0.01
+        },
+        "duration_h": 7.0,
+        "event_csv": "events/B_novel_20261102_cascade_peaks_f0.700.csv",
+        "event_csv_sha256": "cc61c972ee98f9fa52f8dae73d6fac3b42e47612c5fd2536e9475752fd861b6b",
+        "factor_mult": 0.7,
+        "peak_reference": "preserve_each_node_peak_from_Chico_Norte_INP_then_multiply_by_factor",
+        "scenario_key": "B:novel_20261102_cascade_peaks:f0.700",
+        "shape_id": "novel_20261102_cascade_peaks",
+        "time_to_peak_h": 1.0
+      },
+      {
+        "closure_policy": {
+          "changed_nodes": [],
+          "effective_last_time_hours": 7.0,
+          "original_last_time_hours": 7.0,
+          "policy_version": "linear_v1",
+          "source_scenario_id": "B:novel_20261102_cascade_peaks:f1.300",
+          "tolerance_lps": 0.01
+        },
+        "duration_h": 7.0,
+        "event_csv": "events/B_novel_20261102_cascade_peaks_f1.300.csv",
+        "event_csv_sha256": "1ed8703e9f6378d735b2589369649d8a5e5f83000841ac471f6cbb01f50a6c64",
+        "factor_mult": 1.3,
+        "peak_reference": "preserve_each_node_peak_from_Chico_Norte_INP_then_multiply_by_factor",
+        "scenario_key": "B:novel_20261102_cascade_peaks:f1.300",
+        "shape_id": "novel_20261102_cascade_peaks",
+        "time_to_peak_h": 1.0
+      },
+      {
+        "closure_policy": {
+          "changed_nodes": [],
+          "effective_last_time_hours": 7.0,
+          "original_last_time_hours": 7.0,
+          "policy_version": "linear_v1",
+          "source_scenario_id": "B:novel_20261102_cascade_peaks:f2.700",
+          "tolerance_lps": 0.01
+        },
+        "duration_h": 7.0,
+        "event_csv": "events/B_novel_20261102_cascade_peaks_f2.700.csv",
+        "event_csv_sha256": "5d768c4074191b687be46991e68dd9075ac7642585861cf831fc381fb53e71c4",
+        "factor_mult": 2.7,
+        "peak_reference": "preserve_each_node_peak_from_Chico_Norte_INP_then_multiply_by_factor",
+        "scenario_key": "B:novel_20261102_cascade_peaks:f2.700",
+        "shape_id": "novel_20261102_cascade_peaks",
+        "time_to_peak_h": 1.0
+      },
+      {
+        "closure_policy": {
+          "changed_nodes": [],
+          "effective_last_time_hours": 7.0,
+          "original_last_time_hours": 7.0,
+          "policy_version": "linear_v1",
+          "source_scenario_id": "B:novel_20261102_cascade_peaks:f3.900",
+          "tolerance_lps": 0.01
+        },
+        "duration_h": 7.0,
+        "event_csv": "events/B_novel_20261102_cascade_peaks_f3.900.csv",
+        "event_csv_sha256": "e39c6e8b9d4ac5a16754a13d22d38a2ea2ccb67e22e97182b46ee8945c49d650",
+        "factor_mult": 3.9,
+        "peak_reference": "preserve_each_node_peak_from_Chico_Norte_INP_then_multiply_by_factor",
+        "scenario_key": "B:novel_20261102_cascade_peaks:f3.900",
+        "shape_id": "novel_20261102_cascade_peaks",
+        "time_to_peak_h": 1.0
+      },
+      {
+        "closure_policy": {
+          "changed_nodes": [],
+          "effective_last_time_hours": 7.0,
+          "original_last_time_hours": 7.0,
+          "policy_version": "linear_v1",
+          "source_scenario_id": "B:novel_20261102_cascade_peaks:f4.300",
+          "tolerance_lps": 0.01
+        },
+        "duration_h": 7.0,
+        "event_csv": "events/B_novel_20261102_cascade_peaks_f4.300.csv",
+        "event_csv_sha256": "69b92333109c52c513006cfa051d85e626e14ebc1da909ec4b23b781b7746f25",
+        "factor_mult": 4.3,
+        "peak_reference": "preserve_each_node_peak_from_Chico_Norte_INP_then_multiply_by_factor",
+        "scenario_key": "B:novel_20261102_cascade_peaks:f4.300",
+        "shape_id": "novel_20261102_cascade_peaks",
+        "time_to_peak_h": 1.0
+      },
+      {
+        "closure_policy": {
+          "changed_nodes": [],
+          "effective_last_time_hours": 16.0,
+          "original_last_time_hours": 16.0,
+          "policy_version": "linear_v1",
+          "source_scenario_id": "B:novel_20261102_sustained_late_surge:f0.700",
+          "tolerance_lps": 0.01
+        },
+        "duration_h": 16.0,
+        "event_csv": "events/B_novel_20261102_sustained_late_surge_f0.700.csv",
+        "event_csv_sha256": "4a20a410eb5acd0bbf0ef002aa9a513b2b7706e552b4a02f573b14f31c85b08c",
+        "factor_mult": 0.7,
+        "peak_reference": "preserve_each_node_peak_from_Chico_Norte_INP_then_multiply_by_factor",
+        "scenario_key": "B:novel_20261102_sustained_late_surge:f0.700",
+        "shape_id": "novel_20261102_sustained_late_surge",
+        "time_to_peak_h": 8.5
+      },
+      {
+        "closure_policy": {
+          "changed_nodes": [],
+          "effective_last_time_hours": 16.0,
+          "original_last_time_hours": 16.0,
+          "policy_version": "linear_v1",
+          "source_scenario_id": "B:novel_20261102_sustained_late_surge:f1.300",
+          "tolerance_lps": 0.01
+        },
+        "duration_h": 16.0,
+        "event_csv": "events/B_novel_20261102_sustained_late_surge_f1.300.csv",
+        "event_csv_sha256": "2961a0be53870783337849efd61ba5c5942409c4a831db96b78ce687871637c3",
+        "factor_mult": 1.3,
+        "peak_reference": "preserve_each_node_peak_from_Chico_Norte_INP_then_multiply_by_factor",
+        "scenario_key": "B:novel_20261102_sustained_late_surge:f1.300",
+        "shape_id": "novel_20261102_sustained_late_surge",
+        "time_to_peak_h": 8.5
+      },
+      {
+        "closure_policy": {
+          "changed_nodes": [],
+          "effective_last_time_hours": 16.0,
+          "original_last_time_hours": 16.0,
+          "policy_version": "linear_v1",
+          "source_scenario_id": "B:novel_20261102_sustained_late_surge:f2.700",
+          "tolerance_lps": 0.01
+        },
+        "duration_h": 16.0,
+        "event_csv": "events/B_novel_20261102_sustained_late_surge_f2.700.csv",
+        "event_csv_sha256": "72e9727f55ea13a7d363a7230405ed96453d1e9bbefa3fec39212bddfdc4f0b7",
+        "factor_mult": 2.7,
+        "peak_reference": "preserve_each_node_peak_from_Chico_Norte_INP_then_multiply_by_factor",
+        "scenario_key": "B:novel_20261102_sustained_late_surge:f2.700",
+        "shape_id": "novel_20261102_sustained_late_surge",
+        "time_to_peak_h": 8.5
+      },
+      {
+        "closure_policy": {
+          "changed_nodes": [],
+          "effective_last_time_hours": 16.0,
+          "original_last_time_hours": 16.0,
+          "policy_version": "linear_v1",
+          "source_scenario_id": "B:novel_20261102_sustained_late_surge:f3.900",
+          "tolerance_lps": 0.01
+        },
+        "duration_h": 16.0,
+        "event_csv": "events/B_novel_20261102_sustained_late_surge_f3.900.csv",
+        "event_csv_sha256": "5ec59e182acc2242ac58a59b453609238f75fd0ab6e645ad8687445fff2a8968",
+        "factor_mult": 3.9,
+        "peak_reference": "preserve_each_node_peak_from_Chico_Norte_INP_then_multiply_by_factor",
+        "scenario_key": "B:novel_20261102_sustained_late_surge:f3.900",
+        "shape_id": "novel_20261102_sustained_late_surge",
+        "time_to_peak_h": 8.5
+      },
+      {
+        "closure_policy": {
+          "changed_nodes": [],
+          "effective_last_time_hours": 16.0,
+          "original_last_time_hours": 16.0,
+          "policy_version": "linear_v1",
+          "source_scenario_id": "B:novel_20261102_sustained_late_surge:f4.300",
+          "tolerance_lps": 0.01
+        },
+        "duration_h": 16.0,
+        "event_csv": "events/B_novel_20261102_sustained_late_surge_f4.300.csv",
+        "event_csv_sha256": "9f11bdf1aacda751a66206ede722cc2a8ed4848c1783a224b8a6a887b084ddae",
+        "factor_mult": 4.3,
+        "peak_reference": "preserve_each_node_peak_from_Chico_Norte_INP_then_multiply_by_factor",
+        "scenario_key": "B:novel_20261102_sustained_late_surge:f4.300",
+        "shape_id": "novel_20261102_sustained_late_surge",
+        "time_to_peak_h": 8.5
+      }
+    ],
+    "scope": "nodal FLOW hydrographs, no rainfall-runoff transformation",
+    "time_policy": "round_to_minute"
+  },
+  "models": {
+    "mlp": {
+      "candidate_dir": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\frozen_pair_rerun_20261028\\20261028T194035Z\\A\\candidates\\mlp\\ensemble",
+      "classifier_sha256": "0bb1045feeb5bdcacc82ca05b96fe7e382756acb8ab2b501dc450360933ba321",
+      "metadata_sha256": "5da1af38519cab23569e2d73c9671be0471c8ab76f55971a521a66393151c8b8",
+      "regressor_sha256": "a450253d23daba66d032daf3e1723b8fbecd9281f30d3cca06efa01dadba45bb"
+    },
+    "xgboost": {
+      "candidate_dir": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\frozen_pair_rerun_20261028\\20261028T194035Z\\A\\candidates\\xgboost",
+      "classifier_sha256": "a1a6e504cca9a4553e93edeed3340da48c70b5b74167716c4bc96946f376046f",
+      "metadata_sha256": "cdf6ed18a10e2233e9a3670dcac63ac0e2474aa284e1457e865cb41d15444027",
+      "regressor_sha256": "045526a91a4a99a89bde1f473bfc4e67eefa950c5baacf835dcc595c5ecc1b7f"
+    }
+  },
+  "network_inp": {
+    "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+    "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+  },
+  "objective": "evaluate frozen Chico Sur-trained XGBoost and five-seed MLP on new synthetic inflow shapes in Chico Norte against SWMM",
+  "preflight": {
+    "domain_policy_id": "chico_sur_chico_norte_pair_scope_v1",
+    "factor_seed": 20261102,
+    "factors_draw_order": [
+      3.9,
+      0.7,
+      2.7,
+      4.3,
+      1.3
+    ],
+    "factors_sorted_for_reporting": [
+      0.7,
+      1.3,
+      2.7,
+      3.9,
+      4.3
+    ],
+    "hydrograph_shape_ids": [
+      "novel_20261102_cascade_peaks",
+      "novel_20261102_sustained_late_surge"
+    ],
+    "model_candidates": {
+      "mlp": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\frozen_pair_rerun_20261028\\20261028T194035Z\\A\\candidates\\mlp\\ensemble",
+      "xgboost": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\frozen_pair_rerun_20261028\\20261028T194035Z\\A\\candidates\\xgboost"
+    },
+    "network_inp": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+    "network_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+    "scenario_count": 10,
+    "source_registration_sha256": "68187aac5ff23e9c4a45a1066230d7da4e2dc5f93657f881fd3e51e6d151b12a"
+  },
+  "qa_policy": {
+    "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+    "drain_down_extension_hours": 2.0,
+    "drain_down_hours": 6.0,
+    "flooding_tolerance_lps": 0.01,
+    "inflow_tolerance_lps": 0.01,
+    "max_continuity_error_pct": 5.0,
+    "max_drain_retries": 2,
+    "min_report_steps": 2,
+    "residual_flow_tolerance_lps": 0.01,
+    "storage_change_tolerance_m3": 0.01,
+    "tail_window_hours": 1.0
+  },
+  "volume_bands_m3": [
+    24.0,
+    108.0,
+    344.0
+  ]
+}

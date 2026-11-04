@@ -1,0 +1,1543 @@
+{
+  "feature_contract_id": "tabular_v4_21",
+  "feature_contract_sha256": "72b3a87f77a3cc213097861ce2ffb8a4fd4ba95634d7771ea37883223e15d4df",
+  "input_manifest_path": "frozen_b_manifest.json",
+  "input_manifest_sha256": "e2a49219530c29a04099992e25a7b0184b49cc30575dda4a7c2eee25955448ab",
+  "manifest_sha256": "584a16775b722481f447153c54ea5f1e390fb5a7e155e56cf14ce7a9c5f1b28d",
+  "network_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+  "node_results_rows": 0,
+  "protocol_anchor": {
+    "anchor_id": 1,
+    "anchor_sha256": "3196549de4af7e6a9718efda87fcd9dbe70c37f64d9d40d3c52e2ba6497d4028",
+    "execution_context": {
+      "base_event_nodes": [],
+      "config_path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\config.yaml",
+      "config_sha256": "9048d653277578cbc522ca7b264baee1331c915a3b34a7b0dc4fd6ebe1a0324f",
+      "evaluation_design": {
+        "path": "evaluation_design.json",
+        "sha256": "7efdb51bca62d54c7ea2052454f74f07327db327d55ed99d0b2b87f78c03d0dd"
+      },
+      "event_time_policy": "round_to_minute",
+      "factor_random_seed": 20261102,
+      "network_role": "B",
+      "planned_event_sources": {
+        "B:novel_20261102_cascade_peaks:f0.700": {
+          "path": "events/B_novel_20261102_cascade_peaks_f0.700.csv",
+          "sha256": "cc61c972ee98f9fa52f8dae73d6fac3b42e47612c5fd2536e9475752fd861b6b"
+        },
+        "B:novel_20261102_cascade_peaks:f1.300": {
+          "path": "events/B_novel_20261102_cascade_peaks_f1.300.csv",
+          "sha256": "1ed8703e9f6378d735b2589369649d8a5e5f83000841ac471f6cbb01f50a6c64"
+        },
+        "B:novel_20261102_cascade_peaks:f2.700": {
+          "path": "events/B_novel_20261102_cascade_peaks_f2.700.csv",
+          "sha256": "5d768c4074191b687be46991e68dd9075ac7642585861cf831fc381fb53e71c4"
+        },
+        "B:novel_20261102_cascade_peaks:f3.900": {
+          "path": "events/B_novel_20261102_cascade_peaks_f3.900.csv",
+          "sha256": "e39c6e8b9d4ac5a16754a13d22d38a2ea2ccb67e22e97182b46ee8945c49d650"
+        },
+        "B:novel_20261102_cascade_peaks:f4.300": {
+          "path": "events/B_novel_20261102_cascade_peaks_f4.300.csv",
+          "sha256": "69b92333109c52c513006cfa051d85e626e14ebc1da909ec4b23b781b7746f25"
+        },
+        "B:novel_20261102_sustained_late_surge:f0.700": {
+          "path": "events/B_novel_20261102_sustained_late_surge_f0.700.csv",
+          "sha256": "4a20a410eb5acd0bbf0ef002aa9a513b2b7706e552b4a02f573b14f31c85b08c"
+        },
+        "B:novel_20261102_sustained_late_surge:f1.300": {
+          "path": "events/B_novel_20261102_sustained_late_surge_f1.300.csv",
+          "sha256": "2961a0be53870783337849efd61ba5c5942409c4a831db96b78ce687871637c3"
+        },
+        "B:novel_20261102_sustained_late_surge:f2.700": {
+          "path": "events/B_novel_20261102_sustained_late_surge_f2.700.csv",
+          "sha256": "72e9727f55ea13a7d363a7230405ed96453d1e9bbefa3fec39212bddfdc4f0b7"
+        },
+        "B:novel_20261102_sustained_late_surge:f3.900": {
+          "path": "events/B_novel_20261102_sustained_late_surge_f3.900.csv",
+          "sha256": "5ec59e182acc2242ac58a59b453609238f75fd0ab6e645ad8687445fff2a8968"
+        },
+        "B:novel_20261102_sustained_late_surge:f4.300": {
+          "path": "events/B_novel_20261102_sustained_late_surge_f4.300.csv",
+          "sha256": "9f11bdf1aacda751a66206ede722cc2a8ed4848c1783a224b8a6a887b084ddae"
+        }
+      },
+      "positive_peak_event_nodes": [
+        "100C",
+        "101C",
+        "102C",
+        "103I",
+        "104C",
+        "105C",
+        "106I",
+        "107C",
+        "108I",
+        "109C",
+        "10C",
+        "110I",
+        "111I",
+        "112C",
+        "113I",
+        "114I",
+        "115I",
+        "116I",
+        "117C",
+        "118C",
+        "119I",
+        "11C",
+        "120C",
+        "121I",
+        "122C",
+        "123C",
+        "124I",
+        "125C",
+        "126C",
+        "127C",
+        "128C",
+        "129C",
+        "12C",
+        "130I",
+        "131C",
+        "132C",
+        "133I",
+        "134C",
+        "135C",
+        "136I",
+        "137I",
+        "138C",
+        "139C",
+        "13C",
+        "140I",
+        "141C",
+        "142I",
+        "143I",
+        "144C",
+        "145C",
+        "146I",
+        "147C",
+        "148C",
+        "149C",
+        "14C",
+        "150C",
+        "151C",
+        "152I",
+        "153I",
+        "154I",
+        "155C",
+        "156I",
+        "157I",
+        "158C",
+        "159C",
+        "15I",
+        "160C",
+        "161I",
+        "162I",
+        "163C",
+        "164I",
+        "165I",
+        "166I",
+        "167C",
+        "168I",
+        "169I",
+        "16C",
+        "170C",
+        "171I",
+        "172I",
+        "173C",
+        "174I",
+        "175I",
+        "176I",
+        "177I",
+        "178C",
+        "179I",
+        "17C",
+        "180I",
+        "181C",
+        "182C",
+        "183I",
+        "184I",
+        "185C",
+        "186C",
+        "187I",
+        "188C",
+        "189C",
+        "18I",
+        "190C",
+        "191C",
+        "192I",
+        "193C",
+        "194C",
+        "195C",
+        "196C",
+        "197C",
+        "198I",
+        "199C",
+        "19C",
+        "1I",
+        "200C",
+        "201C",
+        "202I",
+        "203C",
+        "204C",
+        "205C",
+        "206I",
+        "207C",
+        "208C",
+        "209I",
+        "20C",
+        "210C",
+        "211C",
+        "212C",
+        "213I",
+        "214C",
+        "215I",
+        "216I",
+        "217C",
+        "218I",
+        "219C",
+        "21C",
+        "220C",
+        "221I",
+        "222I",
+        "223I",
+        "224I",
+        "225I",
+        "226C",
+        "227I",
+        "228C",
+        "229I",
+        "22C",
+        "230C",
+        "231C",
+        "232I",
+        "233C",
+        "234C",
+        "235I",
+        "236C",
+        "237I",
+        "238C",
+        "239I",
+        "23I",
+        "240I",
+        "241I",
+        "242C",
+        "243I",
+        "244C",
+        "245C",
+        "246C",
+        "247C",
+        "248C",
+        "249C",
+        "24I",
+        "250C",
+        "251C",
+        "252C",
+        "253I",
+        "254C",
+        "255C",
+        "256I",
+        "257C",
+        "258I",
+        "259I",
+        "25C",
+        "260C",
+        "261I",
+        "262C",
+        "263I",
+        "264I",
+        "265I",
+        "266C",
+        "267I",
+        "268I",
+        "269I",
+        "26I",
+        "270C",
+        "271C",
+        "272I",
+        "273C",
+        "274C",
+        "275I",
+        "276I",
+        "277I",
+        "278C",
+        "279C",
+        "27C",
+        "280C",
+        "281I",
+        "282I",
+        "283C",
+        "284C",
+        "285I",
+        "286C",
+        "287C",
+        "288I",
+        "289C",
+        "28C",
+        "290C",
+        "291C",
+        "292I",
+        "293I",
+        "294I",
+        "295C",
+        "296C",
+        "297C",
+        "298C",
+        "299I",
+        "29I",
+        "2C",
+        "300C",
+        "301I",
+        "302I",
+        "303C",
+        "304C",
+        "305C",
+        "306C",
+        "307C",
+        "308C",
+        "309I",
+        "30I",
+        "310C",
+        "311C",
+        "312I",
+        "313I",
+        "314C",
+        "315C",
+        "316I",
+        "317C",
+        "318C",
+        "319C",
+        "31C",
+        "320I",
+        "321I",
+        "322C",
+        "323C",
+        "324I",
+        "325I",
+        "326I",
+        "327I",
+        "328C",
+        "329C",
+        "32I",
+        "330I",
+        "331C",
+        "332C",
+        "333C",
+        "334C",
+        "335I",
+        "336I",
+        "337I",
+        "338C",
+        "339I",
+        "33I",
+        "340I",
+        "341C",
+        "342I",
+        "343C",
+        "344I",
+        "345I",
+        "346C",
+        "347C",
+        "348C",
+        "349I",
+        "34C",
+        "350I",
+        "351I",
+        "352C",
+        "353C",
+        "354I",
+        "355C",
+        "356C",
+        "357I",
+        "358I",
+        "359I",
+        "35C",
+        "360C",
+        "361C",
+        "362C",
+        "363I",
+        "364I",
+        "365I",
+        "366I",
+        "367C",
+        "368I",
+        "369I",
+        "36C",
+        "370C",
+        "371C",
+        "372I",
+        "373I",
+        "374C",
+        "375I",
+        "376C",
+        "377I",
+        "378C",
+        "379I",
+        "37C",
+        "380I",
+        "381C",
+        "382C",
+        "383I",
+        "384I",
+        "385I",
+        "386I",
+        "387C",
+        "388C",
+        "389C",
+        "38C",
+        "390C",
+        "391I",
+        "392C",
+        "393I",
+        "394I",
+        "395I",
+        "396I",
+        "397C",
+        "398C",
+        "399C",
+        "39C",
+        "3C",
+        "400C",
+        "401I",
+        "402I",
+        "403C",
+        "404C",
+        "405I",
+        "406C",
+        "407C",
+        "408C",
+        "409I",
+        "40I",
+        "410C",
+        "411I",
+        "412I",
+        "413C",
+        "414C",
+        "415C",
+        "416I",
+        "417I",
+        "418C",
+        "419I",
+        "41I",
+        "420I",
+        "421C",
+        "422I",
+        "423I",
+        "424I",
+        "425C",
+        "426C",
+        "427C",
+        "428I",
+        "429C",
+        "42I",
+        "430I",
+        "431C",
+        "432C",
+        "433I",
+        "434C",
+        "435C",
+        "436C",
+        "437I",
+        "438C",
+        "439I",
+        "43I",
+        "440C",
+        "441I",
+        "442I",
+        "443I",
+        "444I",
+        "445C",
+        "446C",
+        "447I",
+        "448I",
+        "449C",
+        "44I",
+        "450C",
+        "451I",
+        "452C",
+        "453C",
+        "454C",
+        "456I",
+        "457I",
+        "458I",
+        "459I",
+        "45I",
+        "460C",
+        "461C",
+        "462C",
+        "463C",
+        "464C",
+        "465C",
+        "466I",
+        "467C",
+        "468I",
+        "469I",
+        "46I",
+        "470C",
+        "471I",
+        "472I",
+        "473I",
+        "474C",
+        "475I",
+        "476C",
+        "477C",
+        "478C",
+        "479I",
+        "47I",
+        "480C",
+        "481C",
+        "482C",
+        "483I",
+        "484I",
+        "485C",
+        "486C",
+        "487I",
+        "488I",
+        "489I",
+        "48I",
+        "490I",
+        "491C",
+        "492I",
+        "493I",
+        "494C",
+        "495I",
+        "496C",
+        "497I",
+        "498I",
+        "499I",
+        "49I",
+        "4C",
+        "500I",
+        "501C",
+        "502I",
+        "503C",
+        "504I",
+        "505I",
+        "506I",
+        "507C",
+        "508I",
+        "509C",
+        "50I",
+        "510I",
+        "511C",
+        "512I",
+        "513I",
+        "514C",
+        "515I",
+        "516C",
+        "517I",
+        "518C",
+        "519I",
+        "51I",
+        "520I",
+        "521I",
+        "522I",
+        "52I",
+        "53C",
+        "54C",
+        "55C",
+        "56C",
+        "57C",
+        "58C",
+        "59C",
+        "5I",
+        "60C",
+        "61C",
+        "62C",
+        "63C",
+        "64C",
+        "65C",
+        "66C",
+        "67C",
+        "68I",
+        "69C",
+        "6C",
+        "70C",
+        "71C",
+        "72I",
+        "73C",
+        "74I",
+        "75C",
+        "76C",
+        "77I",
+        "78C",
+        "79I",
+        "7C",
+        "80C",
+        "81C",
+        "82C",
+        "83I",
+        "84I",
+        "85C",
+        "86C",
+        "87C",
+        "88C",
+        "89I",
+        "8C",
+        "90C",
+        "91I",
+        "92I",
+        "93C",
+        "94C",
+        "95I",
+        "96I",
+        "97C",
+        "98I",
+        "99C",
+        "9C"
+      ],
+      "pyswmm_version": "2.1.0",
+      "python_version": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+      "shape_sources": {
+        "novel_20261102_cascade_peaks": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\hydrograph_validation\\chico_norte_nuevos_2026_11_02\\novel_20261102_cascade_peaks.csv",
+          "sha256": "6b282c24d986be95685b61941a12028376ee7c96d59546e28d2dcf9756256727"
+        },
+        "novel_20261102_sustained_late_surge": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\hydrograph_validation\\chico_norte_nuevos_2026_11_02\\novel_20261102_sustained_late_surge.csv",
+          "sha256": "afea1f70456033b9aa8d70d9f95563acfc0dc6d882d1ec20b7bab4b04870738e"
+        }
+      },
+      "swmm_api_version": "0.4.73",
+      "swmm_engine_version": "5.2.4",
+      "working_tree_status": " M docs/figures_chico_norte_transferencia/INDEX.md\n M docs/superpowers/reports/2026-10-30-transferencia-verificada-chico-norte.md\n M scripts/update_weekly_2026_10_30_deck.py\n M swmm_resilience/simulation/frozen_pair_runner.py\n M tests/simulation/test_frozen_pair_runner.py\n?? Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_con_graficas.pptx\n?? Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_formato_20-10_paridad_global.pptx\n?? Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_formato_20-10_puntos.pptx\n?? Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_formato_20-10_puntos_final.pptx\n?? Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_formato_20-10_puntos_v2.pptx\n?? Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_graficas_estilo_corrida_completa.pptx\n?? Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_graficas_paridad_densidad.pptx\n?? Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_graficas_paridad_puntos.pptx\n?? Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_graficas_paridad_scatter.pptx\n?? Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_paridad_global_final.pptx\n?? docs/figures_chico_norte_transferencia/estilo_corrida_completa/\n?? docs/figures_chico_norte_transferencia/formato_20_10_paridad_global/\n?? docs/figures_chico_norte_transferencia/formato_20_10_puntos/\n?? docs/figures_chico_norte_transferencia/formato_20_10_puntos_final/\n?? docs/figures_chico_norte_transferencia/formato_20_10_puntos_v2/\n?? docs/superpowers/reports/2026-10-30-revision-hidraulica-chico-norte.md\n?? scripts/build_2026_10_30_dark_format.py\n?? scripts/figures_part2/make_chico_norte_legacy_style_visuals.py\n?? scripts/restore_2026_10_30_parity_density_deck.py\n?? scripts/run_chico_norte_novel_hydrograph_eval.py\n?? tests/simulation/test_chico_norte_novel_eval_design.py\n?? ~$Presentacion_MLSMFP_05-10_resultados_fase_c2.pptx\n?? ~$Presentacion_MLSMFP_28-10_avances_auditoria_transferencia.pptx\n?? ~$Presentacion_MLSMFP_28-10_avances_auditoria_transferencia_comparacion_modelo_hidrograma.pptx\n?? ~$Presentacion_MLSMFP_28-10_avances_auditoria_transferencia_con_mapas.pptx\n?? ~$Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_con_graficas.pptx\n?? ~$Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_formato_20-10_paridad_global.pptx\n?? ~$Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_formato_20-10_puntos_v2.pptx\n?? ~$Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_graficas_estilo_corrida_completa.pptx\n?? ~$Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_graficas_paridad_densidad.pptx\n?? ~$Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_graficas_paridad_scatter.pptx\n?? ~$Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_paridad_global_final.pptx\n"
+    },
+    "git_commit": "706b1df2d4af3a080cba7e85eab69c07711507c4",
+    "protocol_sha256": "93ef9ef7389b27ed08d57baff06ef1a2a54162eae06634d39de1a1c96989b7e7"
+  },
+  "protocol_anchor_db_path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\outputs\\experiments\\chico_norte_novel_hydrograph_eval_20261102\\run_20261103T034108Z_protocol_anchor.sqlite3",
+  "protocol_path": "protocol.json",
+  "protocol_sha256": "93ef9ef7389b27ed08d57baff06ef1a2a54162eae06634d39de1a1c96989b7e7",
+  "run_order": [
+    {
+      "artifacts": {
+        "effective_inp": {
+          "byte_size": 280878,
+          "path": "runs/B_novel_20261102_cascade_peaks_f0.700/attempt_01/B_novel_20261102_cascade_peaks_f0.700.inp",
+          "sha256": "2458f0cd2cb4c2681054e754f3327a381c0e975ca74b1ba00e36558f7e2128c5"
+        },
+        "event_source": {
+          "byte_size": 107852,
+          "path": "events/B_novel_20261102_cascade_peaks_f0.700.csv",
+          "sha256": "cc61c972ee98f9fa52f8dae73d6fac3b42e47612c5fd2536e9475752fd861b6b"
+        },
+        "source_network_inp": {
+          "byte_size": 1525143,
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "byte_size": 6943124,
+          "path": "runs/B_novel_20261102_cascade_peaks_f0.700/attempt_01/B_novel_20261102_cascade_peaks_f0.700.out",
+          "sha256": "b17e2dd66f4a29f0ae4dad91eefd36011461424e6c852c0bd7626815477a6aeb"
+        },
+        "swmm_rpt": {
+          "byte_size": 192987,
+          "path": "runs/B_novel_20261102_cascade_peaks_f0.700/attempt_01/B_novel_20261102_cascade_peaks_f0.700.rpt",
+          "sha256": "8ed80f10f28c28d54548ce1a73736b868031c817e1c76a186a6e9c3d32057e54"
+        }
+      },
+      "drainage_diagnostics": {
+        "failed_checks": [],
+        "has_link_data": true,
+        "max_flooding_lps": 0.0,
+        "max_inflow_lps": 0.008291848003864288,
+        "max_residual_flow_lps": 0.008291848003864288,
+        "max_storage_change_m3": 0.0,
+        "min_report_steps": 2,
+        "n_report_steps": 21,
+        "observed_window_hours": 1.0,
+        "policy_version": "tail_window_v1",
+        "state": "drained",
+        "tolerances": {
+          "flooding_tolerance_lps": 0.01,
+          "inflow_tolerance_lps": 0.01,
+          "residual_flow_tolerance_lps": 0.01,
+          "storage_change_tolerance_m3": 0.01
+        },
+        "window_hours": 1.0
+      },
+      "eligible": true,
+      "hydraulic_quality": {
+        "continuity_error_pct": 3.007,
+        "created_at_utc": "2026-11-03T03:55:31Z",
+        "drainage_state": "drained",
+        "eligible": true,
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "strict_text_v1",
+          "parser_version": "strict_text_v1",
+          "report_sha256": "8ed80f10f28c28d54548ce1a73736b868031c817e1c76a186a6e9c3d32057e54",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "effective_inp_sha256": "2458f0cd2cb4c2681054e754f3327a381c0e975ca74b1ba00e36558f7e2128c5",
+          "policy_id": "source_inp_initial_state_v1",
+          "source_inp_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "policy": {
+          "continuity_comparison": "absolute_value",
+          "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+          "max_continuity_error_pct": 5.0,
+          "policy_version": "hydraulic_quality_v1",
+          "require_finite_coverage": true,
+          "require_flooding_report_provenance": true,
+          "require_initial_condition_provenance": true,
+          "required_drainage_state": "drained"
+        },
+        "policy_sha256": "c0d80f0ea73da2e6b11bfd10ff978b728c17abccae5fa293411cc6763371c72f",
+        "reason_codes": []
+      },
+      "reason_codes": [],
+      "run_id": 1,
+      "scenario": {
+        "config_sha256": "b63ba8b5fc65c50e05372328cd589884f181d4d811101c1c6df015368236083d",
+        "duracion_horas": 7.0,
+        "factor_mult": 0.7,
+        "scenario_kind": "frozen_transfer",
+        "shape_id": "novel_20261102_cascade_peaks",
+        "tiempo_al_pico_h": 1.0
+      },
+      "scenario_key": "B:novel_20261102_cascade_peaks:f0.700",
+      "source_manifest_sha256": "247c2546325cf4be5d58182887bcb87562d850001937ce1f6b58807cce01f378"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "byte_size": 281210,
+          "path": "runs/B_novel_20261102_cascade_peaks_f1.300/attempt_01/B_novel_20261102_cascade_peaks_f1.300.inp",
+          "sha256": "44aee2edef3bfd1a6299e0ab57adda94c12403f251b4a4792915034c9ebfea48"
+        },
+        "event_source": {
+          "byte_size": 108184,
+          "path": "events/B_novel_20261102_cascade_peaks_f1.300.csv",
+          "sha256": "1ed8703e9f6378d735b2589369649d8a5e5f83000841ac471f6cbb01f50a6c64"
+        },
+        "source_network_inp": {
+          "byte_size": 1525143,
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "byte_size": 6943124,
+          "path": "runs/B_novel_20261102_cascade_peaks_f1.300/attempt_01/B_novel_20261102_cascade_peaks_f1.300.out",
+          "sha256": "cc061bca02ce31b97447956426c437c79c3ac3bb1e3af90c45b6bcb03c2ec7ce"
+        },
+        "swmm_rpt": {
+          "byte_size": 229330,
+          "path": "runs/B_novel_20261102_cascade_peaks_f1.300/attempt_01/B_novel_20261102_cascade_peaks_f1.300.rpt",
+          "sha256": "1035fb5eda8e95f7fc32646e0e749966ebe4216fbe8dd3f712fb28f7525ad521"
+        }
+      },
+      "drainage_diagnostics": {
+        "failed_checks": [],
+        "has_link_data": true,
+        "max_flooding_lps": 0.0,
+        "max_inflow_lps": 0.009178961627185345,
+        "max_residual_flow_lps": 0.009178961627185345,
+        "max_storage_change_m3": 0.0,
+        "min_report_steps": 2,
+        "n_report_steps": 21,
+        "observed_window_hours": 1.0,
+        "policy_version": "tail_window_v1",
+        "state": "drained",
+        "tolerances": {
+          "flooding_tolerance_lps": 0.01,
+          "inflow_tolerance_lps": 0.01,
+          "residual_flow_tolerance_lps": 0.01,
+          "storage_change_tolerance_m3": 0.01
+        },
+        "window_hours": 1.0
+      },
+      "eligible": true,
+      "hydraulic_quality": {
+        "continuity_error_pct": 1.727,
+        "created_at_utc": "2026-11-03T03:55:31Z",
+        "drainage_state": "drained",
+        "eligible": true,
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "1035fb5eda8e95f7fc32646e0e749966ebe4216fbe8dd3f712fb28f7525ad521",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "effective_inp_sha256": "44aee2edef3bfd1a6299e0ab57adda94c12403f251b4a4792915034c9ebfea48",
+          "policy_id": "source_inp_initial_state_v1",
+          "source_inp_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "policy": {
+          "continuity_comparison": "absolute_value",
+          "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+          "max_continuity_error_pct": 5.0,
+          "policy_version": "hydraulic_quality_v1",
+          "require_finite_coverage": true,
+          "require_flooding_report_provenance": true,
+          "require_initial_condition_provenance": true,
+          "required_drainage_state": "drained"
+        },
+        "policy_sha256": "c0d80f0ea73da2e6b11bfd10ff978b728c17abccae5fa293411cc6763371c72f",
+        "reason_codes": []
+      },
+      "reason_codes": [],
+      "run_id": 2,
+      "scenario": {
+        "config_sha256": "afb9b6a26614e4ccb528399ede18bbadf24266e8ed37cce3fc80e31234c49363",
+        "duracion_horas": 7.0,
+        "factor_mult": 1.3,
+        "scenario_kind": "frozen_transfer",
+        "shape_id": "novel_20261102_cascade_peaks",
+        "tiempo_al_pico_h": 1.0
+      },
+      "scenario_key": "B:novel_20261102_cascade_peaks:f1.300",
+      "source_manifest_sha256": "c70a7cdd0c2a5c24def55e3a09cf23830957c4052446f340642d7ea57bdcb7c3"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "byte_size": 282039,
+          "path": "runs/B_novel_20261102_cascade_peaks_f2.700/attempt_01/B_novel_20261102_cascade_peaks_f2.700.inp",
+          "sha256": "7d31476e51476292430d61c8ce3305715927be4704ee5753ea44c531359d4bc2"
+        },
+        "event_source": {
+          "byte_size": 109013,
+          "path": "events/B_novel_20261102_cascade_peaks_f2.700.csv",
+          "sha256": "5d768c4074191b687be46991e68dd9075ac7642585861cf831fc381fb53e71c4"
+        },
+        "source_network_inp": {
+          "byte_size": 1525143,
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "byte_size": 6943124,
+          "path": "runs/B_novel_20261102_cascade_peaks_f2.700/attempt_01/B_novel_20261102_cascade_peaks_f2.700.out",
+          "sha256": "6bb35009dfccf371e417d3edf722ee7909ca0649240e793e6ccf715867ed49c5"
+        },
+        "swmm_rpt": {
+          "byte_size": 302344,
+          "path": "runs/B_novel_20261102_cascade_peaks_f2.700/attempt_01/B_novel_20261102_cascade_peaks_f2.700.rpt",
+          "sha256": "8b54d875ece456e34d111c8fb67f7e5f7613c8695ac048f4017a3c2db0958dd4"
+        }
+      },
+      "drainage_diagnostics": {
+        "failed_checks": [],
+        "has_link_data": true,
+        "max_flooding_lps": 0.0,
+        "max_inflow_lps": 0.009807253256440163,
+        "max_residual_flow_lps": 0.009807253256440163,
+        "max_storage_change_m3": 0.0,
+        "min_report_steps": 2,
+        "n_report_steps": 21,
+        "observed_window_hours": 1.0,
+        "policy_version": "tail_window_v1",
+        "state": "drained",
+        "tolerances": {
+          "flooding_tolerance_lps": 0.01,
+          "inflow_tolerance_lps": 0.01,
+          "residual_flow_tolerance_lps": 0.01,
+          "storage_change_tolerance_m3": 0.01
+        },
+        "window_hours": 1.0
+      },
+      "eligible": true,
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.808,
+        "created_at_utc": "2026-11-03T03:55:31Z",
+        "drainage_state": "drained",
+        "eligible": true,
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "8b54d875ece456e34d111c8fb67f7e5f7613c8695ac048f4017a3c2db0958dd4",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "effective_inp_sha256": "7d31476e51476292430d61c8ce3305715927be4704ee5753ea44c531359d4bc2",
+          "policy_id": "source_inp_initial_state_v1",
+          "source_inp_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "policy": {
+          "continuity_comparison": "absolute_value",
+          "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+          "max_continuity_error_pct": 5.0,
+          "policy_version": "hydraulic_quality_v1",
+          "require_finite_coverage": true,
+          "require_flooding_report_provenance": true,
+          "require_initial_condition_provenance": true,
+          "required_drainage_state": "drained"
+        },
+        "policy_sha256": "c0d80f0ea73da2e6b11bfd10ff978b728c17abccae5fa293411cc6763371c72f",
+        "reason_codes": []
+      },
+      "reason_codes": [],
+      "run_id": 3,
+      "scenario": {
+        "config_sha256": "a6625d5ae453b27aa0df7063bc675580daf09c330d309329ded1c8d9d94357b7",
+        "duracion_horas": 7.0,
+        "factor_mult": 2.7,
+        "scenario_kind": "frozen_transfer",
+        "shape_id": "novel_20261102_cascade_peaks",
+        "tiempo_al_pico_h": 1.0
+      },
+      "scenario_key": "B:novel_20261102_cascade_peaks:f2.700",
+      "source_manifest_sha256": "40bad0ef6a33fa2246994e6c3ac7eb4f67ac2b22a60f20f6b5e4c12c777640da"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "byte_size": 282571,
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_02/B_novel_20261102_cascade_peaks_f3.900.inp",
+          "sha256": "d45c3d3a101075b0f9e18c9f875fd6f55adb59d980e6e0748c193656888439ec"
+        },
+        "event_source": {
+          "byte_size": 109545,
+          "path": "events/B_novel_20261102_cascade_peaks_f3.900.csv",
+          "sha256": "e39c6e8b9d4ac5a16754a13d22d38a2ea2ccb67e22e97182b46ee8945c49d650"
+        },
+        "source_network_inp": {
+          "byte_size": 1525143,
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "byte_size": 7865524,
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_02/B_novel_20261102_cascade_peaks_f3.900.out",
+          "sha256": "b926ab5b2f0002d971d738a42e65357493c0529216752353e3166d9304a0d30b"
+        },
+        "swmm_rpt": {
+          "byte_size": 303957,
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_02/B_novel_20261102_cascade_peaks_f3.900.rpt",
+          "sha256": "edbc2b5b62cd5ab1f47ec02ee4bd8203d0ca7fbff2cd5835bc5754c9d38b4b88"
+        }
+      },
+      "drainage_diagnostics": {
+        "failed_checks": [],
+        "has_link_data": true,
+        "max_flooding_lps": 0.0,
+        "max_inflow_lps": 0.0034795014653354883,
+        "max_residual_flow_lps": 0.0034795014653354883,
+        "max_storage_change_m3": 0.0,
+        "min_report_steps": 2,
+        "n_report_steps": 21,
+        "observed_window_hours": 1.0,
+        "policy_version": "tail_window_v1",
+        "state": "drained",
+        "tolerances": {
+          "flooding_tolerance_lps": 0.01,
+          "inflow_tolerance_lps": 0.01,
+          "residual_flow_tolerance_lps": 0.01,
+          "storage_change_tolerance_m3": 0.01
+        },
+        "window_hours": 1.0
+      },
+      "eligible": true,
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.543,
+        "created_at_utc": "2026-11-03T03:55:31Z",
+        "drainage_state": "drained",
+        "eligible": true,
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "edbc2b5b62cd5ab1f47ec02ee4bd8203d0ca7fbff2cd5835bc5754c9d38b4b88",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "effective_inp_sha256": "d45c3d3a101075b0f9e18c9f875fd6f55adb59d980e6e0748c193656888439ec",
+          "policy_id": "source_inp_initial_state_v1",
+          "source_inp_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "policy": {
+          "continuity_comparison": "absolute_value",
+          "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+          "max_continuity_error_pct": 5.0,
+          "policy_version": "hydraulic_quality_v1",
+          "require_finite_coverage": true,
+          "require_flooding_report_provenance": true,
+          "require_initial_condition_provenance": true,
+          "required_drainage_state": "drained"
+        },
+        "policy_sha256": "c0d80f0ea73da2e6b11bfd10ff978b728c17abccae5fa293411cc6763371c72f",
+        "reason_codes": []
+      },
+      "reason_codes": [],
+      "run_id": 4,
+      "scenario": {
+        "config_sha256": "5e60ecb12dd21f39aad558459ff8cef4f71d6c371a5504a2e0c38b94ac8ad2b2",
+        "duracion_horas": 7.0,
+        "factor_mult": 3.9,
+        "scenario_kind": "frozen_transfer",
+        "shape_id": "novel_20261102_cascade_peaks",
+        "tiempo_al_pico_h": 1.0
+      },
+      "scenario_key": "B:novel_20261102_cascade_peaks:f3.900",
+      "source_manifest_sha256": "391040607e9ecd2db64aa0716d6bf3f6bb7fcd322ca0066e444bfaedf7864831"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "byte_size": 282709,
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_02/B_novel_20261102_cascade_peaks_f4.300.inp",
+          "sha256": "37c622e9498b92b7291a4ffd482e3b10435d9db1a5cd73e44bd4dcbbb03ee517"
+        },
+        "event_source": {
+          "byte_size": 109683,
+          "path": "events/B_novel_20261102_cascade_peaks_f4.300.csv",
+          "sha256": "69b92333109c52c513006cfa051d85e626e14ebc1da909ec4b23b781b7746f25"
+        },
+        "source_network_inp": {
+          "byte_size": 1525143,
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "byte_size": 7865524,
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_02/B_novel_20261102_cascade_peaks_f4.300.out",
+          "sha256": "c6629caeba81f704d20c5eaf7c29b095077377d6b02d37cdecc11aa14d4fdc1f"
+        },
+        "swmm_rpt": {
+          "byte_size": 304410,
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_02/B_novel_20261102_cascade_peaks_f4.300.rpt",
+          "sha256": "fbeebc71fb0be5ba6bccafd59c5c2a5c3df2ca9448daca09b935d633b6000bfd"
+        }
+      },
+      "drainage_diagnostics": {
+        "failed_checks": [],
+        "has_link_data": true,
+        "max_flooding_lps": 0.0,
+        "max_inflow_lps": 0.0034966005478054285,
+        "max_residual_flow_lps": 0.0034966005478054285,
+        "max_storage_change_m3": 0.0,
+        "min_report_steps": 2,
+        "n_report_steps": 21,
+        "observed_window_hours": 1.0,
+        "policy_version": "tail_window_v1",
+        "state": "drained",
+        "tolerances": {
+          "flooding_tolerance_lps": 0.01,
+          "inflow_tolerance_lps": 0.01,
+          "residual_flow_tolerance_lps": 0.01,
+          "storage_change_tolerance_m3": 0.01
+        },
+        "window_hours": 1.0
+      },
+      "eligible": true,
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.495,
+        "created_at_utc": "2026-11-03T03:55:31Z",
+        "drainage_state": "drained",
+        "eligible": true,
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "fbeebc71fb0be5ba6bccafd59c5c2a5c3df2ca9448daca09b935d633b6000bfd",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "effective_inp_sha256": "37c622e9498b92b7291a4ffd482e3b10435d9db1a5cd73e44bd4dcbbb03ee517",
+          "policy_id": "source_inp_initial_state_v1",
+          "source_inp_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "policy": {
+          "continuity_comparison": "absolute_value",
+          "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+          "max_continuity_error_pct": 5.0,
+          "policy_version": "hydraulic_quality_v1",
+          "require_finite_coverage": true,
+          "require_flooding_report_provenance": true,
+          "require_initial_condition_provenance": true,
+          "required_drainage_state": "drained"
+        },
+        "policy_sha256": "c0d80f0ea73da2e6b11bfd10ff978b728c17abccae5fa293411cc6763371c72f",
+        "reason_codes": []
+      },
+      "reason_codes": [],
+      "run_id": 5,
+      "scenario": {
+        "config_sha256": "c768ed7e2d3e70308cefdbe8fe6f5385d152c20dd07d75a3cb363979358488ec",
+        "duracion_horas": 7.0,
+        "factor_mult": 4.3,
+        "scenario_kind": "frozen_transfer",
+        "shape_id": "novel_20261102_cascade_peaks",
+        "tiempo_al_pico_h": 1.0
+      },
+      "scenario_key": "B:novel_20261102_cascade_peaks:f4.300",
+      "source_manifest_sha256": "a5a83508eec3741d77567c329ea23fb95e2de3185be397d98480ab2dfa8eee68"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "byte_size": 301445,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f0.700/attempt_01/B_novel_20261102_sustained_late_surge_f0.700.inp",
+          "sha256": "0697e8ca019de3abcf74a2c93f2ab2381716f5413ea0bf5c3cc7483b3d7103f0"
+        },
+        "event_source": {
+          "byte_size": 129572,
+          "path": "events/B_novel_20261102_sustained_late_surge_f0.700.csv",
+          "sha256": "4a20a410eb5acd0bbf0ef002aa9a513b2b7706e552b4a02f573b14f31c85b08c"
+        },
+        "source_network_inp": {
+          "byte_size": 1525143,
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "byte_size": 11093924,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f0.700/attempt_01/B_novel_20261102_sustained_late_surge_f0.700.out",
+          "sha256": "f19da145ce3d5041888495b000348f9c721690a0546ab20858886d667e0731ae"
+        },
+        "swmm_rpt": {
+          "byte_size": 193066,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f0.700/attempt_01/B_novel_20261102_sustained_late_surge_f0.700.rpt",
+          "sha256": "601c7bdeee3013f6d3d93da098cb8e6cf328fe42575f69d6cc5d996662f836e7"
+        }
+      },
+      "drainage_diagnostics": {
+        "failed_checks": [],
+        "has_link_data": true,
+        "max_flooding_lps": 0.0,
+        "max_inflow_lps": 0.007703516166657209,
+        "max_residual_flow_lps": 0.007703516166657209,
+        "max_storage_change_m3": 0.0,
+        "min_report_steps": 2,
+        "n_report_steps": 21,
+        "observed_window_hours": 1.0,
+        "policy_version": "tail_window_v1",
+        "state": "drained",
+        "tolerances": {
+          "flooding_tolerance_lps": 0.01,
+          "inflow_tolerance_lps": 0.01,
+          "residual_flow_tolerance_lps": 0.01,
+          "storage_change_tolerance_m3": 0.01
+        },
+        "window_hours": 1.0
+      },
+      "eligible": true,
+      "hydraulic_quality": {
+        "continuity_error_pct": 1.212,
+        "created_at_utc": "2026-11-03T03:55:32Z",
+        "drainage_state": "drained",
+        "eligible": true,
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "strict_text_v1",
+          "parser_version": "strict_text_v1",
+          "report_sha256": "601c7bdeee3013f6d3d93da098cb8e6cf328fe42575f69d6cc5d996662f836e7",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "effective_inp_sha256": "0697e8ca019de3abcf74a2c93f2ab2381716f5413ea0bf5c3cc7483b3d7103f0",
+          "policy_id": "source_inp_initial_state_v1",
+          "source_inp_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "policy": {
+          "continuity_comparison": "absolute_value",
+          "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+          "max_continuity_error_pct": 5.0,
+          "policy_version": "hydraulic_quality_v1",
+          "require_finite_coverage": true,
+          "require_flooding_report_provenance": true,
+          "require_initial_condition_provenance": true,
+          "required_drainage_state": "drained"
+        },
+        "policy_sha256": "c0d80f0ea73da2e6b11bfd10ff978b728c17abccae5fa293411cc6763371c72f",
+        "reason_codes": []
+      },
+      "reason_codes": [],
+      "run_id": 6,
+      "scenario": {
+        "config_sha256": "52bc18875f5a2f0c04d04ad00d15a9b7b77813b462bb05da768d5e850455aed8",
+        "duracion_horas": 16.0,
+        "factor_mult": 0.7,
+        "scenario_kind": "frozen_transfer",
+        "shape_id": "novel_20261102_sustained_late_surge",
+        "tiempo_al_pico_h": 8.5
+      },
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f0.700",
+      "source_manifest_sha256": "0317d1252b30ef88fcd441e9087b0ae2bae1693b864cc3ae3d1bdf02de69f7ea"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "byte_size": 301996,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f1.300/attempt_01/B_novel_20261102_sustained_late_surge_f1.300.inp",
+          "sha256": "61ecd6b37b7e937554504750a68bd8b778adad3aa88910d632d89fdd7a4d203c"
+        },
+        "event_source": {
+          "byte_size": 130123,
+          "path": "events/B_novel_20261102_sustained_late_surge_f1.300.csv",
+          "sha256": "2961a0be53870783337849efd61ba5c5942409c4a831db96b78ce687871637c3"
+        },
+        "source_network_inp": {
+          "byte_size": 1525143,
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "byte_size": 11093924,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f1.300/attempt_01/B_novel_20261102_sustained_late_surge_f1.300.out",
+          "sha256": "b89367fbd7d987719d7a6789cd66e210dc49bffd4d203592dcab5692f1ef5c36"
+        },
+        "swmm_rpt": {
+          "byte_size": 257419,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f1.300/attempt_01/B_novel_20261102_sustained_late_surge_f1.300.rpt",
+          "sha256": "c41bdc49ef85f0840127c22bc6077595b8c4098b5db990f87b3f0e17cf560502"
+        }
+      },
+      "drainage_diagnostics": {
+        "failed_checks": [],
+        "has_link_data": true,
+        "max_flooding_lps": 0.0,
+        "max_inflow_lps": 0.00828840397298336,
+        "max_residual_flow_lps": 0.00828840397298336,
+        "max_storage_change_m3": 0.0,
+        "min_report_steps": 2,
+        "n_report_steps": 21,
+        "observed_window_hours": 1.0,
+        "policy_version": "tail_window_v1",
+        "state": "drained",
+        "tolerances": {
+          "flooding_tolerance_lps": 0.01,
+          "inflow_tolerance_lps": 0.01,
+          "residual_flow_tolerance_lps": 0.01,
+          "storage_change_tolerance_m3": 0.01
+        },
+        "window_hours": 1.0
+      },
+      "eligible": true,
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.668,
+        "created_at_utc": "2026-11-03T03:55:32Z",
+        "drainage_state": "drained",
+        "eligible": true,
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "c41bdc49ef85f0840127c22bc6077595b8c4098b5db990f87b3f0e17cf560502",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "effective_inp_sha256": "61ecd6b37b7e937554504750a68bd8b778adad3aa88910d632d89fdd7a4d203c",
+          "policy_id": "source_inp_initial_state_v1",
+          "source_inp_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "policy": {
+          "continuity_comparison": "absolute_value",
+          "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+          "max_continuity_error_pct": 5.0,
+          "policy_version": "hydraulic_quality_v1",
+          "require_finite_coverage": true,
+          "require_flooding_report_provenance": true,
+          "require_initial_condition_provenance": true,
+          "required_drainage_state": "drained"
+        },
+        "policy_sha256": "c0d80f0ea73da2e6b11bfd10ff978b728c17abccae5fa293411cc6763371c72f",
+        "reason_codes": []
+      },
+      "reason_codes": [],
+      "run_id": 7,
+      "scenario": {
+        "config_sha256": "cd8e7fc8bfbdba5d86449d38eab58902f27928d040026f8fc234912cc6e7a690",
+        "duracion_horas": 16.0,
+        "factor_mult": 1.3,
+        "scenario_kind": "frozen_transfer",
+        "shape_id": "novel_20261102_sustained_late_surge",
+        "tiempo_al_pico_h": 8.5
+      },
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f1.300",
+      "source_manifest_sha256": "99fd2815f55db98206e85eee3db8a25b8aa4885f7d983697e94be043ef606d28"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "byte_size": 303333,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f2.700/attempt_01/B_novel_20261102_sustained_late_surge_f2.700.inp",
+          "sha256": "177204dd1d9bdda4f3005cc9f16eff3d38860ed9e237d9201792140e9b1a6a03"
+        },
+        "event_source": {
+          "byte_size": 131460,
+          "path": "events/B_novel_20261102_sustained_late_surge_f2.700.csv",
+          "sha256": "72e9727f55ea13a7d363a7230405ed96453d1e9bbefa3fec39212bddfdc4f0b7"
+        },
+        "source_network_inp": {
+          "byte_size": 1525143,
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "byte_size": 11093924,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f2.700/attempt_01/B_novel_20261102_sustained_late_surge_f2.700.out",
+          "sha256": "a29299cf6dd514babb68ea2eea23f4252e8a48509240c72f318fb7984fe699d4"
+        },
+        "swmm_rpt": {
+          "byte_size": 296906,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f2.700/attempt_01/B_novel_20261102_sustained_late_surge_f2.700.rpt",
+          "sha256": "e9c3f50201dcf74760db46781147d42b5456037380514339a172923b43816cbc"
+        }
+      },
+      "drainage_diagnostics": {
+        "failed_checks": [],
+        "has_link_data": true,
+        "max_flooding_lps": 0.0,
+        "max_inflow_lps": 0.009025407955050468,
+        "max_residual_flow_lps": 0.009025407955050468,
+        "max_storage_change_m3": 0.0,
+        "min_report_steps": 2,
+        "n_report_steps": 21,
+        "observed_window_hours": 1.0,
+        "policy_version": "tail_window_v1",
+        "state": "drained",
+        "tolerances": {
+          "flooding_tolerance_lps": 0.01,
+          "inflow_tolerance_lps": 0.01,
+          "residual_flow_tolerance_lps": 0.01,
+          "storage_change_tolerance_m3": 0.01
+        },
+        "window_hours": 1.0
+      },
+      "eligible": true,
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.314,
+        "created_at_utc": "2026-11-03T03:55:32Z",
+        "drainage_state": "drained",
+        "eligible": true,
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "e9c3f50201dcf74760db46781147d42b5456037380514339a172923b43816cbc",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "effective_inp_sha256": "177204dd1d9bdda4f3005cc9f16eff3d38860ed9e237d9201792140e9b1a6a03",
+          "policy_id": "source_inp_initial_state_v1",
+          "source_inp_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "policy": {
+          "continuity_comparison": "absolute_value",
+          "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+          "max_continuity_error_pct": 5.0,
+          "policy_version": "hydraulic_quality_v1",
+          "require_finite_coverage": true,
+          "require_flooding_report_provenance": true,
+          "require_initial_condition_provenance": true,
+          "required_drainage_state": "drained"
+        },
+        "policy_sha256": "c0d80f0ea73da2e6b11bfd10ff978b728c17abccae5fa293411cc6763371c72f",
+        "reason_codes": []
+      },
+      "reason_codes": [],
+      "run_id": 8,
+      "scenario": {
+        "config_sha256": "b6b0989dec9cf271bc2c471a562ef2b3c9256132b95b4db38d3334e598f18f30",
+        "duracion_horas": 16.0,
+        "factor_mult": 2.7,
+        "scenario_kind": "frozen_transfer",
+        "shape_id": "novel_20261102_sustained_late_surge",
+        "tiempo_al_pico_h": 8.5
+      },
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f2.700",
+      "source_manifest_sha256": "78c911eea84564967430b208220e07d83d2a744f143edbc26f8baeb2b810507d"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "byte_size": 304143,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f3.900/attempt_01/B_novel_20261102_sustained_late_surge_f3.900.inp",
+          "sha256": "44ecafb9eaa6158ec6d4353067f6fcd55ca9ec56d3a4ac35bcb12edd4ca7a711"
+        },
+        "event_source": {
+          "byte_size": 132270,
+          "path": "events/B_novel_20261102_sustained_late_surge_f3.900.csv",
+          "sha256": "5ec59e182acc2242ac58a59b453609238f75fd0ab6e645ad8687445fff2a8968"
+        },
+        "source_network_inp": {
+          "byte_size": 1525143,
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "byte_size": 11093924,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f3.900/attempt_01/B_novel_20261102_sustained_late_surge_f3.900.out",
+          "sha256": "cea58dbfaf54ab6a57baf7bbaa21ccd089f89ece5df413163000578a95f52d8f"
+        },
+        "swmm_rpt": {
+          "byte_size": 294536,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f3.900/attempt_01/B_novel_20261102_sustained_late_surge_f3.900.rpt",
+          "sha256": "04e233dfb6f3f6696898d05577aece3beee61860b43973da5ce73f1e3c51cfe6"
+        }
+      },
+      "drainage_diagnostics": {
+        "failed_checks": [],
+        "has_link_data": true,
+        "max_flooding_lps": 0.0,
+        "max_inflow_lps": 0.0095268739387393,
+        "max_residual_flow_lps": 0.0095268739387393,
+        "max_storage_change_m3": 0.0,
+        "min_report_steps": 2,
+        "n_report_steps": 21,
+        "observed_window_hours": 1.0,
+        "policy_version": "tail_window_v1",
+        "state": "drained",
+        "tolerances": {
+          "flooding_tolerance_lps": 0.01,
+          "inflow_tolerance_lps": 0.01,
+          "residual_flow_tolerance_lps": 0.01,
+          "storage_change_tolerance_m3": 0.01
+        },
+        "window_hours": 1.0
+      },
+      "eligible": true,
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.21,
+        "created_at_utc": "2026-11-03T03:55:32Z",
+        "drainage_state": "drained",
+        "eligible": true,
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "04e233dfb6f3f6696898d05577aece3beee61860b43973da5ce73f1e3c51cfe6",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "effective_inp_sha256": "44ecafb9eaa6158ec6d4353067f6fcd55ca9ec56d3a4ac35bcb12edd4ca7a711",
+          "policy_id": "source_inp_initial_state_v1",
+          "source_inp_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "policy": {
+          "continuity_comparison": "absolute_value",
+          "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+          "max_continuity_error_pct": 5.0,
+          "policy_version": "hydraulic_quality_v1",
+          "require_finite_coverage": true,
+          "require_flooding_report_provenance": true,
+          "require_initial_condition_provenance": true,
+          "required_drainage_state": "drained"
+        },
+        "policy_sha256": "c0d80f0ea73da2e6b11bfd10ff978b728c17abccae5fa293411cc6763371c72f",
+        "reason_codes": []
+      },
+      "reason_codes": [],
+      "run_id": 9,
+      "scenario": {
+        "config_sha256": "88832d9f732577959cd85de75c43dccd3fec324224e0c0827e5e2adcd0801e6a",
+        "duracion_horas": 16.0,
+        "factor_mult": 3.9,
+        "scenario_kind": "frozen_transfer",
+        "shape_id": "novel_20261102_sustained_late_surge",
+        "tiempo_al_pico_h": 8.5
+      },
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f3.900",
+      "source_manifest_sha256": "34010c4f06e2651a3d174d9217185cdd28c873ca32dd73625ae24c6a7fa20974"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "byte_size": 304341,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f4.300/attempt_01/B_novel_20261102_sustained_late_surge_f4.300.inp",
+          "sha256": "405f34ce9cec4468e39bc2eb19bf68bebaf4add30a7a758b60f08315d93df7ce"
+        },
+        "event_source": {
+          "byte_size": 132468,
+          "path": "events/B_novel_20261102_sustained_late_surge_f4.300.csv",
+          "sha256": "9f11bdf1aacda751a66206ede722cc2a8ed4848c1783a224b8a6a887b084ddae"
+        },
+        "source_network_inp": {
+          "byte_size": 1525143,
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "byte_size": 11093924,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f4.300/attempt_01/B_novel_20261102_sustained_late_surge_f4.300.out",
+          "sha256": "0aa43cde35a9ae876e9ee259e2182d8723c556a8de6a51689812a1cde3e66277"
+        },
+        "swmm_rpt": {
+          "byte_size": 297107,
+          "path": "runs/B_novel_20261102_sustained_late_surge_f4.300/attempt_01/B_novel_20261102_sustained_late_surge_f4.300.rpt",
+          "sha256": "cd9837615f9fff8b0e77f0b0917f93e239da699359eb6971aff5a1450ad62ece"
+        }
+      },
+      "drainage_diagnostics": {
+        "failed_checks": [],
+        "has_link_data": true,
+        "max_flooding_lps": 0.0,
+        "max_inflow_lps": 0.00963347963988781,
+        "max_residual_flow_lps": 0.00963347963988781,
+        "max_storage_change_m3": 0.0,
+        "min_report_steps": 2,
+        "n_report_steps": 21,
+        "observed_window_hours": 1.0,
+        "policy_version": "tail_window_v1",
+        "state": "drained",
+        "tolerances": {
+          "flooding_tolerance_lps": 0.01,
+          "inflow_tolerance_lps": 0.01,
+          "residual_flow_tolerance_lps": 0.01,
+          "storage_change_tolerance_m3": 0.01
+        },
+        "window_hours": 1.0
+      },
+      "eligible": true,
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.191,
+        "created_at_utc": "2026-11-03T03:55:33Z",
+        "drainage_state": "drained",
+        "eligible": true,
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "cd9837615f9fff8b0e77f0b0917f93e239da699359eb6971aff5a1450ad62ece",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "effective_inp_sha256": "405f34ce9cec4468e39bc2eb19bf68bebaf4add30a7a758b60f08315d93df7ce",
+          "policy_id": "source_inp_initial_state_v1",
+          "source_inp_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "policy": {
+          "continuity_comparison": "absolute_value",
+          "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+          "max_continuity_error_pct": 5.0,
+          "policy_version": "hydraulic_quality_v1",
+          "require_finite_coverage": true,
+          "require_flooding_report_provenance": true,
+          "require_initial_condition_provenance": true,
+          "required_drainage_state": "drained"
+        },
+        "policy_sha256": "c0d80f0ea73da2e6b11bfd10ff978b728c17abccae5fa293411cc6763371c72f",
+        "reason_codes": []
+      },
+      "reason_codes": [],
+      "run_id": 10,
+      "scenario": {
+        "config_sha256": "258b37d58b6fd88e970521bde087b0f48c4deea0770afa03a03af1548abd6031",
+        "duracion_horas": 16.0,
+        "factor_mult": 4.3,
+        "scenario_kind": "frozen_transfer",
+        "shape_id": "novel_20261102_sustained_late_surge",
+        "tiempo_al_pico_h": 8.5
+      },
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f4.300",
+      "source_manifest_sha256": "ec33b212c5cd561e10a021ac058208cf1d2c3274e6187dea05063ba07961e69e"
+    }
+  ],
+  "schema_version": "label_free_b_source_manifest_v1"
+}

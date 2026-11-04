@@ -1,0 +1,868 @@
+{
+  "attempt_history": {
+    "B:novel_20261102_cascade_peaks:f0.700": [
+      {
+        "attempt": 0,
+        "continuity_error_pct": 3.007,
+        "drain_down_hours": 6.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f0.700/attempt_00/B_novel_20261102_cascade_peaks_f0.700.inp",
+          "sha256": "9e987d6e2cd808eeb0249625d0e1c71943d69493605ccac2e4270b6c1ac655c2"
+        },
+        "finite_coverage_ok": true,
+        "state": "not_drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f0.700/attempt_00/B_novel_20261102_cascade_peaks_f0.700.out",
+          "sha256": "46df5b79e5fdba3a421e167ca6afee68cea64081b7436f640775e0b282d5e2fb"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f0.700/attempt_00/B_novel_20261102_cascade_peaks_f0.700.rpt",
+          "sha256": "e4040f899216156599129b5f819251d83c940da0636b7b3d010e31901d8b5aaa"
+        }
+      },
+      {
+        "attempt": 1,
+        "continuity_error_pct": 3.007,
+        "drain_down_hours": 8.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f0.700/attempt_01/B_novel_20261102_cascade_peaks_f0.700.inp",
+          "sha256": "2458f0cd2cb4c2681054e754f3327a381c0e975ca74b1ba00e36558f7e2128c5"
+        },
+        "finite_coverage_ok": true,
+        "state": "drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f0.700/attempt_01/B_novel_20261102_cascade_peaks_f0.700.out",
+          "sha256": "b17e2dd66f4a29f0ae4dad91eefd36011461424e6c852c0bd7626815477a6aeb"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f0.700/attempt_01/B_novel_20261102_cascade_peaks_f0.700.rpt",
+          "sha256": "8ed80f10f28c28d54548ce1a73736b868031c817e1c76a186a6e9c3d32057e54"
+        }
+      }
+    ],
+    "B:novel_20261102_cascade_peaks:f1.300": [
+      {
+        "attempt": 0,
+        "continuity_error_pct": 1.727,
+        "drain_down_hours": 6.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f1.300/attempt_00/B_novel_20261102_cascade_peaks_f1.300.inp",
+          "sha256": "29609e510542d00d4594c6fe312be9ca724790acde4973adf4eaf839b28d2bb3"
+        },
+        "finite_coverage_ok": true,
+        "state": "not_drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f1.300/attempt_00/B_novel_20261102_cascade_peaks_f1.300.out",
+          "sha256": "c682806a903a2042c9d36d146e68421542e9875b1c54d86fc8524c844a0b42c5"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f1.300/attempt_00/B_novel_20261102_cascade_peaks_f1.300.rpt",
+          "sha256": "7de740760a992d737560a6a03d12bd6baa648cfd0d897693fe4de57abe97ea60"
+        }
+      },
+      {
+        "attempt": 1,
+        "continuity_error_pct": 1.727,
+        "drain_down_hours": 8.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f1.300/attempt_01/B_novel_20261102_cascade_peaks_f1.300.inp",
+          "sha256": "44aee2edef3bfd1a6299e0ab57adda94c12403f251b4a4792915034c9ebfea48"
+        },
+        "finite_coverage_ok": true,
+        "state": "drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f1.300/attempt_01/B_novel_20261102_cascade_peaks_f1.300.out",
+          "sha256": "cc061bca02ce31b97447956426c437c79c3ac3bb1e3af90c45b6bcb03c2ec7ce"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f1.300/attempt_01/B_novel_20261102_cascade_peaks_f1.300.rpt",
+          "sha256": "1035fb5eda8e95f7fc32646e0e749966ebe4216fbe8dd3f712fb28f7525ad521"
+        }
+      }
+    ],
+    "B:novel_20261102_cascade_peaks:f2.700": [
+      {
+        "attempt": 0,
+        "continuity_error_pct": 0.808,
+        "drain_down_hours": 6.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f2.700/attempt_00/B_novel_20261102_cascade_peaks_f2.700.inp",
+          "sha256": "5d37261692a44c00642480a9e6acea6dfe23787a2ddde1d6a7346d8b2ef0ab3d"
+        },
+        "finite_coverage_ok": true,
+        "state": "not_drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f2.700/attempt_00/B_novel_20261102_cascade_peaks_f2.700.out",
+          "sha256": "7910a040b9332f1b8ef7681ecaa17e9cac912e5909ef38780287af0a76b81d89"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f2.700/attempt_00/B_novel_20261102_cascade_peaks_f2.700.rpt",
+          "sha256": "c90417b71cf75c17d3f4223f688cebd03341c42c1904526b4bd5563528e7232b"
+        }
+      },
+      {
+        "attempt": 1,
+        "continuity_error_pct": 0.808,
+        "drain_down_hours": 8.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f2.700/attempt_01/B_novel_20261102_cascade_peaks_f2.700.inp",
+          "sha256": "7d31476e51476292430d61c8ce3305715927be4704ee5753ea44c531359d4bc2"
+        },
+        "finite_coverage_ok": true,
+        "state": "drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f2.700/attempt_01/B_novel_20261102_cascade_peaks_f2.700.out",
+          "sha256": "6bb35009dfccf371e417d3edf722ee7909ca0649240e793e6ccf715867ed49c5"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f2.700/attempt_01/B_novel_20261102_cascade_peaks_f2.700.rpt",
+          "sha256": "8b54d875ece456e34d111c8fb67f7e5f7613c8695ac048f4017a3c2db0958dd4"
+        }
+      }
+    ],
+    "B:novel_20261102_cascade_peaks:f3.900": [
+      {
+        "attempt": 0,
+        "continuity_error_pct": 0.543,
+        "drain_down_hours": 6.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_00/B_novel_20261102_cascade_peaks_f3.900.inp",
+          "sha256": "bdf740be7a3ba3e7beee4d94da446103531172b1c519ffebc2861d320e038016"
+        },
+        "finite_coverage_ok": true,
+        "state": "not_drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_00/B_novel_20261102_cascade_peaks_f3.900.out",
+          "sha256": "976545dcdb82b535b90487bd876b6a2465351dbf3a4e134b79ac76bbef12c414"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_00/B_novel_20261102_cascade_peaks_f3.900.rpt",
+          "sha256": "de373521dd22b45b02ca507fba7c61bbf462fe54c616375440dc073157b808f6"
+        }
+      },
+      {
+        "attempt": 1,
+        "continuity_error_pct": 0.543,
+        "drain_down_hours": 8.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_01/B_novel_20261102_cascade_peaks_f3.900.inp",
+          "sha256": "e3d86f362b8ce925a15d041acf8031bad4db0fac3f79a51cc5ae178074d87836"
+        },
+        "finite_coverage_ok": true,
+        "state": "not_drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_01/B_novel_20261102_cascade_peaks_f3.900.out",
+          "sha256": "b1cdeaf683db802661ae07274cb68b2c4c97d9512cbd216056d013407329078b"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_01/B_novel_20261102_cascade_peaks_f3.900.rpt",
+          "sha256": "414dd665b091f291893eebd05d70f6ca93d5a74b03125b56fdce377d5888429b"
+        }
+      },
+      {
+        "attempt": 2,
+        "continuity_error_pct": 0.543,
+        "drain_down_hours": 10.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_02/B_novel_20261102_cascade_peaks_f3.900.inp",
+          "sha256": "d45c3d3a101075b0f9e18c9f875fd6f55adb59d980e6e0748c193656888439ec"
+        },
+        "finite_coverage_ok": true,
+        "state": "drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_02/B_novel_20261102_cascade_peaks_f3.900.out",
+          "sha256": "b926ab5b2f0002d971d738a42e65357493c0529216752353e3166d9304a0d30b"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_02/B_novel_20261102_cascade_peaks_f3.900.rpt",
+          "sha256": "edbc2b5b62cd5ab1f47ec02ee4bd8203d0ca7fbff2cd5835bc5754c9d38b4b88"
+        }
+      }
+    ],
+    "B:novel_20261102_cascade_peaks:f4.300": [
+      {
+        "attempt": 0,
+        "continuity_error_pct": 0.495,
+        "drain_down_hours": 6.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_00/B_novel_20261102_cascade_peaks_f4.300.inp",
+          "sha256": "71f5dedc5fb01bf0cdb0cffe14be2885dc138195955468cff4c4d3db408892d9"
+        },
+        "finite_coverage_ok": true,
+        "state": "not_drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_00/B_novel_20261102_cascade_peaks_f4.300.out",
+          "sha256": "b69a36b174451a4be1ae5a95c37fa8fb5be036df62457d702dd83d3680a0d03a"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_00/B_novel_20261102_cascade_peaks_f4.300.rpt",
+          "sha256": "5e177a980ae00b7f2f57b636d5d24df4052fbe3d522795982d949cd9f28d69e1"
+        }
+      },
+      {
+        "attempt": 1,
+        "continuity_error_pct": 0.495,
+        "drain_down_hours": 8.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_01/B_novel_20261102_cascade_peaks_f4.300.inp",
+          "sha256": "05834d7a4a3ce6c9d5b61bc6ab424d8a6bab3a687fa6c2f75289beef3b860caf"
+        },
+        "finite_coverage_ok": true,
+        "state": "not_drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_01/B_novel_20261102_cascade_peaks_f4.300.out",
+          "sha256": "89ba3ad3243390ece429ea779fd0140518f8328d7e345c44c3b39e3cab8bc6ac"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_01/B_novel_20261102_cascade_peaks_f4.300.rpt",
+          "sha256": "9c29b2ac775d0f10fb3de52f7312dc243afc172a68787191a08cd35c10eff739"
+        }
+      },
+      {
+        "attempt": 2,
+        "continuity_error_pct": 0.495,
+        "drain_down_hours": 10.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_02/B_novel_20261102_cascade_peaks_f4.300.inp",
+          "sha256": "37c622e9498b92b7291a4ffd482e3b10435d9db1a5cd73e44bd4dcbbb03ee517"
+        },
+        "finite_coverage_ok": true,
+        "state": "drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_02/B_novel_20261102_cascade_peaks_f4.300.out",
+          "sha256": "c6629caeba81f704d20c5eaf7c29b095077377d6b02d37cdecc11aa14d4fdc1f"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_02/B_novel_20261102_cascade_peaks_f4.300.rpt",
+          "sha256": "fbeebc71fb0be5ba6bccafd59c5c2a5c3df2ca9448daca09b935d633b6000bfd"
+        }
+      }
+    ],
+    "B:novel_20261102_sustained_late_surge:f0.700": [
+      {
+        "attempt": 0,
+        "continuity_error_pct": 1.212,
+        "drain_down_hours": 6.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f0.700/attempt_00/B_novel_20261102_sustained_late_surge_f0.700.inp",
+          "sha256": "ac0ea3bd5c44bfbe037154fa1b7994bdd99b9f8b49821f94dc975c042f11c568"
+        },
+        "finite_coverage_ok": true,
+        "state": "not_drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f0.700/attempt_00/B_novel_20261102_sustained_late_surge_f0.700.out",
+          "sha256": "f7c105ed98a67bc1767a7ff1cea5db4565dd96fed8ddf8b49ad23781c5a0159c"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f0.700/attempt_00/B_novel_20261102_sustained_late_surge_f0.700.rpt",
+          "sha256": "cf3fac7543d3d20e98d9f0f816273f0e7525848f99b59e2eb9f357cf674603e1"
+        }
+      },
+      {
+        "attempt": 1,
+        "continuity_error_pct": 1.212,
+        "drain_down_hours": 8.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f0.700/attempt_01/B_novel_20261102_sustained_late_surge_f0.700.inp",
+          "sha256": "0697e8ca019de3abcf74a2c93f2ab2381716f5413ea0bf5c3cc7483b3d7103f0"
+        },
+        "finite_coverage_ok": true,
+        "state": "drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f0.700/attempt_01/B_novel_20261102_sustained_late_surge_f0.700.out",
+          "sha256": "f19da145ce3d5041888495b000348f9c721690a0546ab20858886d667e0731ae"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f0.700/attempt_01/B_novel_20261102_sustained_late_surge_f0.700.rpt",
+          "sha256": "601c7bdeee3013f6d3d93da098cb8e6cf328fe42575f69d6cc5d996662f836e7"
+        }
+      }
+    ],
+    "B:novel_20261102_sustained_late_surge:f1.300": [
+      {
+        "attempt": 0,
+        "continuity_error_pct": 0.668,
+        "drain_down_hours": 6.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f1.300/attempt_00/B_novel_20261102_sustained_late_surge_f1.300.inp",
+          "sha256": "88dcbf41441bfdc4a6339216a0b3e1ad8595eca0e37104256ef2b340793993fa"
+        },
+        "finite_coverage_ok": true,
+        "state": "not_drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f1.300/attempt_00/B_novel_20261102_sustained_late_surge_f1.300.out",
+          "sha256": "29e411dee9bbcb91a7c35c0dff4a3755fa10e2bee4fadf13882cd9aab148476a"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f1.300/attempt_00/B_novel_20261102_sustained_late_surge_f1.300.rpt",
+          "sha256": "90f17a0f242b733b1521e4fcc425ba804cd7b711c874339e3cc684953cddf25d"
+        }
+      },
+      {
+        "attempt": 1,
+        "continuity_error_pct": 0.668,
+        "drain_down_hours": 8.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f1.300/attempt_01/B_novel_20261102_sustained_late_surge_f1.300.inp",
+          "sha256": "61ecd6b37b7e937554504750a68bd8b778adad3aa88910d632d89fdd7a4d203c"
+        },
+        "finite_coverage_ok": true,
+        "state": "drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f1.300/attempt_01/B_novel_20261102_sustained_late_surge_f1.300.out",
+          "sha256": "b89367fbd7d987719d7a6789cd66e210dc49bffd4d203592dcab5692f1ef5c36"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f1.300/attempt_01/B_novel_20261102_sustained_late_surge_f1.300.rpt",
+          "sha256": "c41bdc49ef85f0840127c22bc6077595b8c4098b5db990f87b3f0e17cf560502"
+        }
+      }
+    ],
+    "B:novel_20261102_sustained_late_surge:f2.700": [
+      {
+        "attempt": 0,
+        "continuity_error_pct": 0.314,
+        "drain_down_hours": 6.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f2.700/attempt_00/B_novel_20261102_sustained_late_surge_f2.700.inp",
+          "sha256": "2be837aff3b5be7958d8cffb189ffe813b1269ff0b45ebfc8a31494de384f663"
+        },
+        "finite_coverage_ok": true,
+        "state": "not_drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f2.700/attempt_00/B_novel_20261102_sustained_late_surge_f2.700.out",
+          "sha256": "2893d24982b363b4e0c88171eb3e71e024514b837eb06fc67fc330b8f530001a"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f2.700/attempt_00/B_novel_20261102_sustained_late_surge_f2.700.rpt",
+          "sha256": "14ebc29fe5c8c5b7ba406da554458dc08089fbfc57aede88373aa357fe1b3c2e"
+        }
+      },
+      {
+        "attempt": 1,
+        "continuity_error_pct": 0.314,
+        "drain_down_hours": 8.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f2.700/attempt_01/B_novel_20261102_sustained_late_surge_f2.700.inp",
+          "sha256": "177204dd1d9bdda4f3005cc9f16eff3d38860ed9e237d9201792140e9b1a6a03"
+        },
+        "finite_coverage_ok": true,
+        "state": "drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f2.700/attempt_01/B_novel_20261102_sustained_late_surge_f2.700.out",
+          "sha256": "a29299cf6dd514babb68ea2eea23f4252e8a48509240c72f318fb7984fe699d4"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f2.700/attempt_01/B_novel_20261102_sustained_late_surge_f2.700.rpt",
+          "sha256": "e9c3f50201dcf74760db46781147d42b5456037380514339a172923b43816cbc"
+        }
+      }
+    ],
+    "B:novel_20261102_sustained_late_surge:f3.900": [
+      {
+        "attempt": 0,
+        "continuity_error_pct": 0.21,
+        "drain_down_hours": 6.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f3.900/attempt_00/B_novel_20261102_sustained_late_surge_f3.900.inp",
+          "sha256": "0e9dc4edcd9fed14a0b7f29b061b916e0770f6c81e6fc30285632c8374f3c9f0"
+        },
+        "finite_coverage_ok": true,
+        "state": "not_drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f3.900/attempt_00/B_novel_20261102_sustained_late_surge_f3.900.out",
+          "sha256": "170bd5ce7ebb9a28cf22d84bb4af002218e2db47e7fb80c58d82c56564f6bf7b"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f3.900/attempt_00/B_novel_20261102_sustained_late_surge_f3.900.rpt",
+          "sha256": "8ebd182d8705ace1bada3772f6f870d933c766e196e9dca23f524b8554db917d"
+        }
+      },
+      {
+        "attempt": 1,
+        "continuity_error_pct": 0.21,
+        "drain_down_hours": 8.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f3.900/attempt_01/B_novel_20261102_sustained_late_surge_f3.900.inp",
+          "sha256": "44ecafb9eaa6158ec6d4353067f6fcd55ca9ec56d3a4ac35bcb12edd4ca7a711"
+        },
+        "finite_coverage_ok": true,
+        "state": "drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f3.900/attempt_01/B_novel_20261102_sustained_late_surge_f3.900.out",
+          "sha256": "cea58dbfaf54ab6a57baf7bbaa21ccd089f89ece5df413163000578a95f52d8f"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f3.900/attempt_01/B_novel_20261102_sustained_late_surge_f3.900.rpt",
+          "sha256": "04e233dfb6f3f6696898d05577aece3beee61860b43973da5ce73f1e3c51cfe6"
+        }
+      }
+    ],
+    "B:novel_20261102_sustained_late_surge:f4.300": [
+      {
+        "attempt": 0,
+        "continuity_error_pct": 0.191,
+        "drain_down_hours": 6.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f4.300/attempt_00/B_novel_20261102_sustained_late_surge_f4.300.inp",
+          "sha256": "308de2828c6b4a1a557e1e49f24aa7edc3142370a67dab43394be3f1c6705b74"
+        },
+        "finite_coverage_ok": true,
+        "state": "not_drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f4.300/attempt_00/B_novel_20261102_sustained_late_surge_f4.300.out",
+          "sha256": "fc8bd63ab54776ebbcc80cba6ce8747d0e12983613afaab42c705abb54968910"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f4.300/attempt_00/B_novel_20261102_sustained_late_surge_f4.300.rpt",
+          "sha256": "316c0a89f266c6838eebec4414c2ac6a5e64080bc41301a8cb6e95c5044f856b"
+        }
+      },
+      {
+        "attempt": 1,
+        "continuity_error_pct": 0.191,
+        "drain_down_hours": 8.0,
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f4.300/attempt_01/B_novel_20261102_sustained_late_surge_f4.300.inp",
+          "sha256": "405f34ce9cec4468e39bc2eb19bf68bebaf4add30a7a758b60f08315d93df7ce"
+        },
+        "finite_coverage_ok": true,
+        "state": "drained",
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f4.300/attempt_01/B_novel_20261102_sustained_late_surge_f4.300.out",
+          "sha256": "0aa43cde35a9ae876e9ee259e2182d8723c556a8de6a51689812a1cde3e66277"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f4.300/attempt_01/B_novel_20261102_sustained_late_surge_f4.300.rpt",
+          "sha256": "cd9837615f9fff8b0e77f0b0917f93e239da699359eb6971aff5a1450ad62ece"
+        }
+      }
+    ]
+  },
+  "failures": [],
+  "protocol_sha256": "93ef9ef7389b27ed08d57baff06ef1a2a54162eae06634d39de1a1c96989b7e7",
+  "results": [
+    {
+      "artifacts": {
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f0.700/attempt_01/B_novel_20261102_cascade_peaks_f0.700.inp",
+          "sha256": "2458f0cd2cb4c2681054e754f3327a381c0e975ca74b1ba00e36558f7e2128c5"
+        },
+        "event_source": {
+          "path": "events/B_novel_20261102_cascade_peaks_f0.700.csv",
+          "sha256": "cc61c972ee98f9fa52f8dae73d6fac3b42e47612c5fd2536e9475752fd861b6b"
+        },
+        "source_network_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f0.700/attempt_01/B_novel_20261102_cascade_peaks_f0.700.out",
+          "sha256": "b17e2dd66f4a29f0ae4dad91eefd36011461424e6c852c0bd7626815477a6aeb"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f0.700/attempt_01/B_novel_20261102_cascade_peaks_f0.700.rpt",
+          "sha256": "8ed80f10f28c28d54548ce1a73736b868031c817e1c76a186a6e9c3d32057e54"
+        }
+      },
+      "hydraulic_quality": {
+        "continuity_error_pct": 3.007,
+        "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+        "drainage_state": "drained",
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "strict_text_v1",
+          "parser_version": "strict_text_v1",
+          "report_sha256": "8ed80f10f28c28d54548ce1a73736b868031c817e1c76a186a6e9c3d32057e54",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "policy_id": "source_inp_initial_state_v1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "max_continuity_error_pct": 5.0
+      },
+      "scenario_key": "B:novel_20261102_cascade_peaks:f0.700"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f1.300/attempt_01/B_novel_20261102_cascade_peaks_f1.300.inp",
+          "sha256": "44aee2edef3bfd1a6299e0ab57adda94c12403f251b4a4792915034c9ebfea48"
+        },
+        "event_source": {
+          "path": "events/B_novel_20261102_cascade_peaks_f1.300.csv",
+          "sha256": "1ed8703e9f6378d735b2589369649d8a5e5f83000841ac471f6cbb01f50a6c64"
+        },
+        "source_network_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f1.300/attempt_01/B_novel_20261102_cascade_peaks_f1.300.out",
+          "sha256": "cc061bca02ce31b97447956426c437c79c3ac3bb1e3af90c45b6bcb03c2ec7ce"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f1.300/attempt_01/B_novel_20261102_cascade_peaks_f1.300.rpt",
+          "sha256": "1035fb5eda8e95f7fc32646e0e749966ebe4216fbe8dd3f712fb28f7525ad521"
+        }
+      },
+      "hydraulic_quality": {
+        "continuity_error_pct": 1.727,
+        "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+        "drainage_state": "drained",
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "1035fb5eda8e95f7fc32646e0e749966ebe4216fbe8dd3f712fb28f7525ad521",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "policy_id": "source_inp_initial_state_v1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "max_continuity_error_pct": 5.0
+      },
+      "scenario_key": "B:novel_20261102_cascade_peaks:f1.300"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f2.700/attempt_01/B_novel_20261102_cascade_peaks_f2.700.inp",
+          "sha256": "7d31476e51476292430d61c8ce3305715927be4704ee5753ea44c531359d4bc2"
+        },
+        "event_source": {
+          "path": "events/B_novel_20261102_cascade_peaks_f2.700.csv",
+          "sha256": "5d768c4074191b687be46991e68dd9075ac7642585861cf831fc381fb53e71c4"
+        },
+        "source_network_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f2.700/attempt_01/B_novel_20261102_cascade_peaks_f2.700.out",
+          "sha256": "6bb35009dfccf371e417d3edf722ee7909ca0649240e793e6ccf715867ed49c5"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f2.700/attempt_01/B_novel_20261102_cascade_peaks_f2.700.rpt",
+          "sha256": "8b54d875ece456e34d111c8fb67f7e5f7613c8695ac048f4017a3c2db0958dd4"
+        }
+      },
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.808,
+        "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+        "drainage_state": "drained",
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "8b54d875ece456e34d111c8fb67f7e5f7613c8695ac048f4017a3c2db0958dd4",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "policy_id": "source_inp_initial_state_v1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "max_continuity_error_pct": 5.0
+      },
+      "scenario_key": "B:novel_20261102_cascade_peaks:f2.700"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_02/B_novel_20261102_cascade_peaks_f3.900.inp",
+          "sha256": "d45c3d3a101075b0f9e18c9f875fd6f55adb59d980e6e0748c193656888439ec"
+        },
+        "event_source": {
+          "path": "events/B_novel_20261102_cascade_peaks_f3.900.csv",
+          "sha256": "e39c6e8b9d4ac5a16754a13d22d38a2ea2ccb67e22e97182b46ee8945c49d650"
+        },
+        "source_network_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_02/B_novel_20261102_cascade_peaks_f3.900.out",
+          "sha256": "b926ab5b2f0002d971d738a42e65357493c0529216752353e3166d9304a0d30b"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f3.900/attempt_02/B_novel_20261102_cascade_peaks_f3.900.rpt",
+          "sha256": "edbc2b5b62cd5ab1f47ec02ee4bd8203d0ca7fbff2cd5835bc5754c9d38b4b88"
+        }
+      },
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.543,
+        "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+        "drainage_state": "drained",
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "edbc2b5b62cd5ab1f47ec02ee4bd8203d0ca7fbff2cd5835bc5754c9d38b4b88",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "policy_id": "source_inp_initial_state_v1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "max_continuity_error_pct": 5.0
+      },
+      "scenario_key": "B:novel_20261102_cascade_peaks:f3.900"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_02/B_novel_20261102_cascade_peaks_f4.300.inp",
+          "sha256": "37c622e9498b92b7291a4ffd482e3b10435d9db1a5cd73e44bd4dcbbb03ee517"
+        },
+        "event_source": {
+          "path": "events/B_novel_20261102_cascade_peaks_f4.300.csv",
+          "sha256": "69b92333109c52c513006cfa051d85e626e14ebc1da909ec4b23b781b7746f25"
+        },
+        "source_network_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_02/B_novel_20261102_cascade_peaks_f4.300.out",
+          "sha256": "c6629caeba81f704d20c5eaf7c29b095077377d6b02d37cdecc11aa14d4fdc1f"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_cascade_peaks_f4.300/attempt_02/B_novel_20261102_cascade_peaks_f4.300.rpt",
+          "sha256": "fbeebc71fb0be5ba6bccafd59c5c2a5c3df2ca9448daca09b935d633b6000bfd"
+        }
+      },
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.495,
+        "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+        "drainage_state": "drained",
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "fbeebc71fb0be5ba6bccafd59c5c2a5c3df2ca9448daca09b935d633b6000bfd",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "policy_id": "source_inp_initial_state_v1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "max_continuity_error_pct": 5.0
+      },
+      "scenario_key": "B:novel_20261102_cascade_peaks:f4.300"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f0.700/attempt_01/B_novel_20261102_sustained_late_surge_f0.700.inp",
+          "sha256": "0697e8ca019de3abcf74a2c93f2ab2381716f5413ea0bf5c3cc7483b3d7103f0"
+        },
+        "event_source": {
+          "path": "events/B_novel_20261102_sustained_late_surge_f0.700.csv",
+          "sha256": "4a20a410eb5acd0bbf0ef002aa9a513b2b7706e552b4a02f573b14f31c85b08c"
+        },
+        "source_network_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f0.700/attempt_01/B_novel_20261102_sustained_late_surge_f0.700.out",
+          "sha256": "f19da145ce3d5041888495b000348f9c721690a0546ab20858886d667e0731ae"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f0.700/attempt_01/B_novel_20261102_sustained_late_surge_f0.700.rpt",
+          "sha256": "601c7bdeee3013f6d3d93da098cb8e6cf328fe42575f69d6cc5d996662f836e7"
+        }
+      },
+      "hydraulic_quality": {
+        "continuity_error_pct": 1.212,
+        "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+        "drainage_state": "drained",
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "strict_text_v1",
+          "parser_version": "strict_text_v1",
+          "report_sha256": "601c7bdeee3013f6d3d93da098cb8e6cf328fe42575f69d6cc5d996662f836e7",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "policy_id": "source_inp_initial_state_v1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "max_continuity_error_pct": 5.0
+      },
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f0.700"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f1.300/attempt_01/B_novel_20261102_sustained_late_surge_f1.300.inp",
+          "sha256": "61ecd6b37b7e937554504750a68bd8b778adad3aa88910d632d89fdd7a4d203c"
+        },
+        "event_source": {
+          "path": "events/B_novel_20261102_sustained_late_surge_f1.300.csv",
+          "sha256": "2961a0be53870783337849efd61ba5c5942409c4a831db96b78ce687871637c3"
+        },
+        "source_network_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f1.300/attempt_01/B_novel_20261102_sustained_late_surge_f1.300.out",
+          "sha256": "b89367fbd7d987719d7a6789cd66e210dc49bffd4d203592dcab5692f1ef5c36"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f1.300/attempt_01/B_novel_20261102_sustained_late_surge_f1.300.rpt",
+          "sha256": "c41bdc49ef85f0840127c22bc6077595b8c4098b5db990f87b3f0e17cf560502"
+        }
+      },
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.668,
+        "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+        "drainage_state": "drained",
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "c41bdc49ef85f0840127c22bc6077595b8c4098b5db990f87b3f0e17cf560502",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "policy_id": "source_inp_initial_state_v1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "max_continuity_error_pct": 5.0
+      },
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f1.300"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f2.700/attempt_01/B_novel_20261102_sustained_late_surge_f2.700.inp",
+          "sha256": "177204dd1d9bdda4f3005cc9f16eff3d38860ed9e237d9201792140e9b1a6a03"
+        },
+        "event_source": {
+          "path": "events/B_novel_20261102_sustained_late_surge_f2.700.csv",
+          "sha256": "72e9727f55ea13a7d363a7230405ed96453d1e9bbefa3fec39212bddfdc4f0b7"
+        },
+        "source_network_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f2.700/attempt_01/B_novel_20261102_sustained_late_surge_f2.700.out",
+          "sha256": "a29299cf6dd514babb68ea2eea23f4252e8a48509240c72f318fb7984fe699d4"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f2.700/attempt_01/B_novel_20261102_sustained_late_surge_f2.700.rpt",
+          "sha256": "e9c3f50201dcf74760db46781147d42b5456037380514339a172923b43816cbc"
+        }
+      },
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.314,
+        "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+        "drainage_state": "drained",
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "e9c3f50201dcf74760db46781147d42b5456037380514339a172923b43816cbc",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "policy_id": "source_inp_initial_state_v1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "max_continuity_error_pct": 5.0
+      },
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f2.700"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f3.900/attempt_01/B_novel_20261102_sustained_late_surge_f3.900.inp",
+          "sha256": "44ecafb9eaa6158ec6d4353067f6fcd55ca9ec56d3a4ac35bcb12edd4ca7a711"
+        },
+        "event_source": {
+          "path": "events/B_novel_20261102_sustained_late_surge_f3.900.csv",
+          "sha256": "5ec59e182acc2242ac58a59b453609238f75fd0ab6e645ad8687445fff2a8968"
+        },
+        "source_network_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f3.900/attempt_01/B_novel_20261102_sustained_late_surge_f3.900.out",
+          "sha256": "cea58dbfaf54ab6a57baf7bbaa21ccd089f89ece5df413163000578a95f52d8f"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f3.900/attempt_01/B_novel_20261102_sustained_late_surge_f3.900.rpt",
+          "sha256": "04e233dfb6f3f6696898d05577aece3beee61860b43973da5ce73f1e3c51cfe6"
+        }
+      },
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.21,
+        "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+        "drainage_state": "drained",
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "04e233dfb6f3f6696898d05577aece3beee61860b43973da5ce73f1e3c51cfe6",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "policy_id": "source_inp_initial_state_v1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "max_continuity_error_pct": 5.0
+      },
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f3.900"
+    },
+    {
+      "artifacts": {
+        "effective_inp": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f4.300/attempt_01/B_novel_20261102_sustained_late_surge_f4.300.inp",
+          "sha256": "405f34ce9cec4468e39bc2eb19bf68bebaf4add30a7a758b60f08315d93df7ce"
+        },
+        "event_source": {
+          "path": "events/B_novel_20261102_sustained_late_surge_f4.300.csv",
+          "sha256": "9f11bdf1aacda751a66206ede722cc2a8ed4848c1783a224b8a6a887b084ddae"
+        },
+        "source_network_inp": {
+          "path": "C:\\Users\\lf.fajardo\\Downloads\\Tesis\\herramienta-ia-model\\data\\networks\\chico_norte_93_qx1\\SWMM - Chico Norte 93% - Qx1.00.inp",
+          "sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1"
+        },
+        "swmm_out": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f4.300/attempt_01/B_novel_20261102_sustained_late_surge_f4.300.out",
+          "sha256": "0aa43cde35a9ae876e9ee259e2182d8723c556a8de6a51689812a1cde3e66277"
+        },
+        "swmm_rpt": {
+          "path": "runs/B_novel_20261102_sustained_late_surge_f4.300/attempt_01/B_novel_20261102_sustained_late_surge_f4.300.rpt",
+          "sha256": "cd9837615f9fff8b0e77f0b0917f93e239da699359eb6971aff5a1450ad62ece"
+        }
+      },
+      "hydraulic_quality": {
+        "continuity_error_pct": 0.191,
+        "continuity_limit_rationale": "Provisional project threshold retained for this reproducible rerun; hydraulic justification remains pending.",
+        "drainage_state": "drained",
+        "finite_coverage_ok": true,
+        "flooding_report": {
+          "parser": "swmm_api.node_flooding_summary",
+          "parser_version": "0.4.73",
+          "report_sha256": "cd9837615f9fff8b0e77f0b0917f93e239da699359eb6971aff5a1450ad62ece",
+          "schema_version": "flooding_report_v1"
+        },
+        "initial_condition": {
+          "policy_id": "source_inp_initial_state_v1",
+          "state_sha256": "71540035ad9514e4a41141ff2d78aaf6f3db2e5717cecafae3550792f9dd688b"
+        },
+        "max_continuity_error_pct": 5.0
+      },
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f4.300"
+    }
+  ],
+  "schema_version": "frozen_batch_progress_v2",
+  "status": "complete"
+}
