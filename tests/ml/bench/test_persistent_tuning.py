@@ -122,3 +122,23 @@ def test_real_mlp_search_space_survives_sqlite_resume(tmp_path, monkeypatch):
     module.run_persistent_study(prepared_fixture(), 'mlp', tmp_path, {}, budget=12, max_new_trials=1)
     result = module.run_persistent_study(prepared_fixture(), 'mlp', tmp_path, {}, budget=12)
     assert result['complete'] == 12
+
+
+def test_real_objective_records_multinetwork_metrics_with_persistent_trial(tmp_path, monkeypatch):
+    import numpy as np
+    import optuna
+    from swmm_resilience.ml.bench import tune
+    from swmm_resilience.ml.bench import persistent_tuning as module
+    keys = pd.DataFrame([{'shape_id': str(shape), 'network_id': network}
+                         for shape in range(6) for network in (1, 2)])
+    prepared = SimpleNamespace(prep_id='fixture', keys=keys,
+                               y_clf=pd.Series([1] * len(keys)), y_reg=pd.Series([2.0] * len(keys)))
+    def predict(_prepared, _family, classifier, regressor, _train, test):
+        assert isinstance(classifier['hidden_sizes'], (tuple, list))
+        return np.ones(len(test)), np.ones(len(test)), np.ones(len(test))
+    monkeypatch.setattr(tune, '_fit_predict_fold', predict)
+    result = module.run_persistent_study(prepared, 'mlp', tmp_path, {}, budget=2)
+    study = optuna.load_study(study_name='joint_mlp', storage='sqlite:///' + (tmp_path / 'study.sqlite3').resolve().as_posix())
+    assert result['complete'] == 2
+    assert all(trial.value == 1.0 and set(trial.user_attrs['inner_network_rmse']) == {'1', '2'}
+               for trial in study.trials)
