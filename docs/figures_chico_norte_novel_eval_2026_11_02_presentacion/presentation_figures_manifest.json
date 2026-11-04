@@ -1,0 +1,342 @@
+{
+  "schema_version": "chico_norte_novel_presentation_figures_v2",
+  "source_evaluation_results_sha256": "85b0e018d9ee8dc358f2382c892e19be21cc1570a53cb4cfd48e33cf19f07168",
+  "source_manifest_sha256": "584a16775b722481f447153c54ea5f1e390fb5a7e155e56cf14ce7a9c5f1b28d",
+  "network_inp_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+  "parity_metrics": {
+    "xgboost": {
+      "rmse_m3": 186.17646111428928,
+      "mae_m3": 48.386548706404476,
+      "r2": 0.2672950134769516,
+      "n": 5220
+    },
+    "mlp": {
+      "rmse_m3": 186.2586036175361,
+      "mae_m3": 47.94411633390878,
+      "r2": 0.2666483205632635,
+      "n": 5220
+    }
+  },
+  "map_factors": [
+    0.7,
+    2.7,
+    4.3
+  ],
+  "map_style": "one standalone network map per model and scenario; only inundated nodes are drawn; independent YlOrRd flood-volume scale; no dry-node or error markers",
+  "maps": [
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f0.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 0.7,
+      "model_key": "swmm",
+      "model_name": "SWMM",
+      "filename": "mapa_novel_20261102_cascade_peaks_f0.7_swmm.png",
+      "total_flood_volume_m3": 0.0,
+      "flooded_nodes": 0,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 1.0,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f0.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 0.7,
+      "model_key": "mlp",
+      "model_name": "MLP",
+      "filename": "mapa_novel_20261102_cascade_peaks_f0.7_mlp.png",
+      "total_flood_volume_m3": 39.95223874128983,
+      "flooded_nodes": 7,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 8.406782746514516,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f0.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 0.7,
+      "model_key": "xgboost",
+      "model_name": "XGBoost",
+      "filename": "mapa_novel_20261102_cascade_peaks_f0.7_xgboost.png",
+      "total_flood_volume_m3": 38.3315717924546,
+      "flooded_nodes": 6,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 13.977904906557349,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f2.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 2.7,
+      "model_key": "swmm",
+      "model_name": "SWMM",
+      "filename": "mapa_novel_20261102_cascade_peaks_f2.7_swmm.png",
+      "total_flood_volume_m3": 11224.0,
+      "flooded_nodes": 209,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 731.0,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f2.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 2.7,
+      "model_key": "mlp",
+      "model_name": "MLP",
+      "filename": "mapa_novel_20261102_cascade_peaks_f2.7_mlp.png",
+      "total_flood_volume_m3": 9141.066837297461,
+      "flooded_nodes": 253,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 288.6445384953389,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f2.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 2.7,
+      "model_key": "xgboost",
+      "model_name": "XGBoost",
+      "filename": "mapa_novel_20261102_cascade_peaks_f2.7_xgboost.png",
+      "total_flood_volume_m3": 7783.670148015935,
+      "flooded_nodes": 111,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 518.7675690880242,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f4.300",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 4.3,
+      "model_key": "swmm",
+      "model_name": "SWMM",
+      "filename": "mapa_novel_20261102_cascade_peaks_f4.3_swmm.png",
+      "total_flood_volume_m3": 41008.0,
+      "flooded_nodes": 274,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 1840.0,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f4.300",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 4.3,
+      "model_key": "mlp",
+      "model_name": "MLP",
+      "filename": "mapa_novel_20261102_cascade_peaks_f4.3_mlp.png",
+      "total_flood_volume_m3": 47151.27844845691,
+      "flooded_nodes": 348,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 1492.845894789708,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f4.300",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 4.3,
+      "model_key": "xgboost",
+      "model_name": "XGBoost",
+      "filename": "mapa_novel_20261102_cascade_peaks_f4.3_xgboost.png",
+      "total_flood_volume_m3": 28973.206057210857,
+      "flooded_nodes": 182,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 782.738839082342,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f0.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 0.7,
+      "model_key": "swmm",
+      "model_name": "SWMM",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f0.7_swmm.png",
+      "total_flood_volume_m3": 0.0,
+      "flooded_nodes": 0,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 1.0,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f0.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 0.7,
+      "model_key": "mlp",
+      "model_name": "MLP",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f0.7_mlp.png",
+      "total_flood_volume_m3": 19.379288266677428,
+      "flooded_nodes": 8,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 4.0531662405179025,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f0.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 0.7,
+      "model_key": "xgboost",
+      "model_name": "XGBoost",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f0.7_xgboost.png",
+      "total_flood_volume_m3": 54.60963156632358,
+      "flooded_nodes": 6,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 20.60787110930101,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f2.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 2.7,
+      "model_key": "swmm",
+      "model_name": "SWMM",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f2.7_swmm.png",
+      "total_flood_volume_m3": 30829.0,
+      "flooded_nodes": 187,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 1916.0,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f2.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 2.7,
+      "model_key": "mlp",
+      "model_name": "MLP",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f2.7_mlp.png",
+      "total_flood_volume_m3": 26541.622156862915,
+      "flooded_nodes": 256,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 1364.219409920531,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f2.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 2.7,
+      "model_key": "xgboost",
+      "model_name": "XGBoost",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f2.7_xgboost.png",
+      "total_flood_volume_m3": 16088.634061921934,
+      "flooded_nodes": 111,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 1029.7565876936821,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f4.300",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 4.3,
+      "model_key": "swmm",
+      "model_name": "SWMM",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f4.3_swmm.png",
+      "total_flood_volume_m3": 116608.0,
+      "flooded_nodes": 253,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 5673.0,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f4.300",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 4.3,
+      "model_key": "mlp",
+      "model_name": "MLP",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f4.3_mlp.png",
+      "total_flood_volume_m3": 138639.8584792781,
+      "flooded_nodes": 339,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 4158.189586652939,
+        "normalization": "square_root"
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f4.300",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 4.3,
+      "model_key": "xgboost",
+      "model_name": "XGBoost",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f4.3_xgboost.png",
+      "total_flood_volume_m3": 65556.40381803406,
+      "flooded_nodes": 183,
+      "color_scale": {
+        "colormap": "YlOrRd",
+        "vmin_m3": 0.0,
+        "vmax_m3": 1951.0480980100251,
+        "normalization": "square_root"
+      }
+    }
+  ],
+  "factor_lines_source": "docs/figures_chico_norte_novel_eval_2026_11_02/volumen_total_por_factor.png",
+  "figure_sha256": {
+    "hidrograma_novel_20261102_cascade_peaks.png": "7d851bbfb10c0089b42950fcce4912ed300b6b4c753b7a84c20aa818e76d0d9e",
+    "hidrograma_novel_20261102_sustained_late_surge.png": "ce07e7c25f40847132aaf28519f2b82233da68208ac4608bcb67f3de9f45ca7f",
+    "mapa_novel_20261102_cascade_peaks_f0.7_mlp.png": "d585f87f67fdd85f79e443cc6c1527d6dd0733bc4d6460c55cac747906930e32",
+    "mapa_novel_20261102_cascade_peaks_f0.7_swmm.png": "77a8bd538f3eb2e64aaa3a64b6d413dd7e9c6d39e94e834fa848f36c513e0a42",
+    "mapa_novel_20261102_cascade_peaks_f0.7_xgboost.png": "529c699ee961e78dd77114681c2e35ac533c89516c62f2c3e109b66abdc005a2",
+    "mapa_novel_20261102_cascade_peaks_f2.7_mlp.png": "fb0c794321e2f7cde2e8efeef93cddd375cbdff68c84db68947a19bad0a02649",
+    "mapa_novel_20261102_cascade_peaks_f2.7_swmm.png": "8884a0a6e4fa7932b5fce7c8a31e7e31c3378423bf3b3fd4eca1e73d525eeda1",
+    "mapa_novel_20261102_cascade_peaks_f2.7_xgboost.png": "04e087a5519cab61c18afb494128f76a2370a462a3cd86da31cfc934ca88de8c",
+    "mapa_novel_20261102_cascade_peaks_f4.3_mlp.png": "357d8ee1082eaf7aa2280ecd1ea6f74ff1932ee16f1c909fa603f8ddfa7b6a50",
+    "mapa_novel_20261102_cascade_peaks_f4.3_swmm.png": "bdbb8145bbc64847a805e7ae04efd050f9cf640219da592bb0103f9cf8a78932",
+    "mapa_novel_20261102_cascade_peaks_f4.3_xgboost.png": "a386f872b4b5673b28b6c72b38fa1459e9792e2b71e4b1a8047fb69111b5c715",
+    "mapa_novel_20261102_sustained_late_surge_f0.7_mlp.png": "c02fa85048bbf1e0926f9d43b074299a6420d5eac9ebc8e65439609b88970afc",
+    "mapa_novel_20261102_sustained_late_surge_f0.7_swmm.png": "c91af62c5927b9daba0fdeba319e556dd2eff7db446fea0be1100342bcf8de63",
+    "mapa_novel_20261102_sustained_late_surge_f0.7_xgboost.png": "c5c44c06fb4d127e3d07d5b1bc264dd15db2498832df5ef5379846eb1e4358bd",
+    "mapa_novel_20261102_sustained_late_surge_f2.7_mlp.png": "28e29b8a86c140ad68a3f7e80b48654d6028f40e54a0e87c4f6599edf72e9733",
+    "mapa_novel_20261102_sustained_late_surge_f2.7_swmm.png": "1fd46410a54d033b62099fd821f2455fa83e095e10c2344b46ee84a79bc7fb9a",
+    "mapa_novel_20261102_sustained_late_surge_f2.7_xgboost.png": "ff90ea3b9886ec0fade1decd3d92afdb347f37d48937592adff042020094ddbb",
+    "mapa_novel_20261102_sustained_late_surge_f4.3_mlp.png": "811b9c5b690ff015c2e70819ccf935427c78715ab89745789baa1215826577c4",
+    "mapa_novel_20261102_sustained_late_surge_f4.3_swmm.png": "c8155f38be7872122cfeb6b3e775dd48bb8c133bd034e9b682e5b4478ab65cd0",
+    "mapa_novel_20261102_sustained_late_surge_f4.3_xgboost.png": "d149a1bb2357fa8a641ec447098e274ea3b43952d7c3b5065802d7226d761698",
+    "paridad_global_mlp.png": "15501519399051c8f13b48cb7f58696d7301ecafe4654a11cd25a501e1a31775",
+    "paridad_global_xgboost.png": "b518e65273f121f0c721b824c8378812b7f46ab65e3c3121d9372f5c182328e3",
+    "volumen_total_por_factor.png": "3746598a9e361bdf7acdd299bb0108b136412c11972a7c12787a5dcd58a0dd69"
+  }
+}
