@@ -7,7 +7,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parents[2]
 
 
-def test_wheel_exposes_all_nine_migrations_and_validator(tmp_path):
+def test_wheel_exposes_all_migrations_and_validator(tmp_path):
     dist_dir = tmp_path / "dist"
     subprocess.run(
         [sys.executable, "-m", "build", "--wheel", "--outdir", str(dist_dir)],
@@ -30,7 +30,8 @@ def test_wheel_exposes_all_nine_migrations_and_validator(tmp_path):
         "'003_model_integrity_guards.sql','004_training_run_identity.sql',"
         "'005_provenance_integrity.sql','006_tributary_contract.sql',"
         "'007_tributary_training_view.sql','008_v4_21_provenance_guards.sql',"
-        "'009_run_hydraulic_quality.sql'], names\n"
+        "'009_run_hydraulic_quality.sql','010_run_source_artifacts.sql',"
+        "'011_run_source_artifact_identity.sql'], names\n"
         "from swmm_resilience.database import migration_005_validator\n"
         "assert hasattr(migration_005_validator, 'validate_before_005')\n"
         "print('OK')\n"

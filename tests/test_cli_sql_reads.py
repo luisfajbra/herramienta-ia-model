@@ -225,7 +225,7 @@ def test_migrate_db_is_the_explicit_schema_write_command(tmp_path, monkeypatch):
     try:
         assert conn.execute(
             "SELECT MAX(version) FROM schema_migrations"
-        ).fetchone()[0] == 9
+        ).fetchone()[0] == 11
     finally:
         conn.close()
 
