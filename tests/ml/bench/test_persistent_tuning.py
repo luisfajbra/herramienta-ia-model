@@ -109,3 +109,16 @@ def test_nonfinite_objective_cannot_become_complete(tmp_path, monkeypatch):
         module.run_persistent_study(prepared_fixture(), 'mlp', tmp_path, {}, budget=1)
     study = optuna.load_study(study_name='joint_mlp', storage='sqlite:///' + (tmp_path / 'study.sqlite3').resolve().as_posix())
     assert study.trials[0].state.name == 'FAIL'
+
+
+def test_real_mlp_search_space_survives_sqlite_resume(tmp_path, monkeypatch):
+    from swmm_resilience.ml.bench import persistent_tuning as module
+    from swmm_resilience.ml.bench.tune import SEARCH_SPACES, _sample_params
+    def objective(trial, *args, **kwargs):
+        _sample_params(trial, SEARCH_SPACES['mlp']['classifier'], prefix='mlp_classifier_')
+        _sample_params(trial, SEARCH_SPACES['mlp']['regressor'], prefix='mlp_regressor_')
+        return 1.0
+    monkeypatch.setattr(module, '_objective', objective)
+    module.run_persistent_study(prepared_fixture(), 'mlp', tmp_path, {}, budget=12, max_new_trials=1)
+    result = module.run_persistent_study(prepared_fixture(), 'mlp', tmp_path, {}, budget=12)
+    assert result['complete'] == 12

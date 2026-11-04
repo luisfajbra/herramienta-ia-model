@@ -17,6 +17,24 @@ from ...config import ML_RANDOM_STATE
 from .tune import SEARCH_SPACES, _objective, build_tuning_folds
 
 
+class _PersistentTrial:
+    """Encode composite categorical choices as stable strings for Optuna RDB."""
+    def __init__(self, trial):
+        self._trial = trial
+
+    def __getattr__(self, name):
+        return getattr(self._trial, name)
+
+    def suggest_categorical(self, name, choices):
+        if any(isinstance(choice, (tuple, list)) for choice in choices):
+            labels = [json.dumps(choice, separators=(',', ':'), ensure_ascii=False) for choice in choices]
+            if len(set(labels)) != len(labels):
+                raise ValueError('categorical choices have ambiguous persistent encodings')
+            selected = self._trial.suggest_categorical(name, labels)
+            return choices[labels.index(selected)]
+        return self._trial.suggest_categorical(name, choices)
+
+
 @contextmanager
 def exclusive_runner(directory: Path):
     """Hold an OS-released SQLite lock in a separate database for the whole study."""
@@ -49,7 +67,8 @@ def run_persistent_study(prepared, family: str, directory: Path, input_contract:
         descriptor = {'schema': 'persistent_shape_tuning_v1', 'prep_id': prepared.prep_id,
                       'input_contract': input_contract, 'family': family, 'budget_attempts': budget,
                       'objective': 'macro_network_rmse', 'n_splits': 5, 'seed': seed,
-                      'sampler': 'tpe_seed_plus_trial_number_v1', 'fixed_params': fixed_params or {},
+                      'sampler': 'tpe_seed_plus_trial_number_v1', 'categorical_encoding': 'composite_json_v1',
+                      'fixed_params': fixed_params or {},
                       'search_space': SEARCH_SPACES[family], 'python': platform.python_version(),
                       'versions': {name: version(name) for name in ('optuna', 'numpy', 'pandas', 'scikit-learn', 'torch', 'xgboost')}}
         package_root = Path(__file__).resolve().parents[2]
@@ -84,7 +103,7 @@ def run_persistent_study(prepared, family: str, directory: Path, input_contract:
             study.sampler = optuna.samplers.TPESampler(seed=(seed + next_number) % (2**32))
             trial = study.ask()
             try:
-                value = _objective(trial, prepared, family, folds, fold_n_jobs=1,
+                value = _objective(_PersistentTrial(trial), prepared, family, folds, fold_n_jobs=1,
                                    fixed_params=fixed_params, objective='macro_network_rmse')
                 if integrity_check is not None:
                     integrity_check()
