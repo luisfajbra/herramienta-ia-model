@@ -125,12 +125,19 @@ se conectó al flujo real sin parametrizarla.
   - `tests/ml/bench/test_frozen_transfer_experiment.py::test_register_transfer_rejects_unknown_usage`
     (nuevo).
 
-**Artefactos ya existentes: NO editarlos.** Estas preregistraciones reales
-(carpetas locales sin seguimiento en git) conservan la etiqueta antigua:
+**Artefactos ya existentes: NO editarlos.** Todas las preregistraciones creadas
+antes del commit `813614ba` conservan la etiqueta antigua. Son carpetas locales
+sin seguimiento en git; a 2026-11-04 hay al menos 10 bajo `outputs/` (ninguna
+en `docs/`). Por ejemplo:
 
 - `outputs/bench/multinetwork/20261030T005341Z-813323e3ef75/A_to_B_frozen/registration.json`
 - `outputs/bench/multinetwork/20261030T011406Z-813323e3ef75/A_to_B_frozen/registration.json`
 - `outputs/experiments/chico_norte_novel_hydrograph_eval_20261102/run_20261103T034108Z/predictions/{mlp,xgboost}/.../A_to_B_frozen/registration.json`
+- `outputs/experiments/piloto_seleccion_swmm_20261103/selected_predictions/{mlp,xgboost}/.../A_to_B_frozen/registration.json`
+- `outputs/experiments/piloto_seleccion_inundado_20261103/selected_predictions/.../A_to_B_frozen/registration.json`
+
+Para listarlas todas:
+`grep -rl synthetic_only_unbound_sources outputs --include=registration.json`.
 
 Cada `registration.json` está sellado por `registration_seal.json`, y su SHA-256
 se encadena en `prediction_seal.json` y `verified_scores.json`. Editarlos rompería
