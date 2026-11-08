@@ -22,7 +22,7 @@ Reglas que valen para todo el documento:
 | 4. MLP extrapola de forma exponencial | Atendido con diagnóstico físico; el recorte y el reentrenamiento quedan pendientes de decisión | `b59cc500`, `020af994`, documentación | `audit.json` (`tributary_bound`, `total_monotonicity_violations`, `node_monotonicity`) |
 | 5. Límite de continuidad del 5 % | Atendido con análisis de sensibilidad; la QA no se cambia | `0ebda567`, `020af994`, documentación | `audit.json` (`continuity_sensitivity`) |
 | 6. Artefactos sellados sin respaldo | Respaldo local creado y verificado; **subida a Drive pendiente** (la hace el investigador) | `7a9a35e4` | `outputs/backups/33_reserva_conjunta_y_base_20261108.zip` y `.manifest.json` |
-| 7. Detalles menores de código | Punto de SQLite retirado tras revisarlo; nota de tests en el README | Commit de documentación | [README](../../../README.md#verificacion) |
+| 7. Detalles menores de código | Punto de SQLite rebajado a observación tras revisarlo; nota de tests en el README | Commit de documentación | [README](../../../README.md#verificacion) |
 
 Cuatro puntos requieren acción o decisión del investigador:
 
@@ -70,7 +70,7 @@ Código nuevo (funciones puras, sin tocar artefactos):
 - [`swmm_resilience/ml/bench/holdout_audit.py`](../../../swmm_resilience/ml/bench/holdout_audit.py): `macro_network_rmse`, `rmse_by_shape_network` (RMSE y proporción del error cuadrado por forma y red), `leave_one_shape_out_macro` (macro excluyendo cada forma; rechaza excluir una red completa) y `continuity_subset`.
 - [`scripts/auditar_reserva_conjunta.py`](../../../scripts/auditar_reserva_conjunta.py): verifica los sellos, reconstruye la tabla de predicciones, comprueba que el macro recalculado coincida con el sellado y escribe `audit.json` en un directorio nuevo.
 
-Tests: [`tests/ml/bench/test_holdout_audit.py`](../../../tests/ml/bench/test_holdout_audit.py) (7 casos) y [`tests/test_auditar_reserva_conjunta.py`](../../../tests/test_auditar_reserva_conjunta.py) (6 casos, comunes a los hallazgos 1, 2, 4 y 5).
+Tests: [`tests/ml/bench/test_holdout_audit.py`](../../../tests/ml/bench/test_holdout_audit.py) (7 casos) y [`tests/test_auditar_reserva_conjunta.py`](../../../tests/test_auditar_reserva_conjunta.py) (12 casos, comunes a los hallazgos 1, 2, 4 y 5).
 
 Para reproducirlo:
 
@@ -85,12 +85,17 @@ venv/Scripts/python.exe scripts/auditar_reserva_conjunta.py \
   --output outputs/experiments/auditoria_reserva_conjunta_20261108_v1
 ```
 
-El script falla si el directorio de salida ya existe (para repetir la corrida hay que usar un directorio nuevo). Cifras resultantes (`audit.json`, `models.<familia>`):
+El script falla si el directorio de salida ya existe (para repetir la corrida hay que usar un directorio nuevo). Desde la revisión final, además verifica que la partición recibida sea la de la evaluación sellada: su SHA-256 debe ser igual a `partition_sha256` del sello y su lista `run_ids.holdout` debe ser igual a las 321 corridas selladas (`verify_partition_matches_seal`); si no, falla con `partition does not match the sealed evaluation`. También abre la base sellada con `?mode=ro&immutable=1`. Cifras resultantes (`audit.json`, `models.<familia>`):
 
 - `macro_network_rmse_m3`: 234,54 (XGBoost) y 184,63 (MLP), idénticos a `scores.json`.
 - `leave_one_shape_out`: 66,68 y 87,23 al excluir `shape_quasi_uniform_block`. Al excluir cualquiera de las otras seis formas el macro cambia poco respecto al valor con todas: entre 244,14 y 254,66 m³ para XGBoost y entre 182,96 y 200,36 m³ para MLP.
 
 El informe de la reserva quedó corregido: la conclusión ahora dice que la ventaja de MLP depende de una sola forma e incluye la tabla.
+
+Dos precisiones sobre la evidencia:
+
+- **Procedencia de `audit.json`.** La versión v1 se produjo en el commit `020af994`, antes de las correcciones de la revisión final (control de la partición contra el sello e `immutable=1`). Cumple el control nuevo: su `partition_sha256` es igual al del sello y el `holdout` de la partición es igual a las 321 corridas selladas. Las correcciones no cambian ninguna de sus cifras, así que no se volvió a ejecutar el script ni se generó una v2. Si se produce una v2, conviene que `audit.json` registre también el commit del código.
+- **`sse_share` agrupa las dos redes.** La proporción del error cuadrado que explica `shape_quasi_uniform_block` se calculó sumando ambas redes. Por red se llega a la misma conclusión: 92,7 % (Chico Sur) y 93,6 % (Chico Norte) en XGBoost, y 80,9 % y 81,4 % en MLP.
 
 ### Qué queda pendiente y cómo continuar
 
@@ -105,7 +110,7 @@ El informe de la reserva quedó corregido: la conclusión ahora dice que la vent
   - La protección de salida solo comprueba que el directorio no esté dentro de `--evaluation` ni `--package`; no cubre `final_joint_candidates_20261108_v1` ni los JSON de partición y reserva.
   - `audit.json` se crea antes de serializar su contenido. Si la serialización fallara, quedaría un archivo parcial que bloquearía repetir la corrida hasta borrarlo a mano.
   - Un valor incorrecto de `status` se informa como "sealed scores changed", y una familia ausente lanza `KeyError` en vez de un mensaje claro.
-  - No hay tests para un sello de predicciones alterado, para la comprobación de reproducción del macro (`audit_family`) ni para `main()`.
+  - Faltan tests para `main()`. (Corregido en la revisión final: ya hay tests para el sello de predicciones alterado, para el archivo de predicciones de XGBoost alterado, para la comprobación de reproducción del macro en `audit_family` y para el control de la partición contra el sello.)
 
 ## Hallazgo 2: el sorteo dejó lo más extremo fuera del entrenamiento
 
@@ -140,7 +145,7 @@ Esto probablemente explica la brecha entre la validación cruzada interna y la r
   - `stratified_shape_draw`: sorteo reproducible de una forma por estrato de volumen, reservando las mayores para desarrollo. **Es solo para un diseño futuro; no se usó sobre esta reserva.**
 - `scripts/auditar_reserva_conjunta.py` calcula `inflow_coverage` con los volúmenes de la base conjunta.
 
-Tests: [`tests/ml/bench/test_partition_coverage.py`](../../../tests/ml/bench/test_partition_coverage.py) (7 casos) y los 6 del script de auditoría.
+Tests: [`tests/ml/bench/test_partition_coverage.py`](../../../tests/ml/bench/test_partition_coverage.py) (9 casos) y los 12 del script de auditoría.
 
 ```bash
 venv/Scripts/python.exe -m pytest tests/ml/bench/test_partition_coverage.py -v -p no:cacheprovider --basetemp C:/Users/<usuario>/AppData/Local/Temp/pt-h2
@@ -153,7 +158,7 @@ La cifra se obtiene con el mismo comando de auditoría del hallazgo 1 (`inflow_c
 - Decidir si se diseña una reserva nueva (decisión pendiente 3). Si se hace: ejecutar `inflow_coverage` y `stratified_shape_draw` **antes** de sortear, con una semilla registrada, y registrar el procedimiento antes de ejecutarlo, como se hizo el 4 de noviembre.
 - Probar la hipótesis de la duración sostenida sobre la capacidad como variable nueva. Solo vale para un reentrenamiento con una prueba independiente nueva.
 - Menores diferidos de `partition_coverage.py`:
-  - `stratified_shape_draw` calcula un corte negativo si `keep_top_in_development` es mayor que el número de formas; falta una verificación explícita que dé un error claro.
+  - ~~`stratified_shape_draw` calculaba un corte negativo si `keep_top_in_development` era mayor que el número de formas.~~ **Corregido en la revisión final** (`swmm_resilience/ml/bench/partition_coverage.py:75`): ahora lanza `ValueError("keep_top_in_development must be smaller than the number of shapes")` si es mayor o igual, con un test.
   - `run_inflow_volumes` no rechaza filas duplicadas (corrida, nodo), y el conteo de identidades ignora los `NaN`.
   - `inflow_coverage` y `shape_representative_volume` suponen entradas limpias (por ejemplo, un máximo de cero o un índice duplicado no se validan).
   - La semilla no se valida como entero.
@@ -209,12 +214,12 @@ Cualquiera de las dos cambia la entrada que SWMM recibe en esas formas. Requiere
 
 Cifras de la auditoría y de `audit.json`:
 
-- Mayor predicción nodal del MLP: 17.440 m³ en Chico Sur (nodo `52C`, corrida 699) y 21.193 m³ en Chico Norte (nodo `268I`, corrida 1675, donde SWMM da 6.814 m³). Las etiquetas máximas de la reserva son 7.418 y 14.928 m³. XGBoost nunca predice por encima de lo visto: sus máximos son 6.098 y 14.068 m³.
+- Mayor predicción nodal del MLP: 17.440 m³ en Chico Sur (nodo `52C`, corrida 699) y 21.193 m³ en Chico Norte (nodo `268I`, corrida 1675, donde SWMM da 6.814 m³). Las etiquetas máximas de la reserva son 7.418 y 14.928 m³. XGBoost se satura, pero no está acotado por la etiqueta máxima de desarrollo: sus máximos son 6.098 y 14.068 m³, y en Chico Norte 14.068 m³ supera la etiqueta máxima de desarrollo (12.639 m³).
 - Cota física: el volumen inundado de un nodo no puede superar el volumen que le llega de su propia entrada y de sus nodos aguas arriba (las redes son árboles). Con tolerancia de 1 m³, `tributary_bound.violations` es **0 para XGBoost y 46 para MLP**, con `max_ratio` de 2,27 (el MLP llega a 2,27 veces la cota).
 - Monotonía del total: el volumen total predicho por MLP para `shape_quasi_uniform_block` en Chico Sur **baja** 3.170,65 m³ al pasar al factor 5,0 (de 185.554 a 182.383 m³) mientras SWMM sube. Es la única violación (`total_monotonicity_violations`: 1 fila para MLP, 0 para XGBoost).
 - Monotonía nodal (`node_monotonicity`): la predicción baja al subir el factor, sin que SWMM baje, en 63 de 101.972 pasos para MLP y en 1.242 para XGBoost (1,2 %).
 
-**Por qué ocurre.** El regresor aprende `log1p(volumen)`. Una red con activaciones ReLU es lineal por tramos, así que extrapola de forma aproximadamente lineal en el espacio logarítmico. Un crecimiento lineal en `log1p` equivale a un crecimiento exponencial en m³, y por eso el MLP sobrepasa a SWMM fuera del rango de entrenamiento. Los árboles de XGBoost, en cambio, predicen promedios de valores ya vistos, así que se saturan y se quedan cortos. La parte de monotonía de XGBoost (1.242 pasos) es otra causa: los saltos de los árboles. Ninguno de los dos modelos tiene garantía física de monotonía respecto al factor.
+**Por qué ocurre.** El regresor aprende `log1p(volumen)`. Una red con activaciones ReLU es lineal por tramos, así que extrapola de forma aproximadamente lineal en el espacio logarítmico. Un crecimiento lineal en `log1p` equivale a un crecimiento exponencial en m³, y por eso el MLP sobrepasa a SWMM fuera del rango de entrenamiento. Los árboles de XGBoost se comportan distinto: un conjunto de árboles es constante por tramos. Más allá del rango de entrenamiento de las variables, la predicción deja de cambiar y no crece con el factor (se satura), por lo que se queda corta. Su cota no es la etiqueta máxima vista, sino la suma de los valores de hoja de los árboles: en Chico Norte el máximo de XGBoost en la reserva (14.068 m³) supera la etiqueta máxima de desarrollo (12.639 m³). La parte de monotonía de XGBoost (1.242 pasos) es otra causa: los saltos de los árboles. Ninguno de los dos modelos tiene garantía física de monotonía respecto al factor.
 
 ### Plan
 
@@ -229,7 +234,8 @@ Cifras de la auditoría y de `audit.json`:
   - `cap_at_tributary_volume`: recorte elemental a la cota (solo para sensibilidad).
   - `total_monotonicity_violations`: marca los pasos donde el total predicho de la red baja y el total de SWMM no.
   - `node_monotonicity_violations`: cuenta pasos y violaciones por nodo y forma.
-- Tests: [`tests/ml/bench/test_physical_checks.py`](../../../tests/ml/bench/test_physical_checks.py) (4 casos) y los 6 del script de auditoría.
+- Tests: [`tests/ml/bench/test_physical_checks.py`](../../../tests/ml/bench/test_physical_checks.py) (4 casos) y los 12 del script de auditoría.
+- **Sobre la cota tributaria.** Que sea una cota superior válida se apoya en evidencia empírica, no en una demostración: en la reserva, la verdad de SWMM tiene 0 violaciones de la cota y una razón máxima de 0,888. El almacenamiento inicial (855 m³ en Chico Sur y 4.048 m³ en Chico Norte, en toda la red) no es pequeño en términos absolutos, así que la cota podría fallar en otros casos.
 
 ```bash
 venv/Scripts/python.exe -m pytest tests/ml/bench/test_physical_checks.py -v -p no:cacheprovider --basetemp C:/Users/<usuario>/AppData/Local/Temp/pt-h4
@@ -337,6 +343,8 @@ Resultado, verificado en local:
 1. Subir `33_reserva_conjunta_y_base_20261108.zip` y su `.manifest.json` a Drive. Después de subirlo, comparar el SHA-256 del archivo descargado con el de arriba (`sha256sum` en Git Bash o `certutil -hashfile <archivo> SHA256` en Windows).
 2. Cuando el investigador confirme la subida, actualizar la línea del hallazgo 6 en la sección "Estado" de la [auditoría](2026-11-08-auditoria-hidraulica-ml.md) y la fila de este documento, y recién entonces considerarlo resuelto.
 3. Observación sobre el contenido: el ZIP incluye archivos `-shm` y `-wal` de las tres bases SQLite (los `-wal` están vacíos, los `-shm` pesan 32 KiB). La base principal se archivó sin un checkpoint explícito; como el WAL estaba vacío, no había transacciones pendientes. Para un respaldo estrictamente consistente, confirmar que no hay escritores activos antes de archivar de nuevo.
+   - La corrida de solo lectura de la auditoría del 8 de noviembre (11:26) actualizó `joint.sqlite3-shm` dentro de la carpeta del paquete sellado (comportamiento normal de un lector de una base en modo WAL). El hash de `joint.sqlite3` no cambió. Por eso la entrada `-shm` del manifiesto del respaldo refleja el estado posterior a la auditoría. Los archivos `-shm` y `-wal` son volátiles y no sirven para volver a verificar la fuente. El script ahora abre la base con `immutable=1`, que evita esa escritura.
+   - El respaldo no incluye `final_joint_candidates_20261108_v1`: depende de la copia que ya existe en Drive (`32_`). Se recomienda cotejar el SHA-256 del clasificador y del regresor que figuran en el sello con los de `32_`.
 4. Menores diferidos de `respaldar_artefactos_sellados.py`:
    - Si una escritura falla a mitad del archivado, queda un ZIP parcial en disco.
    - El hash previo y la escritura del ZIP son lecturas separadas (`verify_archive` detecta la discrepancia), y faltan tests para el cambio de una fuente, la lista de miembros y un manifiesto ya existente.
@@ -348,7 +356,7 @@ Resultado, verificado en local:
 
 La auditoría listó detalles de código que no cambian resultados. Este documento explica los dos que requirieron una decisión.
 
-**Punto de SQLite (retirado).** La auditoría señaló que `scripts/prepare_joint_dataset.py:35` y `scripts/train_joint_final_20261108.py:88` usan `with sqlite3.connect(...) as db`, que en Python no cierra la conexión (solo hace commit o rollback), y que en Windows eso impediría borrar o mover el archivo mientras el proceso siga vivo. **Al revisarlo, la conexión vive dentro de una función (`prepare_joint_dataset.py`) o de un bucle dentro de `main` (`train_joint_final_20261108.py`), y CPython la cierra al liberar el objeto cuando termina la función o la iteración.** No queda abierta de forma persistente y no requiere cambios.
+**Punto de SQLite (rebajado a observación).** La auditoría señaló que `scripts/prepare_joint_dataset.py:35` y `scripts/train_joint_final_20261108.py:88` usan `with sqlite3.connect(...) as db`, que en Python no cierra la conexión (solo hace commit o rollback), y que en Windows eso impediría borrar o mover el archivo mientras el proceso siga vivo. **Al revisarlo, el punto es menor de lo que parecía, pero no del todo inexistente.** En código dentro de una función, la conexión se cierra cuando la variable se reasigna o cuando la función termina (CPython libera el objeto), como en `prepare_joint_dataset.py`. En `scripts/train_joint_final_20261108.py:88`, en cambio, la última conexión de instantánea (la de `mlp`) queda abierta hasta que `main` termina, es decir, durante todo el entrenamiento. Es inocuo: el bloque `with` ya hizo el commit y no hay ninguna transacción pendiente. Se rebaja a observación y no se cambia el script, porque ya fue ejecutado y está congelado.
 
 **Longitud de ruta de los tests en Windows.** La suite completa dio 1.706 aprobados y 1 fallido: `test_joint_builder_verifies_two_sources_and_publishes_new_dataset[False-joint]`, con `FileNotFoundError [WinError 3]`. El test copia archivos llamados `source-<sha256 de 64 caracteres>.bin`; con la carpeta temporal por defecto (unos 110 caracteres) la ruta supera el límite de 260 caracteres de Windows, porque `LongPathsEnabled=0`. Con un `--basetemp` corto pasan sus 6 casos. Es un problema del entorno, no del código.
 
@@ -356,13 +364,13 @@ Los demás puntos (el cotejo que integra el OUT desde la primera muestra, los do
 
 ### Plan
 
-- Retirar el punto de SQLite sin cambiar los scripts: son scripts ya ejecutados y documentan lo que se corrió.
+- Rebajar el punto de SQLite a observación sin cambiar los scripts: son scripts ya ejecutados y documentan lo que se corrió.
 - Documentar la nota de rutas cortas en el README, en vez de cambiar tests.
 
 ### Solución aplicada
 
 - [README](../../../README.md#verificacion), sección "Verificacion": el comando ahora lleva `--basetemp C:/Users/<usuario>/AppData/Local/Temp/pt` y una nota que explica el límite de 260 caracteres, la alternativa de habilitar rutas largas (requiere administrador) y que `pytest-xdist` no está instalado, por lo que no hay que usar `-n`.
-- La suite completa de este plan se corrió con `--basetemp C:/Users/lf.fajardo/AppData/Local/Temp/pt-full`; el resultado fue `1733 passed, 1 skipped, 3 deselected, 649 warnings in 477.15s (0:07:57)`: 0 fallos, los 1.706 aprobados de antes más los 27 tests nuevos (7 + 4 + 7 + 6 + 3). El test que fallaba por la ruta larga pasa con ese `--basetemp`.
+- La suite completa de este plan se corrió con `--basetemp C:/Users/lf.fajardo/AppData/Local/Temp/pt-full`; el resultado fue `1733 passed, 1 skipped, 3 deselected, 649 warnings in 477.15s (0:07:57)`: 0 fallos, los 1.706 aprobados de antes más los 27 tests nuevos (7 + 4 + 7 + 6 + 3). Esa corrida es anterior a la revisión final, que agregó 8 tests (6 en el script de auditoría y 2 en `partition_coverage`) y se verificó solo con los archivos de tests afectados (35 aprobados en los 5 archivos relacionados). El test que fallaba por la ruta larga pasa con ese `--basetemp`.
 
 ### Qué queda pendiente y cómo continuar
 
@@ -408,6 +416,12 @@ Ruling: implementers run only focused tests; the full suite runs once in Task 6 
 ```
 
 Cada tarea corrió solo sus tests específicos; la suite completa se corrió una vez, en el paso 6 de la Tarea 6, porque cuesta unos 8 minutos y las Tareas 1 a 5 solo agregan archivos. Si fue un error, una regresión entre módulos aparecería en la Tarea 6 y no en su tarea.
+
+```
+Ruling: final review 'With fixes' — one fix wave covering Important 1-4, minors 5-7 and doc notes; audit v1 and ZIP are NOT regenerated (numbers unaffected; v1 produced at 020af994 satisfies the new partition guard) — cost if wrong: audit.json lacks code-provenance fields until a v2 is produced.
+```
+
+La revisión final de toda la rama dio el veredicto "con correcciones". Se hizo una sola ronda de correcciones (hallazgos importantes 1 a 4, menores 5 a 7 y las notas de documentación). No se regeneran `audit.json` v1 ni el ZIP, porque sus cifras no cambian: la v1 se produjo en `020af994` y cumple el control nuevo de la partición. Si fue un error, `audit.json` no registra el commit del código hasta que se produzca una v2.
 
 ## Decisiones pendientes (no son tareas de este plan)
 
