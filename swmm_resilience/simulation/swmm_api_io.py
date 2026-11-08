@@ -367,10 +367,37 @@ def read_out_timeseries(out_file: Path | str):
     return read_out_file(str(out_file))
 
 
-def get_node_series(out, node_id: str) -> "pd.DataFrame":
+def _out_elapsed_seconds(series, simulation_start=None):
+    """Convert OUT timestamps using an explicit simulation start for datetimes."""
+    if series.empty:
+        raise ValueError("OUT time series is empty")
+    if pd.api.types.is_datetime64_any_dtype(series) or isinstance(series.iloc[0], pd.Timestamp):
+        if simulation_start is None:
+            raise ValueError("simulation_start is required for datetime OUT timestamps")
+        try:
+            start = pd.Timestamp(simulation_start)
+            if pd.isna(start):
+                raise ValueError("simulation_start is invalid")
+            elapsed = (pd.to_datetime(series, errors="raise") - start).dt.total_seconds()
+        except (TypeError, OverflowError) as exc:
+            raise ValueError("simulation_start is incompatible with OUT timestamps") from exc
+        if elapsed.isna().any():
+            raise ValueError("OUT timestamps must be valid")
+        if (elapsed < 0).any():
+            raise ValueError("OUT sample occurs before simulation_start")
+        return elapsed
+    if pd.api.types.is_timedelta64_dtype(series):
+        return series.dt.total_seconds()
+    if hasattr(series.iloc[0], "total_seconds"):
+        return series.apply(lambda t: t.total_seconds())
+    return pd.to_numeric(series, errors="coerce")
+
+
+def get_node_series(out, node_id: str, *, simulation_start=None) -> "pd.DataFrame":
     """Extract per-timestep node results from a SwmmOutput object.
 
-    Returns a DataFrame with columns:
+    Datetime indices require the actual ``simulation_start``; the first OUT
+    reporting timestamp is not assumed to be the start. Returns columns:
         time_sec, total_inflow_lps, lateral_inflow_lps, depth_m,
         flooding_lps, total_outflow_lps, head_m
     """
@@ -386,10 +413,8 @@ def get_node_series(out, node_id: str) -> "pd.DataFrame":
     time_col = next(
         (c for c in df.columns if "date" in c or "time" in c or "index" in c), None
     )
-    if time_col and hasattr(df[time_col].iloc[0], "total_seconds"):
-        df["time_sec"] = df[time_col].apply(lambda t: t.total_seconds())
-    elif time_col:
-        df["time_sec"] = pd.to_numeric(df[time_col], errors="coerce")
+    if time_col:
+        df["time_sec"] = _out_elapsed_seconds(df[time_col], simulation_start)
 
     column_aliases = {
         "total_inflow": "total_inflow_lps",
@@ -404,8 +429,8 @@ def get_node_series(out, node_id: str) -> "pd.DataFrame":
     return df
 
 
-def get_link_series(out, link_id: str) -> "pd.DataFrame":
-    """Extract per-timestep link results from a SwmmOutput object."""
+def get_link_series(out, link_id: str, *, simulation_start=None) -> "pd.DataFrame":
+    """Extract link results; datetime indices require the actual simulation start."""
     _require_swmm_api()
     try:
         df = out.get_part("link", link_id)
@@ -418,10 +443,8 @@ def get_link_series(out, link_id: str) -> "pd.DataFrame":
     time_col = next(
         (c for c in df.columns if "date" in c or "time" in c or "index" in c), None
     )
-    if time_col and hasattr(df[time_col].iloc[0], "total_seconds"):
-        df["time_sec"] = df[time_col].apply(lambda t: t.total_seconds())
-    elif time_col:
-        df["time_sec"] = pd.to_numeric(df[time_col], errors="coerce")
+    if time_col:
+        df["time_sec"] = _out_elapsed_seconds(df[time_col], simulation_start)
 
     column_aliases = {
         "flow": "flow_lps",
