@@ -72,3 +72,10 @@ def test_stratified_draw_rejects_invalid_requests():
         stratified_shape_draw(pd.Series({"a": 1.0, "b": 2.0}), k=2, seed=1)
     with pytest.raises(ValueError, match="finite"):
         stratified_shape_draw(pd.Series({"a": float("nan"), "b": 2.0, "c": 3.0}), k=1, seed=1)
+
+
+@pytest.mark.parametrize("keep", [10, 12])
+def test_stratified_draw_rejects_keep_top_not_smaller_than_shape_count(keep):
+    volumes = pd.Series({f"s{i}": float(i) for i in range(1, 11)})
+    with pytest.raises(ValueError, match="must be smaller than the number of shapes"):
+        stratified_shape_draw(volumes, k=1, seed=1, keep_top_in_development=keep)

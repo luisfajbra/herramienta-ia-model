@@ -64,6 +64,16 @@ def verify_sealed_evaluation(directory: Path) -> dict:
     return {"status": status, "scores": scores, "seal": seal}
 
 
+def verify_partition_matches_seal(partition_path: Path, partition_sha256: str, seal: dict) -> None:
+    """The audited partition must be the one the sealed evaluation was run against."""
+    if partition_sha256 != seal.get("partition_sha256"):
+        raise ValueError("partition does not match the sealed evaluation")
+    data = _read_json(Path(partition_path))
+    partition_holdout = {int(run) for run in data["run_ids"]["holdout"]}
+    if partition_holdout != {int(run) for run in seal["holdout_run_ids"]}:
+        raise ValueError("partition does not match the sealed evaluation")
+
+
 def assemble_family_frame(inputs: pd.DataFrame, truth: pd.DataFrame, predictions: pd.DataFrame) -> pd.DataFrame:
     if not (len(inputs) == len(truth) == len(predictions)):
         raise ValueError("sealed inputs, predictions and truth do not cover the same pairs")
@@ -122,12 +132,13 @@ def main(argv=None) -> None:
             raise ValueError("output must be outside sealed inputs")
     sealed = verify_sealed_evaluation(args.evaluation)
     verify_partition_hash(args.partition, args.partition_sha256)
+    verify_partition_matches_seal(args.partition, args.partition_sha256, sealed["seal"])
     database = args.package / "joint.sqlite3"
     if sha256(database) != sealed["seal"]["source_database_sha256"]:
         raise ValueError("joint database differs from the sealed evaluation")
     development = development_run_ids(args.package, args.partition)
     holdout = [int(run) for run in sealed["seal"]["holdout_run_ids"]]
-    with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)) as connection:
+    with closing(sqlite3.connect(database.resolve().as_uri() + "?mode=ro&immutable=1", uri=True)) as connection:
         marks = ",".join("?" for _ in holdout)
         continuity = pd.read_sql_query(
             f"SELECT run_id, continuity_error_pct FROM runs WHERE run_id IN ({marks})",

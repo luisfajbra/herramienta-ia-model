@@ -72,6 +72,8 @@ def stratified_shape_draw(shape_volumes: pd.Series, k: int, seed: int,
     if volumes.index.duplicated().any() or not np.isfinite(volumes.to_numpy()).all():
         raise ValueError("shape volumes must be unique and finite")
     ordered = sorted(volumes.index, key=lambda shape: (volumes[shape], str(shape)))
+    if keep_top_in_development >= len(ordered):
+        raise ValueError("keep_top_in_development must be smaller than the number of shapes")
     candidates = ordered[:len(ordered) - keep_top_in_development]
     if len(candidates) < k:
         raise ValueError("not enough candidate shapes for the requested draw")
