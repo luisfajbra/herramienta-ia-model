@@ -205,16 +205,34 @@ def main():
         'Un volumen total cercano puede ocultar errores en nodos individuales.',
         'La reserva ya fue observada: no debe reutilizarse como prueba ciega tras nuevos ajustes.',
         'El siguiente paso es revisar el dominio hidráulico y buscar una red independiente.'])
+    s = slide(prs, 'Cotejo de fuentes', 'Revisión puntual del nodo 100C en ambas redes, con factores 3 y 5.')
+    block(s, .48, 'Entradas', ['Los 16 puntos del CSV coinciden con el INP efectivo en los cuatro casos.',
+        'El INP añade un punto de caudal cero para el drenaje.',
+        'La integración independiente coincide con el volumen local y tributario guardado.',
+        'El tributario suma aportes del grafo; no es caudal hidráulico medido.'])
+    block(s, 5.14, 'Inundación · factor 5', ['Chico Sur: RPT 672 m³; integral aproximada del OUT 672,28 m³.',
+        'Chico Norte: RPT 1.864 m³; integral aproximada del OUT 1.862,91 m³.',
+        'El OUT se muestrea cada 3 minutos y falta el primer intervalo.',
+        'Son cuatro casos puntuales; no validan toda la red.'])
+    s = slide(prs, 'Revisión de series', 'Hallazgo técnico independiente de las métricas presentadas.')
+    block(s, .48, 'Reporte SWMM', ['El RPT expresa el volumen mostrado en millones de litros.',
+        'La resolución de la columna mostrada es de 1 m³.',
+        'Un valor impreso de cero no demuestra ausencia exacta por debajo de esa resolución.',
+        'Las etiquetas se convirtieron a m³ para la evaluación.'])
+    block(s, 5.14, 'Archivo de salida', ['Se corrigieron dos funciones que etiquetaban nanosegundos como segundos.',
+        'Ahora requieren el inicio real de la simulación para fechas del OUT.',
+        'La primera muestra del caso revisado corresponde a 180 segundos.',
+        'No se hallaron llamadas de esas funciones en el flujo de las métricas presentadas.'])
     renumber_slide_footers(prs)
     prs.save(OUTPUT)
     check = Presentation(OUTPUT)
-    if len(check.slides) != 58:
+    if len(check.slides) != 60:
         raise ValueError(f'unexpected slide count: {len(check.slides)}')
     with zipfile.ZipFile(OUTPUT) as z:
         names = z.namelist()
         if len(names) != len(set(names)) or z.testzip() is not None:
             raise ValueError('invalid PowerPoint package')
-    print(json.dumps({'output': str(OUTPUT), 'slides': len(check.slides), 'new_slides': 17}, ensure_ascii=False))
+    print(json.dumps({'output': str(OUTPUT), 'slides': len(check.slides), 'new_slides': 19}, ensure_ascii=False))
 
 
 if __name__ == '__main__':
