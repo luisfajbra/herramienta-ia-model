@@ -1,0 +1,7 @@
+# Presentación semanal y continuación del diagnóstico
+
+Se preparó `Presentacion_MLSMFP_08-11_entrenamiento_conjunto_y_reserva.pptx` a partir de `Presentacion_MLSMFP_02-11_avance_chico_norte_mapas_individuales_por_modelo.pptx`. Conserva las 41 diapositivas anteriores y añade 17 sobre entrenamiento conjunto, hidrogramas, mapas separados, paridades, curvas, métricas y diagnóstico. Las diapositivas históricas se reajustaron para despejar el encabezado, sin cambiar sus resultados; sus fechas conservan el contexto de la etapa anterior. La portada y el resumen inicial se actualizaron al 8 de noviembre.
+
+Se abrieron y renderizaron en PowerPoint diapositivas representativas de portada, resumen, contenido histórico, mapas, paridad, resultados y diagnóstico. Se comprobó que el archivo abre, contiene 58 diapositivas y no tiene entradas ZIP duplicadas. Esto no equivale a una revisión visual individual de las 58. La versión final tiene SHA-256 `4a21ef26980c3ac25041e43568d8663762503007c5682cabc0e7d6ddc66c6590` y se conserva en la carpeta privada de Drive. Reproducción: `scripts/build_weekly_2026_11_08_joint_deck.py`.
+
+Tras generar la presentación se avanzó en el diagnóstico del hidrograma que concentró el error. El detalle, sus comprobaciones y límites están en [diagnóstico hidráulico y de cobertura](2026-11-08-diagnostico-hidraulico-cobertura.md). No se cambiaron los modelos ni la reserva; los dos hallazgos descriptivos principales se incorporaron después a las diapositivas 57 y 58.

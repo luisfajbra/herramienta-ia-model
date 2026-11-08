@@ -31,6 +31,8 @@ La forma `shape_quasi_uniform_block` concentra **93,38 %** de la suma de errores
 
 Para ese mismo hidrograma, las curvas del volumen total según el factor están en [Chico Sur](../../figures_reserva_diagnostico_20261108/volumen_factor_chico_sur.png) y [Chico Norte](../../figures_reserva_diagnostico_20261108/volumen_factor_chico_norte.png). La forma fue seleccionada después de calcular los errores. En Chico Norte, XGBoost subestima el volumen total en factores altos; MLP se aproxima al total de SWMM en parte del rango y lo supera hacia el extremo. La cercanía del total no garantiza que el volumen se ubique correctamente nodo por nodo.
 
+La revisión posterior de la forma, los dictámenes QA y la cobertura de variables por nodo se documenta en el [diagnóstico hidráulico y de cobertura](2026-11-08-diagnostico-hidraulico-cobertura.md). Esa revisión es descriptiva y no atribuye causalidad al rango de entrenamiento.
+
 Los volúmenes totales negativos en la columna de sesgo indican subestimación agregada respecto a SWMM; un sesgo total pequeño puede ocultar errores en nodos individuales. Los resultados siguen sujetos a la admisión provisional de Chico Norte, el origen no aclarado de sus caudales iniciales y el QA ya documentado; no sustituyen una validación de campo.
 
 ## Figuras
