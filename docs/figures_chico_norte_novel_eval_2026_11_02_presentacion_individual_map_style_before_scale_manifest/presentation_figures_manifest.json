@@ -1,0 +1,234 @@
+{
+  "schema_version": "chico_norte_novel_presentation_figures_v2",
+  "source_evaluation_results_sha256": "85b0e018d9ee8dc358f2382c892e19be21cc1570a53cb4cfd48e33cf19f07168",
+  "source_manifest_sha256": "584a16775b722481f447153c54ea5f1e390fb5a7e155e56cf14ce7a9c5f1b28d",
+  "network_inp_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+  "parity_metrics": {
+    "xgboost": {
+      "rmse_m3": 186.17646111428928,
+      "mae_m3": 48.386548706404476,
+      "r2": 0.2672950134769516,
+      "n": 5220
+    },
+    "mlp": {
+      "rmse_m3": 186.2586036175361,
+      "mae_m3": 47.94411633390878,
+      "r2": 0.2666483205632635,
+      "n": 5220
+    }
+  },
+  "map_factors": [
+    0.7,
+    2.7,
+    4.3
+  ],
+  "map_style": "one standalone network map per model and scenario; independent YlOrRd flood-volume scale; no error markers",
+  "maps": [
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f0.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 0.7,
+      "model_key": "swmm",
+      "model_name": "SWMM",
+      "filename": "mapa_novel_20261102_cascade_peaks_f0.7_swmm.png",
+      "total_flood_volume_m3": 0.0,
+      "flooded_nodes": 0
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f0.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 0.7,
+      "model_key": "mlp",
+      "model_name": "MLP",
+      "filename": "mapa_novel_20261102_cascade_peaks_f0.7_mlp.png",
+      "total_flood_volume_m3": 39.95223874128983,
+      "flooded_nodes": 7
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f0.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 0.7,
+      "model_key": "xgboost",
+      "model_name": "XGBoost",
+      "filename": "mapa_novel_20261102_cascade_peaks_f0.7_xgboost.png",
+      "total_flood_volume_m3": 38.3315717924546,
+      "flooded_nodes": 6
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f2.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 2.7,
+      "model_key": "swmm",
+      "model_name": "SWMM",
+      "filename": "mapa_novel_20261102_cascade_peaks_f2.7_swmm.png",
+      "total_flood_volume_m3": 11224.0,
+      "flooded_nodes": 209
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f2.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 2.7,
+      "model_key": "mlp",
+      "model_name": "MLP",
+      "filename": "mapa_novel_20261102_cascade_peaks_f2.7_mlp.png",
+      "total_flood_volume_m3": 9141.066837297461,
+      "flooded_nodes": 253
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f2.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 2.7,
+      "model_key": "xgboost",
+      "model_name": "XGBoost",
+      "filename": "mapa_novel_20261102_cascade_peaks_f2.7_xgboost.png",
+      "total_flood_volume_m3": 7783.670148015935,
+      "flooded_nodes": 111
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f4.300",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 4.3,
+      "model_key": "swmm",
+      "model_name": "SWMM",
+      "filename": "mapa_novel_20261102_cascade_peaks_f4.3_swmm.png",
+      "total_flood_volume_m3": 41008.0,
+      "flooded_nodes": 274
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f4.300",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 4.3,
+      "model_key": "mlp",
+      "model_name": "MLP",
+      "filename": "mapa_novel_20261102_cascade_peaks_f4.3_mlp.png",
+      "total_flood_volume_m3": 47151.27844845691,
+      "flooded_nodes": 348
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f4.300",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 4.3,
+      "model_key": "xgboost",
+      "model_name": "XGBoost",
+      "filename": "mapa_novel_20261102_cascade_peaks_f4.3_xgboost.png",
+      "total_flood_volume_m3": 28973.206057210857,
+      "flooded_nodes": 182
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f0.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 0.7,
+      "model_key": "swmm",
+      "model_name": "SWMM",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f0.7_swmm.png",
+      "total_flood_volume_m3": 0.0,
+      "flooded_nodes": 0
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f0.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 0.7,
+      "model_key": "mlp",
+      "model_name": "MLP",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f0.7_mlp.png",
+      "total_flood_volume_m3": 19.379288266677428,
+      "flooded_nodes": 8
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f0.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 0.7,
+      "model_key": "xgboost",
+      "model_name": "XGBoost",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f0.7_xgboost.png",
+      "total_flood_volume_m3": 54.60963156632358,
+      "flooded_nodes": 6
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f2.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 2.7,
+      "model_key": "swmm",
+      "model_name": "SWMM",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f2.7_swmm.png",
+      "total_flood_volume_m3": 30829.0,
+      "flooded_nodes": 187
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f2.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 2.7,
+      "model_key": "mlp",
+      "model_name": "MLP",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f2.7_mlp.png",
+      "total_flood_volume_m3": 26541.622156862915,
+      "flooded_nodes": 256
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f2.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 2.7,
+      "model_key": "xgboost",
+      "model_name": "XGBoost",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f2.7_xgboost.png",
+      "total_flood_volume_m3": 16088.634061921934,
+      "flooded_nodes": 111
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f4.300",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 4.3,
+      "model_key": "swmm",
+      "model_name": "SWMM",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f4.3_swmm.png",
+      "total_flood_volume_m3": 116608.0,
+      "flooded_nodes": 253
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f4.300",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 4.3,
+      "model_key": "mlp",
+      "model_name": "MLP",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f4.3_mlp.png",
+      "total_flood_volume_m3": 138639.8584792781,
+      "flooded_nodes": 339
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f4.300",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 4.3,
+      "model_key": "xgboost",
+      "model_name": "XGBoost",
+      "filename": "mapa_novel_20261102_sustained_late_surge_f4.3_xgboost.png",
+      "total_flood_volume_m3": 65556.40381803406,
+      "flooded_nodes": 183
+    }
+  ],
+  "factor_lines_source": "docs/figures_chico_norte_novel_eval_2026_11_02/volumen_total_por_factor.png",
+  "figure_sha256": {
+    "hidrograma_novel_20261102_cascade_peaks.png": "7d851bbfb10c0089b42950fcce4912ed300b6b4c753b7a84c20aa818e76d0d9e",
+    "hidrograma_novel_20261102_sustained_late_surge.png": "ce07e7c25f40847132aaf28519f2b82233da68208ac4608bcb67f3de9f45ca7f",
+    "mapa_novel_20261102_cascade_peaks_f0.7_mlp.png": "79a96cf1ab56970f05f49ada19953eb6a69a881272731e61ee5651bd9a1cd349",
+    "mapa_novel_20261102_cascade_peaks_f0.7_swmm.png": "dde6bd73d25747c2009e8e9bede57a7927817157a68e977cc661afb9b9ea1a39",
+    "mapa_novel_20261102_cascade_peaks_f0.7_xgboost.png": "e2e1693e69a9e28ae03f6b2452e8190e6abb8e35466bb5ea5f7b9a391b206db3",
+    "mapa_novel_20261102_cascade_peaks_f2.7_mlp.png": "508f9c7b8503a23b389b6f34669b11c51c8dfe3d092dbad58bf3304d8f2a99ee",
+    "mapa_novel_20261102_cascade_peaks_f2.7_swmm.png": "9a2dc98b58e8ea876306f1882435f02d08f27a6653312a04010f9e1e656c26e5",
+    "mapa_novel_20261102_cascade_peaks_f2.7_xgboost.png": "32bdc7be4621b8256b1e71986c539c84eb71eacbee6f28af90b32f5f58e8930d",
+    "mapa_novel_20261102_cascade_peaks_f4.3_mlp.png": "73b1352e993bcdddbb8675a039c77e25f2a56eec5c235f005609df05b7ddf446",
+    "mapa_novel_20261102_cascade_peaks_f4.3_swmm.png": "27f5309865af70d01ca296cbb4bdf3cb1323955a3f07bab7944c15e2f261b2a8",
+    "mapa_novel_20261102_cascade_peaks_f4.3_xgboost.png": "5b9b97ed4d273601da484bee304de2fc80fa1400680ce6f797742169cc901b7e",
+    "mapa_novel_20261102_sustained_late_surge_f0.7_mlp.png": "bd9f0a14a5d54258ecae9624b105b78998c940fbd6dfd2f69cce10d1f35ebe35",
+    "mapa_novel_20261102_sustained_late_surge_f0.7_swmm.png": "2f7728edb8e45f42f8935721f2ae06b87e6862f0dfc4f551949c185a11088fd6",
+    "mapa_novel_20261102_sustained_late_surge_f0.7_xgboost.png": "47d920a20f5deabe468b8aa60cb29559415a5bb133789561dd4f9e9f24780645",
+    "mapa_novel_20261102_sustained_late_surge_f2.7_mlp.png": "7d82e6d93d9fd0487d58e54635a92b320ca2717830a430f14707805c8931adc2",
+    "mapa_novel_20261102_sustained_late_surge_f2.7_swmm.png": "5d701a5cf1e5e150b6d1403db3969c4874f8bc98176c5623723e438ede275201",
+    "mapa_novel_20261102_sustained_late_surge_f2.7_xgboost.png": "dc31000cdbc8f916fbf30765d5d64228ae3ee48b1e6bf8238ad0c4a49efe0afa",
+    "mapa_novel_20261102_sustained_late_surge_f4.3_mlp.png": "f2aa2f6b0d270c089dada8855ae23e00436b6fe7f1609097ecab36f924dbd6d1",
+    "mapa_novel_20261102_sustained_late_surge_f4.3_swmm.png": "d74c33e5f622497bf4460d6e12722739ecc64420dc16a5f06dee5bd50c1094d9",
+    "mapa_novel_20261102_sustained_late_surge_f4.3_xgboost.png": "8623ca112feb8a3bed6267e80d83ee75f1a45a01b5ce370141cd9b8fd9d4173c",
+    "paridad_global_mlp.png": "15501519399051c8f13b48cb7f58696d7301ecafe4654a11cd25a501e1a31775",
+    "paridad_global_xgboost.png": "b518e65273f121f0c721b824c8378812b7f46ab65e3c3121d9372f5c182328e3",
+    "volumen_total_por_factor.png": "3746598a9e361bdf7acdd299bb0108b136412c11972a7c12787a5dcd58a0dd69"
+  }
+}

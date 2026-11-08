@@ -1,5 +1,7 @@
 # SWMM Resilience
 
+> **Lectura actualizada (8 de noviembre de 2026).** Este README conserva secciones de diferentes etapas históricas. La guía vigente para entender el proyecto y distinguir los modelos conjuntos de los flujos anteriores es [Guía integral del proyecto](docs/GUIA_INTEGRAL_PROYECTO.md). Los candidatos conjuntos MLP y XGBoost usan el contrato de **21 variables** `tabular_v4_21`; los comandos históricos `python main.py` y `--only-ml` usan `tabular_v3_17`. No se deben interpretar las referencias antiguas a 15 variables o a `peak_flooding_lps` como el contrato de los candidatos conjuntos. El comando `--predict` también ejecuta SWMM para verificación, según la implementación actual.
+
 Pipeline spec v4 para generar escenarios SWMM, construir un dataset tabular,
 entrenar modelos de inundacion por nodo y producir metricas, mapas e
 inferencia rapida sin volver a correr SWMM.
@@ -117,8 +119,8 @@ Salidas principales:
 - `python main.py --only-ml`: entrena, evalua y genera importancia de variables
   desde `data/training/dataset_final.csv`.
 - `python main.py --only-maps`: regenera mapas desde el CSV y la red del config.
-- `python main.py --predict --factor 3.5`: predice nodos inundados y volumen
-  usando los modelos guardados en `outputs/models`.
+- `python main.py --predict --factor 3.5`: predice usando los modelos guardados
+  en `outputs/models` y además ejecuta SWMM para generar una comparación.
 
 ## Flujo SQLite De Entrenamiento
 
@@ -188,9 +190,9 @@ swmm_resilience/
     flood_map.py
 ```
 
-La version spec v4 no usa frontend desktop, SQLite ni los modulos temporales
-legacy como flujo principal. Es un pipeline CLI basado en CSV, modelos joblib,
-metricas JSON y mapas PNG.
+Esta descripción corresponde al flujo CLI histórico basado en CSV, modelos joblib,
+métricas JSON y mapas PNG. El repositorio también contiene una interfaz desktop,
+flujos SQLite y módulos temporales; el entrenamiento conjunto actual utiliza SQLite.
 
 ## Modelos Y Metricas
 
@@ -198,7 +200,7 @@ El clasificador predice `inunda`. El regresor predice `vol_inundacion_m3` solo
 para nodos inundados; se entrena en espacio `log1p` y las predicciones se
 devuelven a m3 con `expm1`.
 
-Contrato de features v2 (junio 2026): los modelos usan 15 features;
+Contrato histórico de features v2 (junio 2026): en esa etapa los modelos usaban 15 features;
 `factor_mult` ya NO es entrada del modelo (es un atributo global de escenario
 sin definicion valida para hidrogramas arbitrarios) y queda en el dataset solo
 como metadato para LOSO y estratificacion. La señal dinamica entra via
@@ -298,11 +300,10 @@ python -m compileall main.py swmm_resilience
 
 En Windows con `LongPathsEnabled=0`, usar un `--basetemp` corto. Algunos tests generan archivos `source-<sha256>.bin` y una ruta temporal larga supera el límite de 260 caracteres (`FileNotFoundError [WinError 3]`). La alternativa es habilitar las rutas largas en Windows, lo que requiere permisos de administrador. `pytest-xdist` no está instalado: no usar `-n`.
 
-Abrir la aplicacion local:
-
-```bash
-python app.py
-```
+La interfaz Tkinter existe en `swmm_resilience/desktop/app.py`. La antigua
+instrucción `python app.py` apunta a un archivo que no está en la raíz de esta
+versión; el lanzamiento de la interfaz y su visor de base no se verificaron en
+esta revisión.
 
 Entrenar y comparar modelos tabulares:
 
@@ -396,6 +397,8 @@ data/networks/<red>/results/model_artifacts/
 
 ## Dataset Tabular
 
+> **Sección histórica:** la descripción siguiente corresponde a otra versión del dataset y no define los objetivos de los candidatos conjuntos actuales. Estos usan `inunda` y `vol_inundacion_m3`, según la guía integral.
+
 `dataset_ml.csv` es una vista plana para modelos tabulares. Tiene una fila por:
 
 ```text
@@ -487,6 +490,8 @@ Tablas principales:
 
 ### Metrica de inundacion por nodo
 
+> **Sección histórica:** las afirmaciones siguientes sobre `peak_flooding_lps` describen un flujo anterior y no reemplazan el volumen de inundación `vol_inundacion_m3` que usan los candidatos conjuntos.
+
 `peak_flooding_lps` reemplaza al antiguo `flooding_volume_m3`. Es el **caudal
 maximo instantaneo de desborde** (lps) observado en cada nodo a lo largo de
 la simulacion, es decir, el peor valor puntual de `node.flooding` durante
@@ -509,11 +514,8 @@ En `run_summary`, `total_peak_flooding_lps` es la suma de los picos de todos
 los nodos (no es un pico de red, sino un indicador escalar del nivel de
 saturacion global del sistema en esa corrida).
 
-El visor local se abre con:
-
-```bash
-python view_db.py
-```
+La instrucción histórica `python view_db.py` depende de un archivo que no está
+en la raíz de esta versión; su disponibilidad debe verificarse antes de usarla.
 
 ## Archivos Clave
 

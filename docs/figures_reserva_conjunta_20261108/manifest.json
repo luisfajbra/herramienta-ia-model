@@ -1,0 +1,15 @@
+{
+  "scores_sha256": "95df984183b92f4eb372360bd81278798f10f8fb139fec989d783403c54915d2",
+  "maps": "common_storm, factor 1.0, same scale per network across SWMM and models",
+  "parity": "global node-scenario pairs, log10(1+volume) display",
+  "files": {
+    "mapa_chico_norte_mlp.png": "64a2e67a817c6c6b0fbe2a4d018140c9cc4d52795f0e69a9782945bb9396ed2d",
+    "mapa_chico_norte_swmm.png": "d1c7291c10095796d1f2bdab7897545d208a6b24eb6e1258268205d17d4cbf98",
+    "mapa_chico_norte_xgboost.png": "60c6c3d9cb514d38a1894440f35ca393b8225e4c7e813d1175408fa07dae3d58",
+    "mapa_chico_sur_mlp.png": "4fb530a75d734d341af263a2843cf32a312fc2ef0b39b322cfa34d5c21533fa4",
+    "mapa_chico_sur_swmm.png": "b3feb638a23e27846923cbbea0547645f360d509ccac281f8c810541eea6ed70",
+    "mapa_chico_sur_xgboost.png": "e8098f404b8191f9c456e57e7c26b6f42f1831cb791d6b5e19dd18c714c81c04",
+    "paridad_global_mlp.png": "f9065b1ffd9eef51d34c1211836dd2a39cf5b90f8185a4d714590a4975afdcae",
+    "paridad_global_xgboost.png": "3f3a839bda5817dc19da36819c5a1ba5812e6755dd4fd017cc4fc4da1a2f3c98"
+  }
+}

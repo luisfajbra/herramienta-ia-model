@@ -1,0 +1,167 @@
+{
+  "schema_version": "chico_norte_novel_presentation_figures_v1",
+  "source_evaluation_results_sha256": "85b0e018d9ee8dc358f2382c892e19be21cc1570a53cb4cfd48e33cf19f07168",
+  "source_manifest_sha256": "584a16775b722481f447153c54ea5f1e390fb5a7e155e56cf14ce7a9c5f1b28d",
+  "network_inp_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+  "parity_metrics": {
+    "xgboost": {
+      "rmse_m3": 186.17646111428928,
+      "mae_m3": 48.386548706404476,
+      "r2": 0.2672950134769516,
+      "n": 5220
+    },
+    "mlp": {
+      "rmse_m3": 186.2586036175361,
+      "mae_m3": 47.94411633390878,
+      "r2": 0.2666483205632635,
+      "n": 5220
+    }
+  },
+  "map_factors": [
+    0.7,
+    2.7,
+    4.3
+  ],
+  "maps": [
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f0.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 0.7,
+      "swmm_total_m3": 0.0,
+      "swmm_flooded_nodes": 0,
+      "models": {
+        "xgboost": {
+          "total_m3": 38.3315717924546,
+          "false_positives": 6,
+          "false_negatives": 0,
+          "rmse_m3": 0.8013279785009949
+        },
+        "mlp": {
+          "total_m3": 39.95223874128983,
+          "false_positives": 7,
+          "false_negatives": 0,
+          "rmse_m3": 0.6799883866572577
+        }
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f2.700",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 2.7,
+      "swmm_total_m3": 11224.0,
+      "swmm_flooded_nodes": 209,
+      "models": {
+        "xgboost": {
+          "total_m3": 7783.670148015935,
+          "false_positives": 13,
+          "false_negatives": 111,
+          "rmse_m3": 55.85852892979746
+        },
+        "mlp": {
+          "total_m3": 9141.066837297461,
+          "false_positives": 77,
+          "false_negatives": 33,
+          "rmse_m3": 47.852121470819434
+        }
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_cascade_peaks:f4.300",
+      "shape_id": "novel_20261102_cascade_peaks",
+      "factor_mult": 4.3,
+      "swmm_total_m3": 41008.0,
+      "swmm_flooded_nodes": 274,
+      "models": {
+        "xgboost": {
+          "total_m3": 28973.206057210857,
+          "false_positives": 21,
+          "false_negatives": 113,
+          "rmse_m3": 140.53526367179248
+        },
+        "mlp": {
+          "total_m3": 47151.27844845691,
+          "false_positives": 101,
+          "false_negatives": 27,
+          "rmse_m3": 142.48240413235635
+        }
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f0.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 0.7,
+      "swmm_total_m3": 0.0,
+      "swmm_flooded_nodes": 0,
+      "models": {
+        "xgboost": {
+          "total_m3": 54.60963156632358,
+          "false_positives": 6,
+          "false_negatives": 0,
+          "rmse_m3": 1.1871128173041634
+        },
+        "mlp": {
+          "total_m3": 19.379288266677428,
+          "false_positives": 8,
+          "false_negatives": 0,
+          "rmse_m3": 0.3258578359713726
+        }
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f2.700",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 2.7,
+      "swmm_total_m3": 30829.0,
+      "swmm_flooded_nodes": 187,
+      "models": {
+        "xgboost": {
+          "total_m3": 16088.634061921934,
+          "false_positives": 17,
+          "false_negatives": 93,
+          "rmse_m3": 147.38124043708146
+        },
+        "mlp": {
+          "total_m3": 26541.622156862915,
+          "false_positives": 87,
+          "false_negatives": 18,
+          "rmse_m3": 137.6641231961825
+        }
+      }
+    },
+    {
+      "scenario_key": "B:novel_20261102_sustained_late_surge:f4.300",
+      "shape_id": "novel_20261102_sustained_late_surge",
+      "factor_mult": 4.3,
+      "swmm_total_m3": 116608.0,
+      "swmm_flooded_nodes": 253,
+      "models": {
+        "xgboost": {
+          "total_m3": 65556.40381803406,
+          "false_positives": 24,
+          "false_negatives": 94,
+          "rmse_m3": 414.7838827699766
+        },
+        "mlp": {
+          "total_m3": 138639.8584792781,
+          "false_positives": 104,
+          "false_negatives": 18,
+          "rmse_m3": 410.59867829086386
+        }
+      }
+    }
+  ],
+  "factor_lines_source": "docs/figures_chico_norte_novel_eval_2026_11_02/volumen_total_por_factor.png",
+  "figure_sha256": {
+    "hidrograma_novel_20261102_cascade_peaks.png": "4fd36afe8cf351b42bf1af5e347c2ed444099967ceaaeceba799915b2dd3991e",
+    "hidrograma_novel_20261102_sustained_late_surge.png": "7c8d31369d2e7fe554b27982fd9a064084c4acf4b5b1cd1bab15ff148c95c205",
+    "mapa_novel_20261102_cascade_peaks_f0.7.png": "da130a0f85c5ed2d6d5b32e015b2d790a9433d6d93da68d10ff55e72ac188355",
+    "mapa_novel_20261102_cascade_peaks_f2.7.png": "87e469de50e8c4437fe57b91f3d257224fdb54bfec5c7f9e3c91aaa49417db8c",
+    "mapa_novel_20261102_cascade_peaks_f4.3.png": "e313b86a8bb0c52611c6a6702c54a947d8845398ff2ba63f41b2e4714cf1c248",
+    "mapa_novel_20261102_sustained_late_surge_f0.7.png": "e5afee2775975833522e9e5ac6c20fc470537e6e06af8eca1f439a95fd5c1304",
+    "mapa_novel_20261102_sustained_late_surge_f2.7.png": "567cb2ead0139776602fcc606b40185cb8d63d4af43a5cf91969d11f3651c5f4",
+    "mapa_novel_20261102_sustained_late_surge_f4.3.png": "3dd59654569bb84134e33340c3b74d384dc1d518678d5baa029fc868e063c58a",
+    "paridad_global_mlp.png": "ea62a7f135c135c0fcdae41d1cff6dabed6cb3c1588a833bfdaa3d0e99504f50",
+    "paridad_global_xgboost.png": "215604aa57c177d3800aec4da9991b32378b9c70f77d5118d92ac8df2acdc768",
+    "volumen_total_por_factor.png": "3746598a9e361bdf7acdd299bb0108b136412c11972a7c12787a5dcd58a0dd69"
+  }
+}

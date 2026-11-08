@@ -1,0 +1,292 @@
+{
+  "schema_version": "chico_norte_transfer_legacy_style_v1",
+  "style_reference": "scripts/figures_part2/make_parity_and_maps.py (full-run visuals)",
+  "source_transfer_figure_manifest_sha256": "1d3c96a328e34c012e8606540d290d401e8bf8b008462845a5b16004aae0c986",
+  "source_manifest_sha256": "68bed0e283ddafbfada42743ae49f28d4611aa1585069a8d2f6b19815313e37b",
+  "frozen_batch_manifest_sha256": "cb37a33e58b2b88072151f90637fe7d118f4ad3f2478e5a70bec9fab9a8ff32e",
+  "network_sha256": "1c46db327638e023f86f7f0061774abe708f01b8df625f6b6c7f58af36a1ace1",
+  "labels_sha256": "e52cd199f1a0de11e98461007ed3313e80bb895a851c7ed6b9863b0a0489529f",
+  "eligible_runs": 787,
+  "excluded_runs": 188,
+  "run_node_rows": 410814,
+  "label_persistence": "transient_from_hash_verified_rpt; no_node_level_target_file_written",
+  "parity": {
+    "style": "two-panel hexbin density, log-count color scale, log10(1+volume) axes, dashed y=x equality line; restored from previous complete-run deck",
+    "all_pairs": {
+      "figure": "paridad_transferencia_chico_norte.png",
+      "models": {
+        "xgboost": {
+          "n": 410814,
+          "n_actual_flooded": 131502,
+          "n_predicted_flooded": 83427,
+          "confusion_matrix": {
+            "tn": 266336,
+            "fp": 12976,
+            "fn": 61051,
+            "tp": 70451
+          },
+          "rmse_m3": 270.8638308029521,
+          "mae_m3": 64.32306995457945,
+          "precision": 0.8444628237860644,
+          "recall": 0.535740901279068,
+          "total_swmm_m3": 37362475.0,
+          "total_predicted_m3": 16772939.748875309,
+          "volume_bias_m3": -20589535.25112469,
+          "r2_descriptive": 0.3226717416855369,
+          "both_zero_pct": 64.83201643566187
+        },
+        "mlp": {
+          "n": 410814,
+          "n_actual_flooded": 131502,
+          "n_predicted_flooded": 174896,
+          "confusion_matrix": {
+            "tn": 219433,
+            "fp": 59879,
+            "fn": 16485,
+            "tp": 115017
+          },
+          "rmse_m3": 435.9284011522473,
+          "mae_m3": 74.9549924849202,
+          "precision": 0.6576308206019578,
+          "recall": 0.8746406898754392,
+          "total_swmm_m3": 37362475.0,
+          "total_predicted_m3": 41495340.992716745,
+          "volume_bias_m3": 4132865.9927167445,
+          "r2_descriptive": -0.7543954463257785,
+          "both_zero_pct": 53.416387951725106
+        }
+      }
+    },
+    "swmm_flooded_subset": {
+      "figure": "paridad_nodos_inundados_chico_norte.png",
+      "n": 131502,
+      "models": {
+        "xgboost": {
+          "n": 131502,
+          "n_actual_flooded": 131502,
+          "n_predicted_flooded": 70451,
+          "confusion_matrix": {
+            "tn": 0,
+            "fp": 0,
+            "fn": 61051,
+            "tp": 70451
+          },
+          "rmse_m3": 477.9379874519935,
+          "mae_m3": 197.6290217668234,
+          "precision": 1.0,
+          "recall": 0.535740901279068,
+          "total_swmm_m3": 37362475.0,
+          "total_predicted_m3": 16336733.70893552,
+          "volume_bias_m3": -21025741.29106448,
+          "r2_descriptive": 0.19428026635948403,
+          "both_zero_pct": 0.0
+        },
+        "mlp": {
+          "n": 131502,
+          "n_actual_flooded": 131502,
+          "n_predicted_flooded": 115017,
+          "confusion_matrix": {
+            "tn": 0,
+            "fp": 0,
+            "fn": 16485,
+            "tp": 115017
+          },
+          "rmse_m3": 748.0737477899781,
+          "mae_m3": 204.2246060494611,
+          "precision": 1.0,
+          "recall": 0.8746406898754392,
+          "total_swmm_m3": 37362475.0,
+          "total_predicted_m3": 37558724.85473297,
+          "volume_bias_m3": 196249.8547329679,
+          "r2_descriptive": -0.973920821371715,
+          "both_zero_pct": 0.0
+        }
+      }
+    }
+  },
+  "scenario_selection": [
+    {
+      "label": "bajo",
+      "quantile": 0.1,
+      "quantile_target_m3": 1886.3,
+      "scenario_key": "B:shape_micro_burst_45min:f2.400",
+      "total_swmm_m3": 1886.0,
+      "run_id": 612,
+      "models": {
+        "xgboost": {
+          "n": 522,
+          "n_actual_flooded": 163,
+          "n_predicted_flooded": 85,
+          "confusion_matrix": {
+            "tn": 344,
+            "fp": 15,
+            "fn": 93,
+            "tp": 70
+          },
+          "rmse_m3": 9.635863531424365,
+          "mae_m3": 3.0147634641601613,
+          "precision": 0.8235294117647058,
+          "recall": 0.4294478527607362,
+          "total_swmm_m3": 1886.0,
+          "total_predicted_m3": 852.1272111524902,
+          "volume_bias_m3": -1033.8727888475098,
+          "false_positives": 15,
+          "false_negatives": 93
+        },
+        "mlp": {
+          "n": 522,
+          "n_actual_flooded": 163,
+          "n_predicted_flooded": 214,
+          "confusion_matrix": {
+            "tn": 279,
+            "fp": 80,
+            "fn": 29,
+            "tp": 134
+          },
+          "rmse_m3": 9.44624696790741,
+          "mae_m3": 3.926074997347997,
+          "precision": 0.6261682242990654,
+          "recall": 0.8220858895705522,
+          "total_swmm_m3": 1886.0,
+          "total_predicted_m3": 1787.299052928872,
+          "volume_bias_m3": -98.70094707112798,
+          "false_positives": 80,
+          "false_negatives": 29
+        }
+      }
+    },
+    {
+      "label": "mediano",
+      "quantile": 0.5,
+      "quantile_target_m3": 31130.0,
+      "scenario_key": "B:new_hydrograph:f4.200",
+      "total_swmm_m3": 31263.0,
+      "run_id": 96,
+      "models": {
+        "xgboost": {
+          "n": 522,
+          "n_actual_flooded": 310,
+          "n_predicted_flooded": 181,
+          "confusion_matrix": {
+            "tn": 198,
+            "fp": 14,
+            "fn": 143,
+            "tp": 167
+          },
+          "rmse_m3": 98.70587875212405,
+          "mae_m3": 39.07691294028917,
+          "precision": 0.9226519337016574,
+          "recall": 0.5387096774193548,
+          "total_swmm_m3": 31263.0,
+          "total_predicted_m3": 13435.088799428366,
+          "volume_bias_m3": -17827.911200571634,
+          "false_positives": 14,
+          "false_negatives": 143
+        },
+        "mlp": {
+          "n": 522,
+          "n_actual_flooded": 310,
+          "n_predicted_flooded": 345,
+          "confusion_matrix": {
+            "tn": 135,
+            "fp": 77,
+            "fn": 42,
+            "tp": 268
+          },
+          "rmse_m3": 106.3456537244945,
+          "mae_m3": 45.18670832163726,
+          "precision": 0.7768115942028986,
+          "recall": 0.864516129032258,
+          "total_swmm_m3": 31263.0,
+          "total_predicted_m3": 31583.36586382368,
+          "volume_bias_m3": 320.36586382368114,
+          "false_positives": 77,
+          "false_negatives": 42
+        }
+      }
+    },
+    {
+      "label": "alto",
+      "quantile": 0.9,
+      "quantile_target_m3": 134346.29999999996,
+      "scenario_key": "B:shape_double_peak_equal_separated:f4.400",
+      "total_swmm_m3": 134462.0,
+      "run_id": 322,
+      "models": {
+        "xgboost": {
+          "n": 522,
+          "n_actual_flooded": 273,
+          "n_predicted_flooded": 183,
+          "confusion_matrix": {
+            "tn": 229,
+            "fp": 20,
+            "fn": 110,
+            "tp": 163
+          },
+          "rmse_m3": 402.4582571540751,
+          "mae_m3": 172.34062382380728,
+          "precision": 0.8907103825136612,
+          "recall": 0.5970695970695971,
+          "total_swmm_m3": 134462.0,
+          "total_predicted_m3": 68300.53989540349,
+          "volume_bias_m3": -66161.46010459651,
+          "false_positives": 20,
+          "false_negatives": 110
+        },
+        "mlp": {
+          "n": 522,
+          "n_actual_flooded": 273,
+          "n_predicted_flooded": 354,
+          "confusion_matrix": {
+            "tn": 146,
+            "fp": 103,
+            "fn": 22,
+            "tp": 251
+          },
+          "rmse_m3": 445.98595655172903,
+          "mae_m3": 197.20451467751008,
+          "precision": 0.7090395480225988,
+          "recall": 0.9194139194139194,
+          "total_swmm_m3": 134462.0,
+          "total_predicted_m3": 148705.83990894558,
+          "volume_bias_m3": 14243.839908945578,
+          "false_positives": 103,
+          "false_negatives": 22
+        }
+      }
+    }
+  ],
+  "artifacts": [
+    {
+      "path": "paridad_transferencia_chico_norte.png",
+      "sha256": "1173529660348ee50f081004e79b434c7d2e13608e57176e0e54e9c84b395e04",
+      "byte_size": 677686
+    },
+    {
+      "path": "paridad_nodos_inundados_chico_norte.png",
+      "sha256": "b38ada4117452d59ef5a05b0a61f4e643e037787bcce6ab00f49d588f9506d24",
+      "byte_size": 672491
+    },
+    {
+      "path": "mapa_bajo_chico_norte.png",
+      "sha256": "550df84080c256c3680035d37c919cc583eee98a12b0e8942925ebd0d4e0aebb",
+      "byte_size": 781001
+    },
+    {
+      "path": "mapa_mediano_chico_norte.png",
+      "sha256": "86171a0e41f8eefcd2a23676c981c74fd4766449c95ad512e19a86eea85067f7",
+      "byte_size": 938825
+    },
+    {
+      "path": "mapa_alto_chico_norte.png",
+      "sha256": "e0ab0dd9abedcabf233cc1191ff5f51ef799de078dbcd73a614b01a039fc8658",
+      "byte_size": 938431
+    }
+  ],
+  "restored_parity_source_presentation": {
+    "filename": "Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_con_graficas.pptx",
+    "sha256": "9ce057c9fc2072951f80b82e0a52216468356ae00b6dd3a2239ec792062d5cb3",
+    "slide_all_pairs": 12,
+    "slide_swmm_flooded_subset": 13
+  }
+}

@@ -1,5 +1,7 @@
 # Resolución de los hallazgos de la auditoría hidráulica y de ML
 
+> **Actualización posterior:** el paquete 33 y su manifiesto se subieron a la carpeta privada de Drive, y se creó una copia corregida de la presentación. Para el alcance de la comprobación y las limitaciones pendientes, véase [respaldo y corrección de la presentación](2026-11-08-respaldo-y-presentacion-tras-auditoria.md). Las indicaciones originales de este informe sobre una subida manual pendiente se conservan como registro histórico.
+
 **Alcance.** Este documento cuenta, hallazgo por hallazgo, qué se observó, qué se decidió, qué se hizo y qué queda por hacer. Está escrito para el investigador y para el siguiente agente que retome el trabajo. Se refiere a la [auditoría del 4 al 8 de noviembre de 2026](2026-11-08-auditoria-hidraulica-ml.md) y al [plan de resolución](../plans/2026-11-08-resolver-hallazgos-auditoria.md), ejecutado en la rama `fix/test-suite-contracts-2026-10-27` (sin push). El plan se ejecutó en seis tareas, una por commit; esta documentación es la sexta.
 
 Reglas que valen para todo el documento:

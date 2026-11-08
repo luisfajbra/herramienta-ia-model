@@ -11,4 +11,4 @@ La presentación retira del deck anterior las diapositivas 13–15, que contení
 3. Dos paridades globales de puntos, separadas por modelo, con los colores de XGBoost y MLP, línea de igualdad y ejes `log10(1 + volumen)`.
 4. La gráfica de rectas de volumen total por factor, copiada sin cambios desde la evaluación original.
 
-El manifiesto `presentation_figures_manifest.json` registra hashes de imágenes, escenarios y resumen por mapa. El guion y los resultados están en [el reporte de evaluación](../../superpowers/reports/2026-11-02-evaluacion-hidrogramas-nuevos-chico-norte.md) y [el guion oral](../../resultados/guion_presentacion_2026-11-02-chico-norte.md).
+El manifiesto `presentation_figures_manifest.json` registra hashes de imágenes, escenarios y resumen por mapa. El guion y los resultados están en [el reporte de evaluación](../superpowers/reports/2026-11-02-evaluacion-hidrogramas-nuevos-chico-norte.md) y [el guion oral](../resultados/guion_presentacion_2026-11-02-chico-norte.md).

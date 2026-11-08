@@ -1,0 +1,107 @@
+{
+  "schema_version": "chico_norte_20_10_dark_style_parity_points_v1",
+  "style_reference": "Presentacion_MLSMFP_20-10_avances_auditoria_svm.pptx",
+  "source_deck": "Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_con_graficas.pptx",
+  "source_deck_sha256": "9ce057c9fc2072951f80b82e0a52216468356ae00b6dd3a2239ec792062d5cb3",
+  "eligible_runs": 787,
+  "excluded_runs": 188,
+  "pairs": 410814,
+  "labels_sha256": "e52cd199f1a0de11e98461007ed3313e80bb895a851c7ed6b9863b0a0489529f",
+  "color_convention": {
+    "xgboost": "#5E8CBE",
+    "mlp": "#F2A65A"
+  },
+  "all_pairs": {
+    "figure": "paridad_global_puntos.png",
+    "models": {
+      "xgboost": {
+        "n": 410814,
+        "n_actual_flooded": 131502,
+        "n_predicted_flooded": 83427,
+        "confusion_matrix": {
+          "tn": 266336,
+          "fp": 12976,
+          "fn": 61051,
+          "tp": 70451
+        },
+        "rmse_m3": 270.8638308029521,
+        "mae_m3": 64.32306995457945,
+        "precision": 0.8444628237860644,
+        "recall": 0.535740901279068,
+        "total_swmm_m3": 37362475.0,
+        "total_predicted_m3": 16772939.748875309,
+        "volume_bias_m3": -20589535.25112469,
+        "r2_descriptive": 0.3226717416855369
+      },
+      "mlp": {
+        "n": 410814,
+        "n_actual_flooded": 131502,
+        "n_predicted_flooded": 174896,
+        "confusion_matrix": {
+          "tn": 219433,
+          "fp": 59879,
+          "fn": 16485,
+          "tp": 115017
+        },
+        "rmse_m3": 435.9284011522473,
+        "mae_m3": 74.9549924849202,
+        "precision": 0.6576308206019578,
+        "recall": 0.8746406898754392,
+        "total_swmm_m3": 37362475.0,
+        "total_predicted_m3": 41495340.992716745,
+        "volume_bias_m3": 4132865.9927167445,
+        "r2_descriptive": -0.7543954463257785
+      }
+    },
+    "sha256": "61db391c2508cbeb7605a80a180a8288f68e53558d77c30678d85ad6b0feb561"
+  },
+  "swmm_flooded_subset": {
+    "n": 131502,
+    "figure": "paridad_inundados_puntos.png",
+    "models": {
+      "xgboost": {
+        "n": 131502,
+        "n_actual_flooded": 131502,
+        "n_predicted_flooded": 70451,
+        "confusion_matrix": {
+          "tn": 0,
+          "fp": 0,
+          "fn": 61051,
+          "tp": 70451
+        },
+        "rmse_m3": 477.9379874519935,
+        "mae_m3": 197.6290217668234,
+        "precision": 1.0,
+        "recall": 0.535740901279068,
+        "total_swmm_m3": 37362475.0,
+        "total_predicted_m3": 16336733.70893552,
+        "volume_bias_m3": -21025741.29106448,
+        "r2_descriptive": 0.19428026635948403
+      },
+      "mlp": {
+        "n": 131502,
+        "n_actual_flooded": 131502,
+        "n_predicted_flooded": 115017,
+        "confusion_matrix": {
+          "tn": 0,
+          "fp": 0,
+          "fn": 16485,
+          "tp": 115017
+        },
+        "rmse_m3": 748.0737477899781,
+        "mae_m3": 204.2246060494611,
+        "precision": 1.0,
+        "recall": 0.8746406898754392,
+        "total_swmm_m3": 37362475.0,
+        "total_predicted_m3": 37558724.85473297,
+        "volume_bias_m3": 196249.8547329679,
+        "r2_descriptive": -0.973920821371715
+      }
+    },
+    "sha256": "523c8395b47161bde6fb5b09ea49657f8acbde3c3352c888d7309ff609509598"
+  },
+  "output_presentation": {
+    "filename": "Presentacion_MLSMFP_30-10_avance_chico_norte_y_modelos_formato_20-10_puntos_final.pptx",
+    "sha256": "ae4e7ab4a8e0a1935f9dfb3e51e1942273b116214a6094340c9d722437b4b616"
+  }
+}

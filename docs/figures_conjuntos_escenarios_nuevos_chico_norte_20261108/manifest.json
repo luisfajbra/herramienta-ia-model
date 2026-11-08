@@ -1,0 +1,30 @@
+{
+  "scores_sha256": "2941c5dbd4ffbe6cb658b45e8b8509c89ebfd2c5b3115feefade7eb8a39eb251",
+  "missing_maps": [],
+  "scale": "común entre SWMM, MLP y XGBoost en cada escenario",
+  "files": {
+    "hidrograma_ascenso_escalonado_recesion_12h.png": "ac11226da4a601603ffe81443149b563d8dff4891fefd4215eaf98b0c29e0d96",
+    "hidrograma_pulso_agudo_recesion_6h.png": "02401a53fb6b2031ba5f163a2ccd16fa006f7df916e36009c907c78016e49873",
+    "mapa_ascenso_escalonado_recesion_12h_f1.9_mlp.png": "d12b9c82785997d8f879b6071961e7ae652fd44c3f80055b3d4c63a316c232c7",
+    "mapa_ascenso_escalonado_recesion_12h_f1.9_swmm.png": "fdaaff0c4a08737d6ea17c0738dc90296fb125d1573ee652f25fa89eec07930b",
+    "mapa_ascenso_escalonado_recesion_12h_f1.9_xgboost.png": "f8f221ebf03283de6733e5a0149abc5abb0884201361c18c1060cd1469bb202f",
+    "mapa_ascenso_escalonado_recesion_12h_f2.5_mlp.png": "0cc031cee1929c2221631ed863088d9ecde8bf69cf8c4ac2738fdd7453450ff7",
+    "mapa_ascenso_escalonado_recesion_12h_f2.5_swmm.png": "2fe22e053302ccd0544e4ee12f8f94a53b8952e87854dbb850f243a3eca4606b",
+    "mapa_ascenso_escalonado_recesion_12h_f2.5_xgboost.png": "92589e4471f095c8d51e08ca30001f98bce258c0ab00bb9f65d1e3cec8d26993",
+    "mapa_ascenso_escalonado_recesion_12h_f3.7_mlp.png": "7e240e72593708a23739aa60936770ac6be20fcd2ab942ab0a6852c646d769a6",
+    "mapa_ascenso_escalonado_recesion_12h_f3.7_swmm.png": "8737f28dead5120823ec5c9ea645825cb4f68ae00fd0e417fd0f479deef00cc2",
+    "mapa_ascenso_escalonado_recesion_12h_f3.7_xgboost.png": "4f997783d9af86846f4d47c03d06d19e6f090cab3eadf4de3048ef5323749c8b",
+    "mapa_pulso_agudo_recesion_6h_f1.9_mlp.png": "5f6e3a89a663ce91131e5419aff8b8cce01f071943ce77802f00a381ce5142ae",
+    "mapa_pulso_agudo_recesion_6h_f1.9_swmm.png": "7255a63b5a1a9a7d9fa4ed5e9ee19c52bcb05af2d9922363774f76d321bf7aed",
+    "mapa_pulso_agudo_recesion_6h_f1.9_xgboost.png": "ae4557618c829f941bec6c0992fddeec81f0c1c43df7ce10019a659e3f148580",
+    "mapa_pulso_agudo_recesion_6h_f2.5_mlp.png": "aca6792613f87d5420163de37e13c4996abc9c79d40199fc28f223ed4fef9d0d",
+    "mapa_pulso_agudo_recesion_6h_f2.5_swmm.png": "41a724ebeb03f666b41dcebcc64fa097890621a6de9965827f35d28e8afccdaa",
+    "mapa_pulso_agudo_recesion_6h_f2.5_xgboost.png": "2b770790957ab0e63cd876977ec3b1d91b179e543f1402e46a15277f52961615",
+    "mapa_pulso_agudo_recesion_6h_f3.7_mlp.png": "8c987c39feb95159b5d0b5992dd2eacb933b3def93e79e4e54f9cf9ecc2c0723",
+    "mapa_pulso_agudo_recesion_6h_f3.7_swmm.png": "15d439b0fbcab7453f8356c0aac56a343f6bc40591257840d2861c5450bd1d05",
+    "mapa_pulso_agudo_recesion_6h_f3.7_xgboost.png": "f3073d6ba4994f5970521f6e0c4a8465faaafcaa802d87e200fdc9fce890da32",
+    "paridad_global_mlp.png": "e3d369cc1d90e342c53b51d3d124028cba89a96a7948527fce7cda1d46b7195a",
+    "paridad_global_xgboost.png": "e7ae1589dc7c093c4f058aca5c46e5167c9a6ab10d09a84ef4da67b7d7b2dea9",
+    "volumen_total_por_factor.png": "a5bf6480ae73377f0c89c205f8910db84d158ac42139ec48376b66650403afc7"
+  }
+}
