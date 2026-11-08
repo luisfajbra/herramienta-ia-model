@@ -1,0 +1,21 @@
+{
+  "scores_sha256": "95df984183b92f4eb372360bd81278798f10f8fb139fec989d783403c54915d2",
+  "maps": "common_storm factors 1.0 preregistered and 3.0 selected after scoring; same scale per network/scenario",
+  "parity": "global node-scenario pairs, log10(1+volume) display",
+  "files": {
+    "mapa_chico_norte_mlp_factor_1.png": "3d7a34f9ffd9eb6df7fc1cecdff7ee5e23a75572360533fa8ed9edbed25b8eca",
+    "mapa_chico_norte_mlp_factor_3.png": "f2b0155bfce22326bde7725925526a3458e37b8514c982b772c36b9417750861",
+    "mapa_chico_norte_swmm_factor_1.png": "114db394b1bd1eca81c8e19b2df201d6e68bf97db0eed6364f9ec880aca76bf5",
+    "mapa_chico_norte_swmm_factor_3.png": "a90f58d1ea2a8769d22c2d2c92440e63385076232878b2f66c62610192fe70bf",
+    "mapa_chico_norte_xgboost_factor_1.png": "327506847725e408fbffbb6746c843b06403bb109b4cdc64044ff7863fae8ac7",
+    "mapa_chico_norte_xgboost_factor_3.png": "64c438eab28333777d22949c5112f9e2bae2714fa917850ed8c21e9c6e8c29e6",
+    "mapa_chico_sur_mlp_factor_1.png": "72ac7d2acc3d3b1b83e759e5e605d1cb281fba2b7b77b92b8fe82098fe5839ec",
+    "mapa_chico_sur_mlp_factor_3.png": "9d0b741b1d0e8fa7da6e79bfd3b1467c181b65d0ad74c299d6639677f170a7f5",
+    "mapa_chico_sur_swmm_factor_1.png": "839102400e27f4d1cabf502918f809f1dfd1004d3fc6a6853c4be31d61086230",
+    "mapa_chico_sur_swmm_factor_3.png": "d2461babcab468e640f7e4a3a8dad35d973d1d5456ee697d536104bdd4583c1b",
+    "mapa_chico_sur_xgboost_factor_1.png": "16bacb2392d66a335ebc7ca92e04c3ea1407a8af34a6cf2bbd5f06e3e7ce5700",
+    "mapa_chico_sur_xgboost_factor_3.png": "0bd2e961ac1930478e12e706c0b6aaa44dca34d1116e204328f9bc1517bb32ee",
+    "paridad_global_mlp.png": "f9065b1ffd9eef51d34c1211836dd2a39cf5b90f8185a4d714590a4975afdcae",
+    "paridad_global_xgboost.png": "3f3a839bda5817dc19da36819c5a1ba5812e6755dd4fd017cc4fc4da1a2f3c98"
+  }
+}
