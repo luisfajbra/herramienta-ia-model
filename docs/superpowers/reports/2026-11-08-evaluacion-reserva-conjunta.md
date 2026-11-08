@@ -19,7 +19,21 @@
 | MLP | Chico Sur | 170,79 | 32,68 | 83,73 % | 92,86 % | 88,06 % | −1,82 % |
 | MLP | Chico Norte | 198,47 | 34,65 | 85,61 % | 93,78 % | 89,51 % | −0,78 % |
 
-El **RMSE macro por red**, promedio simple de los dos RMSE anteriores, es **234,54 m³ para XGBoost** y **184,63 m³ para MLP**. En esta reserva MLP tiene menor error de volumen; XGBoost obtiene mayor precisión y recall de clasificación. Son métricas distintas y no establecen un ganador universal para todos los objetivos.
+El **RMSE macro por red**, promedio simple de los dos RMSE anteriores, es **234,54 m³ para XGBoost** y **184,63 m³ para MLP**. En esta reserva MLP tiene menor RMSE macro de volumen y XGBoost obtiene mayor precisión y recall de clasificación. **La ventaja de MLP en volumen depende de una sola forma:** sin `shape_quasi_uniform_block`, el RMSE macro es 66,68 m³ para XGBoost y 87,23 m³ para MLP. Por forma y red el resultado está repartido (tabla siguiente). Este análisis se hizo después de ver los resultados: es descriptivo, no cambia la métrica principal acordada ni selecciona un modelo.
+
+RMSE de volumen por forma y red (m³). Menor es mejor.
+
+| Forma | XGB Sur | XGB Norte | MLP Sur | MLP Norte |
+|---|---:|---:|---:|---:|
+| common_storm | 49,3 | 48,0 | 39,5 | 35,3 |
+| rare_extreme | 2,7 | 5,8 | 4,0 | 4,4 |
+| shape_delayed_abrupt_peak | 40,8 | 40,8 | 28,1 | 27,2 |
+| shape_flashy_long_tail_9h5 | 20,2 | 23,1 | 25,5 | 23,1 |
+| shape_front_loaded_broad | 24,1 | 21,3 | 29,9 | 28,7 |
+| **shape_quasi_uniform_block** | **583,8** | **563,0** | **398,2** | **443,0** |
+| shape_twin_plateau_15h | 147,0 | 130,0 | 183,2 | 203,9 |
+
+Fuente: outputs/experiments/auditoria_reserva_conjunta_20261108_v1/audit.json (scripts/auditar_reserva_conjunta.py).
 
 El RMSE global agrupado por pares es 234,88 m³ para XGBoost y 191,88 m³ para MLP; el R² global es 0,786 y 0,857, respectivamente. Este RMSE global no coincide necesariamente con el macro: Chico Norte aporta más nodos y, por tanto, pesa más en el cálculo agrupado. Las paridades muestran ese cálculo global; la métrica principal acordada para comparar redes es el macro.
 
@@ -34,6 +48,31 @@ Para ese mismo hidrograma, las curvas del volumen total según el factor están 
 La revisión posterior de la forma, los dictámenes QA y la cobertura de variables por nodo se documenta en el [diagnóstico hidráulico y de cobertura](2026-11-08-diagnostico-hidraulico-cobertura.md). Esa revisión es descriptiva y no atribuye causalidad al rango de entrenamiento.
 
 Los volúmenes totales negativos en la columna de sesgo indican subestimación agregada respecto a SWMM; un sesgo total pequeño puede ocultar errores en nodos individuales. Los resultados siguen sujetos a la admisión provisional de Chico Norte, el origen no aclarado de sus caudales iniciales y el QA ya documentado; no sustituyen una validación de campo.
+
+## Sensibilidad post hoc
+
+Esta sección resume el análisis [`scripts/auditar_reserva_conjunta.py`](../../../scripts/auditar_reserva_conjunta.py), ejecutado el 8 de noviembre sobre las predicciones ya selladas. Todo es **post hoc** y está rotulado `post_hoc_audit_not_model_selection`: no reemplaza las métricas oficiales de `scores.json`, no reentrena nada y no selecciona un modelo. La métrica principal sigue siendo `macro_network_rmse`. Las cifras salen de `outputs/experiments/auditoria_reserva_conjunta_20261108_v1/audit.json`. La resolución completa de cada hallazgo está en el [documento de resolución](2026-11-08-resolucion-hallazgos-auditoria.md).
+
+**Cobertura del volumen de entrada.** En ambas redes, la forma con más volumen de entrada en desarrollo es `shape_sustained_plateau_14h` (225.639 m³ en Chico Sur y 670.283 m³ en Chico Norte). En la reserva es `shape_quasi_uniform_block` (262.697 m³ y 780.366 m³). El máximo de la reserva supera al de desarrollo en una razón de 1,164 en las dos redes (16,4 % más), y cuatro corridas de la reserva en cada red lo superan (`max_ratio_to_development_max`). El sorteo de formas fue correcto y quedó fijado de antemano; por azar dejó en la reserva la forma de mayor volumen. Esto no invalida la evaluación, pero significa que la reserva mide en parte extrapolación. La función `stratified_shape_draw` queda disponible para el diseño de una reserva futura; no se usó para volver a sortear esta reserva, que ya fue consultada y no debe reutilizarse como prueba ciega.
+
+**Coherencia física.** El volumen inundado de un nodo no puede superar el volumen que le llega de sus tributarios. Con una tolerancia de 1 m³, XGBoost tiene 0 violaciones de esa cota (`tributary_bound.violations`) y MLP tiene 46, con una razón máxima de 2,27 veces la cota (`max_ratio`). Si se recortaran las predicciones a la cota, el RMSE macro de MLP bajaría de 184,63 a 174,29 m³ (`capped_macro_network_rmse_m3`); es un **recorte post hoc, no adoptado**, que XGBoost no necesita (queda en 234,54 m³). En el total por forma y factor hay una violación de monotonía en MLP (Chico Sur, `shape_quasi_uniform_block`, el volumen total predicho baja 3.170,65 m³ al pasar al factor 5,0 mientras SWMM sube) y ninguna en XGBoost. Por nodo, la predicción baja al subir el factor, sin que SWMM baje, en 63 de 101.972 pasos para MLP y en 1.242 para XGBoost (1,2 %). La explicación es que el regresor aprende `log1p(volumen)`: el MLP extrapola de forma aproximadamente lineal en el espacio logarítmico, es decir exponencial en m³, mientras que XGBoost se satura porque los árboles no predicen por encima de lo visto.
+
+**Continuidad.** La QA admite corridas con error de continuidad de hasta 5 %. Se recalculó el RMSE macro y la clasificación con subconjuntos más estrictos (`continuity_sensitivity`):
+
+| Límite de \|continuidad\| | Corridas | Pares | RMSE macro XGBoost (m³) | RMSE macro MLP (m³) |
+|---|---:|---:|---:|---:|
+| Oficial (≤ 5 %) | 321 | 106.746 | 234,54 | 184,63 |
+| ≤ 2 % | 283 | 93.064 | 249,96 | 196,91 |
+| ≤ 1 % | 245 | 79.744 | 268,87 | 211,94 |
+
+| Límite | Modelo | Precisión Sur / Norte | Recall Sur / Norte |
+|---|---|---:|---:|
+| ≤ 2 % | XGBoost | 94,3 % / 93,5 % | 98,0 % / 97,6 % |
+| ≤ 2 % | MLP | 85,5 % / 86,0 % | 93,1 % / 93,9 % |
+| ≤ 1 % | XGBoost | 94,4 % / 93,9 % | 98,2 % / 97,8 % |
+| ≤ 1 % | MLP | 85,7 % / 86,4 % | 93,7 % / 94,5 % |
+
+El orden entre modelos no cambia con los límites más estrictos, y la precisión y el recall varían menos de 2 puntos porcentuales respecto a los valores oficiales (XGBoost 93,0 % / 93,2 % de precisión y 97,8 % / 97,2 % de recall; MLP 83,7 % / 85,6 % y 92,9 % / 93,8 %). El RMSE macro sube al restringir; no se investigó la causa, pero el subconjunto cambia la mezcla de corridas y de formas que se promedia. Si se cita la clasificación cerca del umbral de 1 m³, conviene acompañarla de esta sensibilidad.
 
 ## Figuras
 

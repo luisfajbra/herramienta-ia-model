@@ -1,5 +1,15 @@
 # Auditoría hidráulica y de ML: del 4 al 8 de noviembre de 2026
 
+## Estado (actualizado)
+
+Actualización del 8 de noviembre de 2026, rama `fix/test-suite-contracts-2026-10-27`, sin push. El detalle por hallazgo (problema, plan, solución y pendientes) está en el [documento de resolución](2026-11-08-resolucion-hallazgos-auditoria.md).
+
+- **1, 2, 4 y 5:** atendidos con análisis post hoc (`scripts/auditar_reserva_conjunta.py`) y documentados en el [informe de la reserva](2026-11-08-evaluacion-reserva-conjunta.md#sensibilidad-post-hoc). El reentrenamiento queda pendiente de decisión (ver "Decisiones pendientes" en el [plan](../plans/2026-11-08-resolver-hallazgos-auditoria.md)).
+- **3:** **fuera de alcance por decisión del investigador (8 de noviembre)**. Se considera parte del diseño de la red; se mantiene como está.
+- **6:** respaldo local creado y verificado (`33_reserva_conjunta_y_base_20261108.zip`, SHA-256 `2f1ea8857d45e5fcefa6eb2faad435b35ffb2f869f8168ea163fe78b049b4022`). **La subida a Drive está pendiente**: la debe hacer el investigador y confirmarla. Hasta entonces el hallazgo 6 no se considera resuelto.
+- **7:** se retira el punto de `with sqlite3.connect(...)`. Al revisarlo, la conexión vive dentro de una función o un bucle y CPython la cierra al liberar el objeto, así que no queda abierta de forma persistente y no requiere cambios. Los demás puntos ya estaban documentados. La longitud de ruta de los tests se documenta en el [README](../../../README.md#verificacion).
+- **Presentación:** la diapositiva "Hallazgos y próximos pasos" de `scripts/build_weekly_2026_11_08_joint_deck.py` (línea 182) todavía dice `'MLP logró menor RMSE de volumen en esta reserva.'`, que conserva la afirmación de una sola forma del hallazgo 1. No se editó el script ni se regeneró el `.pptx`; hace falta la aprobación del investigador. El texto propuesto es `'MLP logró menor RMSE macro, pero por una sola forma; sin ella gana XGBoost.'`.
+
 **Alcance:** commits `47848f3c` a `d4e1e6a7` de la rama `fix/test-suite-contracts-2026-10-27`, es decir, todo lo posterior a la revisión anterior (`8d1e1ceb`, [informe](2026-11-04-revision-rama-test-suite-contracts.md)). Cubre la base conjunta Chico Sur + Chico Norte, la partición por formas, el tuning recuperable, el ajuste final, la evaluación de la reserva y el diagnóstico hidráulico.
 
 **Método:** lectura del código nuevo y comprobaciones independientes en solo lectura sobre los artefactos sellados:

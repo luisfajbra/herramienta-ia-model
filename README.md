@@ -292,9 +292,11 @@ Dependencias principales:
 ## Verificacion
 
 ```bash
-python -m pytest tests -v
+python -m pytest tests -v --basetemp C:/Users/<usuario>/AppData/Local/Temp/pt
 python -m compileall main.py swmm_resilience
 ```
+
+En Windows con `LongPathsEnabled=0`, usar un `--basetemp` corto. Algunos tests generan archivos `source-<sha256>.bin` y una ruta temporal larga supera el límite de 260 caracteres (`FileNotFoundError [WinError 3]`). La alternativa es habilitar las rutas largas en Windows, lo que requiere permisos de administrador. `pytest-xdist` no está instalado: no usar `-n`.
 
 Abrir la aplicacion local:
 
