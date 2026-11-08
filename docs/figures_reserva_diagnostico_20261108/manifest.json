@@ -1,0 +1,10 @@
+{
+  "selection": "post-hoc diagnostic after observing shape-level errors",
+  "shape": "shape_quasi_uniform_block",
+  "scores_sha256": "95df984183b92f4eb372360bd81278798f10f8fb139fec989d783403c54915d2",
+  "files": {
+    "volumen_factor_chico_norte.png": "07f4867be7367e0cad92102316adab189b8d528a9f6c3a816969a348fcff641e",
+    "volumen_factor_chico_sur.png": "1dbc9da37693a78f6a439529d66ac3a7cbef172c6b6748a54669737c788392bd",
+    "volumen_por_factor.csv": "20d77d092a964e2d0d8c3928ad401daa1edeaf97651412b3f8b1edede3c0ebb5"
+  }
+}

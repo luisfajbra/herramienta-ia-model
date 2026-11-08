@@ -29,6 +29,8 @@ Durante la selección interna los mejores valores macro fueron 58,89 m³ para XG
 
 La forma `shape_quasi_uniform_block` concentra **93,38 %** de la suma de errores cuadrados agrupada de XGBoost y **81,32 %** de la de MLP. Su RMSE es 583,8 y 563,0 m³ en Chico Sur y Chico Norte para XGBoost, y 398,2 y 443,0 m³ para MLP. Los factores altos tienen errores particularmente grandes. Esta contribución se examinó después de obtener los resultados: es un diagnóstico, no un criterio para retirar escenarios ni una nueva métrica principal. Debe revisarse la respuesta hidráulica de esa forma y la cobertura del entrenamiento antes de atribuir el fenómeno a una causa.
 
+Para ese mismo hidrograma, las curvas del volumen total según el factor están en [Chico Sur](../../figures_reserva_diagnostico_20261108/volumen_factor_chico_sur.png) y [Chico Norte](../../figures_reserva_diagnostico_20261108/volumen_factor_chico_norte.png). La forma fue seleccionada después de calcular los errores. En Chico Norte, XGBoost subestima el volumen total en factores altos; MLP se aproxima al total de SWMM en parte del rango y lo supera hacia el extremo. La cercanía del total no garantiza que el volumen se ubique correctamente nodo por nodo.
+
 Los volúmenes totales negativos en la columna de sesgo indican subestimación agregada respecto a SWMM; un sesgo total pequeño puede ocultar errores en nodos individuales. Los resultados siguen sujetos a la admisión provisional de Chico Norte, el origen no aclarado de sus caudales iniciales y el QA ya documentado; no sustituyen una validación de campo.
 
 ## Figuras
